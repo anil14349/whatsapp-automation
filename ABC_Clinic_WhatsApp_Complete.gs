@@ -460,6 +460,30 @@ function parseAvailabilityTimeValue(value, date) {
     return parsed;
 }
 
+function calendarEventExists(
+    calendar,
+    eventId
+) {
+
+    if (!calendar || !eventId) {
+        return false;
+    }
+
+    try {
+
+        const event =
+            calendar.getEventById(
+                String(eventId).trim()
+            );
+
+        return !!event;
+
+    } catch (error) {
+
+        return false;
+    }
+}
+
 function getAvailableSlots(
     doctorId,
     dateString
@@ -852,6 +876,36 @@ function bookAppointment(
             success: false,
             message:
                 "Appointment time must be in the future."
+        };
+    }
+
+    // ----------------------------------------------------------
+    // Validate against working hours
+    // ----------------------------------------------------------
+
+    const availableSlots =
+        getAvailableSlots(
+            doctorId,
+            dateString
+        );
+
+    const formattedRequestedTime =
+        Utilities.formatDate(
+            startTime,
+            TIMEZONE,
+            "hh:mm a"
+        );
+
+    if (
+        !availableSlots.includes(
+            formattedRequestedTime
+        )
+    ) {
+
+        return {
+            success: false,
+            message:
+                "The selected appointment time is not available."
         };
     }
 
@@ -1860,7 +1914,10 @@ function rescheduleAppointment(
         if (
             oldEvent &&
             oldEvent.getId() &&
-            !calendar.getEventById(oldEvent.getId())
+            !calendarEventExists(
+                calendar,
+                oldEvent.getId()
+            )
         ) {
             try {
                 const oldDate =
@@ -7366,131 +7423,4 @@ function findDoctorByName(doctorName) {
     }
 
     return null;
-}
-
-function getDoctorAppointmentDuration(doctorId) {
-
-    const ss =
-        SpreadsheetApp
-            .getActiveSpreadsheet();
-
-    const sheet =
-        ss.getSheetByName("Doctors");
-
-    if (!sheet) {
-        throw new Error(
-            "Doctors sheet not found."
-        );
-    }
-
-    const data =
-        sheet.getDataRange()
-            .getValues();
-
-    for (
-        let i = 1;
-        i < data.length;
-        i++
-    ) {
-
-        if (
-            String(data[i][0]).trim() ===
-            String(doctorId).trim()
-        ) {
-
-            const duration =
-                Number(data[i][5]);
-
-            if (
-                !duration ||
-                duration <= 0
-            ) {
-                throw new Error(
-                    "Invalid AppointmentDuration for doctor " +
-                    doctorId
-                );
-            }
-
-            return duration;
-        }
-    }
-
-    throw new Error(
-        "Doctor not found: " +
-        doctorId
-    );
-}
-
-function isDoctorOnLeave(
-    doctorId,
-    dateString
-) {
-
-    const ss =
-        SpreadsheetApp
-            .getActiveSpreadsheet();
-
-    const sheet =
-        ss.getSheetByName(
-            "Doctor_Leaves"
-        );
-
-    if (!sheet) {
-        return false;
-    }
-
-    const data =
-        sheet.getDataRange()
-            .getValues();
-
-    for (
-        let i = 1;
-        i < data.length;
-        i++
-    ) {
-
-        const rowDoctorId =
-            String(
-                data[i][0]
-            ).trim();
-
-        let rowDate = "";
-
-        if (
-            data[i][1] instanceof Date
-        ) {
-
-            rowDate =
-                Utilities.formatDate(
-                    data[i][1],
-                    TIMEZONE,
-                    "yyyy-MM-dd"
-                );
-
-        } else {
-
-            rowDate =
-                String(
-                    data[i][1] || ""
-                ).trim();
-        }
-
-        const active =
-            String(
-                data[i][3]
-            ).toUpperCase() === "TRUE";
-
-        if (
-            rowDoctorId ===
-            String(doctorId).trim() &&
-            rowDate ===
-            String(dateString).trim() &&
-            active
-        ) {
-
-            return true;
-        }
-    }
-
-    return false;
 }
