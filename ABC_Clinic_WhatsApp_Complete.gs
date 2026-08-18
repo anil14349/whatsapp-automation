@@ -3928,10 +3928,7 @@ function formatAvailableSlotsForWhatsApp(slots) {
 function buildLanguageSelectionMessage() {
 
     return (
-        "👋 Welcome to ABC Clinic!\n" +
-        "ABC క్లినిక్‌కు స్వాగతం!\n" +
-        "एबीसी क्लिनिक में आपका स्वागत है!\n\n" +
-        "Please select your language / భాషను ఎంచుకోండి / अपनी भाषा चुनें:\n\n" +
+        "🌐 Please select your language:\n\n" +
         "1️⃣ English\n" +
         "2️⃣ తెలుగు\n" +
         "3️⃣ हिन्दी"
@@ -3956,6 +3953,7 @@ function localizeWhatsAppReply(language, message) {
             "My Appointments": "నా అపాయింట్‌మెంట్‌లు",
             "Cancel Appointment": "అపాయింట్‌మెంట్ రద్దు చేయండి",
             "Reschedule Appointment": "అపాయింట్‌మెంట్ సమయాన్ని మార్చండి",
+            "Change Language": "భాషను మార్చండి",
             "Select a doctor:": "డాక్టర్‌ను ఎంచుకోండి:",
             "Reply with the doctor's number.": "డాక్టర్ నంబర్‌తో సమాధానం ఇవ్వండి.",
             "Please choose a date:": "తేదీని ఎంచుకోండి:",
@@ -4004,7 +4002,8 @@ function localizeWhatsAppReply(language, message) {
             "Your reschedule session has expired.": "మీ సమయం మార్పు సెషన్ గడువు ముగిసింది.",
             "Thank you for choosing ABC Clinic.": "ABC క్లినిక్‌ను ఎంచుకున్నందుకు ధన్యవాదాలు.",
             "Please send Hi to start again.": "మళ్లీ ప్రారంభించడానికి Hi పంపండి.",
-            "Sorry, I didn't understand that.": "క్షమించండి, నాకు అర్థం కాలేదు."
+            "Sorry, I didn't understand that.": "క్షమించండి, నాకు అర్థం కాలేదు.",
+            "Language changed successfully.": "భాష విజయవంతంగా మార్చబడింది."
         },
         HI: {
             "Welcome to ABC Clinic!": "एबीसी क्लिनिक में आपका स्वागत है!",
@@ -4013,6 +4012,7 @@ function localizeWhatsAppReply(language, message) {
             "My Appointments": "मेरे अपॉइंटमेंट",
             "Cancel Appointment": "अपॉइंटमेंट रद्द करें",
             "Reschedule Appointment": "अपॉइंटमेंट का समय बदलें",
+            "Change Language": "भाषा बदलें",
             "Select a doctor:": "डॉक्टर चुनें:",
             "Reply with the doctor's number.": "डॉक्टर के नंबर से उत्तर दें।",
             "Please choose a date:": "तारीख चुनें:",
@@ -4061,7 +4061,8 @@ function localizeWhatsAppReply(language, message) {
             "Your reschedule session has expired.": "आपका समय परिवर्तन सत्र समाप्त हो गया है।",
             "Thank you for choosing ABC Clinic.": "एबीसी क्लिनिक चुनने के लिए धन्यवाद।",
             "Please send Hi to start again.": "फिर से शुरू करने के लिए Hi भेजें।",
-            "Sorry, I didn't understand that.": "क्षमा करें, मैं समझ नहीं पाया।"
+            "Sorry, I didn't understand that.": "क्षमा करें, मैं समझ नहीं पाया।",
+            "Language changed successfully.": "भाषा सफलतापूर्वक बदल दी गई है।"
         }
     };
 
@@ -4091,7 +4092,8 @@ function buildMainMenuMessage(prefix) {
         "1️⃣ Book Appointment\n" +
         "2️⃣ My Appointments\n" +
         "3️⃣ Cancel Appointment\n" +
-        "4️⃣ Reschedule Appointment"
+        "4️⃣ Reschedule Appointment\n" +
+        "5️⃣ Change Language"
     );
 }
 
@@ -4171,7 +4173,8 @@ function addWhatsAppNavigationOptions(session, message) {
         !session ||
         !session.state ||
         session.state === "MAIN_MENU" ||
-        session.state === "LANGUAGE_SELECT"
+        session.state === "LANGUAGE_SELECT" ||
+        session.state === "LANGUAGE_CHANGE"
     ) {
         return message;
     }
@@ -4686,6 +4689,7 @@ function doPost(e) {
                 session &&
                 session.state !== "MAIN_MENU" &&
                 session.state !== "LANGUAGE_SELECT" &&
+                session.state !== "LANGUAGE_CHANGE" &&
                 normalizedMessage === "0"
             ) {
 
@@ -4696,6 +4700,7 @@ function doPost(e) {
                 session &&
                 session.state !== "MAIN_MENU" &&
                 session.state !== "LANGUAGE_SELECT" &&
+                session.state !== "LANGUAGE_CHANGE" &&
                 normalizedMessage === "9"
             ) {
 
@@ -4753,6 +4758,61 @@ function doPost(e) {
                         senderPhone,
                         buildMainMenuMessage(
                             "👋 Welcome to ABC Clinic!"
+                        )
+                    );
+                }
+            }
+
+
+            // ======================================================
+            // LANGUAGE CHANGE
+            // ======================================================
+
+            else if (
+                session &&
+                session.state === "LANGUAGE_CHANGE"
+            ) {
+
+                const languageByChoice = {
+                    "1": "EN",
+                    "2": "TE",
+                    "3": "HI"
+                };
+
+                const language =
+                    languageByChoice[normalizedMessage];
+
+                if (!language) {
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        buildLanguageSelectionMessage()
+                    );
+
+                } else {
+
+                    const currentSession =
+                        session || {};
+
+                    saveWhatsAppSession(
+                        senderPhone,
+                        {
+                            role: currentSession.role || "PATIENT",
+                            language: language,
+                            state: "MAIN_MENU",
+                            doctorId: "",
+                            date: "",
+                            time: "",
+                            appointmentId: ""
+                        }
+                    );
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        buildMainMenuMessage(
+                            "✅ Language changed successfully."
                         )
                     );
                 }
@@ -4827,11 +4887,12 @@ function doPost(e) {
                         formatAppointmentsListForWhatsApp(
                             appointments
                         ) +
-                        "Reply with:\n" +
+                        "Reply with:\n\n" +
                         "1️⃣ Book Appointment\n" +
                         "2️⃣ My Appointments\n" +
                         "3️⃣ Cancel Appointment\n" +
-                        "4️⃣ Reschedule Appointment";
+                        "4️⃣ Reschedule Appointment\n" +
+                        "5️⃣ Change Language";
                 }
 
                 saveWhatsAppSession(
@@ -4974,6 +5035,32 @@ function doPost(e) {
                         reply
                     );
                 }
+            }
+
+
+            // ======================================================
+            // MAIN MENU → CHANGE LANGUAGE
+            // ======================================================
+
+            else if (
+                normalizedMessage === "5" &&
+                session &&
+                session.state === "MAIN_MENU"
+            ) {
+
+                saveWhatsAppSession(
+                    senderPhone,
+                    {
+                        role: "PATIENT",
+                        state: "LANGUAGE_CHANGE"
+                    }
+                );
+
+                sendWhatsAppReply(
+                    ss,
+                    senderPhone,
+                    buildLanguageSelectionMessage()
+                );
             }
 
 
@@ -5570,7 +5657,8 @@ function doPost(e) {
                         "1️⃣ Book Appointment\n" +
                         "2️⃣ My Appointments\n" +
                         "3️⃣ Cancel Appointment\n" +
-                        "4️⃣ Reschedule Appointment"
+                        "4️⃣ Reschedule Appointment\n" +
+                        "5️⃣ Change Language"
                     );
 
                 } else {
