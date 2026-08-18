@@ -6,10 +6,13 @@
 // SHEETS REQUIRED:
 //
 // Doctors
-//   Doctor ID | Doctor Name | Clinic | Calendar ID
+//   Doctor ID | Doctor Name | Clinic | Calendar ID | WhatsApp | AppointmentDuration
 //
 // Availability
-//   Doctor ID | Day | Start | End | Slot Minutes
+//   Doctor ID | Day | Start | End
+//
+// Doctor_Leaves
+//   Doctor ID | Date | Reason | Active
 //
 // Appointments
 //   Appointment ID | Date | Time | Doctor ID | Patient Name |
@@ -18,7 +21,6 @@
 // ============================================================
 
 const TIMEZONE = "Asia/Kolkata";
-const APPOINTMENT_DURATION_MINUTES = 30;
 
 
 
@@ -127,6 +129,74 @@ function isValidISODate(dateString) {
 }
 
 
+function normalizeAppointmentDate(value) {
+
+    if (value instanceof Date) {
+        return Utilities.formatDate(
+            value,
+            TIMEZONE,
+            "yyyy-MM-dd"
+        );
+    }
+
+    const text =
+        String(value || "").trim();
+
+    if (!text) {
+        return "";
+    }
+
+    // Already ISO
+    if (isValidISODate(text)) {
+        return text;
+    }
+
+    // dd-MMM-yyyy
+    const match =
+        text.match(
+            /^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/
+        );
+
+    if (!match) {
+        return "";
+    }
+
+    const day =
+        Number(match[1]);
+
+    const monthNames = [
+        "Jan", "Feb", "Mar",
+        "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep",
+        "Oct", "Nov", "Dec"
+    ];
+
+    const month =
+        monthNames.indexOf(
+            match[2].substring(0, 1).toUpperCase() +
+            match[2].substring(1, 3).toLowerCase()
+        );
+
+    const year =
+        Number(match[3]);
+
+    if (month < 0) {
+        return "";
+    }
+
+    const iso =
+        year +
+        "-" +
+        String(month + 1).padStart(2, "0") +
+        "-" +
+        String(day).padStart(2, "0");
+
+    return isValidISODate(iso)
+        ? iso
+        : "";
+}
+
+
 // ============================================================
 // 1. TEST BOOKING - OLD SIMPLE TEST
 // ============================================================
@@ -219,6 +289,177 @@ function testBooking() {
 // 2. GET AVAILABLE SLOTS
 // ============================================================
 
+function getDoctorAppointmentDuration(doctorId) {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Doctors");
+
+    if (!sheet) {
+        throw new Error(
+            "Doctors sheet not found."
+        );
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        if (
+            String(data[i][0]).trim() ===
+            String(doctorId).trim()
+        ) {
+
+            const duration =
+                Number(data[i][5]);
+
+            if (
+                !duration ||
+                duration <= 0
+            ) {
+                throw new Error(
+                    "Invalid AppointmentDuration for doctor " +
+                    doctorId
+                );
+            }
+
+            return duration;
+        }
+    }
+
+    throw new Error(
+        "Doctor not found: " +
+        doctorId
+    );
+}
+
+function isDoctorOnLeave(
+    doctorId,
+    dateString
+) {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Doctor_Leaves");
+
+    if (!sheet) {
+        return false;
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const rowDoctorId =
+            String(data[i][0] || "").trim();
+
+        let rowDate = "";
+
+        if (
+            data[i][1] instanceof Date
+        ) {
+
+            rowDate =
+                Utilities.formatDate(
+                    data[i][1],
+                    TIMEZONE,
+                    "yyyy-MM-dd"
+                );
+
+        } else {
+
+            rowDate =
+                String(data[i][1] || "").trim();
+        }
+
+        const active =
+            String(data[i][3] || "")
+                .toUpperCase() === "TRUE";
+
+        if (
+            rowDoctorId ===
+            String(doctorId).trim() &&
+            rowDate ===
+            String(dateString).trim() &&
+            active
+        ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function parseAvailabilityTimeValue(value, date) {
+
+    if (value instanceof Date) {
+        return new Date(value.getTime());
+    }
+
+    const text =
+        String(value || "").trim();
+
+    if (!text) {
+        return null;
+    }
+
+    const timeValue =
+        convert12HourTo24Hour(text);
+
+    if (timeValue) {
+
+        const parsed =
+            new Date(date);
+
+        const parts =
+            timeValue.split(":");
+
+        parsed.setHours(
+            Number(parts[0]),
+            Number(parts[1]),
+            0,
+            0
+        );
+
+        return parsed;
+    }
+
+    const match =
+        text.match(/^\d{1,2}:\d{2}$/);
+
+    if (!match) {
+        return null;
+    }
+
+    const parsed =
+        new Date(date);
+    const parts =
+        text.split(":");
+
+    parsed.setHours(
+        Number(parts[0]),
+        Number(parts[1]),
+        0,
+        0
+    );
+
+    return parsed;
+}
+
 function getAvailableSlots(
     doctorId,
     dateString
@@ -244,6 +485,12 @@ function getAvailableSlots(
     const availabilitySheet =
         ss.getSheetByName("Availability");
 
+    if (!doctorSheet || !availabilitySheet) {
+        throw new Error(
+            "Doctors or Availability sheet not found."
+        );
+    }
+
     const doctorData =
         doctorSheet.getDataRange().getValues();
 
@@ -252,10 +499,6 @@ function getAvailableSlots(
 
     let calendarId = "";
     let doctorName = "";
-
-    // ----------------------------------------------------------
-    // Find doctor
-    // ----------------------------------------------------------
 
     for (
         let i = 1;
@@ -285,9 +528,19 @@ function getAvailableSlots(
         );
     }
 
-    // ----------------------------------------------------------
-    // Find day of week
-    // ----------------------------------------------------------
+    if (
+        isDoctorOnLeave(
+            doctorId,
+            dateString
+        )
+    ) {
+        return [];
+    }
+
+    const appointmentDuration =
+        getDoctorAppointmentDuration(
+            doctorId
+        );
 
     const dayName =
         Utilities.formatDate(
@@ -296,13 +549,7 @@ function getAvailableSlots(
             "EEEE"
         );
 
-    let startTime = null;
-    let endTime = null;
-    let slotMinutes = null;
-
-    // ----------------------------------------------------------
-    // Find doctor's availability
-    // ----------------------------------------------------------
+    const availabilityWindows = [];
 
     for (
         let i = 1;
@@ -311,71 +558,42 @@ function getAvailableSlots(
     ) {
 
         const rowDoctorId =
-            availabilityData[i][0];
+            String(availabilityData[i][0] || "").trim();
 
         const rowDay =
-            availabilityData[i][1];
+            String(availabilityData[i][1] || "").trim();
 
         if (
-            String(rowDoctorId) ===
-            String(doctorId) &&
-            String(rowDay) ===
+            rowDoctorId ===
+            String(doctorId).trim() &&
+            rowDay ===
             String(dayName)
         ) {
 
-            startTime =
-                availabilityData[i][2];
+            const startTime =
+                parseAvailabilityTimeValue(
+                    availabilityData[i][2],
+                    date
+                );
 
-            endTime =
-                availabilityData[i][3];
+            const endTime =
+                parseAvailabilityTimeValue(
+                    availabilityData[i][3],
+                    date
+                );
 
-            slotMinutes =
-                Number(availabilityData[i][4]);
-
-            break;
+            if (startTime && endTime) {
+                availabilityWindows.push({
+                    start: startTime,
+                    end: endTime
+                });
+            }
         }
     }
 
-    if (
-        !startTime ||
-        !endTime ||
-        !slotMinutes
-    ) {
-
+    if (availabilityWindows.length === 0) {
         return [];
     }
-
-    // ----------------------------------------------------------
-    // Create starting time
-    // ----------------------------------------------------------
-
-    let current =
-        new Date(date);
-
-    current.setHours(
-        startTime.getHours(),
-        startTime.getMinutes(),
-        0,
-        0
-    );
-
-    // ----------------------------------------------------------
-    // Create closing time
-    // ----------------------------------------------------------
-
-    const closingTime =
-        new Date(date);
-
-    closingTime.setHours(
-        endTime.getHours(),
-        endTime.getMinutes(),
-        0,
-        0
-    );
-
-    // ----------------------------------------------------------
-    // Calendar
-    // ----------------------------------------------------------
 
     const calendar =
         CalendarApp.getCalendarById(
@@ -392,48 +610,88 @@ function getAvailableSlots(
     const slots = [];
     const now = new Date();
 
-    // ----------------------------------------------------------
-    // Check every slot
-    // ----------------------------------------------------------
-
-    while (
-        current.getTime() +
-        slotMinutes * 60000 <=
-        closingTime.getTime()
+    for (
+        let w = 0;
+        w < availabilityWindows.length;
+        w++
     ) {
 
-        const slotEnd =
-            new Date(
-                current.getTime() +
-                slotMinutes * 60000
-            );
+        const window =
+            availabilityWindows[w];
 
-        const events =
-            calendar.getEvents(
-                current,
-                slotEnd
-            );
+        let current =
+            new Date(date);
 
-        // Do not offer slots that have already started today.
-        if (
-            current.getTime() > now.getTime() &&
-            events.length === 0
+        current.setHours(
+            window.start.getHours(),
+            window.start.getMinutes(),
+            0,
+            0
+        );
+
+        const closingTime =
+            new Date(date);
+
+        closingTime.setHours(
+            window.end.getHours(),
+            window.end.getMinutes(),
+            0,
+            0
+        );
+
+        while (
+            current.getTime() +
+            appointmentDuration * 60000 <=
+            closingTime.getTime()
         ) {
 
-            slots.push(
-                Utilities.formatDate(
-                    current,
-                    TIMEZONE,
-                    "hh:mm a"
-                )
-            );
-        }
+            const slotEnd =
+                new Date(
+                    current.getTime() +
+                    appointmentDuration * 60000
+                );
 
-        current =
-            new Date(
-                current.getTime() +
-                slotMinutes * 60000
-            );
+            const events =
+                calendar.getEvents(
+                    current,
+                    slotEnd
+                );
+
+            const sameDay =
+                Utilities.formatDate(
+                    date,
+                    TIMEZONE,
+                    "yyyy-MM-dd"
+                ) ===
+                Utilities.formatDate(
+                    now,
+                    TIMEZONE,
+                    "yyyy-MM-dd"
+                );
+
+            if (
+                (
+                    current.getTime() > now.getTime() ||
+                    !sameDay
+                ) &&
+                events.length === 0
+            ) {
+
+                slots.push(
+                    Utilities.formatDate(
+                        current,
+                        TIMEZONE,
+                        "hh:mm a"
+                    )
+                );
+            }
+
+            current =
+                new Date(
+                    current.getTime() +
+                    appointmentDuration * 60000
+                );
+        }
     }
 
     Logger.log(
@@ -558,11 +816,15 @@ function bookAppointment(
         };
     }
 
+    const appointmentDuration =
+        getDoctorAppointmentDuration(
+            doctorId
+        );
+
     const endTime =
         new Date(
             startTime.getTime() +
-            APPOINTMENT_DURATION_MINUTES *
-            60000
+            appointmentDuration * 60000
         );
 
     // ----------------------------------------------------------
@@ -1288,6 +1550,19 @@ function rescheduleAppointment(
     // Create new date/time
     // ----------------------------------------------------------
 
+    if (
+        !isValidISODate(
+            newDateString
+        )
+    ) {
+
+        return {
+            success: false,
+            message:
+                "Invalid new appointment date."
+        };
+    }
+
     const newTime24 =
         convert12HourTo24Hour(
             newTimeString
@@ -1320,11 +1595,15 @@ function rescheduleAppointment(
         };
     }
 
+    const appointmentDuration =
+        getDoctorAppointmentDuration(
+            doctorId
+        );
+
     const newEndTime =
         new Date(
             newStartTime.getTime() +
-            APPOINTMENT_DURATION_MINUTES *
-            60000
+            appointmentDuration * 60000
         );
 
     let oldEvent = null;
@@ -1345,6 +1624,52 @@ function rescheduleAppointment(
         appointmentIndex > -1 ?
         String(appointmentData[appointmentIndex][6] || "Confirmed") :
         "Confirmed";
+
+    // ----------------------------------------------------------
+    // Validate against working hours
+    // ----------------------------------------------------------
+
+    const availableSlots =
+        getAvailableSlots(
+            doctorId,
+            newDateString
+        );
+
+    const formattedRequestedTime =
+        Utilities.formatDate(
+            newStartTime,
+            TIMEZONE,
+            "hh:mm a"
+        );
+
+    // Check if trying to reschedule to same date/time
+    const normalizedOriginalDate =
+        normalizeAppointmentDate(
+            originalDate
+        );
+
+    const isSameDateAndTime =
+        newDateString === normalizedOriginalDate &&
+        formattedRequestedTime ===
+            Utilities.formatDate(
+                new Date(
+                    `${newDateString}T${originalTime}:00+05:30`
+                ),
+                TIMEZONE,
+                "hh:mm a"
+            );
+
+    if (
+        !availableSlots.includes(formattedRequestedTime) &&
+        !isSameDateAndTime
+    ) {
+
+        return {
+            success: false,
+            message:
+                "The selected time is not available."
+        };
+    }
 
     const lock =
         LockService.getScriptLock();
@@ -1538,7 +1863,10 @@ function rescheduleAppointment(
             !calendar.getEventById(oldEvent.getId())
         ) {
             try {
-                const oldDate = originalDate;
+                const oldDate =
+                    normalizeAppointmentDate(
+                        originalDate
+                    );
                 const oldTimeValue = originalTime;
                 const oldTime24 = convert12HourTo24Hour(oldTimeValue);
 
@@ -1552,7 +1880,7 @@ function rescheduleAppointment(
                         const oldEndTime =
                             new Date(
                                 oldStartTime.getTime() +
-                                APPOINTMENT_DURATION_MINUTES *
+                                appointmentDuration *
                                 60000
                             );
 
@@ -7038,4 +7366,131 @@ function findDoctorByName(doctorName) {
     }
 
     return null;
+}
+
+function getDoctorAppointmentDuration(doctorId) {
+
+    const ss =
+        SpreadsheetApp
+            .getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Doctors");
+
+    if (!sheet) {
+        throw new Error(
+            "Doctors sheet not found."
+        );
+    }
+
+    const data =
+        sheet.getDataRange()
+            .getValues();
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        if (
+            String(data[i][0]).trim() ===
+            String(doctorId).trim()
+        ) {
+
+            const duration =
+                Number(data[i][5]);
+
+            if (
+                !duration ||
+                duration <= 0
+            ) {
+                throw new Error(
+                    "Invalid AppointmentDuration for doctor " +
+                    doctorId
+                );
+            }
+
+            return duration;
+        }
+    }
+
+    throw new Error(
+        "Doctor not found: " +
+        doctorId
+    );
+}
+
+function isDoctorOnLeave(
+    doctorId,
+    dateString
+) {
+
+    const ss =
+        SpreadsheetApp
+            .getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName(
+            "Doctor_Leaves"
+        );
+
+    if (!sheet) {
+        return false;
+    }
+
+    const data =
+        sheet.getDataRange()
+            .getValues();
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const rowDoctorId =
+            String(
+                data[i][0]
+            ).trim();
+
+        let rowDate = "";
+
+        if (
+            data[i][1] instanceof Date
+        ) {
+
+            rowDate =
+                Utilities.formatDate(
+                    data[i][1],
+                    TIMEZONE,
+                    "yyyy-MM-dd"
+                );
+
+        } else {
+
+            rowDate =
+                String(
+                    data[i][1] || ""
+                ).trim();
+        }
+
+        const active =
+            String(
+                data[i][3]
+            ).toUpperCase() === "TRUE";
+
+        if (
+            rowDoctorId ===
+            String(doctorId).trim() &&
+            rowDate ===
+            String(dateString).trim() &&
+            active
+        ) {
+
+            return true;
+        }
+    }
+
+    return false;
 }
