@@ -169,9 +169,9 @@ function testBooking() {
             endTime,
             {
                 description:
+                    `Appointment ID: ${appointmentId}\n` +
                     `Doctor: ${doctorName}\n` +
                     `Patient: ${patientName}\n` +
-                    `Phone: ${patientPhone}\n` +
                     `Doctor ID: ${doctorId}`,
 
                 location: "ABC Clinic"
@@ -608,12 +608,10 @@ function bookAppointment(
     // Create Calendar event
     // ----------------------------------------------------------
 
-    // Serialize the final conflict check and Calendar write so two
-    // simultaneous WhatsApp requests cannot book the same slot.
     const lock =
         LockService.getScriptLock();
 
-    let event;
+    let event = null;
 
     try {
 
@@ -664,44 +662,67 @@ function bookAppointment(
                     description:
                         `Appointment ID: ${appointmentId}\n` +
                         `Doctor: ${doctorName}\n` +
-                        `Patient: ${patientName}\n` +
-                        `Phone: ${patientPhone}`,
+                        `Patient: ${patientName}`,
 
                     location: clinicName
                 }
             );
 
-    // ----------------------------------------------------------
-    // Save appointment
-    // ----------------------------------------------------------
+        // ----------------------------------------------------------
+        // Save appointment
+        // ----------------------------------------------------------
 
         appointmentSheet.appendRow([
 
-        appointmentId,
+            appointmentId,
 
-        Utilities.formatDate(
-            startTime,
-            TIMEZONE,
-            "dd-MMM-yyyy"
-        ),
+            Utilities.formatDate(
+                startTime,
+                TIMEZONE,
+                "dd-MMM-yyyy"
+            ),
 
-        Utilities.formatDate(
-            startTime,
-            TIMEZONE,
-            "HH:mm"
-        ),
+            Utilities.formatDate(
+                startTime,
+                TIMEZONE,
+                "HH:mm"
+            ),
 
-        doctorId,
+            doctorId,
 
-        patientName,
+            patientName,
 
-        patientPhone,
+            patientPhone,
 
-        "Confirmed",
+            "Confirmed",
 
-        event.getId()
+            event.getId()
 
         ]);
+
+    } catch (error) {
+
+        if (event) {
+            try {
+                event.deleteEvent();
+            } catch (deleteError) {
+                console.error(
+                    "Failed to roll back appointment event after booking failure.",
+                    deleteError
+                );
+            }
+        }
+
+        console.error(
+            "Booking failed; calendar event was rolled back.",
+            error
+        );
+
+        return {
+            success: false,
+            message:
+                "Unable to save appointment. No booking was created."
+        };
 
     } finally {
 
@@ -778,247 +799,268 @@ function cancelAppointment(
     patientPhone
 ) {
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
+    const lock =
+        LockService.getScriptLock();
 
-    const appointmentSheet =
-        ss.getSheetByName("Appointments");
+    if (!lock.tryLock(30000)) {
 
-    const doctorSheet =
-        ss.getSheetByName("Doctors");
+        return {
+            success: false,
+            message:
+                "Cancellation is busy. Please try again."
+        };
+    }
 
-    const appointmentData =
-        appointmentSheet
-            .getDataRange()
-            .getValues();
+    try {
 
-    const doctorData =
-        doctorSheet
-            .getDataRange()
-            .getValues();
+        const ss =
+            SpreadsheetApp.getActiveSpreadsheet();
 
-    // ----------------------------------------------------------
-    // Find appointment
-    // ----------------------------------------------------------
+        const appointmentSheet =
+            ss.getSheetByName("Appointments");
 
-    for (
-        let i = 1;
-        i < appointmentData.length;
-        i++
-    ) {
+        const doctorSheet =
+            ss.getSheetByName("Doctors");
 
-        const rowAppointmentId =
-            String(appointmentData[i][0]);
+        const appointmentData =
+            appointmentSheet
+                .getDataRange()
+                .getValues();
 
-        if (
-            rowAppointmentId ===
-            String(appointmentId)
+        const doctorData =
+            doctorSheet
+                .getDataRange()
+                .getValues();
+
+        // ----------------------------------------------------------
+        // Find appointment
+        // ----------------------------------------------------------
+
+        for (
+            let i = 1;
+            i < appointmentData.length;
+            i++
         ) {
 
-            const rowPhone =
-                String(appointmentData[i][5]);
-
-            const status =
-                String(appointmentData[i][6]);
-
-            const calendarEventId =
-                appointmentData[i][7];
-
-            // ------------------------------------------------------
-            // SECURITY CHECK
-            // ------------------------------------------------------
+            const rowAppointmentId =
+                String(appointmentData[i][0]);
 
             if (
-                rowPhone !==
-                String(patientPhone)
+                rowAppointmentId ===
+                String(appointmentId)
             ) {
 
-                return {
-                    success: false,
-                    message:
-                        "Appointment does not belong to this phone number."
-                };
-            }
+                const rowPhone =
+                    String(appointmentData[i][5]);
 
-            // ------------------------------------------------------
-            // Already cancelled
-            // ------------------------------------------------------
+                const status =
+                    String(appointmentData[i][6]);
 
-            if (
-                status === "Cancelled"
-            ) {
+                const calendarEventId =
+                    appointmentData[i][7];
 
-                return {
-                    success: false,
-                    message:
-                        "Appointment is already cancelled."
-                };
-            }
-
-            // ------------------------------------------------------
-            // Find doctor's calendar
-            // ------------------------------------------------------
-
-            const doctorId =
-                appointmentData[i][3];
-
-            let calendarId = "";
-
-            for (
-                let j = 1;
-                j < doctorData.length;
-                j++
-            ) {
+                // ------------------------------------------------------
+                // SECURITY CHECK
+                // ------------------------------------------------------
 
                 if (
-                    String(doctorData[j][0]) ===
-                    String(doctorId)
+                    rowPhone !==
+                    String(patientPhone)
                 ) {
 
-                    calendarId =
-                        doctorData[j][3];
-
-                    break;
+                    return {
+                        success: false,
+                        message:
+                            "Appointment does not belong to this phone number."
+                    };
                 }
-            }
 
-            // ------------------------------------------------------
-            // Delete Calendar event
-            // ------------------------------------------------------
+                // ------------------------------------------------------
+                // Already cancelled
+                // ------------------------------------------------------
 
-            if (!calendarId) {
+                if (
+                    status === "Cancelled"
+                ) {
 
-                return {
-                    success: false,
-                    message:
-                        "Doctor calendar is not configured; appointment was not cancelled."
-                };
-            }
+                    return {
+                        success: false,
+                        message:
+                            "Appointment is already cancelled."
+                    };
+                }
 
-            const calendar =
-                CalendarApp.getCalendarById(
-                    String(calendarId).trim()
-                );
+                // ------------------------------------------------------
+                // Find doctor's calendar
+                // ------------------------------------------------------
 
-            if (!calendar) {
+                const doctorId =
+                    appointmentData[i][3];
 
-                return {
-                    success: false,
-                    message:
-                        "Doctor calendar was not found; appointment was not cancelled."
-                };
-            }
+                let calendarId = "";
 
-            let event = null;
+                for (
+                    let j = 1;
+                    j < doctorData.length;
+                    j++
+                ) {
 
-            if (calendarEventId) {
+                    if (
+                        String(doctorData[j][0]) ===
+                        String(doctorId)
+                    ) {
+
+                        calendarId =
+                            doctorData[j][3];
+
+                        break;
+                    }
+                }
+
+                // ------------------------------------------------------
+                // Delete Calendar event
+                // ------------------------------------------------------
+
+                if (!calendarId) {
+
+                    return {
+                        success: false,
+                        message:
+                            "Doctor calendar is not configured; appointment was not cancelled."
+                    };
+                }
+
+                const calendar =
+                    CalendarApp.getCalendarById(
+                        String(calendarId).trim()
+                    );
+
+                if (!calendar) {
+
+                    return {
+                        success: false,
+                        message:
+                            "Doctor calendar was not found; appointment was not cancelled."
+                    };
+                }
+
+                let event = null;
+
+                if (calendarEventId) {
+
+                    try {
+
+                        event =
+                            calendar.getEventById(
+                                String(calendarEventId).trim()
+                            );
+
+                    } catch (error) {
+
+                        Logger.log(
+                            "Could not look up Calendar event " +
+                            calendarEventId + ": " +
+                            error.message
+                        );
+                    }
+                }
+
+                // Older records may have a missing or stale Calendar Event ID.
+                // Fall back to the appointment ID stored in the event description.
+                if (!event) {
+
+                    const appointmentDate =
+                        appointmentData[i][1] instanceof Date
+                            ? appointmentData[i][1]
+                            : parseAppointmentDateTime(
+                                appointmentData[i][1],
+                                appointmentData[i][2]
+                            );
+
+                    if (appointmentDate) {
+
+                        const dayEvents =
+                            calendar.getEventsForDay(
+                                appointmentDate
+                            );
+
+                        event =
+                            dayEvents.find(
+                                function (candidate) {
+                                    return candidate
+                                        .getDescription()
+                                        .indexOf(
+                                            "Appointment ID: " +
+                                            rowAppointmentId
+                                        ) !== -1;
+                                }
+                            ) || null;
+                    }
+                }
+
+                if (!event) {
+
+                    return {
+                        success: false,
+                        message:
+                            "Calendar event was not found; appointment was not cancelled."
+                    };
+                }
 
                 try {
 
-                    event =
-                        calendar.getEventById(
-                            String(calendarEventId).trim()
-                        );
+                    event.deleteEvent();
 
                 } catch (error) {
 
                     Logger.log(
-                        "Could not look up Calendar event " +
-                        calendarEventId + ": " +
+                        "Could not delete Calendar event " +
+                        rowAppointmentId + ": " +
                         error.message
                     );
+
+                    return {
+                        success: false,
+                        message:
+                            "Could not remove the Google Calendar event; appointment was not cancelled."
+                    };
                 }
-            }
 
-            // Older records may have a missing or stale Calendar Event ID.
-            // Fall back to the appointment ID stored in the event description.
-            if (!event) {
+                // ------------------------------------------------------
+                // Update Sheet
+                // ------------------------------------------------------
 
-                const appointmentDate =
-                    appointmentData[i][1] instanceof Date
-                        ? appointmentData[i][1]
-                        : parseAppointmentDateTime(
-                            appointmentData[i][1],
-                            appointmentData[i][2]
-                        );
-
-                if (appointmentDate) {
-
-                    const dayEvents =
-                        calendar.getEventsForDay(
-                            appointmentDate
-                        );
-
-                    event =
-                        dayEvents.find(
-                            function (candidate) {
-                                return candidate
-                                    .getDescription()
-                                    .indexOf(
-                                        "Appointment ID: " +
-                                        rowAppointmentId
-                                    ) !== -1;
-                            }
-                        ) || null;
-                }
-            }
-
-            if (!event) {
+                appointmentSheet
+                    .getRange(i + 1, 7)
+                    .setValue("Cancelled");
 
                 return {
-                    success: false,
+
+                    success: true,
+
+                    appointmentId:
+                        appointmentId,
+
                     message:
-                        "Calendar event was not found; appointment was not cancelled."
+                        "Appointment cancelled successfully."
                 };
             }
+        }
 
-            try {
+        return {
 
-                event.deleteEvent();
+            success: false,
 
-            } catch (error) {
+            message:
+                "Appointment not found."
+        };
 
-                Logger.log(
-                    "Could not delete Calendar event " +
-                    rowAppointmentId + ": " +
-                    error.message
-                );
+    } finally {
 
-                return {
-                    success: false,
-                    message:
-                        "Could not remove the Google Calendar event; appointment was not cancelled."
-                };
-            }
-
-            // ------------------------------------------------------
-            // Update Sheet
-            // ------------------------------------------------------
-
-            appointmentSheet
-                .getRange(i + 1, 7)
-                .setValue("Cancelled");
-
-            return {
-
-                success: true,
-
-                appointmentId:
-                    appointmentId,
-
-                message:
-                    "Appointment cancelled successfully."
-            };
+        if (lock.hasLock()) {
+            lock.releaseLock();
         }
     }
-
-    return {
-
-        success: false,
-
-        message:
-            "Appointment not found."
-    };
 }
 
 
@@ -1085,6 +1127,7 @@ function rescheduleAppointment(
     // ----------------------------------------------------------
 
     let appointmentRow = -1;
+    let appointmentIndex = -1;
 
     let doctorId = "";
     let patientName = "";
@@ -1109,6 +1152,7 @@ function rescheduleAppointment(
 
             appointmentRow =
                 i + 1;
+            appointmentIndex = i;
 
             doctorId =
                 appointmentData[i][3];
@@ -1283,141 +1327,285 @@ function rescheduleAppointment(
             60000
         );
 
-    if (
-        hasActiveAppointmentOnDate(
-            patientPhoneInput,
-            newDateString,
-            appointmentId
-        )
-    ) {
+    let oldEvent = null;
+    let newEvent = null;
+    const originalDate =
+        appointmentIndex > -1 ?
+        String(appointmentData[appointmentIndex][1] || "") :
+        "";
+    const originalTime =
+        appointmentIndex > -1 ?
+        String(appointmentData[appointmentIndex][2] || "") :
+        "";
+    const originalEventId =
+        appointmentIndex > -1 ?
+        String(appointmentData[appointmentIndex][7] || "") :
+        "";
+    const originalStatus =
+        appointmentIndex > -1 ?
+        String(appointmentData[appointmentIndex][6] || "Confirmed") :
+        "Confirmed";
 
-        return {
-            success: false,
-            message:
-                "You already have an active appointment on this date."
-        };
-    }
+    const lock =
+        LockService.getScriptLock();
 
-    // ----------------------------------------------------------
-    // Check new slot
-    // ----------------------------------------------------------
+    try {
 
-    const existingEvents =
-        calendar.getEvents(
-            newStartTime,
-            newEndTime
-        );
+        if (!lock.tryLock(30000)) {
 
-    // ----------------------------------------------------------
-    // Ignore the current appointment's
-    // own calendar event.
-    // ----------------------------------------------------------
+            return {
+                success: false,
+                message:
+                    "Reschedule is busy. Please try again."
+            };
+        }
 
-    const conflictingEvents =
-        existingEvents.filter(
-            event =>
-                event.getId() !==
-                calendarEventId
-        );
+        if (
+            hasActiveAppointmentOnDate(
+                patientPhoneInput,
+                newDateString,
+                appointmentId
+            )
+        ) {
 
-    if (
-        conflictingEvents.length > 0
-    ) {
+            return {
+                success: false,
+                message:
+                    "You already have an active appointment on this date."
+            };
+        }
 
-        return {
+        // ----------------------------------------------------------
+        // Check new slot
+        // ----------------------------------------------------------
 
-            success: false,
-
-            message:
-                "The new appointment slot is already booked."
-        };
-    }
-
-    // ----------------------------------------------------------
-    // Delete old Calendar event
-    // ----------------------------------------------------------
-
-    if (calendarEventId) {
-
-        const oldEvent =
-            calendar.getEventById(
-                calendarEventId
+        const existingEvents =
+            calendar.getEvents(
+                newStartTime,
+                newEndTime
             );
+
+        const conflictingEvents =
+            existingEvents.filter(
+                event =>
+                    event.getId() !==
+                    calendarEventId
+            );
+
+        if (
+            conflictingEvents.length > 0
+        ) {
+
+            return {
+
+                success: false,
+
+                message:
+                    "The new appointment slot is already booked."
+            };
+        }
+
+        if (calendarEventId) {
+            oldEvent =
+                calendar.getEventById(
+                    calendarEventId
+                );
+        }
+
+        // ----------------------------------------------------------
+        // Create new Calendar event first
+        // ----------------------------------------------------------
+
+        newEvent =
+            calendar.createEvent(
+                `Appointment - ${patientName}`,
+                newStartTime,
+                newEndTime,
+                {
+
+                    description:
+                        `Appointment ID: ${appointmentId}\n` +
+                        `Doctor: ${doctorName}\n` +
+                        `Patient: ${patientName}`,
+
+                    location:
+                        clinicName
+                }
+            );
+
+        // ----------------------------------------------------------
+        // Update Sheet
+        // ----------------------------------------------------------
+
+        appointmentSheet
+            .getRange(
+                appointmentRow,
+                2
+            )
+            .setValue(
+                Utilities.formatDate(
+                    newStartTime,
+                    TIMEZONE,
+                    "dd-MMM-yyyy"
+                )
+            );
+
+        appointmentSheet
+            .getRange(
+                appointmentRow,
+                3
+            )
+            .setValue(
+                Utilities.formatDate(
+                    newStartTime,
+                    TIMEZONE,
+                    "HH:mm"
+                )
+            );
+
+        appointmentSheet
+            .getRange(
+                appointmentRow,
+                7
+            )
+            .setValue(
+                "Confirmed"
+            );
+
+        appointmentSheet
+            .getRange(
+                appointmentRow,
+                8
+            )
+            .setValue(
+                newEvent.getId()
+            );
+
+        // ----------------------------------------------------------
+        // Delete old event only after the sheet has been updated.
+        // ----------------------------------------------------------
 
         if (oldEvent) {
             oldEvent.deleteEvent();
         }
-    }
 
-    // ----------------------------------------------------------
-    // Create new Calendar event
-    // ----------------------------------------------------------
+    } catch (error) {
 
-    const newEvent =
-        calendar.createEvent(
-            `Appointment - ${patientName}`,
-            newStartTime,
-            newEndTime,
-            {
-
-                description:
-                    `Appointment ID: ${appointmentId}\n` +
-                    `Doctor: ${doctorName}\n` +
-                    `Patient: ${patientName}\n` +
-                    `Phone: ${storedPatientPhone}`,
-
-                location:
-                    clinicName
+        if (newEvent) {
+            try {
+                newEvent.deleteEvent();
+            } catch (deleteError) {
+                console.error(
+                    "Failed to roll back newly created reschedule event.",
+                    deleteError
+                );
             }
+        }
+
+        if (appointmentRow > 0) {
+            appointmentSheet
+                .getRange(
+                    appointmentRow,
+                    2
+                )
+                .setValue(originalDate);
+
+            appointmentSheet
+                .getRange(
+                    appointmentRow,
+                    3
+                )
+                .setValue(originalTime);
+
+            appointmentSheet
+                .getRange(
+                    appointmentRow,
+                    7
+                )
+                .setValue(originalStatus);
+
+            appointmentSheet
+                .getRange(
+                    appointmentRow,
+                    8
+                )
+                .setValue(originalEventId);
+        }
+
+        if (
+            oldEvent &&
+            oldEvent.getId() &&
+            !calendar.getEventById(oldEvent.getId())
+        ) {
+            try {
+                const oldDate = originalDate;
+                const oldTimeValue = originalTime;
+                const oldTime24 = convert12HourTo24Hour(oldTimeValue);
+
+                if (oldDate && oldTime24) {
+                    const oldStartTime =
+                        new Date(
+                            `${oldDate}T${oldTime24}:00+05:30`
+                        );
+
+                    if (!isNaN(oldStartTime.getTime())) {
+                        const oldEndTime =
+                            new Date(
+                                oldStartTime.getTime() +
+                                APPOINTMENT_DURATION_MINUTES *
+                                60000
+                            );
+
+                        const restoredOldEvent =
+                            calendar.createEvent(
+                                `Appointment - ${patientName}`,
+                                oldStartTime,
+                                oldEndTime,
+                                {
+                                    description:
+                                        `Appointment ID: ${appointmentId}\n` +
+                                        `Doctor: ${doctorName}\n` +
+                                        `Patient: ${patientName}`,
+
+                                    location: clinicName
+                                }
+                            );
+
+                        appointmentSheet
+                            .getRange(
+                                appointmentRow,
+                                8
+                            )
+                            .setValue(
+                                restoredOldEvent.getId()
+                            );
+                    }
+                }
+            } catch (restoreError) {
+                console.error(
+                    "Failed to restore original event during reschedule rollback.",
+                    restoreError
+                );
+            }
+        }
+
+        console.error(
+            "Reschedule failed; original appointment was restored.",
+            error
         );
 
-    // ----------------------------------------------------------
-    // Update Sheet
-    // ----------------------------------------------------------
+        return {
+            success: false,
+            message:
+                "Unable to complete reschedule. The original appointment was restored."
+        };
 
-    appointmentSheet
-        .getRange(
-            appointmentRow,
-            2
-        )
-        .setValue(
-            Utilities.formatDate(
-                newStartTime,
-                TIMEZONE,
-                "dd-MMM-yyyy"
-            )
-        );
+    } finally {
 
-    appointmentSheet
-        .getRange(
-            appointmentRow,
-            3
-        )
-        .setValue(
-            Utilities.formatDate(
-                newStartTime,
-                TIMEZONE,
-                "HH:mm"
-            )
-        );
-
-    appointmentSheet
-        .getRange(
-            appointmentRow,
-            7
-        )
-        .setValue(
-            "Confirmed"
-        );
-
-    appointmentSheet
-        .getRange(
-            appointmentRow,
-            8
-        )
-        .setValue(
-            newEvent.getId()
-        );
+        if (lock.hasLock()) {
+            lock.releaseLock();
+        }
+    }
 
     // ----------------------------------------------------------
     // Return result
@@ -3352,6 +3540,163 @@ function formatAvailableSlotsForWhatsApp(slots) {
 }
 
 
+function buildLanguageSelectionMessage() {
+
+    return (
+        "👋 Welcome to ABC Clinic!\n" +
+        "ABC క్లినిక్‌కు స్వాగతం!\n" +
+        "एबीसी क्लिनिक में आपका स्वागत है!\n\n" +
+        "Please select your language / భాషను ఎంచుకోండి / अपनी भाषा चुनें:\n\n" +
+        "1️⃣ English\n" +
+        "2️⃣ తెలుగు\n" +
+        "3️⃣ हिन्दी"
+    );
+}
+
+
+function localizeWhatsAppReply(language, message) {
+
+    const selectedLanguage =
+        String(language || "EN").toUpperCase();
+
+    if (selectedLanguage === "EN") {
+        return String(message);
+    }
+
+    const translations = {
+        TE: {
+            "Welcome to ABC Clinic!": "ABC క్లినిక్‌కు స్వాగతం!",
+            "Please choose an option:": "దయచేసి ఒక ఎంపికను ఎంచుకోండి:",
+            "Book Appointment": "అపాయింట్‌మెంట్ బుక్ చేయండి",
+            "My Appointments": "నా అపాయింట్‌మెంట్‌లు",
+            "Cancel Appointment": "అపాయింట్‌మెంట్ రద్దు చేయండి",
+            "Reschedule Appointment": "అపాయింట్‌మెంట్ సమయాన్ని మార్చండి",
+            "Select a doctor:": "డాక్టర్‌ను ఎంచుకోండి:",
+            "Reply with the doctor's number.": "డాక్టర్ నంబర్‌తో సమాధానం ఇవ్వండి.",
+            "Please choose a date:": "తేదీని ఎంచుకోండి:",
+            "Today": "ఈరోజు",
+            "Tomorrow": "రేపు",
+            "Enter another date": "వేరే తేదీని నమోదు చేయండి",
+            "Available slots:": "అందుబాటులో ఉన్న సమయాలు:",
+            "Please choose a time.": "సమయాన్ని ఎంచుకోండి.",
+            "Confirm appointment?": "అపాయింట్‌మెంట్‌ను నిర్ధారించాలా?",
+            "Confirm": "నిర్ధారించండి",
+            "Choose another time": "వేరే సమయం ఎంచుకోండి",
+            "Cancel": "రద్దు చేయండి",
+            "Back to Main Menu": "ప్రధాన మెనూకు తిరిగి వెళ్ళండి",
+            "Back to main menu.": "ప్రధాన మెనూకు తిరిగి వచ్చారు.",
+            "Main Menu": "ప్రధాన మెను",
+            "Back": "వెనక్కి",
+            "Invalid option.": "చెల్లని ఎంపిక.",
+            "Please reply with:": "దయచేసి ఇలా సమాధానం ఇవ్వండి:",
+            "Please enter the date in YYYY-MM-DD format.": "దయచేసి తేదీని YYYY-MM-DD ఫార్మాట్‌లో నమోదు చేయండి.",
+            "Please enter the new date in YYYY-MM-DD format.": "దయచేసి కొత్త తేదీని YYYY-MM-DD ఫార్మాట్‌లో నమోదు చేయండి.",
+            "Example:": "ఉదాహరణ:",
+            "Your Appointments:": "మీ అపాయింట్‌మెంట్‌లు:",
+            "Select the appointment to cancel:": "రద్దు చేయాల్సిన అపాయింట్‌మెంట్‌ను ఎంచుకోండి:",
+            "Select the appointment to reschedule:": "మార్చాల్సిన అపాయింట్‌మెంట్‌ను ఎంచుకోండి:",
+            "Yes, cancel it": "అవును, రద్దు చేయండి",
+            "No, go back": "లేదు, వెనక్కి వెళ్ళండి",
+            "Doctor selected:": "ఎంచుకున్న డాక్టర్:",
+            "Doctor:": "డాక్టర్:",
+            "Patient:": "రోగి:",
+            "Date:": "తేదీ:",
+            "Time:": "సమయం:",
+            "New Date:": "కొత్త తేదీ:",
+            "New Time:": "కొత్త సమయం:",
+            "Appointment ID:": "అపాయింట్‌మెంట్ ఐడి:",
+            "Appointment confirmed!": "అపాయింట్‌మెంట్ నిర్ధారించబడింది!",
+            "Appointment cancelled successfully.": "అపాయింట్‌మెంట్ విజయవంతంగా రద్దు చేయబడింది.",
+            "Appointment booking cancelled.": "అపాయింట్‌మెంట్ బుకింగ్ రద్దు చేయబడింది.",
+            "Reschedule cancelled.": "సమయం మార్పు రద్దు చేయబడింది.",
+            "Confirm reschedule?": "సమయం మార్పును నిర్ధారించాలా?",
+            "Please choose a new date:": "కొత్త తేదీని ఎంచుకోండి:",
+            "Please choose a valid doctor number.": "దయచేసి సరైన డాక్టర్ నంబర్‌ను ఎంచుకోండి.",
+            "Sorry, there are no available slots on ": "క్షమించండి, ఈ తేదీన అందుబాటులో సమయాలు లేవు: ",
+            "Please choose another date.": "దయచేసి వేరే తేదీని ఎంచుకోండి.",
+            "No available slots remain for ": "ఈ తేదీకి అందుబాటులో సమయాలు లేవు: ",
+            "Your booking session has expired.": "మీ బుకింగ్ సెషన్ గడువు ముగిసింది.",
+            "Your reschedule session has expired.": "మీ సమయం మార్పు సెషన్ గడువు ముగిసింది.",
+            "Thank you for choosing ABC Clinic.": "ABC క్లినిక్‌ను ఎంచుకున్నందుకు ధన్యవాదాలు.",
+            "Please send Hi to start again.": "మళ్లీ ప్రారంభించడానికి Hi పంపండి.",
+            "Sorry, I didn't understand that.": "క్షమించండి, నాకు అర్థం కాలేదు."
+        },
+        HI: {
+            "Welcome to ABC Clinic!": "एबीसी क्लिनिक में आपका स्वागत है!",
+            "Please choose an option:": "कृपया एक विकल्प चुनें:",
+            "Book Appointment": "अपॉइंटमेंट बुक करें",
+            "My Appointments": "मेरे अपॉइंटमेंट",
+            "Cancel Appointment": "अपॉइंटमेंट रद्द करें",
+            "Reschedule Appointment": "अपॉइंटमेंट का समय बदलें",
+            "Select a doctor:": "डॉक्टर चुनें:",
+            "Reply with the doctor's number.": "डॉक्टर के नंबर से उत्तर दें।",
+            "Please choose a date:": "तारीख चुनें:",
+            "Today": "आज",
+            "Tomorrow": "कल",
+            "Enter another date": "दूसरी तारीख दर्ज करें",
+            "Available slots:": "उपलब्ध समय:",
+            "Please choose a time.": "समय चुनें।",
+            "Confirm appointment?": "अपॉइंटमेंट की पुष्टि करें?",
+            "Confirm": "पुष्टि करें",
+            "Choose another time": "दूसरा समय चुनें",
+            "Cancel": "रद्द करें",
+            "Back to Main Menu": "मुख्य मेनू पर वापस जाएं",
+            "Back to main menu.": "मुख्य मेनू पर वापस आ गए हैं।",
+            "Main Menu": "मुख्य मेनू",
+            "Back": "वापस",
+            "Invalid option.": "अमान्य विकल्प।",
+            "Please reply with:": "कृपया इस तरह उत्तर दें:",
+            "Please enter the date in YYYY-MM-DD format.": "कृपया तारीख YYYY-MM-DD प्रारूप में दर्ज करें।",
+            "Please enter the new date in YYYY-MM-DD format.": "कृपया नई तारीख YYYY-MM-DD प्रारूप में दर्ज करें।",
+            "Example:": "उदाहरण:",
+            "Your Appointments:": "आपके अपॉइंटमेंट:",
+            "Select the appointment to cancel:": "रद्द करने के लिए अपॉइंटमेंट चुनें:",
+            "Select the appointment to reschedule:": "बदलने के लिए अपॉइंटमेंट चुनें:",
+            "Yes, cancel it": "हां, रद्द करें",
+            "No, go back": "नहीं, वापस जाएं",
+            "Doctor selected:": "चुना गया डॉक्टर:",
+            "Doctor:": "डॉक्टर:",
+            "Patient:": "मरीज़:",
+            "Date:": "तारीख:",
+            "Time:": "समय:",
+            "New Date:": "नई तारीख:",
+            "New Time:": "नया समय:",
+            "Appointment ID:": "अपॉइंटमेंट आईडी:",
+            "Appointment confirmed!": "अपॉइंटमेंट की पुष्टि हो गई!",
+            "Appointment cancelled successfully.": "अपॉइंटमेंट सफलतापूर्वक रद्द कर दिया गया।",
+            "Appointment booking cancelled.": "अपॉइंटमेंट बुकिंग रद्द कर दी गई।",
+            "Reschedule cancelled.": "समय परिवर्तन रद्द कर दिया गया।",
+            "Confirm reschedule?": "समय परिवर्तन की पुष्टि करें?",
+            "Please choose a new date:": "नई तारीख चुनें:",
+            "Please choose a valid doctor number.": "कृपया सही डॉक्टर नंबर चुनें।",
+            "Sorry, there are no available slots on ": "क्षमा करें, इस तारीख पर कोई समय उपलब्ध नहीं है: ",
+            "Please choose another date.": "कृपया दूसरी तारीख चुनें।",
+            "No available slots remain for ": "इस तारीख के लिए कोई समय उपलब्ध नहीं है: ",
+            "Your booking session has expired.": "आपका बुकिंग सत्र समाप्त हो गया है।",
+            "Your reschedule session has expired.": "आपका समय परिवर्तन सत्र समाप्त हो गया है।",
+            "Thank you for choosing ABC Clinic.": "एबीसी क्लिनिक चुनने के लिए धन्यवाद।",
+            "Please send Hi to start again.": "फिर से शुरू करने के लिए Hi भेजें।",
+            "Sorry, I didn't understand that.": "क्षमा करें, मैं समझ नहीं पाया।"
+        }
+    };
+
+    const dictionary = translations[selectedLanguage] || {};
+    let localizedMessage = String(message);
+
+    Object.keys(dictionary)
+        .sort(function (a, b) {
+            return b.length - a.length;
+        })
+        .forEach(function (englishText) {
+            localizedMessage = localizedMessage
+                .split(englishText)
+                .join(dictionary[englishText]);
+        });
+
+    return localizedMessage;
+}
+
+
 function buildMainMenuMessage(prefix) {
 
     return (
@@ -3363,6 +3708,261 @@ function buildMainMenuMessage(prefix) {
         "3️⃣ Cancel Appointment\n" +
         "4️⃣ Reschedule Appointment"
     );
+}
+
+function normalizeWhatsAppPhone(phone) {
+    const digits = String(phone || "").replace(/\D/g, "");
+    return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+function maskPhone(phone) {
+    const digits = String(phone || "").replace(/\D/g, "");
+    if (!digits) return "";
+    if (digits.length <= 4) return digits;
+    const visible = digits.slice(-4);
+    const hidden = "x".repeat(Math.max(0, digits.length - 4));
+    return hidden + visible;
+}
+
+function findDoctorByWhatsAppPhone(phone) {
+    const sheet = SpreadsheetApp.getActiveSpreadsheet()
+        .getSheetByName("Doctors");
+    if (!sheet) return null;
+    const target = normalizeWhatsAppPhone(phone);
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+        if (
+            target &&
+            normalizeWhatsAppPhone(data[i][4]) === target
+        ) {
+            return {
+                doctorId: String(data[i][0]).trim(),
+                doctorName: String(data[i][1]).trim()
+            };
+        }
+    }
+    return null;
+}
+
+function buildDoctorMenu(doctorName) {
+    return "👨‍⚕️ Doctor Portal" +
+        (doctorName ? " — " + doctorName : "") +
+        "\n\n1️⃣ Today's Schedule\n2️⃣ Next Appointment\n3️⃣ This Week's Schedule\n4️⃣ Schedule for a Date";
+}
+
+function formatDoctorSchedule(result, title) {
+    if (!result || !result.success) {
+        return "❌ " + (result && result.message || "Unable to load schedule.");
+    }
+    let text = "📋 " + title + "\n\n";
+    if (!result.appointments || result.appointments.length === 0) {
+        return text + "No appointments found.";
+    }
+    result.appointments.forEach(function (appointment, index) {
+        const phoneText = appointment.phone ?
+            " • 📞 " + maskPhone(appointment.phone) :
+            "";
+        text += (index + 1) + ". " + appointment.time + " — " +
+            appointment.patientName + phoneText + "\n";
+    });
+    return text;
+}
+
+function formatDoctorWeek(result) {
+    if (!result || !result.success) return "❌ Unable to load weekly schedule.";
+    let text = "📅 Weekly Schedule\n\n";
+    Object.keys(result.week).forEach(function (date) {
+        const day = result.week[date];
+        text += day.day + ", " + date + ": " +
+            (day.appointments.length || "No") + " appointment(s)\n";
+    });
+    return text;
+}
+
+
+function addWhatsAppNavigationOptions(session, message) {
+
+    if (
+        !session ||
+        !session.state ||
+        session.state === "MAIN_MENU" ||
+        session.state === "LANGUAGE_SELECT"
+    ) {
+        return message;
+    }
+
+    const options = [];
+
+    if (String(message).indexOf("0️⃣ Back to Main Menu") === -1) {
+        options.push("0️⃣ Main Menu");
+    }
+
+    options.push("9️⃣ Back");
+
+    return String(message) +
+        "\n\n" +
+        options.join("\n");
+}
+
+
+function showBookingDateSelection(ss, phone) {
+
+    sendWhatsAppReply(
+        ss,
+        phone,
+        "Please choose a date:\n\n" +
+        "1️⃣ Today\n" +
+        "2️⃣ Tomorrow\n" +
+        "3️⃣ Enter another date"
+    );
+}
+
+
+function showRescheduleDateSelection(ss, phone) {
+
+    sendWhatsAppReply(
+        ss,
+        phone,
+        "Please choose a new date:\n\n" +
+        "1️⃣ Today\n" +
+        "2️⃣ Tomorrow\n" +
+        "3️⃣ Enter another date"
+    );
+}
+
+
+function returnToMainMenu(ss, phone, prefix) {
+
+    saveWhatsAppSession(
+        phone,
+        {
+            role: "PATIENT",
+            state: "MAIN_MENU",
+            doctorId: "",
+            date: "",
+            time: "",
+            appointmentId: ""
+        }
+    );
+
+    sendWhatsAppReply(
+        ss,
+        phone,
+        buildMainMenuMessage(
+            prefix || "👋 Back to main menu."
+        )
+    );
+}
+
+
+function goBackInWhatsAppFlow(ss, phone, session) {
+
+    switch (session.state) {
+
+        case "BOOK_DOCTOR":
+            returnToMainMenu(ss, phone);
+            return;
+
+        case "BOOK_DATE":
+            saveWhatsAppSession(phone, {
+                state: "BOOK_DOCTOR",
+                doctorId: ""
+            });
+            sendWhatsAppReply(
+                ss,
+                phone,
+                buildDoctorSelectionMessage()
+            );
+            return;
+
+        case "BOOK_DATE_CUSTOM":
+        case "BOOK_TIME":
+            saveWhatsAppSession(phone, {
+                state: "BOOK_DATE",
+                date: "",
+                time: ""
+            });
+            showBookingDateSelection(ss, phone);
+            return;
+
+        case "BOOK_CONFIRM":
+            if (session.doctorId && session.date) {
+                whatsAppShowSlotsForDate(
+                    ss,
+                    phone,
+                    session.doctorId,
+                    session.date,
+                    "BOOK_TIME"
+                );
+                return;
+            }
+            returnToMainMenu(ss, phone);
+            return;
+
+        case "CANCEL_CONFIRM":
+            saveWhatsAppSession(phone, {
+                state: "CANCEL_SELECT",
+                appointmentId: ""
+            });
+            sendWhatsAppReply(
+                ss,
+                phone,
+                "❌ Cancel Appointment\n\n" +
+                "Select the appointment to cancel:\n\n" +
+                formatAppointmentsListForWhatsApp(
+                    getConfirmedAppointmentsForPhone(phone)
+                ) +
+                "0️⃣ Back to Main Menu"
+            );
+            return;
+
+        case "RESCHEDULE_DATE":
+            saveWhatsAppSession(phone, {
+                state: "RESCHEDULE_SELECT",
+                appointmentId: "",
+                doctorId: "",
+                date: "",
+                time: ""
+            });
+            sendWhatsAppReply(
+                ss,
+                phone,
+                "🔄 Reschedule Appointment\n\n" +
+                "Select the appointment to reschedule:\n\n" +
+                formatAppointmentsListForWhatsApp(
+                    getConfirmedAppointmentsForPhone(phone)
+                ) +
+                "0️⃣ Back to Main Menu"
+            );
+            return;
+
+        case "RESCHEDULE_DATE_CUSTOM":
+        case "RESCHEDULE_TIME":
+            saveWhatsAppSession(phone, {
+                state: "RESCHEDULE_DATE",
+                date: "",
+                time: ""
+            });
+            showRescheduleDateSelection(ss, phone);
+            return;
+
+        case "RESCHEDULE_CONFIRM":
+            if (session.doctorId && session.date) {
+                whatsAppShowSlotsForDate(
+                    ss,
+                    phone,
+                    session.doctorId,
+                    session.date,
+                    "RESCHEDULE_TIME"
+                );
+                return;
+            }
+            returnToMainMenu(ss, phone);
+            return;
+
+        default:
+            returnToMainMenu(ss, phone);
+    }
 }
 
 
@@ -3476,19 +4076,12 @@ function doPost(e) {
                 );
         }
 
-        // Now it is safe to read message.id
         const messageId =
             String(message.id || "");
 
-
-        // ========================================================
-        // IGNORE DUPLICATE WHATSAPP WEBHOOK EVENTS
-        // ========================================================
-
         if (
-            isWhatsAppMessageProcessed(
-                messageId
-            )
+            messageId &&
+            isWhatsAppMessageProcessed(messageId)
         ) {
 
             return ContentService
@@ -3617,36 +4210,167 @@ function doPost(e) {
             if (
                 normalizedMessage === "hi" ||
                 normalizedMessage === "hello" ||
-                normalizedMessage === "hey"
+                normalizedMessage === "hey" ||
+                normalizedMessage === "హాయ్" ||
+                normalizedMessage === "హలో" ||
+                normalizedMessage === "नमस्ते" ||
+                normalizedMessage === "हेलो"
             ) {
 
-                // Start/reset patient session
-                saveWhatsAppSession(
-                    senderPhone,
-                    {
-                        role: "PATIENT",
-                        state: "MAIN_MENU",
-                        doctorId: "",
+                const doctor =
+                    findDoctorByWhatsAppPhone(senderPhone);
+
+                if (doctor) {
+
+                    saveWhatsAppSession(senderPhone, {
+                        role: "DOCTOR",
+                        state: "DOCTOR_MENU",
+                        doctorId: doctor.doctorId,
                         date: "",
                         time: "",
                         appointmentId: ""
+                    });
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        buildDoctorMenu(doctor.doctorName)
+                    );
+
+                } else {
+
+                    const hasSavedLanguage =
+                        session &&
+                        ["EN", "TE", "HI"].indexOf(
+                            session.language
+                        ) !== -1;
+
+                    if (hasSavedLanguage) {
+
+                        saveWhatsAppSession(
+                            senderPhone,
+                            {
+                                role: "PATIENT",
+                                state: "MAIN_MENU",
+                                doctorId: "",
+                                date: "",
+                                time: "",
+                                appointmentId: ""
+                            }
+                        );
+
+                        sendWhatsAppReply(
+                            ss,
+                            senderPhone,
+                            buildMainMenuMessage(
+                                "👋 Welcome to ABC Clinic!"
+                            )
+                        );
+
+                    } else {
+
+                        // First-time users choose their preferred language.
+                        saveWhatsAppSession(
+                            senderPhone,
+                            {
+                                role: "PATIENT",
+                                language: "",
+                                state: "LANGUAGE_SELECT",
+                                doctorId: "",
+                                date: "",
+                                time: "",
+                                appointmentId: ""
+                            }
+                        );
+
+                        sendWhatsAppReply(
+                            ss,
+                            senderPhone,
+                            buildLanguageSelectionMessage()
+                        );
                     }
-                );
+                }
+            }
 
-                const reply =
-                    "👋 Welcome to ABC Clinic!\n\n" +
-                    "Please choose an option:\n\n" +
-                    "1️⃣ Book Appointment\n" +
-                    "2️⃣ My Appointments\n" +
-                    "3️⃣ Cancel Appointment\n" +
-                    "4️⃣ Reschedule Appointment";
 
-                sendWhatsAppReply(
+            // ======================================================
+            // UNIVERSAL NAVIGATION
+            // ======================================================
+
+            else if (
+                session &&
+                session.state !== "MAIN_MENU" &&
+                session.state !== "LANGUAGE_SELECT" &&
+                normalizedMessage === "0"
+            ) {
+
+                returnToMainMenu(ss, senderPhone);
+            }
+
+            else if (
+                session &&
+                session.state !== "MAIN_MENU" &&
+                session.state !== "LANGUAGE_SELECT" &&
+                normalizedMessage === "9"
+            ) {
+
+                goBackInWhatsAppFlow(
                     ss,
                     senderPhone,
-                    reply
+                    session
                 );
+            }
 
+
+            // ======================================================
+            // LANGUAGE SELECTION
+            // ======================================================
+
+            else if (
+                session &&
+                session.state === "LANGUAGE_SELECT"
+            ) {
+
+                const languageByChoice = {
+                    "1": "EN",
+                    "2": "TE",
+                    "3": "HI"
+                };
+
+                const language =
+                    languageByChoice[normalizedMessage];
+
+                if (!language) {
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        buildLanguageSelectionMessage()
+                    );
+
+                } else {
+
+                    saveWhatsAppSession(
+                        senderPhone,
+                        {
+                            role: "PATIENT",
+                            language: language,
+                            state: "MAIN_MENU",
+                            doctorId: "",
+                            date: "",
+                            time: "",
+                            appointmentId: ""
+                        }
+                    );
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        buildMainMenuMessage(
+                            "👋 Welcome to ABC Clinic!"
+                        )
+                    );
+                }
             }
 
 
@@ -5466,6 +6190,10 @@ function doPost(e) {
         }
 
 
+        if (messageId) {
+            markWhatsAppMessageProcessed(messageId);
+        }
+
         // ========================================================
         // WEBHOOK RESPONSE
         // ========================================================
@@ -5558,17 +6286,26 @@ function isWhatsAppMessageProcessed(messageId) {
     const key =
         "WA_PROCESSED_" + messageId;
 
-    if (cache.get(key)) {
-        return true;
+    return !!cache.get(key);
+}
+
+function markWhatsAppMessageProcessed(messageId) {
+
+    if (!messageId) {
+        return;
     }
+
+    const cache =
+        CacheService.getScriptCache();
+
+    const key =
+        "WA_PROCESSED_" + messageId;
 
     cache.put(
         key,
         "1",
         21600
     );
-
-    return false;
 }
 
 
@@ -5580,10 +6317,30 @@ function sendWhatsAppReply(
 
     try {
 
+        const session =
+            getWhatsAppSession(phone);
+
+        const language =
+            session && session.state === "LANGUAGE_SELECT"
+                ? "EN"
+                : session && session.language;
+
+        const replyWithNavigation =
+            addWhatsAppNavigationOptions(
+                session,
+                reply
+            );
+
+        const localizedReply =
+            localizeWhatsAppReply(
+                language,
+                replyWithNavigation
+            );
+
         const sendResult =
             sendWhatsAppText(
                 phone,
-                reply
+                localizedReply
             );
 
 
@@ -5822,7 +6579,7 @@ function sendWhatsAppTemplate(to) {
         );
 
     const url =
-        "https://graph.facebook.com/v25.0/" +
+        "https://graph.facebook.com/v26.0/" +
         phoneNumberId +
         "/messages";
 
@@ -6033,11 +6790,26 @@ function getWhatsAppSession(phone) {
                 String(data[i][6] || "").trim(),
 
             updatedAt:
-                data[i][7]
+                data[i][7],
+
+            language:
+                String(data[i][8] || "")
+                    .trim()
+                    .toUpperCase()
         };
     }
 
     return null;
+}
+
+
+function ensureWhatsAppSessionLanguageColumn(sheet) {
+
+    if (!sheet.getRange(1, 9).getValue()) {
+        sheet
+            .getRange(1, 9)
+            .setValue("Language");
+    }
 }
 
 
@@ -6060,6 +6832,8 @@ function saveWhatsAppSession(
         );
     }
 
+    ensureWhatsAppSessionLanguageColumn(sheet);
+
     const existing =
         getWhatsAppSession(phone);
 
@@ -6073,11 +6847,11 @@ function saveWhatsAppSession(
 
         const current =
             sheet
-                .getRange(row, 1, 1, 8)
+                .getRange(row, 1, 1, 9)
                 .getValues()[0];
 
         sheet
-            .getRange(row, 1, 1, 8)
+            .getRange(row, 1, 1, 9)
             .setValues([[
                 phone,
 
@@ -6105,7 +6879,11 @@ function saveWhatsAppSession(
                     ? updates.appointmentId
                     : current[6],
 
-                now
+                now,
+
+                updates.language !== undefined
+                    ? updates.language
+                    : current[8]
             ]]);
 
     } else {
@@ -6118,7 +6896,8 @@ function saveWhatsAppSession(
             updates.date || "",
             updates.time || "",
             updates.appointmentId || "",
-            now
+            now,
+            updates.language || "EN"
         ]);
     }
 }
@@ -6143,9 +6922,9 @@ function clearWhatsAppSession(phone) {
     sheet
         .getRange(
             session.row,
+            2,
             1,
-            1,
-            8
+            7
         )
         .clearContent();
 }
