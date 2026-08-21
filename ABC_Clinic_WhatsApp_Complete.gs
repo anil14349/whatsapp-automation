@@ -4166,6 +4166,23 @@ function formatDoctorWeek(result) {
     return text;
 }
 
+function formatDoctorNext(result) {
+    if (!result || !result.success) {
+        return "❌ " + (result && result.message || "Unable to load next appointment.");
+    }
+    if (!result.appointment) {
+        return "📌 Next Appointment\n\n" +
+            (result.message || "No upcoming appointments.");
+    }
+    const appointment = result.appointment;
+    const phoneText = appointment.phone ?
+        " • 📞 " + maskPhone(appointment.phone) :
+        "";
+    return "📌 Next Appointment\n\n" +
+        appointment.date + " " + appointment.time + " — " +
+        appointment.patientName + phoneText;
+}
+
 
 function addWhatsAppNavigationOptions(session, message) {
 
@@ -4173,6 +4190,7 @@ function addWhatsAppNavigationOptions(session, message) {
         !session ||
         !session.state ||
         session.state === "MAIN_MENU" ||
+        session.state === "DOCTOR_MENU" ||
         session.state === "LANGUAGE_SELECT" ||
         session.state === "LANGUAGE_CHANGE"
     ) {
@@ -4180,9 +4198,16 @@ function addWhatsAppNavigationOptions(session, message) {
     }
 
     const options = [];
+    const homeLabel =
+        session.role === "DOCTOR"
+            ? "0️⃣ Doctor Portal"
+            : "0️⃣ Main Menu";
 
-    if (String(message).indexOf("0️⃣ Back to Main Menu") === -1) {
-        options.push("0️⃣ Main Menu");
+    if (
+        String(message).indexOf("0️⃣ Back to Main Menu") === -1 &&
+        String(message).indexOf("0️⃣ Doctor Portal") === -1
+    ) {
+        options.push(homeLabel);
     }
 
     options.push("9️⃣ Back");
@@ -4219,6 +4244,77 @@ function showRescheduleDateSelection(ss, phone) {
 }
 
 
+function showDoctorDateSelection(ss, phone) {
+
+    sendWhatsAppReply(
+        ss,
+        phone,
+        "Please choose a date:\n\n" +
+        "1️⃣ Today\n" +
+        "2️⃣ Tomorrow\n" +
+        "3️⃣ Enter another date"
+    );
+}
+
+
+function resolveDoctorIdFromSession(phone, session) {
+
+    if (
+        session &&
+        session.doctorId
+    ) {
+        return String(session.doctorId).trim();
+    }
+
+    const doctor =
+        findDoctorByWhatsAppPhone(phone);
+
+    return doctor
+        ? doctor.doctorId
+        : "";
+}
+
+
+function returnDoctorToDateSelection(ss, phone, doctorId) {
+
+    saveWhatsAppSession(
+        phone,
+        {
+            role: "DOCTOR",
+            state: "DOCTOR_DATE",
+            doctorId: doctorId,
+            date: "",
+            time: "",
+            appointmentId: ""
+        }
+    );
+
+    showDoctorDateSelection(ss, phone);
+}
+
+
+function showDoctorScheduleForDateAndReturn(
+    ss,
+    phone,
+    doctorId,
+    isoDate
+) {
+
+    returnDoctorToMenu(
+        ss,
+        phone,
+        doctorId,
+        formatDoctorSchedule(
+            getDoctorScheduleForDate(
+                doctorId,
+                isoDate
+            ),
+            "Schedule for " + isoDate
+        )
+    );
+}
+
+
 function returnToMainMenu(ss, phone, prefix) {
 
     saveWhatsAppSession(
@@ -4239,6 +4335,36 @@ function returnToMainMenu(ss, phone, prefix) {
         buildMainMenuMessage(
             prefix || "👋 Back to main menu."
         )
+    );
+}
+
+
+function returnDoctorToMenu(ss, phone, doctorId, prefix) {
+
+    const doctorName =
+        findDoctorById(doctorId) || "";
+
+    saveWhatsAppSession(
+        phone,
+        {
+            role: "DOCTOR",
+            state: "DOCTOR_MENU",
+            doctorId: doctorId,
+            date: "",
+            time: "",
+            appointmentId: ""
+        }
+    );
+
+    const menu =
+        buildDoctorMenu(doctorName);
+
+    sendWhatsAppReply(
+        ss,
+        phone,
+        prefix
+            ? String(prefix) + "\n\n" + menu
+            : menu
     );
 }
 
@@ -4610,19 +4736,10 @@ function doPost(e) {
 
                 if (doctor) {
 
-                    saveWhatsAppSession(senderPhone, {
-                        role: "DOCTOR",
-                        state: "DOCTOR_MENU",
-                        doctorId: doctor.doctorId,
-                        date: "",
-                        time: "",
-                        appointmentId: ""
-                    });
-
-                    sendWhatsAppReply(
+                    returnDoctorToMenu(
                         ss,
                         senderPhone,
-                        buildDoctorMenu(doctor.doctorName)
+                        doctor.doctorId
                     );
 
                 } else {
@@ -4688,27 +4805,329 @@ function doPost(e) {
             else if (
                 session &&
                 session.state !== "MAIN_MENU" &&
+                session.state !== "DOCTOR_MENU" &&
                 session.state !== "LANGUAGE_SELECT" &&
                 session.state !== "LANGUAGE_CHANGE" &&
                 normalizedMessage === "0"
             ) {
 
-                returnToMainMenu(ss, senderPhone);
+                if (session.role === "DOCTOR") {
+
+                    returnDoctorToMenu(
+                        ss,
+                        senderPhone,
+                        resolveDoctorIdFromSession(
+                            senderPhone,
+                            session
+                        )
+                    );
+
+                } else {
+
+                    returnToMainMenu(ss, senderPhone);
+                }
             }
 
             else if (
                 session &&
                 session.state !== "MAIN_MENU" &&
+                session.state !== "DOCTOR_MENU" &&
                 session.state !== "LANGUAGE_SELECT" &&
                 session.state !== "LANGUAGE_CHANGE" &&
                 normalizedMessage === "9"
             ) {
 
-                goBackInWhatsAppFlow(
-                    ss,
-                    senderPhone,
-                    session
-                );
+                if (session.role === "DOCTOR") {
+
+                    const doctorId =
+                        resolveDoctorIdFromSession(
+                            senderPhone,
+                            session
+                        );
+
+                    if (
+                        session.state ===
+                        "DOCTOR_DATE_CUSTOM"
+                    ) {
+
+                        returnDoctorToDateSelection(
+                            ss,
+                            senderPhone,
+                            doctorId
+                        );
+
+                    } else {
+
+                        returnDoctorToMenu(
+                            ss,
+                            senderPhone,
+                            doctorId
+                        );
+                    }
+
+                } else {
+
+                    goBackInWhatsAppFlow(
+                        ss,
+                        senderPhone,
+                        session
+                    );
+                }
+            }
+
+
+            // ======================================================
+            // DOCTOR MENU
+            // ======================================================
+
+            else if (
+                session &&
+                session.role === "DOCTOR" &&
+                session.state === "DOCTOR_MENU"
+            ) {
+
+                const doctorId =
+                    resolveDoctorIdFromSession(
+                        senderPhone,
+                        session
+                    );
+
+                if (!doctorId) {
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        "❌ Doctor session expired.\n\n" +
+                        "Please send Hi to start again."
+                    );
+
+                } else if (
+                    normalizedMessage === "0" ||
+                    normalizedMessage === "9"
+                ) {
+
+                    returnDoctorToMenu(
+                        ss,
+                        senderPhone,
+                        doctorId
+                    );
+
+                } else if (normalizedMessage === "1") {
+
+                    returnDoctorToMenu(
+                        ss,
+                        senderPhone,
+                        doctorId,
+                        formatDoctorSchedule(
+                            getDoctorTodaySchedule(
+                                doctorId
+                            ),
+                            "Today's Schedule"
+                        )
+                    );
+
+                } else if (normalizedMessage === "2") {
+
+                    returnDoctorToMenu(
+                        ss,
+                        senderPhone,
+                        doctorId,
+                        formatDoctorNext(
+                            getDoctorNextAppointment(
+                                doctorId
+                            )
+                        )
+                    );
+
+                } else if (normalizedMessage === "3") {
+
+                    returnDoctorToMenu(
+                        ss,
+                        senderPhone,
+                        doctorId,
+                        formatDoctorWeek(
+                            getDoctorWeeklySchedule(
+                                doctorId
+                            )
+                        )
+                    );
+
+                } else if (normalizedMessage === "4") {
+
+                    saveWhatsAppSession(
+                        senderPhone,
+                        {
+                            role: "DOCTOR",
+                            state: "DOCTOR_DATE",
+                            doctorId: doctorId,
+                            date: "",
+                            time: "",
+                            appointmentId: ""
+                        }
+                    );
+
+                    showDoctorDateSelection(
+                        ss,
+                        senderPhone
+                    );
+
+                } else {
+
+                    returnDoctorToMenu(
+                        ss,
+                        senderPhone,
+                        doctorId,
+                        "❌ Invalid option. Please choose 1, 2, 3, or 4."
+                    );
+                }
+            }
+
+
+            // ======================================================
+            // DOCTOR DATE
+            // ======================================================
+
+            else if (
+                session &&
+                session.role === "DOCTOR" &&
+                session.state === "DOCTOR_DATE"
+            ) {
+
+                const doctorId =
+                    resolveDoctorIdFromSession(
+                        senderPhone,
+                        session
+                    );
+
+                if (!doctorId) {
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        "❌ Doctor session expired.\n\n" +
+                        "Please send Hi to start again."
+                    );
+
+                } else if (normalizedMessage === "1") {
+
+                    showDoctorScheduleForDateAndReturn(
+                        ss,
+                        senderPhone,
+                        doctorId,
+                        Utilities.formatDate(
+                            new Date(),
+                            TIMEZONE,
+                            "yyyy-MM-dd"
+                        )
+                    );
+
+                } else if (normalizedMessage === "2") {
+
+                    const tomorrow =
+                        new Date();
+
+                    tomorrow.setDate(
+                        tomorrow.getDate() + 1
+                    );
+
+                    showDoctorScheduleForDateAndReturn(
+                        ss,
+                        senderPhone,
+                        doctorId,
+                        Utilities.formatDate(
+                            tomorrow,
+                            TIMEZONE,
+                            "yyyy-MM-dd"
+                        )
+                    );
+
+                } else if (normalizedMessage === "3") {
+
+                    saveWhatsAppSession(
+                        senderPhone,
+                        {
+                            role: "DOCTOR",
+                            state: "DOCTOR_DATE_CUSTOM",
+                            doctorId: doctorId,
+                            date: "",
+                            time: "",
+                            appointmentId: ""
+                        }
+                    );
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        "📅 Please enter the date in YYYY-MM-DD format.\n\n" +
+                        "Example:\n" +
+                        "2026-08-25"
+                    );
+
+                } else {
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        "❌ Invalid option.\n\n" +
+                        "Please reply with:\n\n" +
+                        "1️⃣ Today\n" +
+                        "2️⃣ Tomorrow\n" +
+                        "3️⃣ Enter another date"
+                    );
+                }
+            }
+
+
+            // ======================================================
+            // DOCTOR DATE CUSTOM (manually typed date)
+            // ======================================================
+
+            else if (
+                session &&
+                session.role === "DOCTOR" &&
+                session.state === "DOCTOR_DATE_CUSTOM"
+            ) {
+
+                const doctorId =
+                    resolveDoctorIdFromSession(
+                        senderPhone,
+                        session
+                    );
+
+                const typedDate =
+                    messageText.trim();
+
+                if (!doctorId) {
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        "❌ Doctor session expired.\n\n" +
+                        "Please send Hi to start again."
+                    );
+
+                } else if (
+                    !isValidISODate(typedDate)
+                ) {
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        "❌ That doesn't look like a valid date.\n\n" +
+                        "Please enter the date in YYYY-MM-DD format.\n\n" +
+                        "Example:\n" +
+                        "2026-08-25"
+                    );
+
+                } else {
+
+                    showDoctorScheduleForDateAndReturn(
+                        ss,
+                        senderPhone,
+                        doctorId,
+                        typedDate
+                    );
+                }
             }
 
 
@@ -4795,26 +5214,60 @@ function doPost(e) {
                     const currentSession =
                         session || {};
 
-                    saveWhatsAppSession(
-                        senderPhone,
-                        {
-                            role: currentSession.role || "PATIENT",
-                            language: language,
-                            state: "MAIN_MENU",
-                            doctorId: "",
-                            date: "",
-                            time: "",
-                            appointmentId: ""
-                        }
-                    );
+                    if (
+                        currentSession.role ===
+                        "DOCTOR"
+                    ) {
 
-                    sendWhatsAppReply(
-                        ss,
-                        senderPhone,
-                        buildMainMenuMessage(
+                        const doctorId =
+                            resolveDoctorIdFromSession(
+                                senderPhone,
+                                currentSession
+                            );
+
+                        saveWhatsAppSession(
+                            senderPhone,
+                            {
+                                role: "DOCTOR",
+                                language: language,
+                                state: "DOCTOR_MENU",
+                                doctorId: doctorId,
+                                date: "",
+                                time: "",
+                                appointmentId: ""
+                            }
+                        );
+
+                        returnDoctorToMenu(
+                            ss,
+                            senderPhone,
+                            doctorId,
                             "✅ Language changed successfully."
-                        )
-                    );
+                        );
+
+                    } else {
+
+                        saveWhatsAppSession(
+                            senderPhone,
+                            {
+                                role: "PATIENT",
+                                language: language,
+                                state: "MAIN_MENU",
+                                doctorId: "",
+                                date: "",
+                                time: "",
+                                appointmentId: ""
+                            }
+                        );
+
+                        sendWhatsAppReply(
+                            ss,
+                            senderPhone,
+                            buildMainMenuMessage(
+                                "✅ Language changed successfully."
+                            )
+                        );
+                    }
                 }
             }
 
@@ -6649,6 +7102,25 @@ function doPost(e) {
             // ======================================================
             // FALLBACK - unrecognized message / no active session
             // ======================================================
+
+            else if (
+                session &&
+                session.role === "DOCTOR"
+            ) {
+
+                const doctorId =
+                    resolveDoctorIdFromSession(
+                        senderPhone,
+                        session
+                    );
+
+                returnDoctorToMenu(
+                    ss,
+                    senderPhone,
+                    doctorId,
+                    "🤔 Sorry, I didn't understand that."
+                );
+            }
 
             else {
 
