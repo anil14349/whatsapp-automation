@@ -51,8 +51,10 @@
 //   AFTER_HOURS_MESSAGE | (optional custom text)
 //
 // Script Properties:
-//   WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID
-//   WHATSAPP_VERIFY_TOKEN, WHATSAPP_WEBHOOK_POST_TOKEN (optional)
+//   WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID (required)
+//   WHATSAPP_VERIFY_TOKEN, WHATSAPP_WEBHOOK_POST_TOKEN (required — webhook
+//     verification now fails closed if either is unset; there is no
+//     hardcoded fallback token)
 //   DEBUG_MODE, TEST_SKIP_WHATSAPP_SEND (optional, for ABC_Clinic_Tests.gs)
 //
 // Apps Script project files:
@@ -673,6 +675,17 @@ function trimWhatsAppLogSheet(sheet) {
 }
 
 
+// Per-execution caches for the Settings sheet. Every getSetting() call
+// used to trigger ensureSettingsSheet(), which (on the "sheet already
+// exists" branch) re-reads the whole sheet ~9 times via ensureSettingKey,
+// plus another full read inside getSetting itself — 10+ Sheets API
+// reads per setting lookup. A single Apps Script execution (one webhook
+// invocation) only needs to do this once; settings are edited by hand in
+// the sheet UI, never written by this script, so caching for the
+// lifetime of one execution cannot serve stale data across requests.
+let _settingsSheetEnsured = false;
+let _settingsValuesCache = null;
+
 function ensureSettingsSheet() {
 
     const ss =
@@ -680,6 +693,10 @@ function ensureSettingsSheet() {
 
     let sheet =
         ss.getSheetByName("Settings");
+
+    if (sheet && _settingsSheetEnsured) {
+        return sheet;
+    }
 
     if (!sheet) {
 
@@ -828,6 +845,8 @@ function ensureSettingsSheet() {
         );
     }
 
+    _settingsSheetEnsured = true;
+
     return sheet;
 }
 
@@ -919,32 +938,39 @@ function getLogRetentionDays(retentionKey) {
 
 function getSetting(key, defaultValue) {
 
-    const sheet =
-        ensureSettingsSheet();
+    if (!_settingsValuesCache) {
 
-    const data =
-        sheet.getDataRange().getValues();
+        const sheet =
+            ensureSettingsSheet();
+
+        const data =
+            sheet.getDataRange().getValues();
+
+        _settingsValuesCache = {};
+
+        for (
+            let i = 1;
+            i < data.length;
+            i++
+        ) {
+
+            const rowKey =
+                String(data[i][0] || "")
+                    .trim()
+                    .toUpperCase();
+
+            if (rowKey) {
+                _settingsValuesCache[rowKey] = data[i][1];
+            }
+        }
+    }
 
     const target =
         String(key).trim().toUpperCase();
 
-    for (
-        let i = 1;
-        i < data.length;
-        i++
-    ) {
-
-        if (
-            String(data[i][0] || "")
-                .trim()
-                .toUpperCase() ===
-            target
-        ) {
-            return data[i][1];
-        }
-    }
-
-    return defaultValue;
+    return _settingsValuesCache.hasOwnProperty(target)
+        ? _settingsValuesCache[target]
+        : defaultValue;
 }
 
 
@@ -2006,6 +2032,22 @@ function updateAppointmentStatus(
         };
     }
 
+    // Fail closed: every caller must prove ownership via either an
+    // authorized doctor ID or a matching patient phone number. Without
+    // one of these, refuse the update rather than allowing an
+    // unauthenticated status change.
+    if (
+        !String(opts.authorizedDoctorId || "").trim() &&
+        !String(opts.patientPhone || "").trim()
+    ) {
+
+        return {
+            success: false,
+            message:
+                "Not authorized to update this appointment."
+        };
+    }
+
     const ss =
         SpreadsheetApp.getActiveSpreadsheet();
 
@@ -2590,6 +2632,19 @@ function isWithinClinicHours(
         !openAt ||
         !closeAt
     ) {
+
+        // CLINIC_OPEN_TIME/CLINIC_CLOSE_TIME failed to parse. Fail
+        // open (treat as within clinic hours) rather than blocking
+        // patients on a configuration typo, but log it loudly so the
+        // misconfiguration doesn't go unnoticed and the after-hours
+        // feature doesn't silently stay disabled indefinitely.
+        Logger.log(
+            "isWithinClinicHours: could not parse CLINIC_OPEN_TIME/" +
+            "CLINIC_CLOSE_TIME (openTime=" + config.openTime +
+            ", closeTime=" + config.closeTime +
+            "). Treating as within clinic hours."
+        );
+
         return true;
     }
 
@@ -3492,42 +3547,58 @@ function addDoctorAvailabilitySession(
         };
     }
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
+    const lock = LockService.getScriptLock();
 
-    let sheet =
-        ss.getSheetByName("Availability");
-
-    if (!sheet) {
-        sheet =
-            ss.insertSheet("Availability");
-
-        sheet.appendRow([
-            "Doctor ID",
-            "Day",
-            "Start",
-            "End"
-        ]);
+    if (!lock.tryLock(10000)) {
+        return {
+            success: false,
+            message:
+                "Unable to save availability. Please try again."
+        };
     }
 
-    sheet.appendRow([
-        String(doctorId).trim(),
-        dayName,
-        start,
-        end
-    ]);
+    try {
 
-    return {
-        success: true,
-        message:
-            "Availability saved: " +
-            start +
-            " - " +
-            end +
-            " on " +
-            dayName +
-            "."
-    };
+        const ss =
+            SpreadsheetApp.getActiveSpreadsheet();
+
+        let sheet =
+            ss.getSheetByName("Availability");
+
+        if (!sheet) {
+            sheet =
+                ss.insertSheet("Availability");
+
+            sheet.appendRow([
+                "Doctor ID",
+                "Day",
+                "Start",
+                "End"
+            ]);
+        }
+
+        sheet.appendRow([
+            String(doctorId).trim(),
+            dayName,
+            start,
+            end
+        ]);
+
+        return {
+            success: true,
+            message:
+                "Availability saved: " +
+                start +
+                " - " +
+                end +
+                " on " +
+                dayName +
+                "."
+        };
+
+    } finally {
+        lock.releaseLock();
+    }
 }
 
 function removeDoctorAvailabilitySession(
@@ -3536,54 +3607,70 @@ function removeDoctorAvailabilitySession(
     sessionIndex
 ) {
 
-    const sessions =
-        getDoctorDayAvailabilitySessions(
-            doctorId,
-            dayName
+    const lock = LockService.getScriptLock();
+
+    if (!lock.tryLock(10000)) {
+        return {
+            success: false,
+            message:
+                "Unable to remove availability. Please try again."
+        };
+    }
+
+    try {
+
+        const sessions =
+            getDoctorDayAvailabilitySessions(
+                doctorId,
+                dayName
+            );
+
+        const pick =
+            Number(sessionIndex);
+
+        if (
+            !Number.isInteger(pick) ||
+            pick < 1 ||
+            pick > sessions.length
+        ) {
+            return {
+                success: false,
+                message:
+                    "Invalid session number."
+            };
+        }
+
+        const ss =
+            SpreadsheetApp.getActiveSpreadsheet();
+
+        const sheet =
+            ss.getSheetByName("Availability");
+
+        if (!sheet) {
+            return {
+                success: false,
+                message:
+                    "Availability sheet not found."
+            };
+        }
+
+        sheet.deleteRow(
+            sessions[pick - 1].row
         );
 
-    const pick =
-        Number(sessionIndex);
-
-    if (
-        !Number.isInteger(pick) ||
-        pick < 1 ||
-        pick > sessions.length
-    ) {
         return {
-            success: false,
+            success: true,
             message:
-                "Invalid session number."
+                "Removed session " +
+                pick +
+                " for " +
+                dayName +
+                "."
         };
+
+    } finally {
+        lock.releaseLock();
     }
-
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
-    const sheet =
-        ss.getSheetByName("Availability");
-
-    if (!sheet) {
-        return {
-            success: false,
-            message:
-                "Availability sheet not found."
-        };
-    }
-
-    sheet.deleteRow(
-        sessions[pick - 1].row
-    );
-
-    return {
-        success: true,
-        message:
-            "Removed session " +
-            pick +
-            " for " +
-            dayName +
-            "."
-    };
 }
 
 function clearDoctorDayAvailability(
@@ -3591,55 +3678,71 @@ function clearDoctorDayAvailability(
     dayName
 ) {
 
-    const sessions =
-        getDoctorDayAvailabilitySessions(
-            doctorId,
-            dayName
-        );
+    const lock = LockService.getScriptLock();
 
-    if (sessions.length === 0) {
-        return {
-            success: true,
-            message:
-                dayName +
-                " already has no sessions."
-        };
-    }
-
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
-    const sheet =
-        ss.getSheetByName("Availability");
-
-    if (!sheet) {
+    if (!lock.tryLock(10000)) {
         return {
             success: false,
             message:
-                "Availability sheet not found."
+                "Unable to clear availability. Please try again."
         };
     }
 
-    const rows =
-        sessions
-            .map(function (session) {
-                return session.row;
-            })
-            .sort(function (a, b) {
-                return b - a;
-            });
+    try {
 
-    rows.forEach(function (row) {
-        sheet.deleteRow(row);
-    });
+        const sessions =
+            getDoctorDayAvailabilitySessions(
+                doctorId,
+                dayName
+            );
 
-    return {
-        success: true,
-        message:
-            "Cleared all sessions for " +
-            dayName +
-            "."
-    };
+        if (sessions.length === 0) {
+            return {
+                success: true,
+                message:
+                    dayName +
+                    " already has no sessions."
+            };
+        }
+
+        const ss =
+            SpreadsheetApp.getActiveSpreadsheet();
+
+        const sheet =
+            ss.getSheetByName("Availability");
+
+        if (!sheet) {
+            return {
+                success: false,
+                message:
+                    "Availability sheet not found."
+            };
+        }
+
+        const rows =
+            sessions
+                .map(function (session) {
+                    return session.row;
+                })
+                .sort(function (a, b) {
+                    return b - a;
+                });
+
+        rows.forEach(function (row) {
+            sheet.deleteRow(row);
+        });
+
+        return {
+            success: true,
+            message:
+                "Cleared all sessions for " +
+                dayName +
+                "."
+        };
+
+    } finally {
+        lock.releaseLock();
+    }
 }
 
 function normalizeLeaveSheetDate(value) {
@@ -3738,53 +3841,73 @@ function addDoctorLeave(
         };
     }
 
-    if (
-        isDoctorOnLeave(
-            doctorId,
-            dateString
-        )
-    ) {
+    const lock = LockService.getScriptLock();
+
+    if (!lock.tryLock(10000)) {
         return {
             success: false,
             message:
-                "Leave already active on " +
-                dateString +
-                "."
+                "Unable to save leave. Please try again."
         };
     }
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
+    try {
 
-    let sheet =
-        ss.getSheetByName("Doctor_Leaves");
+        // Re-check under the lock — the check above (before acquiring
+        // the lock) is only an early exit; without re-checking here,
+        // two concurrent calls could both pass the earlier check and
+        // both append a duplicate leave row.
+        if (
+            isDoctorOnLeave(
+                doctorId,
+                dateString
+            )
+        ) {
+            return {
+                success: false,
+                message:
+                    "Leave already active on " +
+                    dateString +
+                    "."
+            };
+        }
 
-    if (!sheet) {
-        sheet =
-            ss.insertSheet("Doctor_Leaves");
+        const ss =
+            SpreadsheetApp.getActiveSpreadsheet();
+
+        let sheet =
+            ss.getSheetByName("Doctor_Leaves");
+
+        if (!sheet) {
+            sheet =
+                ss.insertSheet("Doctor_Leaves");
+
+            sheet.appendRow([
+                "Doctor ID",
+                "Date",
+                "Reason",
+                "Active"
+            ]);
+        }
 
         sheet.appendRow([
-            "Doctor ID",
-            "Date",
-            "Reason",
-            "Active"
+            String(doctorId).trim(),
+            dateString,
+            String(reason || "").trim(),
+            "TRUE"
         ]);
+
+        return {
+            success: true,
+            message:
+                "Leave added for " +
+                dateString +
+                "."
+        };
+
+    } finally {
+        lock.releaseLock();
     }
-
-    sheet.appendRow([
-        String(doctorId).trim(),
-        dateString,
-        String(reason || "").trim(),
-        "TRUE"
-    ]);
-
-    return {
-        success: true,
-        message:
-            "Leave added for " +
-            dateString +
-            "."
-    };
 }
 
 function addDoctorLeaveRange(
@@ -3873,71 +3996,87 @@ function deactivateDoctorLeave(
     dateString
 ) {
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
+    const lock = LockService.getScriptLock();
 
-    const sheet =
-        ss.getSheetByName("Doctor_Leaves");
-
-    if (!sheet) {
+    if (!lock.tryLock(10000)) {
         return {
             success: false,
             message:
-                "Doctor_Leaves sheet not found."
+                "Unable to cancel leave. Please try again."
         };
     }
 
-    const data =
-        sheet.getDataRange().getValues();
+    try {
 
-    for (
-        let i = 1;
-        i < data.length;
-        i++
-    ) {
+        const ss =
+            SpreadsheetApp.getActiveSpreadsheet();
 
-        if (
-            String(data[i][0] || "").trim() !==
-            String(doctorId).trim()
-        ) {
-            continue;
-        }
+        const sheet =
+            ss.getSheetByName("Doctor_Leaves");
 
-        const rowDate =
-            normalizeLeaveSheetDate(
-                data[i][1]
-            );
-
-        const active =
-            String(data[i][3] || "")
-                .toUpperCase() === "TRUE";
-
-        if (
-            rowDate === dateString &&
-            active
-        ) {
-
-            sheet
-                .getRange(i + 1, 4)
-                .setValue("FALSE");
-
+        if (!sheet) {
             return {
-                success: true,
+                success: false,
                 message:
-                    "Leave cancelled for " +
-                    dateString +
-                    "."
+                    "Doctor_Leaves sheet not found."
             };
         }
-    }
 
-    return {
-        success: false,
-        message:
-            "Active leave not found for " +
-            dateString +
-            "."
-    };
+        const data =
+            sheet.getDataRange().getValues();
+
+        for (
+            let i = 1;
+            i < data.length;
+            i++
+        ) {
+
+            if (
+                String(data[i][0] || "").trim() !==
+                String(doctorId).trim()
+            ) {
+                continue;
+            }
+
+            const rowDate =
+                normalizeLeaveSheetDate(
+                    data[i][1]
+                );
+
+            const active =
+                String(data[i][3] || "")
+                    .toUpperCase() === "TRUE";
+
+            if (
+                rowDate === dateString &&
+                active
+            ) {
+
+                sheet
+                    .getRange(i + 1, 4)
+                    .setValue("FALSE");
+
+                return {
+                    success: true,
+                    message:
+                        "Leave cancelled for " +
+                        dateString +
+                        "."
+                };
+            }
+        }
+
+        return {
+            success: false,
+            message:
+                "Active leave not found for " +
+                dateString +
+                "."
+        };
+
+    } finally {
+        lock.releaseLock();
+    }
 }
 
 function getDoctorPatientsSeen(doctorId) {
@@ -4277,10 +4416,26 @@ function getAvailableSlots(
         return [];
     }
 
-    const appointmentDuration =
-        getDoctorAppointmentDuration(
-            doctorId
+    let appointmentDuration;
+
+    try {
+
+        appointmentDuration =
+            getDoctorAppointmentDuration(
+                doctorId
+            );
+
+    } catch (durationError) {
+
+        Logger.log(
+            "getAvailableSlots: could not resolve appointment duration for " +
+            doctorId +
+            ": " +
+            durationError
         );
+
+        return [];
+    }
 
     const availabilityData =
         availabilitySheet.getDataRange().getValues();
@@ -4338,16 +4493,43 @@ function getAvailableSlots(
         return [];
     }
 
-    const calendar =
-        CalendarApp.getCalendarById(
-            calendarId
+    let calendar;
+    let dayEvents;
+
+    try {
+
+        calendar =
+            CalendarApp.getCalendarById(
+                calendarId
+            );
+
+        if (!calendar) {
+
+            throw new Error(
+                "Calendar not found."
+            );
+        }
+
+        // Fetch the whole day's events once instead of calling
+        // calendar.getEvents() per candidate slot — the previous
+        // per-slot approach made one Calendar API call per slot
+        // (potentially dozens per doctor per day), which is both
+        // slow and at risk of hitting CalendarApp quotas.
+        dayEvents =
+            calendar.getEventsForDay(date);
+
+    } catch (calendarError) {
+
+        Logger.log(
+            "getAvailableSlots: Calendar lookup failed for " +
+            doctorId +
+            " on " +
+            dateString +
+            ": " +
+            calendarError
         );
 
-    if (!calendar) {
-
-        throw new Error(
-            "Calendar not found."
-        );
+        return [];
     }
 
     const slots = [];
@@ -4394,10 +4576,14 @@ function getAvailableSlots(
                     appointmentDuration * 60000
                 );
 
-            const events =
-                calendar.getEvents(
-                    current,
-                    slotEnd
+            const hasConflict =
+                dayEvents.some(
+                    function (event) {
+                        return (
+                            event.getStartTime().getTime() < slotEnd.getTime() &&
+                            event.getEndTime().getTime() > current.getTime()
+                        );
+                    }
                 );
 
             const sameDay =
@@ -4417,7 +4603,7 @@ function getAvailableSlots(
                     current.getTime() > now.getTime() ||
                     !sameDay
                 ) &&
-                events.length === 0
+                !hasConflict
             ) {
 
                 slots.push(
@@ -4686,13 +4872,16 @@ function registerPatientForBooking(
                 : "EN";
     }
 
+    // Note: this runs on the hottest concurrency path (patient booking),
+    // where duplicate/retried WhatsApp webhook deliveries make a
+    // check-then-act race on Patients rows most likely — do NOT skip
+    // the lock here.
     return upsertPatient(
         phone,
         name,
         lang,
         {
-            updateLastVisit: true,
-            skipLock: true
+            updateLastVisit: true
         }
     );
 }
@@ -5667,6 +5856,26 @@ function rescheduleAppointment(
             .getDataRange()
             .getValues();
 
+    // Acquire the lock before any validation runs (not just around the
+    // final write). Locking only around the write left the lookup,
+    // authorization, status, and slot-availability checks above free
+    // to race against a concurrent reschedule/cancel on the same
+    // appointment; those checks read a snapshot that could be stale
+    // by the time the write happens.
+    const rescheduleLock =
+        LockService.getScriptLock();
+
+    if (!rescheduleLock.tryLock(30000)) {
+
+        return {
+            success: false,
+            message:
+                "Reschedule is busy. Please try again."
+        };
+    }
+
+    try {
+
     // ----------------------------------------------------------
     // Variables
     // ----------------------------------------------------------
@@ -5980,19 +6189,7 @@ function rescheduleAppointment(
         };
     }
 
-    const lock =
-        LockService.getScriptLock();
-
     try {
-
-        if (!lock.tryLock(30000)) {
-
-            return {
-                success: false,
-                message:
-                    "Reschedule is busy. Please try again."
-            };
-        }
 
         if (
             hasActiveAppointmentOnDate(
@@ -6175,12 +6372,6 @@ function rescheduleAppointment(
             message:
                 "Unable to complete reschedule. The original appointment was restored."
         };
-
-    } finally {
-
-        if (lock.hasLock()) {
-            lock.releaseLock();
-        }
     }
 
     // ----------------------------------------------------------
@@ -6217,6 +6408,13 @@ function rescheduleAppointment(
         message:
             "Appointment rescheduled successfully."
     };
+
+    } finally {
+
+        if (rescheduleLock.hasLock()) {
+            rescheduleLock.releaseLock();
+        }
+    }
 }
 
 
@@ -7779,8 +7977,18 @@ function verifyWhatsAppWebhookRequest(e, rawBody) {
             ""
         );
 
+    // Fail closed: an unconfigured token must NOT be treated as
+    // "verification disabled". Without this, the POST webhook would
+    // silently accept any unauthenticated request whenever the
+    // script property is missing.
     if (!expectedToken) {
-        return true;
+
+        Logger.log(
+            "verifyWhatsAppWebhookRequest: WHATSAPP_WEBHOOK_POST_TOKEN " +
+            "is not configured — rejecting request."
+        );
+
+        return false;
     }
 
     const token =
@@ -7810,8 +8018,25 @@ function doGet(e) {
     const verifyToken =
         getScriptProperty(
             "WHATSAPP_VERIFY_TOKEN",
-            "ABC_CLINIC_VERIFY_2026"
+            ""
         );
+
+    // Fail closed: never fall back to a hardcoded, publicly-visible
+    // verify token. If the property isn't configured, verification
+    // must fail rather than succeed against a guessable default.
+    if (!verifyToken) {
+
+        Logger.log(
+            "doGet: WHATSAPP_VERIFY_TOKEN is not configured — " +
+            "rejecting webhook verification."
+        );
+
+        return ContentService
+            .createTextOutput("Verification failed")
+            .setMimeType(
+                ContentService.MimeType.TEXT
+            );
+    }
 
     if (
         mode === "subscribe" &&
@@ -9206,7 +9431,7 @@ function localizeWhatsAppReply(language, message) {
             "Please enter a valid full name (at least 2 characters).": "దయచేసి సరైన పూర్తి పేరు నమోదు చేయండి (కనీసం 2 అక్షరాలు).",
             "Unable to save your name.": "మీ పేరును సేవ్ చేయలేకపోయాం.",
             "Invalid time selection.": "చెల్లని సమయ ఎంపిక.",
-            "Please choose one of the available slots:": "దయచేసి అందుబాటులో ఉన్న సమయాలից ఒకదాన్ని ఎంచుకోండి:",
+            "Please choose one of the available slots:": "దయచేసి అందుబాటులో ఉన్న సమయాలలో ఒకదాన్ని ఎంచుకోండి:",
             "Invalid selection.": "చెల్లని ఎంపిక.",
             "Date selected:": "ఎంచుకున్న తేదీ:",
             "Appointment Reminder": "అపాయింట్‌మెంట్ రిమైండర్",
@@ -11099,6 +11324,8 @@ if (
             )
         );
     }
+
+    return true;
 }
 
 if (
@@ -11216,6 +11443,8 @@ if (
             "❌ Invalid option."
         );
     }
+
+    return true;
 }
 
 if (
@@ -11244,6 +11473,19 @@ if (
     const pick =
         Number(normalizedMessage);
 
+    if (!Number.isInteger(pick) || pick < 1) {
+
+        returnToDoctorDayAvailability(
+            ss,
+            senderPhone,
+            doctorId,
+            dayName,
+            "❌ Invalid selection."
+        );
+
+        return true;
+    }
+
     const result =
         removeDoctorAvailabilitySession(
             doctorId,
@@ -11259,6 +11501,8 @@ if (
         (result.success ? "✅ " : "❌ ") +
         result.message
     );
+
+    return true;
 }
 
 if (
@@ -11320,6 +11564,8 @@ if (
         dayName +
         " (Example: 2:00 PM):"
     );
+
+    return true;
 }
 
 if (
@@ -11387,6 +11633,8 @@ if (
         "1️⃣ Confirm\n" +
         "2️⃣ Cancel"
     );
+
+    return true;
 }
 
 if (
@@ -12186,6 +12434,8 @@ if (
             formatDoctorLeavesMenu()
         );
     }
+
+    return true;
 }
 
 if (
@@ -12238,6 +12488,8 @@ if (
         "📝 Enter reason for leave (optional).\n\n" +
         "Reply with text or send - to skip."
     );
+
+    return true;
 }
 
 if (
@@ -12293,6 +12545,8 @@ if (
         "\n1️⃣ Confirm\n" +
         "2️⃣ Cancel"
     );
+
+    return true;
 }
 
 if (
@@ -12357,6 +12611,8 @@ if (
             "2️⃣ Cancel"
         );
     }
+
+    return true;
 }
 
 if (
@@ -12415,6 +12671,8 @@ if (
         (result.success ? "✅ " : "❌ ") +
         result.message
     );
+
+    return true;
 }
 
 if (
@@ -12466,6 +12724,8 @@ if (
         senderPhone,
         "📅 Enter range end date (YYYY-MM-DD):"
     );
+
+    return true;
 }
 
 if (
@@ -12535,6 +12795,8 @@ if (
         "📝 Enter reason for leave range (optional).\n\n" +
         "Reply with text or send - to skip."
     );
+
+    return true;
 }
 
 if (
@@ -12595,6 +12857,8 @@ if (
         "\n1️⃣ Confirm\n" +
         "2️⃣ Cancel"
     );
+
+    return true;
 }
 
 if (
@@ -13217,6 +13481,8 @@ if (
             ".\n\nPlease choose a date:"
         );
     }
+
+    return true;
 }
 
 // ======================================================
@@ -14998,6 +15264,18 @@ function sendWhatsAppTemplate(to) {
         properties.getProperty(
             "WHATSAPP_PHONE_NUMBER_ID"
         );
+
+    if (!accessToken) {
+        throw new Error(
+            "WHATSAPP_ACCESS_TOKEN is missing."
+        );
+    }
+
+    if (!phoneNumberId) {
+        throw new Error(
+            "WHATSAPP_PHONE_NUMBER_ID is missing."
+        );
+    }
 
     const url =
         "https://graph.facebook.com/v26.0/" +

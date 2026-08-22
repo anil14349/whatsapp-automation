@@ -25,13 +25,13 @@ Only bind the two files listed above — do not add other `.gs` files with dupli
 |----------|---------|
 | `WHATSAPP_ACCESS_TOKEN` | Meta Graph API token for sending messages |
 | `WHATSAPP_PHONE_NUMBER_ID` | WhatsApp Business phone number ID |
+| `WHATSAPP_VERIFY_TOKEN` | Webhook GET verification — **must be set**; there is no hardcoded fallback. If unset, `doGet` rejects the Meta verification handshake (fails closed). |
+| `WHATSAPP_WEBHOOK_POST_TOKEN` | POST webhook lock via `?token=...` — **must be set**; if unset, `doPost` rejects all inbound requests (fails closed). |
 
 ### Optional
 
 | Property | Purpose |
 |----------|---------|
-| `WHATSAPP_VERIFY_TOKEN` | Webhook GET verification (defaults to `ABC_CLINIC_VERIFY_2026` if unset) |
-| `WHATSAPP_WEBHOOK_POST_TOKEN` | Extra POST lock via `?token=...` on webhook URL — **skip if unset** |
 | `DEBUG_MODE` | Enables debug logging and test/admin functions |
 | `TEST_SKIP_WHATSAPP_SEND` | With `DEBUG_MODE`, skips real WhatsApp sends during tests |
 
@@ -112,6 +112,17 @@ When a doctor cancels or reschedules, the **patient is notified** via WhatsApp a
 - Cancel/reschedule is blocked for appointments already marked Completed or No-Show
 - Optional auto-close: set `AUTO_COMPLETE_PAST_APPOINTMENTS` to `TRUE` in **`Settings`**, then run `installAutoCompletePastAppointmentsTrigger()` — confirmed appointments auto-mark **Completed** after `AUTO_COMPLETE_HOURS_AFTER` (default 4 hours)
 
+### Reliability & security hardening (latest)
+
+- Fixed a state-machine fallthrough bug where several doctor-portal states (availability, leave management) and the patient `BOOK_DOCTOR` step didn't `return true`, causing wasted work and occasional duplicate/confusing replies
+- `updateAppointmentStatus` now fails closed if called without an `authorizedDoctorId` or matching `patientPhone` — no more implicit unauthenticated status changes
+- `getAvailableSlots` fetches each day's Calendar events once instead of once per candidate slot (was a real CalendarApp quota risk), and no longer throws uncaught on Calendar/duration lookup failures
+- Webhook verification (`doGet` GET handshake, `doPost` POST token check) now **fails closed** — see the mandatory `WHATSAPP_VERIFY_TOKEN` / `WHATSAPP_WEBHOOK_POST_TOKEN` properties above; the old hardcoded fallback verify token has been removed
+- `registerPatientForBooking` no longer skips the patient-registry lock, closing a duplicate-row race on retried/duplicate WhatsApp webhook deliveries
+- Doctor availability/leave mutation functions (`addDoctorAvailabilitySession`, `removeDoctorAvailabilitySession`, `clearDoctorDayAvailability`, `addDoctorLeave`, `deactivateDoctorLeave`) now use `LockService`, matching the locking already used for booking/cancel
+- `rescheduleAppointment`'s lock now covers the full lookup/authorization/validation path, not just the final write
+- `Settings` sheet reads are cached per execution instead of re-reading the whole sheet on every `getSetting()` call
+
 ### After-hours / clinic closed reply
 
 - Auto-reply when patients message **outside clinic hours** (disabled by default)
@@ -185,12 +196,12 @@ In Apps Script: **Project Settings** (gear) → **Script properties** → add:
 |----------|-----------|-------|
 | `WHATSAPP_ACCESS_TOKEN` | **Yes** | Meta Graph API token |
 | `WHATSAPP_PHONE_NUMBER_ID` | **Yes** | WhatsApp Business phone number ID |
-| `WHATSAPP_VERIFY_TOKEN` | Recommended | Any secret string you choose (must match Meta webhook setup) |
-| `WHATSAPP_WEBHOOK_POST_TOKEN` | Optional | Extra POST lock — if set, append `?token=YOUR_VALUE` to the webhook URL |
+| `WHATSAPP_VERIFY_TOKEN` | **Yes** | Any secret string you choose (must match Meta webhook setup) |
+| `WHATSAPP_WEBHOOK_POST_TOKEN` | **Yes** | Append `?token=YOUR_VALUE` to the webhook URL you give Meta |
 | `DEBUG_MODE` | Optional | `true` — enables admin/test functions (disable in production if not needed) |
 | `TEST_SKIP_WHATSAPP_SEND` | Optional | `true` — with `DEBUG_MODE`, skips real sends during `runAllTests()` |
 
-If `WHATSAPP_VERIFY_TOKEN` is omitted, the default verify token is `ABC_CLINIC_VERIFY_2026`.
+`WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_WEBHOOK_POST_TOKEN` are mandatory — there is no hardcoded fallback token. If either is left unset, the webhook fails closed (rejects all requests) rather than silently accepting unauthenticated traffic.
 
 ---
 
@@ -219,11 +230,13 @@ If authorization fails, ensure you are signed in with the same Google account th
 
 **Important:** After any code change in production, use **Deploy → Manage deployments → Edit (pencil) → Version: New version → Deploy**. Editing code alone does not update an existing deployment.
 
-If you set `WHATSAPP_WEBHOOK_POST_TOKEN`, your callback URL becomes:
+Since `WHATSAPP_WEBHOOK_POST_TOKEN` is required, your callback URL must include it:
 
 ```
 https://script.google.com/macros/s/...../exec?token=YOUR_POST_TOKEN
 ```
+
+Without the matching `?token=...`, every inbound webhook POST is rejected.
 
 ---
 
@@ -231,8 +244,8 @@ https://script.google.com/macros/s/...../exec?token=YOUR_POST_TOKEN
 
 In [Meta for Developers](https://developers.facebook.com/) → your app → **WhatsApp → Configuration**:
 
-1. **Callback URL** — paste the Web app URL from Step 5 (include `?token=...` if using POST token).
-2. **Verify token** — must match `WHATSAPP_VERIFY_TOKEN` in Script Properties (or `ABC_CLINIC_VERIFY_2026` if unset).
+1. **Callback URL** — paste the Web app URL from Step 5, including the `?token=YOUR_POST_TOKEN` query string.
+2. **Verify token** — must exactly match `WHATSAPP_VERIFY_TOKEN` in Script Properties. There is no fallback token — verification fails if the property is unset or mismatched.
 3. Click **Verify and save**.
 4. Under **Webhook fields**, subscribe to **`messages`** (and any other fields you need).
 
@@ -357,6 +370,7 @@ Use this after you have done the full steps above:
 
 - [ ] `ABC_Clinic_WhatsApp_Complete.gs` bound (only production + optional tests file)
 - [ ] `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` set
+- [ ] `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_WEBHOOK_POST_TOKEN` set (both required — webhook fails closed without them)
 - [ ] Web app deployed (**Execute as: Me**, **Anyone** can access)
 - [ ] Meta webhook verified; **`messages`** subscribed
 - [ ] `Doctors` and `Availability` populated
