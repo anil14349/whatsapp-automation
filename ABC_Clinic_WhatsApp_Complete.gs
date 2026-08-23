@@ -10192,7 +10192,7 @@ function localizeWhatsAppReply(language, message) {
             "Sorry, I didn't understand that.": "క్షమించండి, నాకు అర్థం కాలేదు.",
             "Language changed successfully.": "భాష విజయవంతంగా మార్చబడింది.",
             "Please enter your full name to complete the booking.": "బుకింగ్ పూర్తి చేయడానికి దయచేసి మీ పూర్తి పేరు నమోదు చేయండి.",
-            "Please confirm your appointment:": "దయచేసి మీ అపాయింట్‌మెంట్‌ను నిర్ధారించండి:",
+            "Confirm appointment:": "దయచేసి మీ అపాయింట్‌మెంట్‌ను నిర్ధారించండి:",
             "Please enter a valid full name (at least 2 characters).": "దయచేసి సరైన పూర్తి పేరు నమోదు చేయండి (కనీసం 2 అక్షరాలు).",
             "Unable to save your name.": "మీ పేరును సేవ్ చేయలేకపోయాం.",
             "Invalid time selection.": "చెల్లని సమయ ఎంపిక.",
@@ -10267,7 +10267,7 @@ function localizeWhatsAppReply(language, message) {
             "Sorry, I didn't understand that.": "क्षमा करें, मैं समझ नहीं पाया।",
             "Language changed successfully.": "भाषा सफलतापूर्वक बदल दी गई है।",
             "Please enter your full name to complete the booking.": "बुकिंग पूरी करने के लिए कृपया अपना पूरा नाम दर्ज करें।",
-            "Please confirm your appointment:": "कृपया अपने अपॉइंटमेंट की पुष्टि करें:",
+            "Confirm appointment:": "कृपया अपने अपॉइंटमेंट की पुष्टि करें:",
             "Please enter a valid full name (at least 2 characters).": "कृपया एक मान्य पूरा नाम दर्ज करें (कम से कम 2 अक्षर)।",
             "Unable to save your name.": "आपका नाम सहेज नहीं सके।",
             "Invalid time selection.": "अमान्य समय चयन।",
@@ -10347,7 +10347,7 @@ function localizeWhatsAppReply(language, message) {
             "Sorry, I didn't understand that.": "ಕ್ಷಮಿಸಿ, ನನಗೆ ಅರ್ಥವಾಗಲಿಲ್ಲ.",
             "Language changed successfully.": "ಭಾಷೆ ಯಶಸ್ವಿಯಾಗಿ ಬದಲಾಯಿಸಲಾಗಿದೆ.",
             "Please enter your full name to complete the booking.": "ಬುಕಿಂಗ್ ಪೂರ್ಣಗೊಳಿಸಲು ದಯವಿಟ್ಟು ನಿಮ್ಮ ಪೂರ್ಣ ಹೆಸರನ್ನು ನಮೂದಿಸಿ.",
-            "Please confirm your appointment:": "ದಯವಿಟ್ಟು ನಿಮ್ಮ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ದೃಢೀಕರಿಸಿ:",
+            "Confirm appointment:": "ದಯವಿಟ್ಟು ನಿಮ್ಮ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ದೃಢೀಕರಿಸಿ:",
             "Please enter a valid full name (at least 2 characters).": "ದಯವಿಟ್ಟು ಮಾನ್ಯ ಪೂರ್ಣ ಹೆಸರನ್ನು ನಮೂದಿಸಿ (ಕನಿಷ್ಠ 2 ಅಕ್ಷರಗಳು).",
             "Unable to save your name.": "ನಿಮ್ಮ ಹೆಸರನ್ನು ಉಳಿಸಲು ಸಾಧ್ಯವಾಗಲಿಲ್ಲ.",
             "Invalid time selection.": "ಅಮಾನ್ಯ ಸಮಯ ಆಯ್ಕೆ.",
@@ -10423,7 +10423,7 @@ function localizeWhatsAppReply(language, message) {
             "Sorry, I didn't understand that.": "மன்னிக்கவும், எனக்கு அது புரியவில்லை.",
             "Language changed successfully.": "மொழி வெற்றிகரமாக மாற்றப்பட்டது.",
             "Please enter your full name to complete the booking.": "பதிவை முடிக்க தயவுசெய்து உங்கள் முழுப் பெயரை உள்ளிடவும்.",
-            "Please confirm your appointment:": "தயவுசெய்து உங்கள் அப்பாயின்ட்மென்டை உறுதிப்படுத்தவும்:",
+            "Confirm appointment:": "தயவுசெய்து உங்கள் அப்பாயின்ட்மென்டை உறுதிப்படுத்தவும்:",
             "Please enter a valid full name (at least 2 characters).": "தயவுசெய்து சரியான முழுப் பெயரை உள்ளிடவும் (குறைந்தது 2 எழுத்துகள்).",
             "Unable to save your name.": "உங்கள் பெயரைச் சேமிக்க முடியவில்லை.",
             "Invalid time selection.": "தவறான நேரத் தேர்வு.",
@@ -10499,7 +10499,7 @@ function localizeWhatsAppReply(language, message) {
             "Sorry, I didn't understand that.": "ക്ഷമിക്കണം, എനിക്ക് അത് മനസ്സിലായില്ല.",
             "Language changed successfully.": "ഭാഷ വിജയകരമായി മാറ്റി.",
             "Please enter your full name to complete the booking.": "ബുക്കിംഗ് പൂർത്തിയാക്കാൻ ദയവായി നിങ്ങളുടെ പൂർണ്ണ നാമം നൽകുക.",
-            "Please confirm your appointment:": "ദയവായി നിങ്ങളുടെ അപ്പോയിന്റ്മെന്റ് സ്ഥിരീകരിക്കുക:",
+            "Confirm appointment:": "ദയവായി നിങ്ങളുടെ അപ്പോയിന്റ്മെന്റ് സ്ഥിരീകരിക്കുക:",
             "Please enter a valid full name (at least 2 characters).": "ദയവായി സാധുവായ പൂർണ്ണ നാമം നൽകുക (കുറഞ്ഞത് 2 അക്ഷരങ്ങൾ).",
             "Unable to save your name.": "നിങ്ങളുടെ പേര് സേവ് ചെയ്യാൻ കഴിഞ്ഞില്ല.",
             "Invalid time selection.": "അസാധുവായ സമയ തിരഞ്ഞെടുപ്പ്.",
@@ -11798,7 +11798,7 @@ function buildBookingConfirmationMessage(
 ) {
 
     return (
-        "Please confirm your appointment:\n\n" +
+        "Confirm appointment?:\n\n" +
         "👤 Patient: " + patientName + "\n" +
         "👨‍⚕️ Doctor: " +
         (
@@ -11921,9 +11921,8 @@ function whatsAppShowSlotsForDate(
     sendSlotSelectionMenuReply(
         ss,
         senderPhone,
-        "📅 Date selected: " +
         selectedDate +
-        "\n\nAvailable slots:\nPlease choose a time.",
+        "\n\nChoose an available time:",
         slots,
         0
     );
@@ -14454,7 +14453,6 @@ if (
         sendDateMenuReply(
             ss,
             senderPhone,
-            "👨‍⚕️ Doctor selected: " +
             doctor.doctorName +
             ".\n\nPlease choose a date:"
         );
@@ -15985,7 +15983,7 @@ function sendPatientMainMenuReply(
 
     const body =
         String(prefix || "👋 Welcome to ABC Clinic!") +
-        "\n\nPlease choose an option:";
+        "\n\nHow can we help you today?";
 
     sendWhatsAppMenuReply(
         ss,
@@ -16068,7 +16066,7 @@ function sendDoctorSelectionReply(ss, phone) {
     sendWhatsAppMenuReply(
         ss,
         phone,
-        "📅 Book Appointment\n\nSelect a doctor:",
+        "📅 Book Appointment\n\nChoose your doctor:",
         menuSpec
     );
 }
