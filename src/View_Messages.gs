@@ -100,10 +100,7 @@ function buildCancelConfirmMessage(chosen) {
         "👨‍⚕️ Doctor: " + doctorName + "\n" +
         "📅 Date: " + chosen.date + "\n" +
         "🕐 Time: " + chosen.time + "\n" +
-        "🆔 " + chosen.appointmentId +
-        "\n\n" +
-        "1️⃣ Yes, cancel it\n" +
-        "2️⃣ No, go back"
+        "🆔 " + chosen.appointmentId
     );
 }
 
@@ -132,10 +129,7 @@ function buildRescheduleSlotConfirmMessage(
         "🕐 New Time: " +
         selectedTime +
         "\n\n" +
-        "Confirm reschedule?\n\n" +
-        "1️⃣ Confirm\n" +
-        "2️⃣ Choose another time\n" +
-        "3️⃣ Cancel"
+        "Confirm reschedule?"
     );
 }
 
@@ -204,10 +198,7 @@ function buildDoctorCancelConfirmMessage(chosen) {
         chosen.time +
         "\n" +
         "🆔 " +
-        chosen.appointmentId +
-        "\n\n" +
-        "1️⃣ Yes, cancel it\n" +
-        "2️⃣ No, go back"
+        chosen.appointmentId
     );
 }
 
@@ -238,10 +229,7 @@ function buildDoctorRescheduleSlotConfirmMessage(
         "🕐 New Time: " +
         selectedTime +
         "\n\n" +
-        "Confirm reschedule?\n\n" +
-        "1️⃣ Confirm\n" +
-        "2️⃣ Choose another time\n" +
-        "3️⃣ Cancel"
+        "Confirm reschedule?"
     );
 }
 
@@ -261,12 +249,15 @@ function buildDoctorStatusActionMessage(chosen) {
         chosen.time +
         "\n" +
         "🆔 " +
-        chosen.appointmentId +
-        "\n\n" +
-        "1️⃣ Completed\n" +
-        "2️⃣ No-Show\n" +
-        "0️⃣ Doctor Portal"
+        chosen.appointmentId
     );
+}
+
+
+
+function buildLanguageSelectionIntro() {
+
+    return "🌐 Please select your language:";
 }
 
 
@@ -274,13 +265,9 @@ function buildDoctorStatusActionMessage(chosen) {
 function buildLanguageSelectionMessage() {
 
     return (
-        "🌐 Please select your language:\n\n" +
-        "1️⃣ English\n" +
-        "2️⃣ తెలుగు\n" +
-        "3️⃣ हिन्दी\n" +
-        "4️⃣ ಕನ್ನಡ\n" +
-        "5️⃣ தமிழ்\n" +
-        "6️⃣ മലയാളം"
+        buildLanguageSelectionIntro() +
+        "\n\n" +
+        getLanguageMenuSpec().fallbackText
     );
 }
 
@@ -1051,8 +1038,6 @@ function buildBookingConfirmationMessage(
         "\n" +
         "📅 Date: " + session.date + "\n" +
         "🕐 Time: " + session.time + "\n\n" +
-        "1️⃣ Confirm\n" +
-        "2️⃣ Choose another time\n" +
-        "3️⃣ Cancel"
+        "Confirm appointment?"
     );
 }

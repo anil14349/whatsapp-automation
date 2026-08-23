@@ -129,7 +129,17 @@ function getWhatsAppSession(phone) {
                     .toUpperCase(),
 
             patientName:
-                String(data[i][9] || "").trim()
+                String(data[i][9] || "").trim(),
+
+            slotPage:
+                data[i][10] === "" ||
+                data[i][10] === undefined ||
+                data[i][10] === null
+                    ? 0
+                    : parseInt(
+                        data[i][10],
+                        10
+                    ) || 0
         };
     }
 
@@ -159,6 +169,17 @@ function ensureWhatsAppSessionPatientNameColumn(sheet) {
 
 
 
+function ensureWhatsAppSessionSlotPageColumn(sheet) {
+
+    if (!sheet.getRange(1, 11).getValue()) {
+        sheet
+            .getRange(1, 11)
+            .setValue("Slot Page");
+    }
+}
+
+
+
 function saveWhatsAppSession(
     phone,
     updates
@@ -180,6 +201,7 @@ function saveWhatsAppSession(
 
     ensureWhatsAppSessionLanguageColumn(sheet);
     ensureWhatsAppSessionPatientNameColumn(sheet);
+    ensureWhatsAppSessionSlotPageColumn(sheet);
 
     const existing =
         getWhatsAppSession(phone);
@@ -194,11 +216,11 @@ function saveWhatsAppSession(
 
         const current =
             sheet
-                .getRange(row, 1, 1, 10)
+                .getRange(row, 1, 1, 11)
                 .getValues()[0];
 
         sheet
-            .getRange(row, 1, 1, 10)
+            .getRange(row, 1, 1, 11)
             .setValues([[
                 phone,
 
@@ -234,7 +256,17 @@ function saveWhatsAppSession(
 
                 updates.patientName !== undefined
                     ? updates.patientName
-                    : current[9]
+                    : current[9],
+
+                updates.slotPage !== undefined
+                    ? updates.slotPage
+                    : (
+                        current[10] === "" ||
+                        current[10] === undefined ||
+                        current[10] === null
+                            ? 0
+                            : current[10]
+                    )
             ]]);
 
     } else {
@@ -249,7 +281,10 @@ function saveWhatsAppSession(
             updates.appointmentId || "",
             now,
             updates.language || "EN",
-            updates.patientName || ""
+            updates.patientName || "",
+            updates.slotPage !== undefined
+                ? updates.slotPage
+                : 0
         ]);
     }
 }

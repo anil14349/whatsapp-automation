@@ -24,12 +24,10 @@ function beginWhatsAppCancelFlow(
             state: "MAIN_MENU"
         });
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             phone,
-            buildMainMenuMessage(
-                "❌ You have no active appointments to cancel."
-            )
+            "❌ You have no active appointments to cancel."
         );
 
         return false;
@@ -40,14 +38,12 @@ function beginWhatsAppCancelFlow(
         state: "CANCEL_SELECT"
     });
 
-    sendWhatsAppReply(
+    sendPatientAppointmentListMenuReply(
         ss,
         phone,
-        buildAppointmentPickerPrompt(
-            "❌ Cancel Appointment",
-            "Select the appointment to cancel:",
-            appointments
-        )
+        "❌ Cancel Appointment",
+        "Select the appointment to cancel:",
+        appointments
     );
 
     return true;
@@ -73,12 +69,10 @@ function beginWhatsAppRescheduleFlow(
             state: "MAIN_MENU"
         });
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             phone,
-            buildMainMenuMessage(
-                "❌ You have no active appointments to reschedule."
-            )
+            "❌ You have no active appointments to reschedule."
         );
 
         return false;
@@ -89,14 +83,12 @@ function beginWhatsAppRescheduleFlow(
         state: "RESCHEDULE_SELECT"
     });
 
-    sendWhatsAppReply(
+    sendPatientAppointmentListMenuReply(
         ss,
         phone,
-        buildAppointmentPickerPrompt(
-            "🔄 Reschedule Appointment",
-            "Select the appointment to reschedule:",
-            appointments
-        )
+        "🔄 Reschedule Appointment",
+        "Select the appointment to reschedule:",
+        appointments
     );
 
     return true;
@@ -227,16 +219,12 @@ function handleDoctorWhatsAppAppointmentListSelection(
         selection > appointments.length
     ) {
 
-        sendWhatsAppReply(
+        sendDoctorAppointmentListMenuReply(
             ss,
             phone,
-            "❌ Invalid selection.\n\n" +
-            opts.selectLine +
-            "\n\n" +
-            formatDoctorPatientAppointmentsListForWhatsApp(
-                appointments
-            ) +
-            "0️⃣ Doctor Portal"
+            "❌ Invalid selection.",
+            opts.selectLine,
+            appointments
         );
 
         return;
@@ -281,14 +269,12 @@ function beginDoctorCancelFlow(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorAppointmentListMenuReply(
         ss,
         phone,
-        buildDoctorPatientAppointmentPickerPrompt(
-            "❌ Cancel Patient Appointment",
-            "Select the appointment to cancel:",
-            appointments
-        )
+        "❌ Cancel Patient Appointment",
+        "Select the appointment to cancel:",
+        appointments
     );
 
     return true;
@@ -328,14 +314,12 @@ function beginDoctorRescheduleFlow(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorAppointmentListMenuReply(
         ss,
         phone,
-        buildDoctorPatientAppointmentPickerPrompt(
-            "🔄 Reschedule Patient Appointment",
-            "Select the appointment to reschedule:",
-            appointments
-        )
+        "🔄 Reschedule Patient Appointment",
+        "Select the appointment to reschedule:",
+        appointments
     );
 
     return true;
@@ -376,14 +360,12 @@ function beginDoctorStatusFlow(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorAppointmentListMenuReply(
         ss,
         phone,
-        buildDoctorPatientAppointmentPickerPrompt(
-            "✅ Mark Visit Status",
-            "Select the appointment to update:",
-            appointments
-        )
+        "✅ Mark Visit Status",
+        "Select the appointment to update:",
+        appointments
     );
 
     return true;
@@ -552,16 +534,99 @@ function handleWhatsAppSlotSelection(
         return;
     }
 
-    const slotNumber =
-        parseInt(
-            normalizedMessage,
-            10
-        );
-
     const slots =
         getAvailableSlots(
             session.doctorId,
             isoDate
+        );
+
+    const currentPage =
+        resolveSlotSelectionPage(session);
+
+    if (normalizedMessage === "next") {
+
+        const pageInfo =
+            getSlotSelectionPageInfo(
+                slots.length,
+                currentPage
+            );
+
+        if (!pageInfo.hasNext) {
+
+            sendSlotSelectionMenuReply(
+                ss,
+                phone,
+                "❌ Invalid time selection.\n\n" +
+                "Please choose one of the available slots:",
+                slots,
+                currentPage
+            );
+
+            return;
+        }
+
+        const nextPage =
+            currentPage + 1;
+
+        saveWhatsAppSession(phone, {
+            slotPage: nextPage
+        });
+
+        sendSlotSelectionMenuReply(
+            ss,
+            phone,
+            "📅 Available slots:\nPlease choose a time.",
+            slots,
+            nextPage
+        );
+
+        return;
+    }
+
+    if (normalizedMessage === "prev") {
+
+        const pageInfo =
+            getSlotSelectionPageInfo(
+                slots.length,
+                currentPage
+            );
+
+        if (!pageInfo.hasPrev) {
+
+            sendSlotSelectionMenuReply(
+                ss,
+                phone,
+                "❌ Invalid time selection.\n\n" +
+                "Please choose one of the available slots:",
+                slots,
+                currentPage
+            );
+
+            return;
+        }
+
+        const previousPage =
+            currentPage - 1;
+
+        saveWhatsAppSession(phone, {
+            slotPage: previousPage
+        });
+
+        sendSlotSelectionMenuReply(
+            ss,
+            phone,
+            "📅 Available slots:\nPlease choose a time.",
+            slots,
+            previousPage
+        );
+
+        return;
+    }
+
+    const slotNumber =
+        parseInt(
+            normalizedMessage,
+            10
         );
 
     if (
@@ -570,14 +635,21 @@ function handleWhatsAppSlotSelection(
         slotNumber > slots.length
     ) {
 
-        sendWhatsAppReply(
+        sendSlotSelectionMenuReply(
             ss,
             phone,
-            buildInvalidSlotSelectionReply(slots)
+            "❌ Invalid time selection.\n\n" +
+            "Please choose one of the available slots:",
+            slots,
+            currentPage
         );
 
         return;
     }
+
+    saveWhatsAppSession(phone, {
+        slotPage: 0
+    });
 
     opts.onValidSlot(
         slots[slotNumber - 1],
@@ -608,12 +680,10 @@ function handleWhatsAppAppointmentListSelection(
             appointmentId: ""
         });
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             phone,
-            buildMainMenuMessage(
-                "👋 Back to main menu."
-            )
+            "👋 Back to main menu."
         );
 
         return;
@@ -631,22 +701,22 @@ function handleWhatsAppAppointmentListSelection(
     const selectLine =
         opts.selectLine;
 
+    const title =
+        opts.title ||
+        "Select an appointment";
+
     if (
         isNaN(selection) ||
         selection < 1 ||
         selection > appointments.length
     ) {
 
-        sendWhatsAppReply(
+        sendPatientAppointmentListMenuReply(
             ss,
             phone,
-            "❌ Invalid selection.\n\n" +
-            selectLine +
-            "\n\n" +
-            formatAppointmentsListForWhatsApp(
-                appointments
-            ) +
-            "0️⃣ Back to Main Menu"
+            "❌ Invalid selection.\n\n" + title,
+            selectLine,
+            appointments
         );
 
         return;
@@ -824,12 +894,10 @@ function showDoctorAvailabilityMenu(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorWeekdayMenuReply(
         ss,
         phone,
-        formatDoctorAvailabilityMenu(
-            doctorId
-        )
+        doctorId
     );
 }
 
@@ -850,13 +918,11 @@ function showDoctorDayAvailabilityMenu(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorDayAvailabilityMenuReply(
         ss,
         phone,
-        formatDoctorDayAvailabilityMenu(
-            doctorId,
-            dayName
-        )
+        doctorId,
+        dayName
     );
 }
 
@@ -878,18 +944,12 @@ function returnToDoctorDayAvailability(
         appointmentId: ""
     });
 
-    const menu =
-        formatDoctorDayAvailabilityMenu(
-            doctorId,
-            dayName
-        );
-
-    sendWhatsAppReply(
+    sendDoctorDayAvailabilityMenuReply(
         ss,
         phone,
+        doctorId,
+        dayName,
         prefix
-            ? String(prefix) + "\n\n" + menu
-            : menu
     );
 }
 
@@ -909,10 +969,9 @@ function showDoctorLeavesMenu(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorLeavesMenuReply(
         ss,
-        phone,
-        formatDoctorLeavesMenu()
+        phone
     );
 }
 
@@ -1072,10 +1131,10 @@ function handleWhatsAppDateMenuInput(
         return;
     }
 
-    sendWhatsAppReply(
+    sendDateMenuReply(
         ss,
         phone,
-        buildInvalidDateMenuReply()
+        "❌ Invalid option.\n\nPlease choose a date:"
     );
 }
 
@@ -1347,14 +1406,12 @@ function goBackInWhatsAppFlow(ss, phone, session) {
                 state: "CANCEL_SELECT",
                 appointmentId: ""
             });
-            sendWhatsAppReply(
+            sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                buildAppointmentPickerPrompt(
-                    "❌ Cancel Appointment",
-                    "Select the appointment to cancel:",
-                    getConfirmedAppointmentsForPhone(phone)
-                )
+                "❌ Cancel Appointment",
+                "Select the appointment to cancel:",
+                getConfirmedAppointmentsForPhone(phone)
             );
             return;
 
@@ -1366,14 +1423,12 @@ function goBackInWhatsAppFlow(ss, phone, session) {
                 date: "",
                 time: ""
             });
-            sendWhatsAppReply(
+            sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                buildAppointmentPickerPrompt(
-                    "🔄 Reschedule Appointment",
-                    "Select the appointment to reschedule:",
-                    getConfirmedAppointmentsForPhone(phone)
-                )
+                "🔄 Reschedule Appointment",
+                "Select the appointment to reschedule:",
+                getConfirmedAppointmentsForPhone(phone)
             );
             return;
 
@@ -1546,15 +1601,13 @@ function goBackInDoctorWhatsAppFlow(
                 date: "",
                 time: ""
             });
-            sendWhatsAppReply(
+            sendDoctorAppointmentListMenuReply(
                 ss,
                 phone,
-                buildDoctorPatientAppointmentPickerPrompt(
-                    "🔄 Reschedule Patient Appointment",
-                    "Select the appointment to reschedule:",
-                    getDoctorConfirmedAppointments(
-                        doctorId
-                    )
+                "🔄 Reschedule Patient Appointment",
+                "Select the appointment to reschedule:",
+                getDoctorConfirmedAppointments(
+                    doctorId
                 )
             );
             return;
@@ -1566,12 +1619,10 @@ function goBackInDoctorWhatsAppFlow(
                 date: "",
                 time: ""
             });
-            sendWhatsAppReply(
+            sendDateMenuReply(
                 ss,
                 phone,
-                buildDateMenuPrompt(
-                    "Please choose a new date:"
-                )
+                "Please choose a new date:"
             );
             return;
 
@@ -1815,17 +1866,19 @@ function whatsAppShowSlotsForDate(
         senderPhone,
         {
             state: nextState,
-            date: selectedDate
+            date: selectedDate,
+            slotPage: 0
         }
     );
 
-    sendWhatsAppMenuReply(
+    sendSlotSelectionMenuReply(
         ss,
         senderPhone,
         "📅 Date selected: " +
         selectedDate +
         "\n\nAvailable slots:\nPlease choose a time.",
-        getSlotSelectionMenuSpec(slots)
+        slots,
+        0
     );
 
     return true;

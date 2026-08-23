@@ -212,13 +212,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendDoctorWeekdayMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid day.\n\n" +
-            formatDoctorAvailabilityMenu(
-                doctorId
-            )
+            doctorId,
+            "❌ Invalid day."
         );
     }
 
@@ -302,14 +300,11 @@ if (
                 }
             );
 
-            sendWhatsAppReply(
+            sendDoctorSessionRemoveMenuReply(
                 ss,
                 senderPhone,
-                "Select session to remove:\n\n" +
-                formatDoctorDayAvailabilityMenu(
-                    doctorId,
-                    dayName
-                )
+                doctorId,
+                dayName
             );
         }
 
@@ -521,14 +516,13 @@ if (
         }
     );
 
-    sendWhatsAppReply(
+    sendWhatsAppMenuReply(
         ss,
         senderPhone,
         "Please confirm new session:\n\n" +
         "📅 " + dayName + "\n" +
-        "🕐 " + startTime + " - " + endTime + "\n\n" +
-        "1️⃣ Confirm\n" +
-        "2️⃣ Cancel"
+        "🕐 " + startTime + " - " + endTime,
+        getConfirmCancelSpec()
     );
 
     return true;
@@ -596,12 +590,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Cancel"
+            "❌ Invalid option.",
+            getConfirmCancelSpec()
         );
     }
     return true;
@@ -741,12 +734,11 @@ if (
                     ? result.message
                     : "Unable to cancel the appointment.";
 
-            sendWhatsAppReply(
+            sendWhatsAppMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage + "\n\n" +
-                "1️⃣ Yes, cancel it\n" +
-                "2️⃣ No, go back"
+                "❌ " + errorMessage,
+                getYesNoConfirmSpec()
             );
         }
 
@@ -761,12 +753,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Yes, cancel it\n" +
-            "2️⃣ No, go back"
+            "❌ Invalid option.",
+            getYesNoConfirmSpec()
         );
     }
 
@@ -878,9 +869,7 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Completed\n" +
-            "2️⃣ No-Show",
+            "❌ Invalid option.",
             getDoctorStatusActionSpec()
         );
 
@@ -919,9 +908,7 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ " + errorMessage + "\n\n" +
-            "1️⃣ Completed\n" +
-            "2️⃣ No-Show",
+            "❌ " + errorMessage,
             getDoctorStatusActionSpec()
         );
     }
@@ -1135,14 +1122,11 @@ if (
                     ? result.message
                     : "Unable to reschedule the appointment.";
 
-            sendWhatsAppReply(
+            sendWhatsAppMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage + "\n\n" +
-                "Please reply with:\n\n" +
-                "1️⃣ Confirm\n" +
-                "2️⃣ Choose another time\n" +
-                "3️⃣ Cancel"
+                "❌ " + errorMessage,
+                getRescheduleConfirmSpec()
             );
         }
 
@@ -1183,13 +1167,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Choose another time\n" +
-            "3️⃣ Cancel"
+            "❌ Invalid option.\n\nPlease choose:",
+            getRescheduleConfirmSpec()
         );
     }
 
@@ -1292,13 +1274,10 @@ if (
                 }
             );
 
-            sendWhatsAppReply(
+            sendDoctorLeaveCancelListMenuReply(
                 ss,
                 senderPhone,
-                "Select leave to cancel:\n\n" +
-                formatDoctorUpcomingLeaves(
-                    doctorId
-                )
+                doctorId
             );
         }
 
@@ -1324,11 +1303,10 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendDoctorLeavesMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            formatDoctorLeavesMenu()
+            "❌ Invalid option."
         );
     }
 
@@ -1429,7 +1407,7 @@ if (
         }
     );
 
-    sendWhatsAppReply(
+    sendWhatsAppMenuReply(
         ss,
         senderPhone,
         "Confirm leave:\n\n" +
@@ -1438,9 +1416,8 @@ if (
             reason
                 ? "📝 " + reason + "\n"
                 : ""
-        ) +
-        "\n1️⃣ Confirm\n" +
-        "2️⃣ Cancel"
+        ),
+        getConfirmCancelSpec()
     );
 
     return true;
@@ -1500,12 +1477,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Cancel"
+            "❌ Invalid option.",
+            getConfirmCancelSpec()
         );
     }
 
@@ -1543,13 +1519,11 @@ if (
         pick > leaves.length
     ) {
 
-        sendWhatsAppReply(
+        sendDoctorLeaveCancelListMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid selection.\n\n" +
-            formatDoctorUpcomingLeaves(
-                doctorId
-            )
+            doctorId,
+            "❌ Invalid selection."
         );
 
         return true;
@@ -1740,7 +1714,7 @@ if (
         }
     );
 
-    sendWhatsAppReply(
+    sendWhatsAppMenuReply(
         ss,
         senderPhone,
         "Confirm leave range:\n\n" +
@@ -1750,9 +1724,8 @@ if (
             reason
                 ? "📝 " + reason + "\n"
                 : ""
-        ) +
-        "\n1️⃣ Confirm\n" +
-        "2️⃣ Cancel"
+        ),
+        getConfirmCancelSpec()
     );
 
     return true;
@@ -1817,12 +1790,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Cancel"
+            "❌ Invalid option.",
+            getConfirmCancelSpec()
         );
     }
     return true;
@@ -1907,14 +1879,10 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendDateMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "Please reply with:\n\n" +
-            "1️⃣ Today\n" +
-            "2️⃣ Tomorrow\n" +
-            "3️⃣ Enter another date"
+            "❌ Invalid option.\n\nPlease choose a date:"
         );
     }
     return true;

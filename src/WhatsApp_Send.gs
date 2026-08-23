@@ -343,8 +343,238 @@ function sendLanguageMenuReply(ss, phone) {
     sendWhatsAppMenuReply(
         ss,
         phone,
-        buildLanguageSelectionMessage(),
+        buildLanguageSelectionIntro(),
         getLanguageMenuSpec()
+    );
+}
+
+
+
+function sendPatientAppointmentListMenuReply(
+    ss,
+    phone,
+    title,
+    selectLine,
+    appointments
+) {
+
+    const menuSpec =
+        getAppointmentListMenuSpec(
+            appointments,
+            "patient"
+        );
+
+    if (menuSpec.fallbackText) {
+        menuSpec.fallbackText +=
+            "\n0️⃣ Back to Main Menu";
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        title +
+        "\n\n" +
+        selectLine,
+        menuSpec
+    );
+}
+
+
+
+function sendDoctorAppointmentListMenuReply(
+    ss,
+    phone,
+    title,
+    selectLine,
+    appointments
+) {
+
+    const menuSpec =
+        getAppointmentListMenuSpec(
+            appointments,
+            "doctor"
+        );
+
+    if (menuSpec.fallbackText) {
+        menuSpec.fallbackText +=
+            "\n0️⃣ Doctor Portal";
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        title +
+        "\n\n" +
+        selectLine,
+        menuSpec
+    );
+}
+
+
+
+function sendDoctorWeekdayMenuReply(
+    ss,
+    phone,
+    doctorId,
+    prefix
+) {
+
+    const body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        "📅 Manage Availability\n\n" +
+        "Select a day to manage:";
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        getDoctorWeekdayMenuSpec(doctorId)
+    );
+}
+
+
+
+function sendDoctorDayAvailabilityMenuReply(
+    ss,
+    phone,
+    doctorId,
+    dayName,
+    prefix
+) {
+
+    const body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        buildDoctorDayAvailabilityBody(
+            doctorId,
+            dayName
+        ) +
+        "\n\nChoose an action:";
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        getDoctorDayAvailabilityActionSpec()
+    );
+}
+
+
+
+function sendDoctorSessionRemoveMenuReply(
+    ss,
+    phone,
+    doctorId,
+    dayName
+) {
+
+    const sessions =
+        getDoctorDayAvailabilitySessions(
+            doctorId,
+            dayName
+        );
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        "Select session to remove:\n\n" +
+        buildDoctorDayAvailabilityBody(
+            doctorId,
+            dayName
+        ),
+        getDoctorSessionRemoveListSpec(
+            sessions
+        )
+    );
+}
+
+
+
+function sendDoctorLeavesMenuReply(
+    ss,
+    phone,
+    prefix
+) {
+
+    const body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        "🏖 Manage Leaves\n\n" +
+        "Choose an option:";
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        getDoctorLeavesMenuSpec()
+    );
+}
+
+
+
+function sendDoctorLeaveCancelListMenuReply(
+    ss,
+    phone,
+    doctorId,
+    prefix
+) {
+
+    const leaves =
+        getDoctorUpcomingLeaves(doctorId);
+
+    const body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        "Select leave to cancel:";
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        getDoctorLeaveListMenuSpec(leaves)
+    );
+}
+
+
+
+function sendSlotSelectionMenuReply(
+    ss,
+    phone,
+    introText,
+    slots,
+    page
+) {
+
+    const menuSpec =
+        getSlotSelectionMenuSpec(
+            slots,
+            page || 0
+        );
+
+    let body =
+        String(introText || "");
+
+    if (
+        menuSpec &&
+        menuSpec.totalPages > 1
+    ) {
+        body +=
+            "\n\nPage " +
+            (menuSpec.page + 1) +
+            " of " +
+            menuSpec.totalPages;
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        menuSpec
     );
 }
 

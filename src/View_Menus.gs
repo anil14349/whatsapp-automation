@@ -296,30 +296,79 @@ function getDoctorSelectionMenuSpec() {
 
 
 
-function getSlotSelectionMenuSpec(slots) {
+function getSlotSelectionMenuSpec(
+    slots,
+    page
+) {
 
     if (!slots || slots.length === 0) {
         return null;
     }
 
+    const pageInfo =
+        getSlotSelectionPageInfo(
+            slots.length,
+            page || 0
+        );
+
     let fallbackText = "";
 
-    const rows = slots.map(
-        function (slot, index) {
+    if (pageInfo.totalPages > 1) {
+        fallbackText +=
+            "Page " +
+            (pageInfo.page + 1) +
+            " of " +
+            pageInfo.totalPages +
+            "\n\n";
+    }
 
-            fallbackText +=
-                (index + 1) +
-                "️⃣ " +
-                slot +
-                "\n";
+    const rows = [];
 
-            return {
-                id: String(index + 1),
-                title: slot,
-                description: ""
-            };
-        }
-    );
+    if (pageInfo.hasPrev) {
+
+        rows.push({
+            id: "prev",
+            title: "Earlier times",
+            description: "Previous page"
+        });
+
+        fallbackText +=
+            "◀ Earlier times\n";
+    }
+
+    for (
+        let i = pageInfo.start;
+        i < pageInfo.end;
+        i++
+    ) {
+
+        const slot =
+            slots[i];
+
+        fallbackText +=
+            (i + 1) +
+            "️⃣ " +
+            slot +
+            "\n";
+
+        rows.push({
+            id: String(i + 1),
+            title: slot,
+            description: ""
+        });
+    }
+
+    if (pageInfo.hasNext) {
+
+        rows.push({
+            id: "next",
+            title: "More times",
+            description: "Next page"
+        });
+
+        fallbackText +=
+            "▶ More times\n";
+    }
 
     const interactive =
         buildInteractiveListSpec(
@@ -327,10 +376,184 @@ function getSlotSelectionMenuSpec(slots) {
             "Choose time"
         );
 
+    if (
+        !interactive &&
+        slots.length > 10
+    ) {
+        fallbackText =
+            formatAvailableSlotsForWhatsApp(
+                slots
+            );
+    }
+
     return {
-        fallbackText: fallbackText,
-        interactive: interactive
+        fallbackText: fallbackText.trim(),
+        interactive: interactive,
+        page: pageInfo.page,
+        totalPages: pageInfo.totalPages
     };
+}
+
+
+
+function computeSlotSelectionPageBounds(
+    total,
+    page
+) {
+
+    if (total <= 9) {
+
+        return {
+            start: 0,
+            end: total,
+            hasPrev: false,
+            hasNext: false,
+            page: 0
+        };
+    }
+
+    if (page === 0) {
+
+        return {
+            start: 0,
+            end: 9,
+            hasPrev: false,
+            hasNext: total > 9,
+            page: 0
+        };
+    }
+
+    const start =
+        9 + (page - 1) * 8;
+
+    const remaining =
+        total - start;
+
+    const hasNext =
+        remaining > 9;
+
+    const slotCount =
+        hasNext
+            ? 8
+            : Math.min(remaining, 9);
+
+    return {
+        start: start,
+        end: start + slotCount,
+        hasPrev: true,
+        hasNext: hasNext,
+        page: page
+    };
+}
+
+
+
+function getSlotSelectionPageInfo(
+    totalSlots,
+    page
+) {
+
+    const total =
+        Number(totalSlots) || 0;
+
+    let safePage =
+        Number(page) || 0;
+
+    if (safePage < 0) {
+        safePage = 0;
+    }
+
+    if (total <= 9) {
+
+        return {
+            start: 0,
+            end: total,
+            hasPrev: false,
+            hasNext: false,
+            page: 0,
+            totalPages: 1
+        };
+    }
+
+    const lastPage =
+        getLastSlotSelectionPage(total);
+
+    if (safePage > lastPage) {
+        safePage = lastPage;
+    }
+
+    const bounds =
+        computeSlotSelectionPageBounds(
+            total,
+            safePage
+        );
+
+    return {
+        start: bounds.start,
+        end: bounds.end,
+        hasPrev: bounds.hasPrev,
+        hasNext: bounds.hasNext,
+        page: bounds.page,
+        totalPages: lastPage + 1
+    };
+}
+
+
+
+function getLastSlotSelectionPage(totalSlots) {
+
+    const total =
+        Number(totalSlots) || 0;
+
+    if (total <= 9) {
+        return 0;
+    }
+
+    let page = 0;
+
+    while (true) {
+
+        const bounds =
+            computeSlotSelectionPageBounds(
+                total,
+                page
+            );
+
+        if (!bounds.hasNext) {
+            return page;
+        }
+
+        page++;
+    }
+}
+
+
+
+function resolveSlotSelectionPage(session) {
+
+    if (
+        !session ||
+        session.slotPage === undefined ||
+        session.slotPage === null ||
+        session.slotPage === ""
+    ) {
+        return 0;
+    }
+
+    const page =
+        parseInt(
+            session.slotPage,
+            10
+        );
+
+    if (
+        isNaN(page) ||
+        page < 0
+    ) {
+        return 0;
+    }
+
+    return page;
 }
 
 
@@ -405,5 +628,361 @@ function getDoctorStatusActionSpec() {
     return {
         fallbackText: fallbackText,
         interactive: interactive
+    };
+}
+
+
+
+function getConfirmCancelSpec() {
+
+    const fallbackText =
+        "1️⃣ Confirm\n" +
+        "2️⃣ Cancel";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            { id: "1", title: "Confirm" },
+            { id: "2", title: "Cancel" }
+        ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+
+function getAppointmentListMenuSpec(
+    appointments,
+    mode
+) {
+
+    if (
+        !appointments ||
+        appointments.length === 0
+    ) {
+        return {
+            fallbackText: "",
+            interactive: null
+        };
+    }
+
+    const listMode =
+        mode === "doctor"
+            ? "doctor"
+            : "patient";
+
+    const limit =
+        Math.min(appointments.length, 10);
+
+    const listed =
+        appointments.slice(0, limit);
+
+    const fallbackText =
+        listMode === "doctor"
+            ? formatDoctorPatientAppointmentsListForWhatsApp(
+                listed
+            )
+            : formatAppointmentsListForWhatsApp(
+                listed
+            );
+
+    const rows = listed.map(
+        function (appt, index) {
+
+            const doctorName =
+                findDoctorById(appt.doctorId) ||
+                "Unknown Doctor";
+
+            if (listMode === "doctor") {
+                return {
+                    id: String(index + 1),
+                    title:
+                        appt.patientName ||
+                        "Patient",
+                    description:
+                        (appt.date || "") +
+                        " · " +
+                        (appt.time || "")
+                };
+            }
+
+            return {
+                id: String(index + 1),
+                title: doctorName,
+                description:
+                    (appt.date || "") +
+                    " · " +
+                    (appt.time || "")
+            };
+        }
+    );
+
+    return {
+        fallbackText: fallbackText.trim(),
+        interactive:
+            buildInteractiveListSpec(
+                rows,
+                "Select appointment"
+            )
+    };
+}
+
+
+
+function getDoctorWeekdayMenuSpec(doctorId) {
+
+    const availability =
+        getDoctorWeeklyAvailability(
+            doctorId
+        );
+
+    let fallbackText =
+        "📅 Manage Availability\n\n";
+
+    const rows =
+        DOCTOR_WEEKDAYS.map(
+            function (day, index) {
+
+                const sessions =
+                    availability[day];
+
+                let summary =
+                    "Not set";
+
+                if (sessions.length > 0) {
+                    summary =
+                        sessions.length +
+                        " session(s)";
+                }
+
+                fallbackText +=
+                    (index + 1) +
+                    ". " +
+                    day +
+                    ": " +
+                    summary +
+                    "\n";
+
+                return {
+                    id: String(index + 1),
+                    title: day,
+                    description: summary
+                };
+            }
+        );
+
+    fallbackText +=
+        "\nSelect a day to manage.";
+
+    return {
+        fallbackText: fallbackText,
+        interactive:
+            buildInteractiveListSpec(
+                rows,
+                "Select day"
+            )
+    };
+}
+
+
+
+function buildDoctorDayAvailabilityBody(
+    doctorId,
+    dayName
+) {
+
+    const sessions =
+        getDoctorDayAvailabilitySessions(
+            doctorId,
+            dayName
+        );
+
+    let text =
+        "📅 " +
+        dayName +
+        " Availability\n\n";
+
+    if (sessions.length === 0) {
+        text += "No sessions set.\n";
+    } else {
+        sessions.forEach(
+            function (session, index) {
+                text +=
+                    (index + 1) +
+                    ". " +
+                    session.start +
+                    " - " +
+                    session.end +
+                    "\n";
+            }
+        );
+    }
+
+    return text;
+}
+
+
+
+function getDoctorDayAvailabilityActionSpec() {
+
+    const fallbackText =
+        "1️⃣ Add session\n" +
+        "2️⃣ Remove session\n" +
+        "3️⃣ Clear entire day";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            { id: "1", title: "Add session" },
+            { id: "2", title: "Remove session" },
+            { id: "3", title: "Clear day" }
+        ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+
+function getDoctorSessionRemoveListSpec(sessions) {
+
+    if (
+        !sessions ||
+        sessions.length === 0
+    ) {
+        return null;
+    }
+
+    let fallbackText = "";
+
+    const rows =
+        sessions.map(
+            function (session, index) {
+
+                const label =
+                    session.start +
+                    " - " +
+                    session.end;
+
+                fallbackText +=
+                    (index + 1) +
+                    ". " +
+                    label +
+                    "\n";
+
+                return {
+                    id: String(index + 1),
+                    title: label,
+                    description: ""
+                };
+            }
+        );
+
+    return {
+        fallbackText: fallbackText.trim(),
+        interactive:
+            buildInteractiveListSpec(
+                rows,
+                "Remove session"
+            )
+    };
+}
+
+
+
+function getDoctorLeavesMenuSpec() {
+
+    const fallbackText =
+        formatDoctorLeavesMenu();
+
+    const interactive =
+        buildInteractiveListSpec(
+            [
+                {
+                    id: "1",
+                    title: "Add single-day leave"
+                },
+                {
+                    id: "2",
+                    title: "View upcoming leaves"
+                },
+                {
+                    id: "3",
+                    title: "Cancel a leave"
+                },
+                {
+                    id: "4",
+                    title: "Add leave range"
+                }
+            ],
+            "Manage leaves"
+        );
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+
+function getDoctorLeaveListMenuSpec(leaves) {
+
+    if (
+        !leaves ||
+        leaves.length === 0
+    ) {
+        return {
+            fallbackText: "No upcoming leaves.",
+            interactive: null
+        };
+    }
+
+    const limit =
+        Math.min(leaves.length, 10);
+
+    const listed =
+        leaves.slice(0, limit);
+
+    let fallbackText =
+        "Upcoming leaves:\n\n";
+
+    const rows =
+        listed.map(
+            function (leave, index) {
+
+                const line =
+                    leave.date +
+                    (
+                        leave.reason
+                            ? " — " + leave.reason
+                            : ""
+                    );
+
+                fallbackText +=
+                    (index + 1) +
+                    ". " +
+                    line +
+                    "\n";
+
+                return {
+                    id: String(index + 1),
+                    title: leave.date,
+                    description:
+                        leave.reason || ""
+                };
+            }
+        );
+
+    return {
+        fallbackText: fallbackText.trim(),
+        interactive:
+            buildInteractiveListSpec(
+                rows,
+                "Select leave"
+            )
     };
 }

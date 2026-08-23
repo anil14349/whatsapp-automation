@@ -154,7 +154,7 @@ Adjust after the first inbound message creates the sheet:
 | `ENABLE_APPOINTMENT_REMINDERS` | `TRUE` | Send WhatsApp reminders before appointments |
 | `REMINDER_HOURS_BEFORE` | `24` | Comma-separated hours before appointment (e.g. `24,2`) |
 | `REMINDER_WINDOW_MINUTES` | `45` | Send window for the hourly trigger |
-| `ENABLE_INTERACTIVE_MENUS` | `TRUE` | Tap-to-select list/button menus instead of typed numbers |
+| `ENABLE_INTERACTIVE_MENUS` | `TRUE` | Tap-to-select list/button menus instead of typed numbers (see root README — slot pagination, Meta 10-row limit) |
 | `AUTO_COMPLETE_PAST_APPOINTMENTS` | `FALSE` | Auto-mark past confirmed appointments Completed |
 | `AUTO_COMPLETE_HOURS_AFTER` | `4` | Hours after appointment start before auto-complete |
 | `ENABLE_AFTER_HOURS_REPLY` | `FALSE` | Auto-reply when patients message outside clinic hours |
@@ -193,6 +193,12 @@ alternative — this document only covers what's specific to the `src/` split.
 
 ## Keeping in sync
 
-`src/` and `ABC_Clinic_WhatsApp_Complete.gs` currently contain the same logic, split two
-different ways. They are **not** auto-generated from one another — if you edit one, mirror
-the change in the other, or pick one as canonical and stop maintaining the other.
+`src/` and `ABC_Clinic_WhatsApp_Complete.gs` contain the same logic in two layouts. After editing files under `src/`, refresh the monolith:
+
+```bash
+node scripts/sync-monolith-from-src.js
+```
+
+Then deploy **either** the monolith **or** all `src/` files — not both. The sync script replaces matching function bodies and inserts any new helpers; run it before copying Option A into Apps Script.
+
+If you only maintain one layout, you can skip the script.

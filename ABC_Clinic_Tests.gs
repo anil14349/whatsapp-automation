@@ -1370,6 +1370,109 @@ function testInteractiveMenus() {
         );
     }
 
+    const confirmCancel =
+        getConfirmCancelSpec();
+
+    if (
+        !confirmCancel.interactive ||
+        confirmCancel.interactive.buttons.length !== 2
+    ) {
+        throw new Error(
+            "confirm/cancel spec invalid"
+        );
+    }
+
+    const sampleAppointments = [
+        {
+            patientName: "Test Patient",
+            doctorId: "DR001",
+            date: "2026-08-25",
+            time: "10:00 AM",
+            appointmentId: "APT001"
+        }
+    ];
+
+    const appointmentList =
+        getAppointmentListMenuSpec(
+            sampleAppointments,
+            "patient"
+        );
+
+    if (
+        !appointmentList.interactive ||
+        appointmentList.interactive.sections[0].rows.length !== 1
+    ) {
+        throw new Error(
+            "appointment list menu spec invalid"
+        );
+    }
+
+    const leavesMenu =
+        getDoctorLeavesMenuSpec();
+
+    if (
+        !leavesMenu.interactive ||
+        leavesMenu.interactive.sections[0].rows.length !== 4
+    ) {
+        throw new Error(
+            "doctor leaves menu spec invalid"
+        );
+    }
+
+    const manySlots = [];
+
+    for (let i = 0; i < 20; i++) {
+        manySlots.push(
+            (10 + i) + ":00 AM"
+        );
+    }
+
+    const slotPage0 =
+        getSlotSelectionMenuSpec(
+            manySlots,
+            0
+        );
+
+    if (
+        !slotPage0.interactive ||
+        slotPage0.interactive.sections[0].rows.length !== 10 ||
+        slotPage0.totalPages !== 3
+    ) {
+        throw new Error(
+            "slot page 0 spec invalid"
+        );
+    }
+
+    const slotPage1 =
+        getSlotSelectionMenuSpec(
+            manySlots,
+            1
+        );
+
+    if (
+        !slotPage1.interactive ||
+        slotPage1.interactive.sections[0].rows.length !== 10
+    ) {
+        throw new Error(
+            "slot page 1 spec invalid"
+        );
+    }
+
+    const slotPage2 =
+        getSlotSelectionMenuSpec(
+            manySlots,
+            2
+        );
+
+    if (
+        !slotPage2.interactive ||
+        slotPage2.interactive.sections[0].rows.length !== 4
+    ) {
+        throw new Error(
+            "slot page 2 spec invalid"
+        );
+    }
+
     const mockButtonMessage = {
         type: "interactive",
         interactive: {

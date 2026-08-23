@@ -552,30 +552,79 @@ function getDoctorSelectionMenuSpec() {
 }
 
 
-function getSlotSelectionMenuSpec(slots) {
+function getSlotSelectionMenuSpec(
+    slots,
+    page
+) {
 
     if (!slots || slots.length === 0) {
         return null;
     }
 
+    const pageInfo =
+        getSlotSelectionPageInfo(
+            slots.length,
+            page || 0
+        );
+
     let fallbackText = "";
 
-    const rows = slots.map(
-        function (slot, index) {
+    if (pageInfo.totalPages > 1) {
+        fallbackText +=
+            "Page " +
+            (pageInfo.page + 1) +
+            " of " +
+            pageInfo.totalPages +
+            "\n\n";
+    }
 
-            fallbackText +=
-                (index + 1) +
-                "️⃣ " +
-                slot +
-                "\n";
+    const rows = [];
 
-            return {
-                id: String(index + 1),
-                title: slot,
-                description: ""
-            };
-        }
-    );
+    if (pageInfo.hasPrev) {
+
+        rows.push({
+            id: "prev",
+            title: "Earlier times",
+            description: "Previous page"
+        });
+
+        fallbackText +=
+            "◀ Earlier times\n";
+    }
+
+    for (
+        let i = pageInfo.start;
+        i < pageInfo.end;
+        i++
+    ) {
+
+        const slot =
+            slots[i];
+
+        fallbackText +=
+            (i + 1) +
+            "️⃣ " +
+            slot +
+            "\n";
+
+        rows.push({
+            id: String(i + 1),
+            title: slot,
+            description: ""
+        });
+    }
+
+    if (pageInfo.hasNext) {
+
+        rows.push({
+            id: "next",
+            title: "More times",
+            description: "Next page"
+        });
+
+        fallbackText +=
+            "▶ More times\n";
+    }
 
     const interactive =
         buildInteractiveListSpec(
@@ -583,9 +632,21 @@ function getSlotSelectionMenuSpec(slots) {
             "Choose time"
         );
 
+    if (
+        !interactive &&
+        slots.length > 10
+    ) {
+        fallbackText =
+            formatAvailableSlotsForWhatsApp(
+                slots
+            );
+    }
+
     return {
-        fallbackText: fallbackText,
-        interactive: interactive
+        fallbackText: fallbackText.trim(),
+        interactive: interactive,
+        page: pageInfo.page,
+        totalPages: pageInfo.totalPages
     };
 }
 
@@ -8265,10 +8326,7 @@ function buildCancelConfirmMessage(chosen) {
         "👨‍⚕️ Doctor: " + doctorName + "\n" +
         "📅 Date: " + chosen.date + "\n" +
         "🕐 Time: " + chosen.time + "\n" +
-        "🆔 " + chosen.appointmentId +
-        "\n\n" +
-        "1️⃣ Yes, cancel it\n" +
-        "2️⃣ No, go back"
+        "🆔 " + chosen.appointmentId
     );
 }
 
@@ -8296,10 +8354,7 @@ function buildRescheduleSlotConfirmMessage(
         "🕐 New Time: " +
         selectedTime +
         "\n\n" +
-        "Confirm reschedule?\n\n" +
-        "1️⃣ Confirm\n" +
-        "2️⃣ Choose another time\n" +
-        "3️⃣ Cancel"
+        "Confirm reschedule?"
     );
 }
 
@@ -8322,12 +8377,10 @@ function beginWhatsAppCancelFlow(
             state: "MAIN_MENU"
         });
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             phone,
-            buildMainMenuMessage(
-                "❌ You have no active appointments to cancel."
-            )
+            "❌ You have no active appointments to cancel."
         );
 
         return false;
@@ -8338,14 +8391,12 @@ function beginWhatsAppCancelFlow(
         state: "CANCEL_SELECT"
     });
 
-    sendWhatsAppReply(
+    sendPatientAppointmentListMenuReply(
         ss,
         phone,
-        buildAppointmentPickerPrompt(
-            "❌ Cancel Appointment",
-            "Select the appointment to cancel:",
-            appointments
-        )
+        "❌ Cancel Appointment",
+        "Select the appointment to cancel:",
+        appointments
     );
 
     return true;
@@ -8370,12 +8421,10 @@ function beginWhatsAppRescheduleFlow(
             state: "MAIN_MENU"
         });
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             phone,
-            buildMainMenuMessage(
-                "❌ You have no active appointments to reschedule."
-            )
+            "❌ You have no active appointments to reschedule."
         );
 
         return false;
@@ -8386,14 +8435,12 @@ function beginWhatsAppRescheduleFlow(
         state: "RESCHEDULE_SELECT"
     });
 
-    sendWhatsAppReply(
+    sendPatientAppointmentListMenuReply(
         ss,
         phone,
-        buildAppointmentPickerPrompt(
-            "🔄 Reschedule Appointment",
-            "Select the appointment to reschedule:",
-            appointments
-        )
+        "🔄 Reschedule Appointment",
+        "Select the appointment to reschedule:",
+        appointments
     );
 
     return true;
@@ -8578,10 +8625,7 @@ function buildDoctorCancelConfirmMessage(chosen) {
         chosen.time +
         "\n" +
         "🆔 " +
-        chosen.appointmentId +
-        "\n\n" +
-        "1️⃣ Yes, cancel it\n" +
-        "2️⃣ No, go back"
+        chosen.appointmentId
     );
 }
 
@@ -8611,10 +8655,7 @@ function buildDoctorRescheduleSlotConfirmMessage(
         "🕐 New Time: " +
         selectedTime +
         "\n\n" +
-        "Confirm reschedule?\n\n" +
-        "1️⃣ Confirm\n" +
-        "2️⃣ Choose another time\n" +
-        "3️⃣ Cancel"
+        "Confirm reschedule?"
     );
 }
 
@@ -8740,16 +8781,12 @@ function handleDoctorWhatsAppAppointmentListSelection(
         selection > appointments.length
     ) {
 
-        sendWhatsAppReply(
+        sendDoctorAppointmentListMenuReply(
             ss,
             phone,
-            "❌ Invalid selection.\n\n" +
-            opts.selectLine +
-            "\n\n" +
-            formatDoctorPatientAppointmentsListForWhatsApp(
-                appointments
-            ) +
-            "0️⃣ Doctor Portal"
+            "❌ Invalid selection.",
+            opts.selectLine,
+            appointments
         );
 
         return;
@@ -8793,14 +8830,12 @@ function beginDoctorCancelFlow(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorAppointmentListMenuReply(
         ss,
         phone,
-        buildDoctorPatientAppointmentPickerPrompt(
-            "❌ Cancel Patient Appointment",
-            "Select the appointment to cancel:",
-            appointments
-        )
+        "❌ Cancel Patient Appointment",
+        "Select the appointment to cancel:",
+        appointments
     );
 
     return true;
@@ -8839,14 +8874,12 @@ function beginDoctorRescheduleFlow(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorAppointmentListMenuReply(
         ss,
         phone,
-        buildDoctorPatientAppointmentPickerPrompt(
-            "🔄 Reschedule Patient Appointment",
-            "Select the appointment to reschedule:",
-            appointments
-        )
+        "🔄 Reschedule Patient Appointment",
+        "Select the appointment to reschedule:",
+        appointments
     );
 
     return true;
@@ -8867,11 +8900,7 @@ function buildDoctorStatusActionMessage(chosen) {
         chosen.time +
         "\n" +
         "🆔 " +
-        chosen.appointmentId +
-        "\n\n" +
-        "1️⃣ Completed\n" +
-        "2️⃣ No-Show\n" +
-        "0️⃣ Doctor Portal"
+        chosen.appointmentId
     );
 }
 
@@ -8898,6 +8927,459 @@ function getDoctorStatusActionSpec() {
         fallbackText: fallbackText,
         interactive: interactive
     };
+}
+
+
+function getSlotSelectionPageInfo(
+    totalSlots,
+    page
+) {
+
+    const total =
+        Number(totalSlots) || 0;
+
+    let safePage =
+        Number(page) || 0;
+
+    if (safePage < 0) {
+        safePage = 0;
+    }
+
+    if (total <= 9) {
+
+        return {
+            start: 0,
+            end: total,
+            hasPrev: false,
+            hasNext: false,
+            page: 0,
+            totalPages: 1
+        };
+    }
+
+    const lastPage =
+        getLastSlotSelectionPage(total);
+
+    if (safePage > lastPage) {
+        safePage = lastPage;
+    }
+
+    if (safePage === 0) {
+
+        return {
+            start: 0,
+            end: 9,
+            hasPrev: false,
+            hasNext: total > 9,
+            page: 0,
+            totalPages: lastPage + 1
+        };
+    }
+
+    const start =
+        9 + (safePage - 1) * 8;
+
+    const remaining =
+        total - start;
+
+    const hasNext =
+        remaining > 9;
+
+    const slotCount =
+        hasNext
+            ? 8
+            : Math.min(remaining, 9);
+
+    return {
+        start: start,
+        end: start + slotCount,
+        hasPrev: true,
+        hasNext: hasNext,
+        page: safePage,
+        totalPages: lastPage + 1
+    };
+}
+
+
+function getLastSlotSelectionPage(totalSlots) {
+
+    const total =
+        Number(totalSlots) || 0;
+
+    if (total <= 9) {
+        return 0;
+    }
+
+    let page = 0;
+
+    while (true) {
+
+        const info =
+            getSlotSelectionPageInfo(
+                total,
+                page
+            );
+
+        if (!info.hasNext) {
+            return page;
+        }
+
+        page++;
+    }
+}
+
+
+function getConfirmCancelSpec() {
+
+    const fallbackText =
+        "1️⃣ Confirm\n" +
+        "2️⃣ Cancel";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            { id: "1", title: "Confirm" },
+            { id: "2", title: "Cancel" }
+        ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+function getAppointmentListMenuSpec(
+    appointments,
+    mode
+) {
+
+    if (
+        !appointments ||
+        appointments.length === 0
+    ) {
+        return {
+            fallbackText: "",
+            interactive: null
+        };
+    }
+
+    const listMode =
+        mode === "doctor"
+            ? "doctor"
+            : "patient";
+
+    const limit =
+        Math.min(appointments.length, 10);
+
+    const listed =
+        appointments.slice(0, limit);
+
+    const fallbackText =
+        listMode === "doctor"
+            ? formatDoctorPatientAppointmentsListForWhatsApp(
+                listed
+            )
+            : formatAppointmentsListForWhatsApp(
+                listed
+            );
+
+    const rows = listed.map(
+        function (appt, index) {
+
+            const doctorName =
+                findDoctorById(appt.doctorId) ||
+                "Unknown Doctor";
+
+            if (listMode === "doctor") {
+                return {
+                    id: String(index + 1),
+                    title:
+                        appt.patientName ||
+                        "Patient",
+                    description:
+                        (appt.date || "") +
+                        " · " +
+                        (appt.time || "")
+                };
+            }
+
+            return {
+                id: String(index + 1),
+                title: doctorName,
+                description:
+                    (appt.date || "") +
+                    " · " +
+                    (appt.time || "")
+            };
+        }
+    );
+
+    return {
+        fallbackText: fallbackText.trim(),
+        interactive:
+            buildInteractiveListSpec(
+                rows,
+                "Select appointment"
+            )
+    };
+}
+
+
+function getDoctorWeekdayMenuSpec(doctorId) {
+
+    const availability =
+        getDoctorWeeklyAvailability(
+            doctorId
+        );
+
+    let fallbackText =
+        "📅 Manage Availability\n\n";
+
+    const rows =
+        DOCTOR_WEEKDAYS.map(
+            function (day, index) {
+
+                const sessions =
+                    availability[day];
+
+                let summary =
+                    "Not set";
+
+                if (sessions.length > 0) {
+                    summary =
+                        sessions.length +
+                        " session(s)";
+                }
+
+                fallbackText +=
+                    (index + 1) +
+                    ". " +
+                    day +
+                    ": " +
+                    summary +
+                    "\n";
+
+                return {
+                    id: String(index + 1),
+                    title: day,
+                    description: summary
+                };
+            }
+        );
+
+    fallbackText +=
+        "\nSelect a day to manage.";
+
+    return {
+        fallbackText: fallbackText,
+        interactive:
+            buildInteractiveListSpec(
+                rows,
+                "Select day"
+            )
+    };
+}
+
+
+function buildDoctorDayAvailabilityBody(
+    doctorId,
+    dayName
+) {
+
+    const sessions =
+        getDoctorDayAvailabilitySessions(
+            doctorId,
+            dayName
+        );
+
+    let text =
+        "📅 " +
+        dayName +
+        " Availability\n\n";
+
+    if (sessions.length === 0) {
+        text += "No sessions set.\n";
+    } else {
+        sessions.forEach(
+            function (session, index) {
+                text +=
+                    (index + 1) +
+                    ". " +
+                    session.start +
+                    " - " +
+                    session.end +
+                    "\n";
+            }
+        );
+    }
+
+    return text;
+}
+
+
+function getDoctorDayAvailabilityActionSpec() {
+
+    const fallbackText =
+        "1️⃣ Add session\n" +
+        "2️⃣ Remove session\n" +
+        "3️⃣ Clear entire day";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            { id: "1", title: "Add session" },
+            { id: "2", title: "Remove session" },
+            { id: "3", title: "Clear day" }
+        ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+function getDoctorSessionRemoveListSpec(sessions) {
+
+    if (
+        !sessions ||
+        sessions.length === 0
+    ) {
+        return null;
+    }
+
+    let fallbackText = "";
+
+    const rows =
+        sessions.map(
+            function (session, index) {
+
+                const label =
+                    session.start +
+                    " - " +
+                    session.end;
+
+                fallbackText +=
+                    (index + 1) +
+                    ". " +
+                    label +
+                    "\n";
+
+                return {
+                    id: String(index + 1),
+                    title: label,
+                    description: ""
+                };
+            }
+        );
+
+    return {
+        fallbackText: fallbackText.trim(),
+        interactive:
+            buildInteractiveListSpec(
+                rows,
+                "Remove session"
+            )
+    };
+}
+
+
+function getDoctorLeavesMenuSpec() {
+
+    const fallbackText =
+        formatDoctorLeavesMenu();
+
+    const interactive =
+        buildInteractiveListSpec(
+            [
+                {
+                    id: "1",
+                    title: "Add single-day leave"
+                },
+                {
+                    id: "2",
+                    title: "View upcoming leaves"
+                },
+                {
+                    id: "3",
+                    title: "Cancel a leave"
+                },
+                {
+                    id: "4",
+                    title: "Add leave range"
+                }
+            ],
+            "Manage leaves"
+        );
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+function getDoctorLeaveListMenuSpec(leaves) {
+
+    if (
+        !leaves ||
+        leaves.length === 0
+    ) {
+        return {
+            fallbackText: "No upcoming leaves.",
+            interactive: null
+        };
+    }
+
+    const limit =
+        Math.min(leaves.length, 10);
+
+    const listed =
+        leaves.slice(0, limit);
+
+    let fallbackText =
+        "Upcoming leaves:\n\n";
+
+    const rows =
+        listed.map(
+            function (leave, index) {
+
+                const line =
+                    leave.date +
+                    (
+                        leave.reason
+                            ? " — " + leave.reason
+                            : ""
+                    );
+
+                fallbackText +=
+                    (index + 1) +
+                    ". " +
+                    line +
+                    "\n";
+
+                return {
+                    id: String(index + 1),
+                    title: leave.date,
+                    description:
+                        leave.reason || ""
+                };
+            }
+        );
+
+    return {
+        fallbackText: fallbackText.trim(),
+        interactive:
+            buildInteractiveListSpec(
+                rows,
+                "Select leave"
+            )
+    };
+}
+
+
+function buildLanguageSelectionIntro() {
+
+    return "🌐 Please select your language:";
 }
 
 
@@ -8934,14 +9416,12 @@ function beginDoctorStatusFlow(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorAppointmentListMenuReply(
         ss,
         phone,
-        buildDoctorPatientAppointmentPickerPrompt(
-            "✅ Mark Visit Status",
-            "Select the appointment to update:",
-            appointments
-        )
+        "✅ Mark Visit Status",
+        "Select the appointment to update:",
+        appointments
     );
 
     return true;
@@ -9106,16 +9586,99 @@ function handleWhatsAppSlotSelection(
         return;
     }
 
-    const slotNumber =
-        parseInt(
-            normalizedMessage,
-            10
-        );
-
     const slots =
         getAvailableSlots(
             session.doctorId,
             isoDate
+        );
+
+    const currentPage =
+        resolveSlotSelectionPage(session);
+
+    if (normalizedMessage === "next") {
+
+        const pageInfo =
+            getSlotSelectionPageInfo(
+                slots.length,
+                currentPage
+            );
+
+        if (!pageInfo.hasNext) {
+
+            sendSlotSelectionMenuReply(
+                ss,
+                phone,
+                "❌ Invalid time selection.\n\n" +
+                "Please choose one of the available slots:",
+                slots,
+                currentPage
+            );
+
+            return;
+        }
+
+        const nextPage =
+            currentPage + 1;
+
+        saveWhatsAppSession(phone, {
+            slotPage: nextPage
+        });
+
+        sendSlotSelectionMenuReply(
+            ss,
+            phone,
+            "📅 Available slots:\nPlease choose a time.",
+            slots,
+            nextPage
+        );
+
+        return;
+    }
+
+    if (normalizedMessage === "prev") {
+
+        const pageInfo =
+            getSlotSelectionPageInfo(
+                slots.length,
+                currentPage
+            );
+
+        if (!pageInfo.hasPrev) {
+
+            sendSlotSelectionMenuReply(
+                ss,
+                phone,
+                "❌ Invalid time selection.\n\n" +
+                "Please choose one of the available slots:",
+                slots,
+                currentPage
+            );
+
+            return;
+        }
+
+        const previousPage =
+            currentPage - 1;
+
+        saveWhatsAppSession(phone, {
+            slotPage: previousPage
+        });
+
+        sendSlotSelectionMenuReply(
+            ss,
+            phone,
+            "📅 Available slots:\nPlease choose a time.",
+            slots,
+            previousPage
+        );
+
+        return;
+    }
+
+    const slotNumber =
+        parseInt(
+            normalizedMessage,
+            10
         );
 
     if (
@@ -9124,14 +9687,21 @@ function handleWhatsAppSlotSelection(
         slotNumber > slots.length
     ) {
 
-        sendWhatsAppReply(
+        sendSlotSelectionMenuReply(
             ss,
             phone,
-            buildInvalidSlotSelectionReply(slots)
+            "❌ Invalid time selection.\n\n" +
+            "Please choose one of the available slots:",
+            slots,
+            currentPage
         );
 
         return;
     }
+
+    saveWhatsAppSession(phone, {
+        slotPage: 0
+    });
 
     opts.onValidSlot(
         slots[slotNumber - 1],
@@ -9161,12 +9731,10 @@ function handleWhatsAppAppointmentListSelection(
             appointmentId: ""
         });
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             phone,
-            buildMainMenuMessage(
-                "👋 Back to main menu."
-            )
+            "👋 Back to main menu."
         );
 
         return;
@@ -9184,22 +9752,22 @@ function handleWhatsAppAppointmentListSelection(
     const selectLine =
         opts.selectLine;
 
+    const title =
+        opts.title ||
+        "Select an appointment";
+
     if (
         isNaN(selection) ||
         selection < 1 ||
         selection > appointments.length
     ) {
 
-        sendWhatsAppReply(
+        sendPatientAppointmentListMenuReply(
             ss,
             phone,
-            "❌ Invalid selection.\n\n" +
-            selectLine +
-            "\n\n" +
-            formatAppointmentsListForWhatsApp(
-                appointments
-            ) +
-            "0️⃣ Back to Main Menu"
+            "❌ Invalid selection.\n\n" + title,
+            selectLine,
+            appointments
         );
 
         return;
@@ -9361,13 +9929,9 @@ function handleWhatsAppRescheduleSelectState(
 function buildLanguageSelectionMessage() {
 
     return (
-        "🌐 Please select your language:\n\n" +
-        "1️⃣ English\n" +
-        "2️⃣ తెలుగు\n" +
-        "3️⃣ हिन्दी\n" +
-        "4️⃣ ಕನ್ನಡ\n" +
-        "5️⃣ தமிழ்\n" +
-        "6️⃣ മലയാളം"
+        buildLanguageSelectionIntro() +
+        "\n\n" +
+        getLanguageMenuSpec().fallbackText
     );
 }
 
@@ -10065,12 +10629,10 @@ function showDoctorAvailabilityMenu(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorWeekdayMenuReply(
         ss,
         phone,
-        formatDoctorAvailabilityMenu(
-            doctorId
-        )
+        doctorId
     );
 }
 
@@ -10090,13 +10652,11 @@ function showDoctorDayAvailabilityMenu(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorDayAvailabilityMenuReply(
         ss,
         phone,
-        formatDoctorDayAvailabilityMenu(
-            doctorId,
-            dayName
-        )
+        doctorId,
+        dayName
     );
 }
 
@@ -10117,18 +10677,12 @@ function returnToDoctorDayAvailability(
         appointmentId: ""
     });
 
-    const menu =
-        formatDoctorDayAvailabilityMenu(
-            doctorId,
-            dayName
-        );
-
-    sendWhatsAppReply(
+    sendDoctorDayAvailabilityMenuReply(
         ss,
         phone,
+        doctorId,
+        dayName,
         prefix
-            ? String(prefix) + "\n\n" + menu
-            : menu
     );
 }
 
@@ -10147,10 +10701,9 @@ function showDoctorLeavesMenu(
         appointmentId: ""
     });
 
-    sendWhatsAppReply(
+    sendDoctorLeavesMenuReply(
         ss,
-        phone,
-        formatDoctorLeavesMenu()
+        phone
     );
 }
 
@@ -10395,10 +10948,10 @@ function handleWhatsAppDateMenuInput(
         return;
     }
 
-    sendWhatsAppReply(
+    sendDateMenuReply(
         ss,
         phone,
-        buildInvalidDateMenuReply()
+        "❌ Invalid option.\n\nPlease choose a date:"
     );
 }
 
@@ -10582,7 +11135,6 @@ function returnDoctorToMenu(ss, phone, doctorId, prefix) {
             role: "DOCTOR",
             state: "DOCTOR_MENU",
             doctorId: doctorId,
-            language: "EN",
             date: "",
             time: "",
             appointmentId: ""
@@ -10660,14 +11212,12 @@ function goBackInWhatsAppFlow(ss, phone, session) {
                 state: "CANCEL_SELECT",
                 appointmentId: ""
             });
-            sendWhatsAppReply(
+            sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                buildAppointmentPickerPrompt(
-                    "❌ Cancel Appointment",
-                    "Select the appointment to cancel:",
-                    getConfirmedAppointmentsForPhone(phone)
-                )
+                "❌ Cancel Appointment",
+                "Select the appointment to cancel:",
+                getConfirmedAppointmentsForPhone(phone)
             );
             return;
 
@@ -10679,14 +11229,12 @@ function goBackInWhatsAppFlow(ss, phone, session) {
                 date: "",
                 time: ""
             });
-            sendWhatsAppReply(
+            sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                buildAppointmentPickerPrompt(
-                    "🔄 Reschedule Appointment",
-                    "Select the appointment to reschedule:",
-                    getConfirmedAppointmentsForPhone(phone)
-                )
+                "🔄 Reschedule Appointment",
+                "Select the appointment to reschedule:",
+                getConfirmedAppointmentsForPhone(phone)
             );
             return;
 
@@ -10858,15 +11406,13 @@ function goBackInDoctorWhatsAppFlow(
                 date: "",
                 time: ""
             });
-            sendWhatsAppReply(
+            sendDoctorAppointmentListMenuReply(
                 ss,
                 phone,
-                buildDoctorPatientAppointmentPickerPrompt(
-                    "🔄 Reschedule Patient Appointment",
-                    "Select the appointment to reschedule:",
-                    getDoctorConfirmedAppointments(
-                        doctorId
-                    )
+                "🔄 Reschedule Patient Appointment",
+                "Select the appointment to reschedule:",
+                getDoctorConfirmedAppointments(
+                    doctorId
                 )
             );
             return;
@@ -10878,12 +11424,10 @@ function goBackInDoctorWhatsAppFlow(
                 date: "",
                 time: ""
             });
-            sendWhatsAppReply(
+            sendDateMenuReply(
                 ss,
                 phone,
-                buildDateMenuPrompt(
-                    "Please choose a new date:"
-                )
+                "Please choose a new date:"
             );
             return;
 
@@ -11061,9 +11605,7 @@ function buildBookingConfirmationMessage(
         "\n" +
         "📅 Date: " + session.date + "\n" +
         "🕐 Time: " + session.time + "\n\n" +
-        "1️⃣ Confirm\n" +
-        "2️⃣ Choose another time\n" +
-        "3️⃣ Cancel"
+        "Confirm appointment?"
     );
 }
 
@@ -11167,17 +11709,19 @@ function whatsAppShowSlotsForDate(
         senderPhone,
         {
             state: nextState,
-            date: selectedDate
+            date: selectedDate,
+            slotPage: 0
         }
     );
 
-    sendWhatsAppMenuReply(
+    sendSlotSelectionMenuReply(
         ss,
         senderPhone,
         "📅 Date selected: " +
         selectedDate +
         "\n\nAvailable slots:\nPlease choose a time.",
-        getSlotSelectionMenuSpec(slots)
+        slots,
+        0
     );
 
     return true;
@@ -11588,13 +12132,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendDoctorWeekdayMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid day.\n\n" +
-            formatDoctorAvailabilityMenu(
-                doctorId
-            )
+            doctorId,
+            "❌ Invalid day."
         );
     }
 
@@ -11678,14 +12220,11 @@ if (
                 }
             );
 
-            sendWhatsAppReply(
+            sendDoctorSessionRemoveMenuReply(
                 ss,
                 senderPhone,
-                "Select session to remove:\n\n" +
-                formatDoctorDayAvailabilityMenu(
-                    doctorId,
-                    dayName
-                )
+                doctorId,
+                dayName
             );
         }
 
@@ -11897,14 +12436,13 @@ if (
         }
     );
 
-    sendWhatsAppReply(
+    sendWhatsAppMenuReply(
         ss,
         senderPhone,
         "Please confirm new session:\n\n" +
         "📅 " + dayName + "\n" +
-        "🕐 " + startTime + " - " + endTime + "\n\n" +
-        "1️⃣ Confirm\n" +
-        "2️⃣ Cancel"
+        "🕐 " + startTime + " - " + endTime,
+        getConfirmCancelSpec()
     );
 
     return true;
@@ -11972,12 +12510,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Cancel"
+            "❌ Invalid option.",
+            getConfirmCancelSpec()
         );
     }
     return true;
@@ -12117,12 +12654,11 @@ if (
                     ? result.message
                     : "Unable to cancel the appointment.";
 
-            sendWhatsAppReply(
+            sendWhatsAppMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage + "\n\n" +
-                "1️⃣ Yes, cancel it\n" +
-                "2️⃣ No, go back"
+                "❌ " + errorMessage,
+                getYesNoConfirmSpec()
             );
         }
 
@@ -12137,12 +12673,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Yes, cancel it\n" +
-            "2️⃣ No, go back"
+            "❌ Invalid option.",
+            getYesNoConfirmSpec()
         );
     }
 
@@ -12254,9 +12789,7 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Completed\n" +
-            "2️⃣ No-Show",
+            "❌ Invalid option.",
             getDoctorStatusActionSpec()
         );
 
@@ -12295,9 +12828,7 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ " + errorMessage + "\n\n" +
-            "1️⃣ Completed\n" +
-            "2️⃣ No-Show",
+            "❌ " + errorMessage,
             getDoctorStatusActionSpec()
         );
     }
@@ -12511,14 +13042,11 @@ if (
                     ? result.message
                     : "Unable to reschedule the appointment.";
 
-            sendWhatsAppReply(
+            sendWhatsAppMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage + "\n\n" +
-                "Please reply with:\n\n" +
-                "1️⃣ Confirm\n" +
-                "2️⃣ Choose another time\n" +
-                "3️⃣ Cancel"
+                "❌ " + errorMessage,
+                getRescheduleConfirmSpec()
             );
         }
 
@@ -12559,13 +13087,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Choose another time\n" +
-            "3️⃣ Cancel"
+            "❌ Invalid option.\n\nPlease choose:",
+            getRescheduleConfirmSpec()
         );
     }
 
@@ -12668,13 +13194,10 @@ if (
                 }
             );
 
-            sendWhatsAppReply(
+            sendDoctorLeaveCancelListMenuReply(
                 ss,
                 senderPhone,
-                "Select leave to cancel:\n\n" +
-                formatDoctorUpcomingLeaves(
-                    doctorId
-                )
+                doctorId
             );
         }
 
@@ -12700,11 +13223,10 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendDoctorLeavesMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            formatDoctorLeavesMenu()
+            "❌ Invalid option."
         );
     }
 
@@ -12805,7 +13327,7 @@ if (
         }
     );
 
-    sendWhatsAppReply(
+    sendWhatsAppMenuReply(
         ss,
         senderPhone,
         "Confirm leave:\n\n" +
@@ -12814,9 +13336,8 @@ if (
             reason
                 ? "📝 " + reason + "\n"
                 : ""
-        ) +
-        "\n1️⃣ Confirm\n" +
-        "2️⃣ Cancel"
+        ),
+        getConfirmCancelSpec()
     );
 
     return true;
@@ -12876,12 +13397,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Cancel"
+            "❌ Invalid option.",
+            getConfirmCancelSpec()
         );
     }
 
@@ -12919,13 +13439,11 @@ if (
         pick > leaves.length
     ) {
 
-        sendWhatsAppReply(
+        sendDoctorLeaveCancelListMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid selection.\n\n" +
-            formatDoctorUpcomingLeaves(
-                doctorId
-            )
+            doctorId,
+            "❌ Invalid selection."
         );
 
         return true;
@@ -13116,7 +13634,7 @@ if (
         }
     );
 
-    sendWhatsAppReply(
+    sendWhatsAppMenuReply(
         ss,
         senderPhone,
         "Confirm leave range:\n\n" +
@@ -13126,9 +13644,8 @@ if (
             reason
                 ? "📝 " + reason + "\n"
                 : ""
-        ) +
-        "\n1️⃣ Confirm\n" +
-        "2️⃣ Cancel"
+        ),
+        getConfirmCancelSpec()
     );
 
     return true;
@@ -13193,12 +13710,11 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Cancel"
+            "❌ Invalid option.",
+            getConfirmCancelSpec()
         );
     }
     return true;
@@ -13283,14 +13799,10 @@ if (
 
     } else {
 
-        sendWhatsAppReply(
+        sendDateMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "Please reply with:\n\n" +
-            "1️⃣ Today\n" +
-            "2️⃣ Tomorrow\n" +
-            "3️⃣ Enter another date"
+            "❌ Invalid option.\n\nPlease choose a date:"
         );
     }
     return true;
@@ -13383,10 +13895,9 @@ if (
 
     if (!language) {
 
-        sendWhatsAppReply(
+        sendLanguageMenuReply(
             ss,
-            senderPhone,
-            buildLanguageSelectionMessage()
+            senderPhone
         );
 
     } else {
@@ -13409,12 +13920,10 @@ if (
             language
         );
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             senderPhone,
-            buildMainMenuMessage(
-                "👋 Welcome to ABC Clinic!"
-            )
+            "👋 Welcome to ABC Clinic!"
         );
     }
     return true;
@@ -13444,10 +13953,9 @@ if (
 
     if (!language) {
 
-        sendWhatsAppReply(
+        sendLanguageMenuReply(
             ss,
-            senderPhone,
-            buildLanguageSelectionMessage()
+            senderPhone
         );
 
     } else {
@@ -13506,12 +14014,10 @@ if (
                 language
             );
 
-            sendWhatsAppReply(
+            sendPatientMainMenuReply(
                 ss,
                 senderPhone,
-                buildMainMenuMessage(
-                    "✅ Language changed successfully."
-                )
+                "✅ Language changed successfully."
             );
         }
     }
@@ -13567,33 +14073,6 @@ if (
             }
         );
 
-    let reply;
-
-    if (
-        !appointments ||
-        appointments.length === 0
-    ) {
-
-        reply =
-            buildMainMenuMessage(
-                "📋 You have no upcoming appointments."
-            );
-
-    } else {
-
-        reply =
-            "📋 Your Appointments:\n\n" +
-            formatAppointmentsListForWhatsApp(
-                appointments
-            ) +
-            "Reply with:\n\n" +
-            "1️⃣ Book Appointment\n" +
-            "2️⃣ My Appointments\n" +
-            "3️⃣ Cancel Appointment\n" +
-            "4️⃣ Reschedule Appointment\n" +
-            "5️⃣ Change Language";
-    }
-
     saveWhatsAppSession(
         senderPhone,
         {
@@ -13602,11 +14081,30 @@ if (
         }
     );
 
-    sendWhatsAppReply(
-        ss,
-        senderPhone,
-        reply
-    );
+    if (
+        !appointments ||
+        appointments.length === 0
+    ) {
+
+        sendPatientMainMenuReply(
+            ss,
+            senderPhone,
+            "📋 You have no upcoming appointments."
+        );
+
+    } else {
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            "📋 Your Appointments:\n\n" +
+            formatAppointmentsListForWhatsApp(
+                appointments
+            ) +
+            "\n\nChoose an option:",
+            getPatientMainMenuSpec()
+        );
+    }
 
     return true;
 }
@@ -13666,10 +14164,9 @@ if (
         }
     );
 
-    sendWhatsAppReply(
+    sendLanguageMenuReply(
         ss,
-        senderPhone,
-        buildLanguageSelectionMessage()
+        senderPhone
     );
     return true;
 }
@@ -13684,12 +14181,10 @@ if (
     session.state === "MAIN_MENU"
 ) {
 
-    sendWhatsAppReply(
+    sendPatientMainMenuReply(
         ss,
         senderPhone,
-        buildMainMenuMessage(
-            "❌ Invalid option."
-        )
+        "❌ Invalid option."
     );
     return true;
 }
@@ -14054,36 +14549,19 @@ if (
             senderPhone,
             {
                 state: "BOOK_TIME",
-                time: ""
+                time: "",
+                slotPage: 0
             }
         );
 
-        let reply =
-            "📅 Date: " +
-            session.date +
-            "\n\n" +
-            "Available slots:\n\n";
-
-        for (
-            let i = 0;
-            i < slots.length;
-            i++
-        ) {
-
-            reply +=
-                (i + 1) +
-                "️⃣ " +
-                slots[i] +
-                "\n";
-        }
-
-        reply +=
-            "\nPlease choose a time.";
-
-        sendWhatsAppReply(
+        sendSlotSelectionMenuReply(
             ss,
             senderPhone,
-            reply
+            "📅 Date: " +
+            session.date +
+            "\n\nAvailable slots:\nPlease choose a time.",
+            slots,
+            0
         );
 
     } else if (
@@ -14102,28 +14580,19 @@ if (
             }
         );
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             senderPhone,
-            "❌ Appointment booking cancelled.\n\n" +
-            "Please choose an option:\n\n" +
-            "1️⃣ Book Appointment\n" +
-            "2️⃣ My Appointments\n" +
-            "3️⃣ Cancel Appointment\n" +
-            "4️⃣ Reschedule Appointment\n" +
-            "5️⃣ Change Language"
+            "❌ Appointment booking cancelled."
         );
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "Please reply with:\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Choose another time\n" +
-            "3️⃣ Cancel"
+            "❌ Invalid option.\n\nPlease choose:",
+            getBookingConfirmSpec()
         );
     }
     return true;
@@ -14201,12 +14670,10 @@ if (
                 }
             );
 
-            sendWhatsAppReply(
+            sendPatientMainMenuReply(
                 ss,
                 senderPhone,
-                buildMainMenuMessage(
-                    "✅ " + result.message
-                )
+                "✅ " + result.message
             );
 
         } else {
@@ -14216,12 +14683,11 @@ if (
                     ? result.message
                     : "Unable to cancel the appointment.";
 
-            sendWhatsAppReply(
+            sendWhatsAppMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage + "\n\n" +
-                "1️⃣ Yes, cancel it\n" +
-                "2️⃣ No, go back"
+                "❌ " + errorMessage,
+                getYesNoConfirmSpec()
             );
         }
 
@@ -14239,22 +14705,19 @@ if (
             }
         );
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             senderPhone,
-            buildMainMenuMessage(
-                "👍 Okay, appointment was not cancelled."
-            )
+            "👍 Okay, appointment was not cancelled."
         );
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Yes, cancel it\n" +
-            "2️⃣ No, go back"
+            "❌ Invalid option.",
+            getYesNoConfirmSpec()
         );
     }
     return true;
@@ -14426,14 +14889,11 @@ if (
                     ? result.message
                     : "Unable to reschedule the appointment.";
 
-            sendWhatsAppReply(
+            sendWhatsAppMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage + "\n\n" +
-                "Please reply with:\n\n" +
-                "1️⃣ Confirm\n" +
-                "2️⃣ Choose another time\n" +
-                "3️⃣ Cancel"
+                "❌ " + errorMessage,
+                getRescheduleConfirmSpec()
             );
         }
 
@@ -14484,24 +14944,19 @@ if (
             }
         );
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             senderPhone,
-            buildMainMenuMessage(
-                "❌ Reschedule cancelled."
-            )
+            "❌ Reschedule cancelled."
         );
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "Please reply with:\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Choose another time\n" +
-            "3️⃣ Cancel"
+            "❌ Invalid option.\n\nPlease choose:",
+            getRescheduleConfirmSpec()
         );
     }
     return true;
@@ -15365,7 +15820,7 @@ function sendLanguageMenuReply(ss, phone) {
     sendWhatsAppMenuReply(
         ss,
         phone,
-        buildLanguageSelectionMessage(),
+        buildLanguageSelectionIntro(),
         getLanguageMenuSpec()
     );
 }
@@ -15404,6 +15859,228 @@ function sendDoctorSelectionReply(ss, phone) {
         ss,
         phone,
         "📅 Book Appointment\n\nSelect a doctor:",
+        menuSpec
+    );
+}
+
+
+function sendPatientAppointmentListMenuReply(
+    ss,
+    phone,
+    title,
+    selectLine,
+    appointments
+) {
+
+    const menuSpec =
+        getAppointmentListMenuSpec(
+            appointments,
+            "patient"
+        );
+
+    if (menuSpec.fallbackText) {
+        menuSpec.fallbackText +=
+            "\n0️⃣ Back to Main Menu";
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        title +
+        "\n\n" +
+        selectLine,
+        menuSpec
+    );
+}
+
+
+function sendDoctorAppointmentListMenuReply(
+    ss,
+    phone,
+    title,
+    selectLine,
+    appointments
+) {
+
+    const menuSpec =
+        getAppointmentListMenuSpec(
+            appointments,
+            "doctor"
+        );
+
+    if (menuSpec.fallbackText) {
+        menuSpec.fallbackText +=
+            "\n0️⃣ Doctor Portal";
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        title +
+        "\n\n" +
+        selectLine,
+        menuSpec
+    );
+}
+
+
+function sendDoctorWeekdayMenuReply(
+    ss,
+    phone,
+    doctorId,
+    prefix
+) {
+
+    const body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        "📅 Manage Availability\n\n" +
+        "Select a day to manage:";
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        getDoctorWeekdayMenuSpec(doctorId)
+    );
+}
+
+
+function sendDoctorDayAvailabilityMenuReply(
+    ss,
+    phone,
+    doctorId,
+    dayName,
+    prefix
+) {
+
+    const body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        buildDoctorDayAvailabilityBody(
+            doctorId,
+            dayName
+        ) +
+        "\n\nChoose an action:";
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        getDoctorDayAvailabilityActionSpec()
+    );
+}
+
+
+function sendDoctorSessionRemoveMenuReply(
+    ss,
+    phone,
+    doctorId,
+    dayName
+) {
+
+    const sessions =
+        getDoctorDayAvailabilitySessions(
+            doctorId,
+            dayName
+        );
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        "Select session to remove:\n\n" +
+        buildDoctorDayAvailabilityBody(
+            doctorId,
+            dayName
+        ),
+        getDoctorSessionRemoveListSpec(
+            sessions
+        )
+    );
+}
+
+
+function sendDoctorLeavesMenuReply(
+    ss,
+    phone,
+    prefix
+) {
+
+    const body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        "🏖 Manage Leaves\n\n" +
+        "Choose an option:";
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        getDoctorLeavesMenuSpec()
+    );
+}
+
+
+function sendDoctorLeaveCancelListMenuReply(
+    ss,
+    phone,
+    doctorId,
+    prefix
+) {
+
+    const leaves =
+        getDoctorUpcomingLeaves(doctorId);
+
+    const body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        "Select leave to cancel:";
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        getDoctorLeaveListMenuSpec(leaves)
+    );
+}
+
+
+function sendSlotSelectionMenuReply(
+    ss,
+    phone,
+    introText,
+    slots,
+    page
+) {
+
+    const menuSpec =
+        getSlotSelectionMenuSpec(
+            slots,
+            page || 0
+        );
+
+    let body =
+        String(introText || "");
+
+    if (
+        menuSpec &&
+        menuSpec.totalPages > 1
+    ) {
+        body +=
+            "\n\nPage " +
+            (menuSpec.page + 1) +
+            " of " +
+            menuSpec.totalPages;
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
         menuSpec
     );
 }
@@ -15758,7 +16435,17 @@ function getWhatsAppSession(phone) {
                     .toUpperCase(),
 
             patientName:
-                String(data[i][9] || "").trim()
+                String(data[i][9] || "").trim(),
+
+            slotPage:
+                data[i][10] === "" ||
+                data[i][10] === undefined ||
+                data[i][10] === null
+                    ? 0
+                    : parseInt(
+                        data[i][10],
+                        10
+                    ) || 0
         };
     }
 
@@ -15785,6 +16472,44 @@ function ensureWhatsAppSessionPatientNameColumn(sheet) {
 }
 
 
+function resolveSlotSelectionPage(session) {
+
+    if (
+        !session ||
+        session.slotPage === undefined ||
+        session.slotPage === null ||
+        session.slotPage === ""
+    ) {
+        return 0;
+    }
+
+    const page =
+        parseInt(
+            session.slotPage,
+            10
+        );
+
+    if (
+        isNaN(page) ||
+        page < 0
+    ) {
+        return 0;
+    }
+
+    return page;
+}
+
+
+function ensureWhatsAppSessionSlotPageColumn(sheet) {
+
+    if (!sheet.getRange(1, 11).getValue()) {
+        sheet
+            .getRange(1, 11)
+            .setValue("Slot Page");
+    }
+}
+
+
 function saveWhatsAppSession(
     phone,
     updates
@@ -15806,6 +16531,7 @@ function saveWhatsAppSession(
 
     ensureWhatsAppSessionLanguageColumn(sheet);
     ensureWhatsAppSessionPatientNameColumn(sheet);
+    ensureWhatsAppSessionSlotPageColumn(sheet);
 
     const existing =
         getWhatsAppSession(phone);
@@ -15820,11 +16546,11 @@ function saveWhatsAppSession(
 
         const current =
             sheet
-                .getRange(row, 1, 1, 10)
+                .getRange(row, 1, 1, 11)
                 .getValues()[0];
 
         sheet
-            .getRange(row, 1, 1, 10)
+            .getRange(row, 1, 1, 11)
             .setValues([[
                 phone,
 
@@ -15860,7 +16586,17 @@ function saveWhatsAppSession(
 
                 updates.patientName !== undefined
                     ? updates.patientName
-                    : current[9]
+                    : current[9],
+
+                updates.slotPage !== undefined
+                    ? updates.slotPage
+                    : (
+                        current[10] === "" ||
+                        current[10] === undefined ||
+                        current[10] === null
+                            ? 0
+                            : current[10]
+                    )
             ]]);
 
     } else {
@@ -15875,7 +16611,10 @@ function saveWhatsAppSession(
             updates.appointmentId || "",
             now,
             updates.language || "EN",
-            updates.patientName || ""
+            updates.patientName || "",
+            updates.slotPage !== undefined
+                ? updates.slotPage
+                : 0
         ]);
     }
 }

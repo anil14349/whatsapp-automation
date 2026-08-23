@@ -36,10 +36,9 @@ if (
 
     if (!language) {
 
-        sendWhatsAppReply(
+        sendLanguageMenuReply(
             ss,
-            senderPhone,
-            buildLanguageSelectionMessage()
+            senderPhone
         );
 
     } else {
@@ -62,12 +61,10 @@ if (
             language
         );
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             senderPhone,
-            buildMainMenuMessage(
-                "👋 Welcome to ABC Clinic!"
-            )
+            "👋 Welcome to ABC Clinic!"
         );
     }
     return true;
@@ -97,10 +94,9 @@ if (
 
     if (!language) {
 
-        sendWhatsAppReply(
+        sendLanguageMenuReply(
             ss,
-            senderPhone,
-            buildLanguageSelectionMessage()
+            senderPhone
         );
 
     } else {
@@ -159,12 +155,10 @@ if (
                 language
             );
 
-            sendWhatsAppReply(
+            sendPatientMainMenuReply(
                 ss,
                 senderPhone,
-                buildMainMenuMessage(
-                    "✅ Language changed successfully."
-                )
+                "✅ Language changed successfully."
             );
         }
     }
@@ -220,33 +214,6 @@ if (
             }
         );
 
-    let reply;
-
-    if (
-        !appointments ||
-        appointments.length === 0
-    ) {
-
-        reply =
-            buildMainMenuMessage(
-                "📋 You have no upcoming appointments."
-            );
-
-    } else {
-
-        reply =
-            "📋 Your Appointments:\n\n" +
-            formatAppointmentsListForWhatsApp(
-                appointments
-            ) +
-            "Reply with:\n\n" +
-            "1️⃣ Book Appointment\n" +
-            "2️⃣ My Appointments\n" +
-            "3️⃣ Cancel Appointment\n" +
-            "4️⃣ Reschedule Appointment\n" +
-            "5️⃣ Change Language";
-    }
-
     saveWhatsAppSession(
         senderPhone,
         {
@@ -255,11 +222,30 @@ if (
         }
     );
 
-    sendWhatsAppReply(
-        ss,
-        senderPhone,
-        reply
-    );
+    if (
+        !appointments ||
+        appointments.length === 0
+    ) {
+
+        sendPatientMainMenuReply(
+            ss,
+            senderPhone,
+            "📋 You have no upcoming appointments."
+        );
+
+    } else {
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            "📋 Your Appointments:\n\n" +
+            formatAppointmentsListForWhatsApp(
+                appointments
+            ) +
+            "\n\nChoose an option:",
+            getPatientMainMenuSpec()
+        );
+    }
 
     return true;
 }
@@ -319,10 +305,9 @@ if (
         }
     );
 
-    sendWhatsAppReply(
+    sendLanguageMenuReply(
         ss,
-        senderPhone,
-        buildLanguageSelectionMessage()
+        senderPhone
     );
     return true;
 }
@@ -337,12 +322,10 @@ if (
     session.state === "MAIN_MENU"
 ) {
 
-    sendWhatsAppReply(
+    sendPatientMainMenuReply(
         ss,
         senderPhone,
-        buildMainMenuMessage(
-            "❌ Invalid option."
-        )
+        "❌ Invalid option."
     );
     return true;
 }
@@ -707,36 +690,19 @@ if (
             senderPhone,
             {
                 state: "BOOK_TIME",
-                time: ""
+                time: "",
+                slotPage: 0
             }
         );
 
-        let reply =
-            "📅 Date: " +
-            session.date +
-            "\n\n" +
-            "Available slots:\n\n";
-
-        for (
-            let i = 0;
-            i < slots.length;
-            i++
-        ) {
-
-            reply +=
-                (i + 1) +
-                "️⃣ " +
-                slots[i] +
-                "\n";
-        }
-
-        reply +=
-            "\nPlease choose a time.";
-
-        sendWhatsAppReply(
+        sendSlotSelectionMenuReply(
             ss,
             senderPhone,
-            reply
+            "📅 Date: " +
+            session.date +
+            "\n\nAvailable slots:\nPlease choose a time.",
+            slots,
+            0
         );
 
     } else if (
@@ -755,28 +721,19 @@ if (
             }
         );
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             senderPhone,
-            "❌ Appointment booking cancelled.\n\n" +
-            "Please choose an option:\n\n" +
-            "1️⃣ Book Appointment\n" +
-            "2️⃣ My Appointments\n" +
-            "3️⃣ Cancel Appointment\n" +
-            "4️⃣ Reschedule Appointment\n" +
-            "5️⃣ Change Language"
+            "❌ Appointment booking cancelled."
         );
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "Please reply with:\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Choose another time\n" +
-            "3️⃣ Cancel"
+            "❌ Invalid option.\n\nPlease choose:",
+            getBookingConfirmSpec()
         );
     }
     return true;
@@ -854,12 +811,10 @@ if (
                 }
             );
 
-            sendWhatsAppReply(
+            sendPatientMainMenuReply(
                 ss,
                 senderPhone,
-                buildMainMenuMessage(
-                    "✅ " + result.message
-                )
+                "✅ " + result.message
             );
 
         } else {
@@ -869,12 +824,11 @@ if (
                     ? result.message
                     : "Unable to cancel the appointment.";
 
-            sendWhatsAppReply(
+            sendWhatsAppMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage + "\n\n" +
-                "1️⃣ Yes, cancel it\n" +
-                "2️⃣ No, go back"
+                "❌ " + errorMessage,
+                getYesNoConfirmSpec()
             );
         }
 
@@ -892,22 +846,19 @@ if (
             }
         );
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             senderPhone,
-            buildMainMenuMessage(
-                "👍 Okay, appointment was not cancelled."
-            )
+            "👍 Okay, appointment was not cancelled."
         );
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "1️⃣ Yes, cancel it\n" +
-            "2️⃣ No, go back"
+            "❌ Invalid option.",
+            getYesNoConfirmSpec()
         );
     }
     return true;
@@ -1079,14 +1030,11 @@ if (
                     ? result.message
                     : "Unable to reschedule the appointment.";
 
-            sendWhatsAppReply(
+            sendWhatsAppMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage + "\n\n" +
-                "Please reply with:\n\n" +
-                "1️⃣ Confirm\n" +
-                "2️⃣ Choose another time\n" +
-                "3️⃣ Cancel"
+                "❌ " + errorMessage,
+                getRescheduleConfirmSpec()
             );
         }
 
@@ -1137,24 +1085,19 @@ if (
             }
         );
 
-        sendWhatsAppReply(
+        sendPatientMainMenuReply(
             ss,
             senderPhone,
-            buildMainMenuMessage(
-                "❌ Reschedule cancelled."
-            )
+            "❌ Reschedule cancelled."
         );
 
     } else {
 
-        sendWhatsAppReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            "Please reply with:\n\n" +
-            "1️⃣ Confirm\n" +
-            "2️⃣ Choose another time\n" +
-            "3️⃣ Cancel"
+            "❌ Invalid option.\n\nPlease choose:",
+            getRescheduleConfirmSpec()
         );
     }
     return true;

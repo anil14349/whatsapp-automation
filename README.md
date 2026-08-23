@@ -103,12 +103,26 @@ When a doctor cancels or reschedules, the **patient is notified** via WhatsApp a
 
 ### Interactive WhatsApp menus
 
-- Tap-to-select **list** and **button** menus (Meta interactive messages)
-- Used for patient/doctor main menus, language, dates, doctors, slots, and confirmations
-- Doctor portal list menu supports **10 options** (Meta’s list limit)
-- Toggle via **`Settings`** → `ENABLE_INTERACTIVE_MENUS` (`TRUE` / `FALSE`)
-- Falls back to numbered text menus if disabled, API fails, or list exceeds 10 items
-- Users can still type `1`, `2`, `3` or `0` / `9` for navigation
+- Tap-to-select **list** and **button** menus (Meta interactive messages) — no need to type `1`, `2`, `3` for most steps
+- **Patient:** language, main menu, doctor picker, date (Today / Tomorrow / Other), time slots, booking confirm, cancel/reschedule pickers, yes/no confirms
+- **Doctor:** portal menu (10 options), weekday availability, day actions, leaves, appointment pickers, status (Completed / No-Show), confirm/cancel dialogs
+- **Free-text steps** (not menus): custom date (`YYYY-MM-DD`), patient name, availability times, leave reason
+- **Navigation:** users can still type `0` (main menu / doctor portal) and `9` (back one step)
+- Toggle via **`Settings`** → `ENABLE_INTERACTIVE_MENUS` (`TRUE` / `FALSE`, default `TRUE`)
+- Falls back to **numbered text** only when menus are disabled, the Meta API fails, or a list cannot be built
+
+#### Meta limits & pagination
+
+WhatsApp allows **at most 10 rows** per list menu and **3 reply buttons** per message.
+
+| Flow | Behavior when > limit |
+|------|------------------------|
+| **Time slots** | **Paginated** — tap **More times** / **Earlier times** (page tracked in `WhatsApp_Sessions` → **Slot Page** column, auto-created) |
+| **Doctor portal** | Exactly 10 list rows (one per option) |
+| **Language** | 6 languages in one list (under limit) |
+| **Appointment pickers** (cancel/reschedule) | First 10 shown as list; if a patient has **>10** upcoming appointments, falls back to numbered text for the full list |
+
+Typed numbers still work everywhere as a backup (including global slot numbers across pages).
 
 ### Refactor / reliability
 
@@ -209,7 +223,7 @@ Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/`
 
    | Appointment ID | Date | Time | Doctor ID | Patient Name | Phone | Status | Calendar Event ID | Patient ID |
 
-5. Other sheets (`Patients`, `Doctor_Leaves`, `WhatsApp_Sessions`, `WhatsApp_Log`, `WhatsApp_Debug`, `Settings`, `Reminder_Log`) are **auto-created** on first use — you do not need to create them manually.
+5. Other sheets (`Patients`, `Doctor_Leaves`, `WhatsApp_Sessions`, `WhatsApp_Log`, `WhatsApp_Debug`, `Settings`, `Reminder_Log`) are **auto-created** on first use — you do not need to create them manually. On upgrade, `WhatsApp_Sessions` may gain new columns (e.g. **Language**, **Patient Name**, **Slot Page**) automatically when a session is saved.
 
 ---
 
@@ -322,7 +336,7 @@ After the first inbound message, a **`Settings`** sheet is created. Adjust as ne
 | `ENABLE_APPOINTMENT_REMINDERS` | `TRUE` | Send WhatsApp reminders before appointments |
 | `REMINDER_HOURS_BEFORE` | `24` | Comma-separated hours before appt (e.g. `24,2`) |
 | `REMINDER_WINDOW_MINUTES` | `45` | Send window for hourly trigger |
-| `ENABLE_INTERACTIVE_MENUS` | `TRUE` | List/button menus instead of typed numbers |
+| `ENABLE_INTERACTIVE_MENUS` | `TRUE` | Tap-to-select list/button menus (see [Interactive WhatsApp menus](#interactive-whatsapp-menus)) |
 | `AUTO_COMPLETE_PAST_APPOINTMENTS` | `FALSE` | Auto-mark past confirmed appointments Completed |
 | `AUTO_COMPLETE_HOURS_AFTER` | `4` | Hours after appointment start before auto-complete |
 | `ENABLE_AFTER_HOURS_REPLY` | `FALSE` | Auto-reply when patients message outside clinic hours |
@@ -368,14 +382,15 @@ Review failures — some legacy tests touch live sheets/calendar; run on a copy 
 
 | Actor | Action | Expected |
 |-------|--------|----------|
-| Patient | Send `Hi` | Main menu; language prompt if first time |
-| Patient | Book appointment | Confirmation; row in `Appointments`; event on doctor calendar |
+| Patient | Send `Hi` | Main menu (tap-to-select list); language prompt if first time |
+| Patient | Book appointment | Tappable doctor → date → slot menus; confirm with buttons; row in `Appointments`; calendar event |
+| Patient | Book on a busy day (>9 slots) | Slot list shows **More times** / **Earlier times** pages |
 | Patient | Cancel | Appointment status updated; calendar event removed |
 | Patient | Reschedule | New slot saved; calendar updated |
-| Doctor | Send `Hi` | Doctor Portal menu |
+| Doctor | Send `Hi` | Doctor Portal menu (tap-to-select list) |
 | Doctor | Options 1–4 | Schedule views work |
-| Doctor | Option 5 | Add/remove availability sessions |
-| Doctor | Option 6 | Add single-day or range leave |
+| Doctor | Option 5 | Add/remove availability sessions (tappable day + action menus) |
+| Doctor | Option 6 | Add single-day or range leave (tappable leave menu) |
 | Doctor | Option 7 | Patient list from history |
 | Doctor | Option 8 | Cancel a patient appointment |
 | Doctor | Option 9 | Reschedule a patient appointment |
@@ -393,9 +408,10 @@ Confirm **`WhatsApp_Log`** receives inbound rows and **`WhatsApp_Debug`** logs o
 When you pull new code from this repo:
 
 1. Copy the updated file(s) into Apps Script (overwrite existing files) — either `ABC_Clinic_WhatsApp_Complete.gs`, or every changed file under `src/` if you're on the split layout.
-2. **Deploy → Manage deployments → Edit → New version → Deploy**
-3. Re-run a quick manual WhatsApp test (patient Hi + one booking).
-4. If new sheets or settings were added, they auto-create on first use — check **`Settings`** for new keys.
+2. **If you maintain both Option A and Option B**, run `node scripts/sync-monolith-from-src.js` from the repo after editing `src/`, then copy the updated monolith too.
+3. **Deploy → Manage deployments → Edit → New version → Deploy**
+4. Re-run a quick manual WhatsApp test (patient Hi + one booking; try a date with many slots if possible).
+5. If new sheets or settings were added, they auto-create on first use — check **`Settings`** for new keys and confirm `WhatsApp_Sessions` has a **Slot Page** header after the first paginated slot pick.
 
 You do **not** need to re-verify the Meta webhook unless the deployment URL changes.
 
@@ -450,7 +466,7 @@ Set `TEST_SKIP_WHATSAPP_SEND=true` to avoid real WhatsApp API calls during send 
 | `testDoctorCancelReschedule` | Doctor cancel/reschedule UI helpers |
 | `testAppointmentStatus` | Completed / No-Show status workflow |
 | `testAfterHoursReply` | Clinic hours parsing, closed message, patient gate |
-| `testInteractiveMenus` | List/button specs, inbound interactive parsing |
+| `testInteractiveMenus` | List/button specs, slot pagination (20-slot case), inbound interactive parsing |
 | `testAppointmentSheetFormatting` | Date/time sheet formatting |
 | `testWhatsAppRouterStructure` | Router handler functions exist |
 
@@ -468,6 +484,7 @@ Local Node unit tests (`tests/run-unit-tests.mjs`) are **not included yet** — 
 - Some legacy tests (`testRealBooking`, etc.) hit live sheets/calendar — review before running in production spreadsheet
 - Doctor portal and many error strings remain English-only
 - Router-split handler functions work but have uneven indentation (cosmetic)
+- Cancel/reschedule appointment pickers show at most **10 tappable rows**; patients with more than 10 upcoming appointments get a numbered text list instead (slot picking is paginated; appointment picking is not yet)
 
 ---
 
@@ -499,7 +516,9 @@ src/                               ← production, Option B: split into 20 files
   WhatsApp_Send.gs
 landing/                           ← marketing website (Vercel / Replit)
 marketing/                         ← brochure, one-pager, offboarding docs
+scripts/
+  sync-monolith-from-src.js        ← copy src/ function bodies into ABC_Clinic_WhatsApp_Complete.gs
 README.md
 ```
 
-Option A and Option B are kept in sync manually — when editing one, mirror the change in the other (or regenerate one from the other) until one is retired.
+Option A and Option B are kept in sync with `node scripts/sync-monolith-from-src.js` after editing `src/` — run it before deploying the monolith. If you only use one layout, you can ignore the script.
