@@ -490,9 +490,18 @@ function getDateMenuSpec() {
 
     const interactive =
         buildInteractiveButtonSpec([
-            { id: "1", title: "Today" },
-            { id: "2", title: "Tomorrow" },
-            { id: "3", title: "Other date" }
+            {
+                id: "date_today",
+                title: "Today"
+            },
+            {
+                id: "date_tomorrow",
+                title: "Tomorrow"
+            },
+            {
+                id: "date_custom",
+                title: "Other date"
+            }
         ]);
 
     return {
@@ -552,104 +561,201 @@ function getDoctorSelectionMenuSpec() {
 }
 
 
+function getSlotSelectionPageInfo(
+    totalSlots,
+    page
+) {
+
+    const total =
+        Number(totalSlots) || 0;
+
+    let safePage =
+        Number(page) || 0;
+
+    if (safePage < 0) {
+        safePage = 0;
+    }
+
+    if (total <= 9) {
+
+        return {
+            start: 0,
+            end: total,
+            hasPrev: false,
+            hasNext: false,
+            page: 0,
+            totalPages: 1
+        };
+    }
+
+    /*
+     * Pagination:
+     *
+     * Page 0  -> first 9 slots
+     * Page 1+ -> 8 slots while another page remains
+     * Final page -> up to 9 slots
+     *
+     * We calculate the last page directly instead of
+     * calling getLastSlotSelectionPage(), which avoids
+     * recursive calls.
+     */
+
+    const remainingAfterFirstPage =
+        total - 9;
+
+    const additionalPages =
+        Math.ceil(
+            remainingAfterFirstPage / 8
+        );
+
+    const lastPage =
+        additionalPages;
+
+    if (safePage > lastPage) {
+        safePage = lastPage;
+    }
+
+    if (safePage === 0) {
+
+        return {
+            start: 0,
+            end: Math.min(9, total),
+            hasPrev: false,
+            hasNext: total > 9,
+            page: 0,
+            totalPages: lastPage + 1
+        };
+    }
+
+    const start =
+        9 + (safePage - 1) * 8;
+
+    const remaining =
+        total - start;
+
+    const hasNext =
+        remaining > 9;
+
+    const slotCount =
+        hasNext
+            ? 8
+            : Math.min(remaining, 9);
+
+    return {
+        start: start,
+        end: start + slotCount,
+        hasPrev: true,
+        hasNext: hasNext,
+        page: safePage,
+        totalPages: lastPage + 1
+    };
+}
+
 function getSlotSelectionMenuSpec(
     slots,
     page
 ) {
 
-    if (!slots || slots.length === 0) {
-        return null;
-    }
+    const safeSlots =
+        Array.isArray(slots)
+            ? slots
+            : [];
+
+    const total =
+        safeSlots.length;
 
     const pageInfo =
         getSlotSelectionPageInfo(
-            slots.length,
+            total,
             page || 0
         );
 
-    let fallbackText = "";
+    const visibleSlots =
+        safeSlots.slice(
+            pageInfo.start,
+            pageInfo.end
+        );
 
-    if (pageInfo.totalPages > 1) {
-        fallbackText +=
-            "Page " +
-            (pageInfo.page + 1) +
-            " of " +
-            pageInfo.totalPages +
-            "\n\n";
-    }
+    const rows =
+        visibleSlots.map(
+            function (slot, index) {
 
-    const rows = [];
+                const absoluteIndex =
+                    pageInfo.start +
+                    index;
 
+                return {
+                    id:
+                        "slot_" +
+                        String(absoluteIndex + 1),
+
+                    title:
+                        String(slot),
+
+                    description:
+                        "Select this time"
+                };
+            }
+        );
+
+    // Navigation rows
     if (pageInfo.hasPrev) {
 
         rows.push({
-            id: "prev",
+            id: "slot_prev",
             title: "Earlier times",
-            description: "Previous page"
-        });
-
-        fallbackText +=
-            "◀ Earlier times\n";
-    }
-
-    for (
-        let i = pageInfo.start;
-        i < pageInfo.end;
-        i++
-    ) {
-
-        const slot =
-            slots[i];
-
-        fallbackText +=
-            (i + 1) +
-            "️⃣ " +
-            slot +
-            "\n";
-
-        rows.push({
-            id: String(i + 1),
-            title: slot,
-            description: ""
+            description:
+                "View previous time slots"
         });
     }
 
     if (pageInfo.hasNext) {
 
         rows.push({
-            id: "next",
+            id: "slot_next",
             title: "More times",
-            description: "Next page"
+            description:
+                "View more time slots"
         });
-
-        fallbackText +=
-            "▶ More times\n";
-    }
-
-    const interactive =
-        buildInteractiveListSpec(
-            rows,
-            "Choose time"
-        );
-
-    if (
-        !interactive &&
-        slots.length > 10
-    ) {
-        fallbackText =
-            formatAvailableSlotsForWhatsApp(
-                slots
-            );
     }
 
     return {
-        fallbackText: fallbackText.trim(),
-        interactive: interactive,
-        page: pageInfo.page,
-        totalPages: pageInfo.totalPages
+        fallbackText:
+            visibleSlots
+                .map(
+                    function (slot, index) {
+                        return (
+                            String(
+                                pageInfo.start +
+                                index +
+                                1
+                            ) +
+                            "️⃣ " +
+                            String(slot)
+                        );
+                    }
+                )
+                .join("\n"),
+
+        interactive:
+            buildInteractiveListSpec(
+                rows,
+                "Select a time"
+            ),
+
+        page:
+            pageInfo.page,
+
+        totalPages:
+            pageInfo.totalPages,
+
+        hasPrev:
+            pageInfo.hasPrev,
+
+        hasNext:
+            pageInfo.hasNext
     };
 }
-
 
 function getYesNoConfirmSpec() {
 
@@ -677,11 +783,20 @@ function getRescheduleConfirmSpec() {
         "2️⃣ Choose another time\n" +
         "3️⃣ Cancel";
 
-    const interactive =
+     const interactive =
         buildInteractiveButtonSpec([
-            { id: "1", title: "Confirm" },
-            { id: "2", title: "Other time" },
-            { id: "3", title: "Cancel" }
+            {
+                id: "confirm_yes",
+                title: "Confirm"
+            },
+            {
+                id: "confirm_other_time",
+                title: "Other time"
+            },
+            {
+                id: "confirm_cancel",
+                title: "Cancel"
+            }
         ]);
 
     return {
@@ -8076,6 +8191,14 @@ function verifyWhatsAppWebhookRequest(e, rawBody) {
 
 function doGet(e) {
 
+    if (!e || !e.parameter) {
+        return ContentService
+            .createTextOutput("OK")
+            .setMimeType(
+                ContentService.MimeType.TEXT
+            );
+    }
+
     const params = e.parameter;
 
     const mode =
@@ -8093,14 +8216,10 @@ function doGet(e) {
             ""
         );
 
-    // Fail closed: never fall back to a hardcoded, publicly-visible
-    // verify token. If the property isn't configured, verification
-    // must fail rather than succeed against a guessable default.
     if (!verifyToken) {
 
         Logger.log(
-            "doGet: WHATSAPP_VERIFY_TOKEN is not configured — " +
-            "rejecting webhook verification."
+            "doGet: WHATSAPP_VERIFY_TOKEN is not configured."
         );
 
         return ContentService
@@ -8128,7 +8247,6 @@ function doGet(e) {
             ContentService.MimeType.TEXT
         );
 }
-
 
 // ============================================================
 // WHATSAPP HELPERS - APPOINTMENT LISTS & SLOT FORMATTING
@@ -9001,7 +9119,9 @@ function getSlotSelectionPageInfo(
 }
 
 
-function getLastSlotSelectionPage(totalSlots) {
+function getLastSlotSelectionPage(
+    totalSlots
+) {
 
     const total =
         Number(totalSlots) || 0;
@@ -9010,22 +9130,19 @@ function getLastSlotSelectionPage(totalSlots) {
         return 0;
     }
 
-    let page = 0;
+    /*
+     * First page contains 9 slots.
+     * Every subsequent page can contain 8 slots
+     * while another page remains, with the final
+     * page containing up to 9.
+     *
+     * Calculate directly instead of calling
+     * getSlotSelectionPageInfo().
+     */
 
-    while (true) {
-
-        const info =
-            getSlotSelectionPageInfo(
-                total,
-                page
-            );
-
-        if (!info.hasNext) {
-            return page;
-        }
-
-        page++;
-    }
+    return Math.ceil(
+        (total - 9) / 8
+    );
 }
 
 
@@ -9554,37 +9671,149 @@ function handleWhatsAppSlotSelection(
 
     const opts = options || {};
 
-    if (
-        !session.doctorId ||
-        !session.date
-    ) {
+    if (!session) {
 
         sendWhatsAppReply(
             ss,
             phone,
             opts.expiredMessage ||
-                "❌ Your session has expired.\n\n" +
-                "Please send Hi to start again."
+            "❌ Your booking session has expired.\n\n" +
+            "Please send Hi to start again."
         );
 
         return;
     }
 
     const isoDate =
-        String(session.date).trim();
+        String(session.date || "").trim();
 
-    if (!isValidISODate(isoDate)) {
+    if (
+        !isoDate ||
+        !isValidISODate(isoDate)
+    ) {
 
         sendWhatsAppReply(
             ss,
             phone,
             opts.invalidDateMessage ||
-                "❌ The selected date is invalid.\n\n" +
-                "Please send Hi to start again."
+            "❌ The selected date is invalid.\n\n" +
+            "Please send Hi to start again."
         );
 
         return;
     }
+
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+
+    // ======================================================
+    // PAGINATION — PREVIOUS PAGE
+    // ======================================================
+
+    if (
+        choice === "slot_prev"
+    ) {
+
+        const currentPage =
+            Number(session.slotPage) || 0;
+
+        const previousPage =
+            Math.max(
+                0,
+                currentPage - 1
+            );
+
+        saveWhatsAppSession(
+            phone,
+            {
+                slotPage: previousPage
+            }
+        );
+
+        sendSlotSelectionMenuReply(
+            ss,
+            phone,
+            "",
+            getAvailableSlots(
+                session.doctorId,
+                isoDate
+            ),
+            previousPage
+        );
+
+        return;
+    }
+
+
+    // ======================================================
+    // PAGINATION — NEXT PAGE
+    // ======================================================
+
+    if (
+        choice === "slot_next"
+    ) {
+
+        const currentPage =
+            Number(session.slotPage) || 0;
+
+        const nextPage =
+            currentPage + 1;
+
+        saveWhatsAppSession(
+            phone,
+            {
+                slotPage: nextPage
+            }
+        );
+
+        sendSlotSelectionMenuReply(
+            ss,
+            phone,
+            "",
+            getAvailableSlots(
+                session.doctorId,
+                isoDate
+            ),
+            nextPage
+        );
+
+        return;
+    }
+
+
+    // ======================================================
+    // SLOT NUMBER
+    // ======================================================
+
+    let slotNumber = NaN;
+
+    if (
+        choice.indexOf("slot_") === 0
+    ) {
+
+        slotNumber =
+            parseInt(
+                choice.substring(5),
+                10
+            );
+
+    } else {
+
+        // Typed-number fallback
+        slotNumber =
+            parseInt(
+                choice,
+                10
+            );
+    }
+
+
+    // ======================================================
+    // GET AVAILABLE SLOTS
+    // ======================================================
 
     const slots =
         getAvailableSlots(
@@ -9592,97 +9821,13 @@ function handleWhatsAppSlotSelection(
             isoDate
         );
 
-    const currentPage =
-        resolveSlotSelectionPage(session);
 
-    if (normalizedMessage === "next") {
-
-        const pageInfo =
-            getSlotSelectionPageInfo(
-                slots.length,
-                currentPage
-            );
-
-        if (!pageInfo.hasNext) {
-
-            sendSlotSelectionMenuReply(
-                ss,
-                phone,
-                "❌ Invalid time selection.\n\n" +
-                "Please choose one of the available slots:",
-                slots,
-                currentPage
-            );
-
-            return;
-        }
-
-        const nextPage =
-            currentPage + 1;
-
-        saveWhatsAppSession(phone, {
-            slotPage: nextPage
-        });
-
-        sendSlotSelectionMenuReply(
-            ss,
-            phone,
-            "📅 Available slots:\nPlease choose a time.",
-            slots,
-            nextPage
-        );
-
-        return;
-    }
-
-    if (normalizedMessage === "prev") {
-
-        const pageInfo =
-            getSlotSelectionPageInfo(
-                slots.length,
-                currentPage
-            );
-
-        if (!pageInfo.hasPrev) {
-
-            sendSlotSelectionMenuReply(
-                ss,
-                phone,
-                "❌ Invalid time selection.\n\n" +
-                "Please choose one of the available slots:",
-                slots,
-                currentPage
-            );
-
-            return;
-        }
-
-        const previousPage =
-            currentPage - 1;
-
-        saveWhatsAppSession(phone, {
-            slotPage: previousPage
-        });
-
-        sendSlotSelectionMenuReply(
-            ss,
-            phone,
-            "📅 Available slots:\nPlease choose a time.",
-            slots,
-            previousPage
-        );
-
-        return;
-    }
-
-    const slotNumber =
-        parseInt(
-            normalizedMessage,
-            10
-        );
+    // ======================================================
+    // VALIDATE SLOT
+    // ======================================================
 
     if (
-        isNaN(slotNumber) ||
+        !Number.isInteger(slotNumber) ||
         slotNumber < 1 ||
         slotNumber > slots.length
     ) {
@@ -9691,22 +9836,64 @@ function handleWhatsAppSlotSelection(
             ss,
             phone,
             "❌ Invalid time selection.\n\n" +
-            "Please choose one of the available slots:",
+            "Please choose one of the available time slots.",
             slots,
-            currentPage
+            Number(session.slotPage) || 0
         );
 
         return;
     }
 
-    saveWhatsAppSession(phone, {
-        slotPage: 0
-    });
 
-    opts.onValidSlot(
-        slots[slotNumber - 1],
-        isoDate,
-        slots
+    // ======================================================
+    // GET SELECTED TIME
+    // ======================================================
+
+    const selectedTime =
+        slots[slotNumber - 1];
+
+    if (!selectedTime) {
+
+        sendSlotSelectionMenuReply(
+            ss,
+            phone,
+            "❌ That time slot is no longer available.\n\n" +
+            "Please choose another time.",
+            slots,
+            Number(session.slotPage) || 0
+        );
+
+        return;
+    }
+
+
+    // ======================================================
+    // VALID SLOT → EXISTING FLOW CALLBACK
+    // ======================================================
+
+    if (
+        typeof opts.onValidSlot ===
+        "function"
+    ) {
+
+        opts.onValidSlot(
+            selectedTime,
+            isoDate
+        );
+
+        return;
+    }
+
+
+    // ======================================================
+    // SAFETY FALLBACK
+    // ======================================================
+
+    sendWhatsAppReply(
+        ss,
+        phone,
+        "❌ Unable to process that time selection.\n\n" +
+        "Please try again."
     );
 }
 
@@ -10832,7 +11019,16 @@ function buildCustomDateEntryPrompt(isReschedule) {
 
 function getISODateFromMenuChoice(normalizedMessage) {
 
-    if (normalizedMessage === "1") {
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    // TODAY
+    if (
+        choice === "1" ||
+        choice === "date_today"
+    ) {
 
         return Utilities.formatDate(
             new Date(),
@@ -10841,10 +11037,17 @@ function getISODateFromMenuChoice(normalizedMessage) {
         );
     }
 
-    if (normalizedMessage === "2") {
+    // TOMORROW
+    if (
+        choice === "2" ||
+        choice === "date_tomorrow"
+    ) {
 
         const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        tomorrow.setDate(
+            tomorrow.getDate() + 1
+        );
 
         return Utilities.formatDate(
             tomorrow,
@@ -10932,7 +11135,8 @@ function handleWhatsAppDateMenuInput(
         return;
     }
 
-    if (normalizedMessage === "3") {
+    if (normalizedMessage === "3" ||
+    normalizedMessage === "date_custom") {
 
         saveWhatsAppSession(
             phone,
@@ -14394,7 +14598,8 @@ if (
     session.state === "BOOK_CONFIRM"
 ) {
 
-    if (normalizedMessage === "1") {
+    if (normalizedMessage === "1"||
+    normalizedMessage === "confirm_yes") {
 
         if (
             !session.doctorId ||
@@ -14496,7 +14701,8 @@ if (
         }
 
     } else if (
-        normalizedMessage === "2"
+        normalizedMessage === "2"||
+        normalizedMessage === "confirm_other_time"
     ) {
 
         if (
@@ -14565,7 +14771,8 @@ if (
         );
 
     } else if (
-        normalizedMessage === "3"
+        normalizedMessage === "3"||
+        normalizedMessage === "confirm_cancel"
     ) {
 
         saveWhatsAppSession(
@@ -14812,7 +15019,8 @@ if (
     session.state === "RESCHEDULE_CONFIRM"
 ) {
 
-    if (normalizedMessage === "1") {
+    if (normalizedMessage === "1"||
+    normalizedMessage === "confirm_yes") {
 
         if (
             !session.appointmentId ||
@@ -14898,7 +15106,8 @@ if (
         }
 
     } else if (
-        normalizedMessage === "2"
+        normalizedMessage === "2"||
+    normalizedMessage === "confirm_other_time"
     ) {
 
         if (
@@ -14929,7 +15138,8 @@ if (
         );
 
     } else if (
-        normalizedMessage === "3"
+        normalizedMessage === "3"||
+    normalizedMessage === "confirm_cancel"
     ) {
 
         saveWhatsAppSession(
