@@ -170,11 +170,18 @@ function sendWhatsAppMenuReply(
                 String(bodyText || "")
             );
 
-        localizedBody =
-            addWhatsAppNavigationOptions(
-                session,
-                localizedBody
-            );
+        const willSendInteractive =
+            interactiveMenusEnabled() &&
+            menuSpec &&
+            menuSpec.interactive;
+
+        if (!willSendInteractive) {
+            localizedBody =
+                addWhatsAppNavigationOptions(
+                    session,
+                    localizedBody
+                );
+        }
 
         const inboundMessageId =
             getWhatsAppInboundMessageId();
@@ -209,7 +216,11 @@ function sendWhatsAppMenuReply(
                     sendWhatsAppInteractiveMessage(
                         phone,
                         localizedBody,
-                        menuSpec.interactive
+                        localizeInteractiveMenuForSession(
+                            session,
+                            language,
+                            menuSpec.interactive
+                        )
                     );
 
                 outboundLog =
@@ -231,13 +242,27 @@ function sendWhatsAppMenuReply(
 
         if (!sendResult) {
 
-            const fallbackText =
+            const fallbackBody =
+                addWhatsAppNavigationOptions(
+                    session,
+                    localizedBody
+                );
+
+            const localizedFallback =
                 menuSpec &&
                 menuSpec.fallbackText
-                    ? localizedBody +
+                    ? localizeWhatsAppReply(
+                        language,
+                        menuSpec.fallbackText
+                    )
+                    : "";
+
+            const fallbackText =
+                localizedFallback
+                    ? fallbackBody +
                     "\n\n" +
-                    menuSpec.fallbackText
-                    : localizedBody;
+                    localizedFallback
+                    : fallbackBody;
 
             sendResult =
                 sendWhatsAppText(
@@ -296,13 +321,35 @@ function sendPatientMainMenuReply(
 
     const body =
         String(prefix || "👋 Welcome to ABC Clinic!") +
-        "\n\nPlease choose an option:";
+        "\n\nHow can we help you today?";
 
     sendWhatsAppMenuReply(
         ss,
         phone,
         body,
         getPatientMainMenuSpec()
+    );
+}
+
+
+
+function sendPatientMainMoreMenuReply(
+    ss,
+    phone,
+    prefix
+) {
+
+    const body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        "More options";
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        getPatientMainMoreMenuSpec()
     );
 }
 
@@ -338,6 +385,32 @@ function sendDoctorMainMenuReply(
 
 
 
+function sendDoctorMainMenuMoreReply(
+    ss,
+    phone,
+    doctorId,
+    tier,
+    prefix
+) {
+
+    const body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        "More options";
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        getDoctorMainMenuMoreSpec(
+            Number(tier) || 1
+        )
+    );
+}
+
+
+
 function sendLanguageMenuReply(ss, phone) {
 
     sendWhatsAppMenuReply(
@@ -355,13 +428,15 @@ function sendPatientAppointmentListMenuReply(
     phone,
     title,
     selectLine,
-    appointments
+    appointments,
+    page
 ) {
 
     const menuSpec =
         getAppointmentListMenuSpec(
             appointments,
-            "patient"
+            "patient",
+            page || 0
         );
 
     if (menuSpec.fallbackText) {
@@ -369,12 +444,26 @@ function sendPatientAppointmentListMenuReply(
             "\n0️⃣ Back to Main Menu";
     }
 
+    let body =
+        title +
+        "\n\n" +
+        selectLine;
+
+    if (
+        menuSpec &&
+        menuSpec.totalPages > 1
+    ) {
+        body +=
+            "\n\nPage " +
+            (menuSpec.page + 1) +
+            " of " +
+            menuSpec.totalPages;
+    }
+
     sendWhatsAppMenuReply(
         ss,
         phone,
-        title +
-        "\n\n" +
-        selectLine,
+        body,
         menuSpec
     );
 }
@@ -386,13 +475,15 @@ function sendDoctorAppointmentListMenuReply(
     phone,
     title,
     selectLine,
-    appointments
+    appointments,
+    page
 ) {
 
     const menuSpec =
         getAppointmentListMenuSpec(
             appointments,
-            "doctor"
+            "doctor",
+            page || 0
         );
 
     if (menuSpec.fallbackText) {
@@ -400,12 +491,26 @@ function sendDoctorAppointmentListMenuReply(
             "\n0️⃣ Doctor Portal";
     }
 
+    let body =
+        title +
+        "\n\n" +
+        selectLine;
+
+    if (
+        menuSpec &&
+        menuSpec.totalPages > 1
+    ) {
+        body +=
+            "\n\nPage " +
+            (menuSpec.page + 1) +
+            " of " +
+            menuSpec.totalPages;
+    }
+
     sendWhatsAppMenuReply(
         ss,
         phone,
-        title +
-        "\n\n" +
-        selectLine,
+        body,
         menuSpec
     );
 }
@@ -547,9 +652,11 @@ function sendSlotSelectionMenuReply(
     phone,
     introText,
     slots,
-    page
+    page,
+    options
 ) {
 
+    const opts = options || {};
     const menuSpec =
         getSlotSelectionMenuSpec(
             slots,
@@ -558,6 +665,17 @@ function sendSlotSelectionMenuReply(
 
     let body =
         String(introText || "");
+
+    if (
+        !body &&
+        opts.isoDate
+    ) {
+        body =
+            buildSlotSelectionIntro(
+                opts.isoDate,
+                opts.isReschedule
+            );
+    }
 
     if (
         menuSpec &&
@@ -585,7 +703,7 @@ function sendDateMenuReply(ss, phone, introText) {
     sendWhatsAppMenuReply(
         ss,
         phone,
-        buildDateMenuPrompt(introText),
+        String(introText || "Choose an appointment date."),
         getDateMenuSpec()
     );
 }
@@ -613,7 +731,7 @@ function sendDoctorSelectionReply(ss, phone) {
     sendWhatsAppMenuReply(
         ss,
         phone,
-        "📅 Book Appointment\n\nSelect a doctor:",
+        "📅 Book Appointment\n\nChoose your doctor.",
         menuSpec
     );
 }
@@ -845,4 +963,25 @@ function sendWhatsAppTemplate(to) {
     }
 
     return JSON.parse(body);
+}
+
+
+
+function localizeInteractiveMenuForSession(
+    session,
+    language,
+    interactive
+) {
+
+    if (
+        session &&
+        session.role === "DOCTOR"
+    ) {
+        return interactive;
+    }
+
+    return localizeInteractiveMenu(
+        language,
+        interactive
+    );
 }

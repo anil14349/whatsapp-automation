@@ -110,6 +110,7 @@ When a doctor cancels or reschedules, the **patient is notified** via WhatsApp a
 - **Navigation:** users can still type `0` (main menu / doctor portal) and `9` (back one step)
 - Toggle via **`Settings`** → `ENABLE_INTERACTIVE_MENUS` (`TRUE` / `FALSE`, default `TRUE`)
 - Falls back to **numbered text** only when menus are disabled, the Meta API fails, or a list cannot be built
+- **UI copy:** short contextual message bodies (no duplicated numbered menus in interactive text) — see [`ABC_Clinic_WhatsApp_UI_Cleanup_README.md`](ABC_Clinic_WhatsApp_UI_Cleanup_README.md)
 
 #### Meta limits & pagination
 
@@ -133,11 +134,14 @@ Typed numbers still work everywhere as a backup (including global slot numbers a
 
 ### Localization
 
-- 6 languages: **English, Telugu (TE), Hindi (HI), Kannada (KA), Tamil (TA), Malayalam (ML)** via `localizeWhatsAppReply` for main booking strings (name prompt, confirmation, pickers)
+- 6 languages: **English, Telugu (TE), Hindi (HI), Kannada (KA), Tamil (TA), Malayalam (ML)** via `localizeWhatsAppReply` in `View_Messages.gs`
+- Patient-facing **message bodies** localize (main menu, booking flow, confirmations, custom date prompt, slot pagination text, menu fallback text when interactive fails)
 - Appointment reminder messages localized in all 6 languages
 - Language picker is a tap-to-select **list menu** (not buttons — 6 options exceeds WhatsApp's 3-button limit)
+- **Interactive list/button titles** (e.g. Today, Confirm, Other time) remain **English** — Meta sends these as-is; only the message body is translated
 - Doctor portal and many error strings remain **English only** (by design)
-- ⚠️ **KA/TA/ML translations are an initial AI-assisted pass**, not yet reviewed by a native speaker — verify against real clinic usage before relying on them in production, especially for time/date-sensitive phrases. TE/HI predate this and have been in production use.
+- ⚠️ **KA/TA/ML translations are an initial AI-assisted pass**, not yet reviewed by a native speaker — verify against real clinic usage before relying on them in production. TE/HI predate this and have been in production use.
+- Smoke test: `testLocalizationUiCleanup()` (TE/HI markers for cleanup copy)
 
 ### Appointment reminders
 
@@ -408,7 +412,7 @@ Confirm **`WhatsApp_Log`** receives inbound rows and **`WhatsApp_Debug`** logs o
 When you pull new code from this repo:
 
 1. Copy the updated file(s) into Apps Script (overwrite existing files) — either `ABC_Clinic_WhatsApp_Complete.gs`, or every changed file under `src/` if you're on the split layout.
-2. **If you maintain both Option A and Option B**, run `node scripts/sync-monolith-from-src.js` from the repo after editing `src/`, then copy the updated monolith too.
+2. **If you maintain both Option A and Option B**, run `node scripts/sync-monolith-from-src.js` from the repo after editing any `src/*.gs` file, then copy the updated monolith too.
 3. **Deploy → Manage deployments → Edit → New version → Deploy**
 4. Re-run a quick manual WhatsApp test (patient Hi + one booking; try a date with many slots if possible).
 5. If new sheets or settings were added, they auto-create on first use — check **`Settings`** for new keys and confirm `WhatsApp_Sessions` has a **Slot Page** header after the first paginated slot pick.
@@ -467,6 +471,7 @@ Set `TEST_SKIP_WHATSAPP_SEND=true` to avoid real WhatsApp API calls during send 
 | `testAppointmentStatus` | Completed / No-Show status workflow |
 | `testAfterHoursReply` | Clinic hours parsing, closed message, patient gate |
 | `testInteractiveMenus` | List/button specs, slot pagination (20-slot case), inbound interactive parsing |
+| `testLocalizationUiCleanup` | TE/HI localization of UI cleanup copy (menus, confirmations, slot intro, fallbacks) |
 | `testAppointmentSheetFormatting` | Date/time sheet formatting |
 | `testWhatsAppRouterStructure` | Router handler functions exist |
 
@@ -478,13 +483,11 @@ Local Node unit tests (`tests/run-unit-tests.mjs`) are **not included yet** — 
 
 ## Known limitations
 
-- Localization is substring-based, not full i18n — only keyed English phrases translate
+- Localization is substring-based, not full i18n — doctor portal tap labels stay English; patient interactive labels and message bodies localize via `localizeInteractiveMenu()` / `localizeWhatsAppReply()`
 - Kannada/Tamil/Malayalam translations have not been reviewed by a native speaker — treat as a starting point (see `localizeWhatsAppReply` in `View_Messages.gs` for the comment marking the AI-assisted entries)
 - `syncPatientsFromAppointments()` requires `DEBUG_MODE=true` (admin-only)
 - Some legacy tests (`testRealBooking`, etc.) hit live sheets/calendar — review before running in production spreadsheet
-- Doctor portal and many error strings remain English-only
 - Router-split handler functions work but have uneven indentation (cosmetic)
-- Cancel/reschedule appointment pickers show at most **10 tappable rows**; patients with more than 10 upcoming appointments get a numbered text list instead (slot picking is paginated; appointment picking is not yet)
 
 ---
 
@@ -493,6 +496,8 @@ Local Node unit tests (`tests/run-unit-tests.mjs`) are **not included yet** — 
 ```
 ABC_Clinic_WhatsApp_Complete.gs   ← production, Option A: single file
 ABC_Clinic_Tests.gs               ← tests (optional bind, either option)
+ABC_Clinic_WhatsApp_UI_README.md  ← interactive UI plan + implementation status
+ABC_Clinic_WhatsApp_UI_Cleanup_README.md  ← completed UI copy cleanup reference
 src/                               ← production, Option B: split into 20 files (see above)
   Config.gs
   Util_Common.gs
@@ -521,4 +526,4 @@ scripts/
 README.md
 ```
 
-Option A and Option B are kept in sync with `node scripts/sync-monolith-from-src.js` after editing `src/` — run it before deploying the monolith. If you only use one layout, you can ignore the script.
+Option A and Option B are kept in sync with `node scripts/sync-monolith-from-src.js` after editing `src/` — the script copies all **20** `src/*.gs` files into the monolith (function bodies only). Use `--check` for a dry-run. Run it before deploying the monolith. If you only use one layout, you can ignore the script.

@@ -238,11 +238,10 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "📋 Your Appointments:\n\n" +
+            "📋 Your appointments\n\n" +
             formatAppointmentsListForWhatsApp(
                 appointments
-            ) +
-            "\n\nChoose an option:",
+            ),
             getPatientMainMenuSpec()
         );
     }
@@ -252,13 +251,46 @@ if (
 
 
 // ======================================================
-// MAIN MENU → CANCEL APPOINTMENT
+// MAIN MENU → MORE (button sub-menu)
+// ======================================================
+
+if (
+    session &&
+    session.state === "MAIN_MENU" &&
+    (
+        normalizedMessage === "menu_more" ||
+        normalizedMessage === "more"
+    )
+) {
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "PATIENT_MAIN_MORE"
+        }
+    );
+
+    sendPatientMainMoreMenuReply(
+        ss,
+        senderPhone
+    );
+
+    return true;
+}
+
+
+// ======================================================
+// MAIN MENU / MORE → CANCEL APPOINTMENT
 // ======================================================
 
 if (
     normalizedMessage === "3" &&
     session &&
-    session.state === "MAIN_MENU"
+    (
+        session.state === "MAIN_MENU" ||
+        session.state === "PATIENT_MAIN_MORE"
+    )
 ) {
 
     beginWhatsAppCancelFlow(
@@ -270,13 +302,16 @@ if (
 
 
 // ======================================================
-// MAIN MENU → RESCHEDULE APPOINTMENT
+// MAIN MENU / MORE → RESCHEDULE APPOINTMENT
 // ======================================================
 
 if (
     normalizedMessage === "4" &&
     session &&
-    session.state === "MAIN_MENU"
+    (
+        session.state === "MAIN_MENU" ||
+        session.state === "PATIENT_MAIN_MORE"
+    )
 ) {
 
     beginWhatsAppRescheduleFlow(
@@ -288,13 +323,16 @@ if (
 
 
 // ======================================================
-// MAIN MENU → CHANGE LANGUAGE
+// MAIN MENU / MORE → CHANGE LANGUAGE
 // ======================================================
 
 if (
     normalizedMessage === "5" &&
     session &&
-    session.state === "MAIN_MENU"
+    (
+        session.state === "MAIN_MENU" ||
+        session.state === "PATIENT_MAIN_MORE"
+    )
 ) {
 
     saveWhatsAppSession(
@@ -308,6 +346,24 @@ if (
     sendLanguageMenuReply(
         ss,
         senderPhone
+    );
+    return true;
+}
+
+
+// ======================================================
+// MAIN MORE → UNRECOGNIZED OPTION
+// ======================================================
+
+if (
+    session &&
+    session.state === "PATIENT_MAIN_MORE"
+) {
+
+    sendPatientMainMoreMenuReply(
+        ss,
+        senderPhone,
+        "❌ Invalid option."
     );
     return true;
 }
@@ -363,8 +419,8 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Please choose a valid doctor number.\n\n" +
-            "📅 Book Appointment\n\nSelect a doctor:",
+            "❌ Please choose a valid doctor.\n\n" +
+            "📅 Book Appointment\n\nChoose your doctor.",
             getDoctorSelectionMenuSpec()
         );
 
@@ -391,9 +447,9 @@ if (
         sendDateMenuReply(
             ss,
             senderPhone,
-            "👨‍⚕️ Doctor selected: " +
+            "👨‍⚕️ " +
             doctor.doctorName +
-            ".\n\nPlease choose a date:"
+            "\n\nChoose an appointment date."
         );
     }
 
@@ -535,7 +591,10 @@ if (
     session.state === "BOOK_CONFIRM"
 ) {
 
-    if (normalizedMessage === "1") {
+    if (
+        normalizedMessage === "1" ||
+        normalizedMessage === "confirm_yes"
+    ) {
 
         if (
             !session.doctorId ||
@@ -637,7 +696,8 @@ if (
         }
 
     } else if (
-        normalizedMessage === "2"
+        normalizedMessage === "2" ||
+        normalizedMessage === "confirm_other_time"
     ) {
 
         if (
@@ -698,15 +758,18 @@ if (
         sendSlotSelectionMenuReply(
             ss,
             senderPhone,
-            "📅 Date: " +
-            session.date +
-            "\n\nAvailable slots:\nPlease choose a time.",
+            "",
             slots,
-            0
+            0,
+            {
+                isoDate: session.date,
+                isReschedule: false
+            }
         );
 
     } else if (
-        normalizedMessage === "3"
+        normalizedMessage === "3" ||
+        normalizedMessage === "confirm_cancel"
     ) {
 
         saveWhatsAppSession(
@@ -729,10 +792,21 @@ if (
 
     } else {
 
+        const patientName =
+            resolvePatientNameForBooking(
+                senderPhone,
+                session,
+                senderName
+            );
+
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\nPlease choose:",
+            "❌ Invalid option.\n\n" +
+            buildBookingConfirmationMessage(
+                session,
+                patientName
+            ),
             getBookingConfirmSpec()
         );
     }
@@ -771,6 +845,7 @@ if (
     handleWhatsAppCancelSelectState(
         ss,
         senderPhone,
+        session,
         normalizedMessage
     );
     return true;
@@ -786,7 +861,7 @@ if (
     session.state === "CANCEL_CONFIRM"
 ) {
 
-    if (normalizedMessage === "1") {
+    if (isYesCancelConfirmChoice(normalizedMessage)) {
 
         const result =
             cancelAppointment(
@@ -832,7 +907,7 @@ if (
             );
         }
 
-    } else if (normalizedMessage === "2") {
+    } else if (isNoGoBackConfirmChoice(normalizedMessage)) {
 
         saveWhatsAppSession(
             senderPhone,
@@ -877,6 +952,7 @@ if (
     handleWhatsAppRescheduleSelectState(
         ss,
         senderPhone,
+        session,
         normalizedMessage
     );
     return true;
@@ -953,7 +1029,10 @@ if (
     session.state === "RESCHEDULE_CONFIRM"
 ) {
 
-    if (normalizedMessage === "1") {
+    if (
+        normalizedMessage === "1" ||
+        normalizedMessage === "confirm_yes"
+    ) {
 
         if (
             !session.appointmentId ||
@@ -1039,7 +1118,8 @@ if (
         }
 
     } else if (
-        normalizedMessage === "2"
+        normalizedMessage === "2" ||
+        normalizedMessage === "confirm_other_time"
     ) {
 
         if (
@@ -1070,7 +1150,8 @@ if (
         );
 
     } else if (
-        normalizedMessage === "3"
+        normalizedMessage === "3" ||
+        normalizedMessage === "confirm_cancel"
     ) {
 
         saveWhatsAppSession(
@@ -1096,7 +1177,12 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\nPlease choose:",
+            "❌ Invalid option.\n\n" +
+            buildRescheduleSlotConfirmMessage(
+                session,
+                session.date,
+                session.time
+            ),
             getRescheduleConfirmSpec()
         );
     }

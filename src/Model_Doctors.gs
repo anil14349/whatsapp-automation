@@ -2186,16 +2186,37 @@ function findDoctorByWhatsAppPhone(phone) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet()
         .getSheetByName("Doctors");
     if (!sheet) return null;
+
     const target = normalizeWhatsAppPhone(phone);
+    if (!target) return null;
+
     const data = sheet.getDataRange().getValues();
+
     for (let i = 1; i < data.length; i++) {
+
+        const doctorId = String(data[i][0] || "").trim();
+        const doctorName = String(data[i][1] || "").trim();
+        const whatsappPhone = String(data[i][4] || "").trim();
+        const active = String(data[i][6] || "").trim().toUpperCase();
+
         if (
-            target &&
-            normalizeWhatsAppPhone(data[i][4]) === target
+            !doctorId ||
+            !doctorName ||
+            !whatsappPhone
+        ) {
+            continue;
+        }
+
+        if (active !== "YES") {
+            continue;
+        }
+
+        if (
+            normalizeWhatsAppPhone(whatsappPhone) === target
         ) {
             return {
-                doctorId: String(data[i][0]).trim(),
-                doctorName: String(data[i][1]).trim()
+                doctorId: doctorId,
+                doctorName: doctorName
             };
         }
     }

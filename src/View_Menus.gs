@@ -107,41 +107,54 @@ function getPatientMainMenuSpec() {
     const fallbackText =
         "1️⃣ Book Appointment\n" +
         "2️⃣ My Appointments\n" +
+        "3️⃣ More (Cancel / Reschedule / Language)";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            {
+                id: "1",
+                title: "Book Appointment"
+            },
+            {
+                id: "2",
+                title: "My Appointments"
+            },
+            {
+                id: "menu_more",
+                title: "More"
+            }
+        ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+
+function getPatientMainMoreMenuSpec() {
+
+    const fallbackText =
         "3️⃣ Cancel Appointment\n" +
         "4️⃣ Reschedule Appointment\n" +
         "5️⃣ Change Language";
 
     const interactive =
-        buildInteractiveListSpec(
-            [
-                {
-                    id: "1",
-                    title: "Book Appointment",
-                    description: "Schedule a visit"
-                },
-                {
-                    id: "2",
-                    title: "My Appointments",
-                    description: "View upcoming"
-                },
-                {
-                    id: "3",
-                    title: "Cancel Appointment",
-                    description: "Cancel a booking"
-                },
-                {
-                    id: "4",
-                    title: "Reschedule",
-                    description: "Change date or time"
-                },
-                {
-                    id: "5",
-                    title: "Change Language",
-                    description: "EN / TE / HI / KA / TA / ML"
-                }
-            ],
-            "Choose option"
-        );
+        buildInteractiveButtonSpec([
+            {
+                id: "3",
+                title: "Cancel Appointment"
+            },
+            {
+                id: "4",
+                title: "Reschedule"
+            },
+            {
+                id: "5",
+                title: "Change Language"
+            }
+        ]);
 
     return {
         fallbackText: fallbackText,
@@ -156,31 +169,139 @@ function getDoctorMainMenuSpec() {
     const fallbackText =
         "1️⃣ Today's Schedule\n" +
         "2️⃣ Next Appointment\n" +
-        "3️⃣ This Week's Schedule\n" +
-        "4️⃣ Schedule for a Date\n" +
-        "5️⃣ Manage Availability\n" +
-        "6️⃣ Manage Leaves\n" +
-        "7️⃣ My Patients\n" +
-        "8️⃣ Cancel Patient Appt\n" +
+        "3️⃣ More (schedule / availability / patients…)";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            {
+                id: "1",
+                title: "Today's Schedule"
+            },
+            {
+                id: "2",
+                title: "Next Appointment"
+            },
+            {
+                id: "menu_more",
+                title: "More"
+            }
+        ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+
+function getDoctorMainMenuMoreSpec(tier) {
+
+    const t =
+        Number(tier) || 1;
+
+    if (t === 1) {
+
+        const fallbackText =
+            "3️⃣ This Week\n" +
+            "4️⃣ Schedule by Date\n" +
+            "More → next page";
+
+        const interactive =
+            buildInteractiveButtonSpec([
+                {
+                    id: "3",
+                    title: "This Week"
+                },
+                {
+                    id: "4",
+                    title: "Schedule by Date"
+                },
+                {
+                    id: "menu_more_2",
+                    title: "More"
+                }
+            ]);
+
+        return {
+            fallbackText: fallbackText,
+            interactive: interactive
+        };
+    }
+
+    if (t === 2) {
+
+        const fallbackText =
+            "5️⃣ Manage Availability\n" +
+            "6️⃣ Manage Leaves\n" +
+            "More → next page";
+
+        const interactive =
+            buildInteractiveButtonSpec([
+                {
+                    id: "5",
+                    title: "Manage Availability"
+                },
+                {
+                    id: "6",
+                    title: "Manage Leaves"
+                },
+                {
+                    id: "menu_more_3",
+                    title: "More"
+                }
+            ]);
+
+        return {
+            fallbackText: fallbackText,
+            interactive: interactive
+        };
+    }
+
+    if (t === 3) {
+
+        const fallbackText =
+            "7️⃣ My Patients\n" +
+            "8️⃣ Cancel Patient Appt\n" +
+            "More → next page";
+
+        const interactive =
+            buildInteractiveButtonSpec([
+                {
+                    id: "7",
+                    title: "My Patients"
+                },
+                {
+                    id: "8",
+                    title: "Cancel Patient"
+                },
+                {
+                    id: "menu_more_4",
+                    title: "More"
+                }
+            ]);
+
+        return {
+            fallbackText: fallbackText,
+            interactive: interactive
+        };
+    }
+
+    const fallbackText =
         "9️⃣ Reschedule Patient Appt\n" +
         "🔟 Mark Visit Status";
 
     const interactive =
-        buildInteractiveListSpec(
-            [
-                { id: "1", title: "Today's Schedule" },
-                { id: "2", title: "Next Appointment" },
-                { id: "3", title: "This Week" },
-                { id: "4", title: "Schedule by Date" },
-                { id: "5", title: "Manage Availability" },
-                { id: "6", title: "Manage Leaves" },
-                { id: "7", title: "My Patients" },
-                { id: "8", title: "Cancel Patient Appt" },
-                { id: "9", title: "Reschedule Patient" },
-                { id: "10", title: "Mark Visit Status" }
-            ],
-            "Doctor Portal"
-        );
+        buildInteractiveButtonSpec([
+            {
+                id: "doctor_reschedule",
+                title: "Reschedule Patient"
+            },
+            {
+                id: "doctor_status",
+                title: "Mark Visit Status"
+            }
+        ]);
 
     return {
         fallbackText: fallbackText,
@@ -232,9 +353,18 @@ function getDateMenuSpec() {
 
     const interactive =
         buildInteractiveButtonSpec([
-            { id: "1", title: "Today" },
-            { id: "2", title: "Tomorrow" },
-            { id: "3", title: "Other date" }
+            {
+                id: "date_today",
+                title: "Today"
+            },
+            {
+                id: "date_tomorrow",
+                title: "Tomorrow"
+            },
+            {
+                id: "date_custom",
+                title: "Other date"
+            }
         ]);
 
     return {
@@ -301,15 +431,65 @@ function getSlotSelectionMenuSpec(
     page
 ) {
 
-    if (!slots || slots.length === 0) {
+    const safeSlots =
+        Array.isArray(slots)
+            ? slots
+            : [];
+
+    const total =
+        safeSlots.length;
+
+    if (total === 0) {
         return null;
     }
 
     const pageInfo =
         getSlotSelectionPageInfo(
-            slots.length,
+            total,
             page || 0
         );
+
+    const visibleSlots =
+        safeSlots.slice(
+            pageInfo.start,
+            pageInfo.end
+        );
+
+    const rows =
+        visibleSlots.map(
+            function (slot, index) {
+
+                const absoluteIndex =
+                    pageInfo.start +
+                    index;
+
+                return {
+                    id:
+                        "slot_" +
+                        String(absoluteIndex + 1),
+                    title: String(slot),
+                    description: ""
+                };
+            }
+        );
+
+    if (pageInfo.hasPrev) {
+
+        rows.push({
+            id: "slot_prev",
+            title: "Earlier times",
+            description: "Previous page"
+        });
+    }
+
+    if (pageInfo.hasNext) {
+
+        rows.push({
+            id: "slot_next",
+            title: "More times",
+            description: "Next page"
+        });
+    }
 
     let fallbackText = "";
 
@@ -322,52 +502,29 @@ function getSlotSelectionMenuSpec(
             "\n\n";
     }
 
-    const rows = [];
+    fallbackText +=
+        visibleSlots
+            .map(
+                function (slot, index) {
+                    return (
+                        String(
+                            pageInfo.start +
+                            index +
+                            1
+                        ) +
+                        "️⃣ " +
+                        String(slot)
+                    );
+                }
+            )
+            .join("\n");
 
     if (pageInfo.hasPrev) {
-
-        rows.push({
-            id: "prev",
-            title: "Earlier times",
-            description: "Previous page"
-        });
-
-        fallbackText +=
-            "◀ Earlier times\n";
-    }
-
-    for (
-        let i = pageInfo.start;
-        i < pageInfo.end;
-        i++
-    ) {
-
-        const slot =
-            slots[i];
-
-        fallbackText +=
-            (i + 1) +
-            "️⃣ " +
-            slot +
-            "\n";
-
-        rows.push({
-            id: String(i + 1),
-            title: slot,
-            description: ""
-        });
+        fallbackText += "\n◀ Earlier times";
     }
 
     if (pageInfo.hasNext) {
-
-        rows.push({
-            id: "next",
-            title: "More times",
-            description: "Next page"
-        });
-
-        fallbackText +=
-            "▶ More times\n";
+        fallbackText += "\n▶ More times";
     }
 
     const interactive =
@@ -378,11 +535,11 @@ function getSlotSelectionMenuSpec(
 
     if (
         !interactive &&
-        slots.length > 10
+        total > 10
     ) {
         fallbackText =
             formatAvailableSlotsForWhatsApp(
-                slots
+                safeSlots
             );
     }
 
@@ -390,7 +547,9 @@ function getSlotSelectionMenuSpec(
         fallbackText: fallbackText.trim(),
         interactive: interactive,
         page: pageInfo.page,
-        totalPages: pageInfo.totalPages
+        totalPages: pageInfo.totalPages,
+        hasPrev: pageInfo.hasPrev,
+        hasNext: pageInfo.hasNext
     };
 }
 
@@ -566,8 +725,14 @@ function getYesNoConfirmSpec() {
 
     const interactive =
         buildInteractiveButtonSpec([
-            { id: "1", title: "Yes, cancel" },
-            { id: "2", title: "No, go back" }
+            {
+                id: "confirm_yes_cancel",
+                title: "Yes, cancel"
+            },
+            {
+                id: "confirm_no_back",
+                title: "No, go back"
+            }
         ]);
 
     return {
@@ -587,9 +752,18 @@ function getRescheduleConfirmSpec() {
 
     const interactive =
         buildInteractiveButtonSpec([
-            { id: "1", title: "Confirm" },
-            { id: "2", title: "Other time" },
-            { id: "3", title: "Cancel" }
+            {
+                id: "confirm_yes",
+                title: "Confirm"
+            },
+            {
+                id: "confirm_other_time",
+                title: "Other time"
+            },
+            {
+                id: "confirm_cancel",
+                title: "Cancel"
+            }
         ]);
 
     return {
@@ -616,11 +790,11 @@ function getDoctorStatusActionSpec() {
     const interactive =
         buildInteractiveButtonSpec([
             {
-                id: "1",
+                id: "status_completed",
                 title: "Completed"
             },
             {
-                id: "2",
+                id: "status_no_show",
                 title: "No-Show"
             }
         ]);
@@ -641,8 +815,14 @@ function getConfirmCancelSpec() {
 
     const interactive =
         buildInteractiveButtonSpec([
-            { id: "1", title: "Confirm" },
-            { id: "2", title: "Cancel" }
+            {
+                id: "confirm_yes",
+                title: "Confirm"
+            },
+            {
+                id: "confirm_cancel",
+                title: "Cancel"
+            }
         ]);
 
     return {
@@ -655,7 +835,8 @@ function getConfirmCancelSpec() {
 
 function getAppointmentListMenuSpec(
     appointments,
-    mode
+    mode,
+    page
 ) {
 
     if (
@@ -673,59 +854,190 @@ function getAppointmentListMenuSpec(
             ? "doctor"
             : "patient";
 
-    const limit =
-        Math.min(appointments.length, 10);
+    const total =
+        appointments.length;
+
+    const pageInfo =
+        getSlotSelectionPageInfo(
+            total,
+            page || 0
+        );
 
     const listed =
-        appointments.slice(0, limit);
+        appointments.slice(
+            pageInfo.start,
+            pageInfo.end
+        );
 
-    const fallbackText =
+    let fallbackText = "";
+
+    if (pageInfo.totalPages > 1) {
+        fallbackText +=
+            "Page " +
+            (pageInfo.page + 1) +
+            " of " +
+            pageInfo.totalPages +
+            "\n\n";
+    }
+
+    fallbackText +=
         listMode === "doctor"
-            ? formatDoctorPatientAppointmentsListForWhatsApp(
-                listed
-            )
-            : formatAppointmentsListForWhatsApp(
-                listed
-            );
+            ? listed
+                .map(
+                    function (appt, index) {
+                        return (
+                            String(
+                                pageInfo.start +
+                                index +
+                                1
+                            ) +
+                            "️⃣ " +
+                            "👤 " +
+                            (appt.patientName || "Patient") +
+                            "\n" +
+                            "   📅 " +
+                            appt.date +
+                            "   🕐 " +
+                            appt.time +
+                            "\n" +
+                            "   🆔 " +
+                            appt.appointmentId +
+                            "\n"
+                        );
+                    }
+                )
+                .join("\n")
+            : listed
+                .map(
+                    function (appt, index) {
+                        const doctorName =
+                            findDoctorById(
+                                appt.doctorId
+                            ) ||
+                            "Unknown Doctor";
 
-    const rows = listed.map(
-        function (appt, index) {
+                        return (
+                            String(
+                                pageInfo.start +
+                                index +
+                                1
+                            ) +
+                            "️⃣ " +
+                            "👨‍⚕️ " +
+                            doctorName +
+                            "\n" +
+                            "   📅 " +
+                            appt.date +
+                            "   🕐 " +
+                            appt.time +
+                            "\n" +
+                            "   🆔 " +
+                            appt.appointmentId +
+                            "\n"
+                        );
+                    }
+                )
+                .join("\n");
 
-            const doctorName =
-                findDoctorById(appt.doctorId) ||
-                "Unknown Doctor";
+    if (pageInfo.hasPrev) {
+        fallbackText += "\n◀ Earlier appointments";
+    }
 
-            if (listMode === "doctor") {
+    if (pageInfo.hasNext) {
+        fallbackText += "\n▶ More appointments";
+    }
+
+    const rows =
+        listed.map(
+            function (appt, index) {
+
+                const absoluteIndex =
+                    pageInfo.start +
+                    index;
+
+                const doctorName =
+                    findDoctorById(
+                        appt.doctorId
+                    ) ||
+                    "Unknown Doctor";
+
+                if (listMode === "doctor") {
+                    return {
+                        id:
+                            "appt_" +
+                            String(
+                                absoluteIndex + 1
+                            ),
+                        title:
+                            appt.patientName ||
+                            "Patient",
+                        description:
+                            (appt.date || "") +
+                            " · " +
+                            (appt.time || "")
+                    };
+                }
+
                 return {
-                    id: String(index + 1),
-                    title:
-                        appt.patientName ||
-                        "Patient",
+                    id:
+                        "appt_" +
+                        String(
+                            absoluteIndex + 1
+                        ),
+                    title: doctorName,
                     description:
                         (appt.date || "") +
                         " · " +
                         (appt.time || "")
                 };
             }
+        );
 
-            return {
-                id: String(index + 1),
-                title: doctorName,
-                description:
-                    (appt.date || "") +
-                    " · " +
-                    (appt.time || "")
-            };
-        }
-    );
+    if (pageInfo.hasPrev) {
+
+        rows.push({
+            id: "appt_prev",
+            title: "Earlier appointments",
+            description: "Previous page"
+        });
+    }
+
+    if (pageInfo.hasNext) {
+
+        rows.push({
+            id: "appt_next",
+            title: "More appointments",
+            description: "Next page"
+        });
+    }
+
+    const interactive =
+        buildInteractiveListSpec(
+            rows,
+            "Select appointment"
+        );
+
+    if (
+        !interactive &&
+        total > 10
+    ) {
+        fallbackText =
+            listMode === "doctor"
+                ? formatDoctorPatientAppointmentsListForWhatsApp(
+                    appointments
+                )
+                : formatAppointmentsListForWhatsApp(
+                    appointments
+                );
+    }
 
     return {
         fallbackText: fallbackText.trim(),
-        interactive:
-            buildInteractiveListSpec(
-                rows,
-                "Select appointment"
-            )
+        interactive: interactive,
+        page: pageInfo.page,
+        totalPages: pageInfo.totalPages,
+        hasPrev: pageInfo.hasPrev,
+        hasNext: pageInfo.hasNext
     };
 }
 

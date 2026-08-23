@@ -14,7 +14,7 @@
 //
 // Smoke tests (no live data):
 //   testLogSettings, testAppointmentReminders, testDoctorCancelReschedule,
-//   testAppointmentStatus, testAfterHoursReply, testInteractiveMenus,
+//   testAfterHoursReply, testInteractiveMenus, testLocalizationUiCleanup,
 //   testAppointmentSheetFormatting, testWhatsAppRouterStructure,
 //   testDoctorPortalHelpers, testWhatsAppFlowHelpers, testWhatsAppReliability,
 //   testPatientRegistry, testWhatsAppSession
@@ -56,6 +56,7 @@ function runAllTests() {
         ["testAppointmentStatus", testAppointmentStatus],
         ["testAfterHoursReply", testAfterHoursReply],
         ["testInteractiveMenus", testInteractiveMenus],
+        ["testLocalizationUiCleanup", testLocalizationUiCleanup],
         ["testAppointmentSheetFormatting", testAppointmentSheetFormatting],
         ["testWhatsAppRouterStructure", testWhatsAppRouterStructure]
     ];
@@ -624,11 +625,11 @@ function testDoctorPortalHelpers() {
 
     if (
         !doctorSpec.interactive ||
-        doctorSpec.interactive.type !== "list" ||
-        doctorSpec.interactive.sections[0].rows.length !== 10
+        doctorSpec.interactive.type !== "button" ||
+        doctorSpec.interactive.buttons.length !== 3
     ) {
         throw new Error(
-            "doctor main menu spec should have 10 list rows"
+            "doctor main menu spec should have 3 buttons"
         );
     }
 
@@ -745,6 +746,259 @@ function testWhatsAppReliability() {
 
     Logger.log(
         "WhatsApp reliability smoke tests passed"
+    );
+}
+
+
+function testLocalizationUiCleanup() {
+
+    requireDebugMode("testLocalizationUiCleanup");
+
+    function assertLocalized(
+        language,
+        english,
+        marker,
+        label
+    ) {
+
+        const localized =
+            localizeWhatsAppReply(
+                language,
+                english
+            );
+
+        if (
+            language !== "EN" &&
+            localized === english
+        ) {
+            throw new Error(
+                label +
+                " not localized for " +
+                language
+            );
+        }
+
+        if (
+            localized.indexOf(marker) === -1
+        ) {
+            throw new Error(
+                label +
+                " missing marker \"" +
+                marker +
+                "\" for " +
+                language +
+                ": " +
+                localized
+            );
+        }
+    }
+
+    const enMainMenu =
+        localizeWhatsAppReply(
+            "EN",
+            "How can we help you today?"
+        );
+
+    if (
+        enMainMenu !==
+        "How can we help you today?"
+    ) {
+        throw new Error(
+            "EN should pass through unchanged"
+        );
+    }
+
+    assertLocalized(
+        "TE",
+        "How can we help you today?",
+        "ఈరోజు",
+        "main menu body"
+    );
+
+    assertLocalized(
+        "HI",
+        "How can we help you today?",
+        "आज",
+        "main menu body"
+    );
+
+    assertLocalized(
+        "TE",
+        "📅 Book Appointment\n\nChoose your doctor.",
+        "డాక్టర్",
+        "doctor selection body"
+    );
+
+    assertLocalized(
+        "HI",
+        "📅 Book Appointment\n\nChoose your doctor.",
+        "डॉक्टर",
+        "doctor selection body"
+    );
+
+    assertLocalized(
+        "TE",
+        "👨‍⚕️ Dr Anil\n\nChoose an appointment date.",
+        "తేదీ",
+        "date selection body"
+    );
+
+    assertLocalized(
+        "HI",
+        "👨‍⚕️ Dr Anil\n\nChoose an appointment date.",
+        "तारीख",
+        "date selection body"
+    );
+
+    assertLocalized(
+        "TE",
+        buildSlotSelectionIntro(
+            "2026-08-24",
+            false
+        ),
+        "అందుబాటు",
+        "slot selection intro"
+    );
+
+    assertLocalized(
+        "HI",
+        buildSlotSelectionIntro(
+            "2026-08-24",
+            true
+        ),
+        "समय",
+        "reschedule slot intro"
+    );
+
+    assertLocalized(
+        "TE",
+        "📋 Your appointments",
+        "మీ అపాయింట్",
+        "my appointments body"
+    );
+
+    assertLocalized(
+        "HI",
+        "❌ Cancel appointment\n\nSelect an appointment to cancel.",
+        "रद्द",
+        "cancel selection body"
+    );
+
+    assertLocalized(
+        "TE",
+        buildBookingConfirmationMessage(
+            {
+                doctorId: "D001",
+                date: "2026-08-20",
+                time: "10:00 AM"
+            },
+            "Test Patient"
+        ),
+        "నిర్ధారించ",
+        "booking confirmation body"
+    );
+
+    assertLocalized(
+        "HI",
+        buildCancelConfirmMessage({
+            doctorId: "D001",
+            date: "2026-08-20",
+            time: "10:00 AM",
+            appointmentId: "APT001"
+        }),
+        "रद्द",
+        "cancel confirmation body"
+    );
+
+    assertLocalized(
+        "TE",
+        buildRescheduleSlotConfirmMessage(
+            {
+                doctorId: "D001"
+            },
+            "2026-08-20",
+            "11:00 AM"
+        ),
+        "మార్పు",
+        "reschedule confirmation body"
+    );
+
+    assertLocalized(
+        "HI",
+        buildCustomDateEntryPrompt(false),
+        "तारीख",
+        "custom date prompt"
+    );
+
+    assertLocalized(
+        "TE",
+        buildLanguageSelectionIntro(),
+        "భాష",
+        "language selection intro"
+    );
+
+    assertLocalized(
+        "TE",
+        buildSlotSelectionIntro(
+            "2026-08-24",
+            false
+        ) +
+        "\n\nPage 1 of 2",
+        "పేజీ",
+        "slot pagination body"
+    );
+
+    const dateMenuFallback =
+        getDateMenuSpec().fallbackText;
+
+    assertLocalized(
+        "TE",
+        dateMenuFallback,
+        "ఈరోజు",
+        "date menu fallback"
+    );
+
+    assertLocalized(
+        "HI",
+        getBookingConfirmSpec().fallbackText,
+        "पुष्टि",
+        "booking confirm fallback"
+    );
+
+    const localizedPatientMenu =
+        localizeInteractiveMenu(
+            "TE",
+            getPatientMainMenuSpec().interactive
+        );
+
+    if (
+        localizedPatientMenu.buttons[0].title.indexOf(
+            "Book"
+        ) !== -1
+    ) {
+        throw new Error(
+            "patient main menu tap labels not localized for TE"
+        );
+    }
+
+    const localizedMoreMenu =
+        localizeInteractiveMenu(
+            "TE",
+            getPatientMainMoreMenuSpec().interactive
+        );
+
+    if (
+        localizedMoreMenu.buttons[0].title.indexOf(
+            "Cancel"
+        ) !== -1
+    ) {
+        throw new Error(
+            "patient main more menu not localized for TE"
+        );
+    }
+
+    Logger.log(
+        "Localization UI cleanup smoke tests passed"
     );
 }
 
@@ -1047,7 +1301,9 @@ function testAppointmentStatus() {
 
     if (
         !spec.interactive ||
-        spec.interactive.buttons.length !== 2
+        spec.interactive.buttons.length !== 2 ||
+        spec.interactive.buttons[0].id !==
+            "status_completed"
     ) {
         throw new Error(
             "getDoctorStatusActionSpec invalid"
@@ -1285,10 +1541,28 @@ function testInteractiveMenus() {
 
     if (
         !patientSpec.interactive ||
-        patientSpec.interactive.type !== "list"
+        patientSpec.interactive.type !== "button" ||
+        patientSpec.interactive.buttons.length !== 3 ||
+        patientSpec.interactive.buttons[2].id !==
+            "menu_more"
     ) {
         throw new Error(
             "patient main menu spec invalid"
+        );
+    }
+
+    const patientMoreSpec =
+        getPatientMainMoreMenuSpec();
+
+    if (
+        !patientMoreSpec.interactive ||
+        patientMoreSpec.interactive.type !==
+            "button" ||
+        patientMoreSpec.interactive.buttons.length !==
+            3
+    ) {
+        throw new Error(
+            "patient main more menu spec invalid"
         );
     }
 
@@ -1297,11 +1571,55 @@ function testInteractiveMenus() {
 
     if (
         !doctorSpec.interactive ||
-        doctorSpec.interactive.type !== "list" ||
-        doctorSpec.interactive.sections[0].rows.length !== 10
+        doctorSpec.interactive.type !== "button" ||
+        doctorSpec.interactive.buttons.length !== 3 ||
+        doctorSpec.interactive.buttons[2].id !==
+            "menu_more"
     ) {
         throw new Error(
-            "doctor main menu spec invalid"
+            "doctor main menu spec should be 3-button menu"
+        );
+    }
+
+    const doctorMoreSpec =
+        getDoctorMainMenuMoreSpec(1);
+
+    if (
+        !doctorMoreSpec.interactive ||
+        doctorMoreSpec.interactive.type !== "button" ||
+        doctorMoreSpec.interactive.buttons.length !== 3
+    ) {
+        throw new Error(
+            "doctor main more menu tier 1 spec invalid"
+        );
+    }
+
+    const doctorMoreTier4 =
+        getDoctorMainMenuMoreSpec(4);
+
+    if (
+        !doctorMoreTier4.interactive ||
+        doctorMoreTier4.interactive.buttons.length !== 2 ||
+        doctorMoreTier4.interactive.buttons[0].id !==
+            "doctor_reschedule" ||
+        doctorMoreTier4.interactive.buttons[1].id !==
+            "doctor_status"
+    ) {
+        throw new Error(
+            "doctor main more menu tier 4 spec invalid"
+        );
+    }
+
+    if (
+        normalizeDoctorMenuChoice(
+            "doctor_reschedule"
+        ) !== "9" ||
+        normalizeDoctorMenuChoice(
+            "doctor_status"
+        ) !== "10"
+    ) {
+        throw new Error(
+            "doctor semantic menu ids not mapped"
         );
     }
 
@@ -1375,10 +1693,39 @@ function testInteractiveMenus() {
 
     if (
         !confirmCancel.interactive ||
-        confirmCancel.interactive.buttons.length !== 2
+        confirmCancel.interactive.buttons.length !== 2 ||
+        confirmCancel.interactive.buttons[0].id !==
+            "confirm_yes" ||
+        confirmCancel.interactive.buttons[1].id !==
+            "confirm_cancel"
     ) {
         throw new Error(
             "confirm/cancel spec invalid"
+        );
+    }
+
+    const statusSpec =
+        getDoctorStatusActionSpec();
+
+    if (
+        !statusSpec.interactive ||
+        statusSpec.interactive.buttons[0].id !==
+            "status_completed" ||
+        statusSpec.interactive.buttons[1].id !==
+            "status_no_show"
+    ) {
+        throw new Error(
+            "doctor status action spec invalid"
+        );
+    }
+
+    if (
+        !isSimpleConfirmYesChoice("confirm_yes") ||
+        !isSimpleConfirmCancelChoice("confirm_cancel") ||
+        !isStatusCompletedChoice("status_completed")
+    ) {
+        throw new Error(
+            "confirm choice helpers failed"
         );
     }
 
@@ -1495,6 +1842,81 @@ function testInteractiveMenus() {
     ) {
         throw new Error(
             "extractInboundWhatsAppMessage failed"
+        );
+    }
+
+    const yesNoSpec =
+        getYesNoConfirmSpec();
+
+    if (
+        !yesNoSpec.interactive ||
+        yesNoSpec.interactive.buttons[0].id !==
+            "confirm_yes_cancel" ||
+        yesNoSpec.interactive.buttons[1].id !==
+            "confirm_no_back"
+    ) {
+        throw new Error(
+            "yes/no confirm spec should use semantic ids"
+        );
+    }
+
+    if (
+        !isYesCancelConfirmChoice(
+            "confirm_yes_cancel"
+        ) ||
+        !isNoGoBackConfirmChoice(
+            "confirm_no_back"
+        )
+    ) {
+        throw new Error(
+            "yes/no confirm choice helpers failed"
+        );
+    }
+
+    const manyAppts = [];
+
+    for (let j = 0; j < 15; j++) {
+        manyAppts.push({
+            patientName: "Patient " + j,
+            doctorId: "DR001",
+            date: "2026-08-25",
+            time: "10:00 AM",
+            appointmentId: "APT" + j
+        });
+    }
+
+    const apptPage0 =
+        getAppointmentListMenuSpec(
+            manyAppts,
+            "patient",
+            0
+        );
+
+    if (
+        !apptPage0.interactive ||
+        apptPage0.interactive.sections[0].rows.length !==
+            10 ||
+        apptPage0.totalPages !== 2
+    ) {
+        throw new Error(
+            "appointment page 0 spec invalid"
+        );
+    }
+
+    const apptPage1 =
+        getAppointmentListMenuSpec(
+            manyAppts,
+            "patient",
+            1
+        );
+
+    if (
+        !apptPage1.interactive ||
+        apptPage1.interactive.sections[0].rows.length !==
+            7
+    ) {
+        throw new Error(
+            "appointment page 1 spec invalid"
         );
     }
 

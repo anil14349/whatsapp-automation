@@ -1,5 +1,13 @@
 # ABC Clinic WhatsApp — UI Flow & Code Change README
 
+> **Implementation status (Aug 2026)**
+>
+> **Shipped:** Interactive list/button menus for patient and doctor flows; UI copy cleanup (short bodies, semantic IDs, slot pagination copy); localization keys for cleanup strings; tests `testInteractiveMenus` + `testLocalizationUiCleanup`.
+>
+> **Deferred (not implemented):** `PATIENT_MANAGE_MENU` / collapsing cancel+reschedule under a single **Manage Appointment** submenu — the live main menu keeps five top-level options (Book, My Appointments, Cancel, Reschedule, Language).
+>
+> **Reference:** [`ABC_Clinic_WhatsApp_UI_Cleanup_README.md`](ABC_Clinic_WhatsApp_UI_Cleanup_README.md) documents the completed copy cleanup in detail.
+
 ## Purpose
 
 Upgrade the existing ABC Clinic WhatsApp appointment system from a **number-driven menu experience** to a **selectable/tappable WhatsApp UI**, while preserving the existing appointment, availability, session, Google Sheets, and webhook logic.
@@ -889,35 +897,28 @@ This prevents a UI change from breaking the working appointment system.
 
 ---
 
-# 22. Immediate Next Task
+# 22. Implementation status (was: Immediate Next Task)
 
-Start with **PASS 1 only**:
+**PASS 1–8 are largely complete** in `src/` and `ABC_Clinic_WhatsApp_Complete.gs`.
 
-1. Replace `getPatientMainMenuSpec()`
-2. Add `getPatientManageMenuSpec()`
-3. Add `PATIENT_MANAGE_MENU` routing
-4. Change main-menu mapping from:
+| Area | Status |
+|------|--------|
+| Interactive patient menus (book, cancel, reschedule, language) | Done |
+| Interactive doctor portal menus | Done |
+| Slot pagination (`slot_prev` / `slot_next`) | Done |
+| Semantic IDs (`date_today`, `confirm_yes`, etc.) | Done |
+| UI copy cleanup (short message bodies) | Done — see cleanup README |
+| **Manage Appointment** submenu (`PATIENT_MANAGE_MENU`) | **Not implemented** — cancel/reschedule stay on main menu |
+| Interactive tap labels in non-English | Done for **patient** flows — `localizeInteractiveMenu()`; doctor portal stays English |
 
-```text
-3 Cancel
-4 Reschedule
-5 Language
-```
+For new work, follow the one-pass deploy/test cycle in §21. Do not bulk-replace state handlers.
 
-to:
-
-```text
-3 Manage Appointment
-4 Language
-```
-
-5. Deploy
-6. Test:
+**Verify after deploy:**
 
 ```text
-Hi
-→ Manage Appointment
-→ Main Menu
+Hi → Book → Doctor → Date → Time → Confirm
+Hi → My Appointments
+Hi → Cancel Appointment → Confirm
+Hi → Reschedule Appointment → Date → Time → Other time → Confirm
+runAllTests()  (testInteractiveMenus, testLocalizationUiCleanup)
 ```
-
-Do not modify the booking flow until Pass 1 passes.

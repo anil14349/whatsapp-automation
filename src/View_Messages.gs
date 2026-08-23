@@ -96,10 +96,14 @@ function buildCancelConfirmMessage(chosen) {
         ) || "Unknown Doctor";
 
     return (
-        "❌ Cancel this appointment?\n\n" +
-        "👨‍⚕️ Doctor: " + doctorName + "\n" +
-        "📅 Date: " + chosen.date + "\n" +
-        "🕐 Time: " + chosen.time + "\n" +
+        "⚠️ Cancel this appointment?\n\n" +
+        "👨‍⚕️ " + doctorName + "\n" +
+        "📅 " +
+        formatWhatsAppDisplayDate(
+            chosen.date
+        ) +
+        "\n" +
+        "🕐 " + chosen.time + "\n" +
         "🆔 " + chosen.appointmentId
     );
 }
@@ -113,23 +117,18 @@ function buildRescheduleSlotConfirmMessage(
 ) {
 
     return (
-        "🕐 New time selected: " +
-        selectedTime +
-        "\n\n" +
-        "👨‍⚕️ Doctor: " +
+        "🔄 Confirm reschedule?\n\n" +
+        "👨‍⚕️ " +
         (
             findDoctorById(
                 session.doctorId
             ) || "Unknown Doctor"
         ) +
         "\n" +
-        "📅 New Date: " +
-        newDate +
+        "📅 " +
+        formatWhatsAppDisplayDate(newDate) +
         "\n" +
-        "🕐 New Time: " +
-        selectedTime +
-        "\n\n" +
-        "Confirm reschedule?"
+        "🕐 " + selectedTime
     );
 }
 
@@ -204,6 +203,59 @@ function buildDoctorCancelConfirmMessage(chosen) {
 
 
 
+function buildDoctorAvailabilitySessionConfirmMessage(
+    dayName,
+    startTime,
+    endTime
+) {
+
+    return (
+        "Please confirm new session:\n\n" +
+        "📅 " + dayName + "\n" +
+        "🕐 " + startTime + " - " + endTime
+    );
+}
+
+
+
+function buildDoctorLeaveConfirmMessage(
+    leaveDate,
+    reason
+) {
+
+    return (
+        "Confirm leave:\n\n" +
+        "📅 " + leaveDate + "\n" +
+        (
+            reason
+                ? "📝 " + reason + "\n"
+                : ""
+        )
+    );
+}
+
+
+
+function buildDoctorLeaveRangeConfirmMessage(
+    startDate,
+    endDate,
+    reason
+) {
+
+    return (
+        "Confirm leave range:\n\n" +
+        "📅 " + startDate +
+        " to " + endDate + "\n" +
+        (
+            reason
+                ? "📝 " + reason + "\n"
+                : ""
+        )
+    );
+}
+
+
+
 function buildDoctorRescheduleSlotConfirmMessage(
     session,
     newDate,
@@ -219,17 +271,19 @@ function buildDoctorRescheduleSlotConfirmMessage(
             : "";
 
     return (
-        "🕐 New time selected: " +
-        selectedTime +
-        "\n\n" +
+        "🔄 Confirm reschedule?\n\n" +
         patientLine +
-        "📅 New Date: " +
-        newDate +
+        "👨‍⚕️ " +
+        (
+            findDoctorById(
+                session.doctorId
+            ) || "Unknown Doctor"
+        ) +
         "\n" +
-        "🕐 New Time: " +
-        selectedTime +
-        "\n\n" +
-        "Confirm reschedule?"
+        "📅 " +
+        formatWhatsAppDisplayDate(newDate) +
+        "\n" +
+        "🕐 " + selectedTime
     );
 }
 
@@ -255,9 +309,49 @@ function buildDoctorStatusActionMessage(chosen) {
 
 
 
+function formatWhatsAppDisplayDate(isoDate) {
+
+    if (!isValidISODate(isoDate)) {
+        return String(isoDate || "").trim();
+    }
+
+    return Utilities.formatDate(
+        new Date(
+            isoDate + "T00:00:00+05:30"
+        ),
+        TIMEZONE,
+        "dd-MMM-yyyy"
+    );
+}
+
+
+
+function buildSlotSelectionIntro(
+    isoDate,
+    isReschedule
+) {
+
+    const formatted =
+        formatWhatsAppDisplayDate(isoDate);
+
+    const line =
+        isReschedule
+            ? "Choose a new time."
+            : "Choose an available time.";
+
+    return (
+        "📅 " +
+        formatted +
+        "\n\n" +
+        line
+    );
+}
+
+
+
 function buildLanguageSelectionIntro() {
 
-    return "🌐 Please select your language:";
+    return "🌐 Choose your language.";
 }
 
 
@@ -356,7 +450,54 @@ function localizeWhatsAppReply(language, message) {
             "ABC Clinic is currently closed.": "ABC క్లినిక్ ప్రస్తుతం మూసివేయబడింది.",
             "Our hours:": "మా సమయాలు:",
             "Please message us during clinic hours to book or manage appointments.": "అపాయింట్‌మెంట్‌లు బుక్ చేయడానికి లేదా నిర్వహించడానికి క్లినిక్ సమయంలో మాకు సందేశం పంపండి.",
-            "Reply Hi during open hours to get started.": "ప్రారంభించడానికి తెరిచి ఉన్న సమయంలో Hi పంపండి."
+            "Reply Hi during open hours to get started.": "ప్రారంభించడానికి తెరిచి ఉన్న సమయంలో Hi పంపండి.",
+            "How can we help you today?": "ఈరోజు మేము మీకు ఎలా సహాయం చేయగలం?",
+            "Choose your doctor.": "మీ డాక్టర్‌ను ఎంచుకోండి.",
+            "Choose an appointment date.": "అపాయింట్‌మెంట్ తేదీని ఎంచుకోండి.",
+            "Choose an available time.": "అందుబాటులో ఉన్న సమయాన్ని ఎంచుకోండి.",
+            "Choose a new time.": "కొత్త సమయాన్ని ఎంచుకోండి.",
+            "Choose your language.": "మీ భాషను ఎంచుకోండి.",
+            "Your appointments": "మీ అపాయింట్‌మెంట్‌లు",
+            "Cancel appointment": "అపాయింట్‌మెంట్ రద్దు",
+            "Select an appointment to cancel.": "రద్దు చేయడానికి అపాయింట్‌మెంట్‌ను ఎంచుకోండి.",
+            "Reschedule appointment": "అపాయింట్‌మెంట్ సమయం మార్చండి",
+            "Select an appointment to reschedule.": "మార్చడానికి అపాయింట్‌మెంట్‌ను ఎంచుకోండి.",
+            "Choose a new appointment date.": "కొత్త అపాయింట్‌మెంట్ తేదీని ఎంచుకోండి.",
+            "✅ Confirm appointment?": "✅ అపాయింట్‌మెంట్‌ను నిర్ధారించాలా?",
+            "⚠️ Cancel this appointment?": "⚠️ ఈ అపాయింట్‌మెంట్‌ను రద్దు చేయాలా?",
+            "🔄 Confirm reschedule?": "🔄 సమయం మార్పును నిర్ధారించాలా?",
+            "Please choose a valid doctor.": "దయచేసి సరైన డాక్టర్‌ను ఎంచుకోండి.",
+            "Please choose one of the available time slots.": "దయచేసి అందుబాటులో ఉన్న సమయాలలో ఒకదాన్ని ఎంచుకోండి.",
+            "That time slot is no longer available.": "ఆ సమయ స్లాట్ ఇకపై అందుబాటులో లేదు.",
+            "Please choose another time.": "దయచేసి వేరే సమయం ఎంచుకోండి.",
+            "📅 Enter the appointment date.": "📅 అపాయింట్‌మెంట్ తేదీని నమోదు చేయండి.",
+            "📅 Enter the new appointment date.": "📅 కొత్త అపాయింట్‌మెంట్ తేదీని నమోదు చేయండి.",
+            "Format: YYYY-MM-DD": "ఫార్మాట్: YYYY-MM-DD",
+            "Page ": "పేజీ ",
+            " of ": " / ",
+            "Other date": "వేరే తేదీ",
+            "Other time": "వేరే సమయం",
+            "Yes, cancel": "అవును, రద్దు",
+            "Earlier times": "మునుపటి సమయాలు",
+            "More times": "మరిన్ని సమయాలు",
+            "Reschedule": "సమయం మార్చండి",
+            "Choose option": "ఎంపికను ఎంచుకోండి",
+            "Select appointment": "అపాయింట్‌మెంట్‌ను ఎంచుకోండి",
+            "Choose time": "సమయాన్ని ఎంచుకోండి",
+            "Select doctor": "డాక్టర్‌ను ఎంచుకోండి",
+            "Select language": "భాషను ఎంచుకోండి",
+            "Options": "ఎంపికలు",
+            "No, go back": "లేదు, వెనక్కి",
+            "Previous page": "మునుపటి పేజీ",
+            "Next page": "తదుపరి పేజీ",
+            "More appointments": "మరిన్ని అపాయింట్‌మెంట్‌లు",
+            "Earlier appointments": "మునుపటి అపాయింట్‌మెంట్‌లు",
+            "Schedule a visit": "సందర్శన షెడ్యూల్ చేయండి",
+            "View upcoming": "రాబోయేవి చూడండి",
+            "Cancel a booking": "బుకింగ్‌ను రద్దు చేయండి",
+            "Change date or time": "తేదీ లేదా సమయం మార్చండి",
+            "More": "మరిన్ని",
+            "More options": "మరిన్ని ఎంపికలు"
         },
         HI: {
             "Welcome to ABC Clinic!": "एबीसी क्लिनिक में आपका स्वागत है!",
@@ -431,7 +572,54 @@ function localizeWhatsAppReply(language, message) {
             "ABC Clinic is currently closed.": "एबीसी क्लिनिक अभी बंद है।",
             "Our hours:": "हमारे समय:",
             "Please message us during clinic hours to book or manage appointments.": "अपॉइंटमेंट बुक या प्रबंधित करने के लिए कृपया क्लिनिक के समय में संदेश भेजें।",
-            "Reply Hi during open hours to get started.": "शुरू करने के लिए खुले समय में Hi भेजें।"
+            "Reply Hi during open hours to get started.": "शुरू करने के लिए खुले समय में Hi भेजें।",
+            "How can we help you today?": "आज हम आपकी कैसे मदद कर सकते हैं?",
+            "Choose your doctor.": "अपना डॉक्टर चुनें।",
+            "Choose an appointment date.": "अपॉइंटमेंट की तारीख चुनें।",
+            "Choose an available time.": "उपलब्ध समय चुनें।",
+            "Choose a new time.": "नया समय चुनें।",
+            "Choose your language.": "अपनी भाषा चुनें।",
+            "Your appointments": "आपके अपॉइंटमेंट",
+            "Cancel appointment": "अपॉइंटमेंट रद्द करें",
+            "Select an appointment to cancel.": "रद्द करने के लिए अपॉइंटमेंट चुनें।",
+            "Reschedule appointment": "अपॉइंटमेंट का समय बदलें",
+            "Select an appointment to reschedule.": "बदलने के लिए अपॉइंटमेंट चुनें।",
+            "Choose a new appointment date.": "नई अपॉइंटमेंट तारीख चुनें।",
+            "✅ Confirm appointment?": "✅ अपॉइंटमेंट की पुष्टि करें?",
+            "⚠️ Cancel this appointment?": "⚠️ यह अपॉइंटमेंट रद्द करें?",
+            "🔄 Confirm reschedule?": "🔄 समय परिवर्तन की पुष्टि करें?",
+            "Please choose a valid doctor.": "कृपया सही डॉक्टर चुनें।",
+            "Please choose one of the available time slots.": "कृपया उपलब्ध समयों में से एक चुनें।",
+            "That time slot is no longer available.": "वह समय अब उपलब्ध नहीं है।",
+            "Please choose another time.": "कृपया दूसरा समय चुनें।",
+            "📅 Enter the appointment date.": "📅 अपॉइंटमेंट की तारीख दर्ज करें।",
+            "📅 Enter the new appointment date.": "📅 नई अपॉइंटमेंट तारीख दर्ज करें।",
+            "Format: YYYY-MM-DD": "प्रारूप: YYYY-MM-DD",
+            "Page ": "पृष्ठ ",
+            " of ": " / ",
+            "Other date": "दूसरी तारीख",
+            "Other time": "दूसरा समय",
+            "Yes, cancel": "हां, रद्द करें",
+            "Earlier times": "पिछले समय",
+            "More times": "और समय",
+            "Reschedule": "समय बदलें",
+            "Choose option": "विकल्प चुनें",
+            "Select appointment": "अपॉइंटमेंट चुनें",
+            "Choose time": "समय चुनें",
+            "Select doctor": "डॉक्टर चुनें",
+            "Select language": "भाषा चुनें",
+            "Options": "विकल्प",
+            "No, go back": "नहीं, वापस जाएं",
+            "Previous page": "पिछला पृष्ठ",
+            "Next page": "अगला पृष्ठ",
+            "More appointments": "और अपॉइंटमेंट",
+            "Earlier appointments": "पिछले अपॉइंटमेंट",
+            "Schedule a visit": "विज़िट शेड्यूल करें",
+            "View upcoming": "आगामी देखें",
+            "Cancel a booking": "बुकिंग रद्द करें",
+            "Change date or time": "तारीख या समय बदलें",
+            "More": "और",
+            "More options": "और विकल्प"
         },
 
         // NOTE: KA/TA/ML translations below are an initial AI-assisted pass,
@@ -511,7 +699,54 @@ function localizeWhatsAppReply(language, message) {
             "ABC Clinic is currently closed.": "ABC ಕ್ಲಿನಿಕ್ ಪ್ರಸ್ತುತ ಮುಚ್ಚಿದೆ.",
             "Our hours:": "ನಮ್ಮ ಸಮಯ:",
             "Please message us during clinic hours to book or manage appointments.": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಬುಕ್ ಮಾಡಲು ಅಥವಾ ನಿರ್ವಹಿಸಲು ದಯವಿಟ್ಟು ಕ್ಲಿನಿಕ್ ಸಮಯದಲ್ಲಿ ನಮಗೆ ಸಂದೇಶ ಕಳುಹಿಸಿ.",
-            "Reply Hi during open hours to get started.": "ಪ್ರಾರಂಭಿಸಲು ತೆರೆದಿರುವ ಸಮಯದಲ್ಲಿ Hi ಎಂದು ಉತ್ತರಿಸಿ."
+            "Reply Hi during open hours to get started.": "ಪ್ರಾರಂಭಿಸಲು ತೆರೆದಿರುವ ಸಮಯದಲ್ಲಿ Hi ಎಂದು ಉತ್ತರಿಸಿ.",
+            "How can we help you today?": "ಇಂದು ನಾವು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಬಹುದು?",
+            "Choose your doctor.": "ನಿಮ್ಮ ವೈದ್ಯರನ್ನು ಆರಿಸಿ.",
+            "Choose an appointment date.": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ದಿನಾಂಕವನ್ನು ಆರಿಸಿ.",
+            "Choose an available time.": "ಲಭ್ಯವಿರುವ ಸಮಯವನ್ನು ಆರಿಸಿ.",
+            "Choose a new time.": "ಹೊಸ ಸಮಯವನ್ನು ಆರಿಸಿ.",
+            "Choose your language.": "ನಿಮ್ಮ ಭಾಷೆಯನ್ನು ಆರಿಸಿ.",
+            "Your appointments": "ನಿಮ್ಮ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗಳು",
+            "Cancel appointment": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ರದ್ದುಗೊಳಿಸಿ",
+            "Select an appointment to cancel.": "ರದ್ದುಗೊಳಿಸಲು ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಆಯ್ಕೆಮಾಡಿ.",
+            "Reschedule appointment": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಮರುಹೊಂದಿಸಿ",
+            "Select an appointment to reschedule.": "ಮರುಹೊಂದಿಸಲು ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಆಯ್ಕೆಮಾಡಿ.",
+            "Choose a new appointment date.": "ಹೊಸ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ದಿನಾಂಕವನ್ನು ಆರಿಸಿ.",
+            "✅ Confirm appointment?": "✅ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ದೃಢೀಕರಿಸುವುದೇ?",
+            "⚠️ Cancel this appointment?": "⚠️ ಈ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ರದ್ದುಗೊಳಿಸುವುದೇ?",
+            "🔄 Confirm reschedule?": "🔄 ಮರುಹೊಂದಿಕೆ ದೃಢೀಕರಿಸುವುದೇ?",
+            "Please choose a valid doctor.": "ದಯವಿಟ್ಟು ಮಾನ್ಯ ವೈದ್ಯರನ್ನು ಆರಿಸಿ.",
+            "Please choose one of the available time slots.": "ದಯವಿಟ್ಟು ಲಭ್ಯವಿರುವ ಸಮಯಗಳಲ್ಲಿ ಒಂದನ್ನು ಆರಿಸಿ.",
+            "That time slot is no longer available.": "ಆ ಸಮಯ ಸ್ಲಾಟ್ ಇನ್ನು ಲಭ್ಯವಿಲ್ಲ.",
+            "Please choose another time.": "ದಯವಿಟ್ಟು ಬೇರೆ ಸಮಯ ಆರಿಸಿ.",
+            "📅 Enter the appointment date.": "📅 ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ದಿನಾಂಕವನ್ನು ನಮೂದಿಸಿ.",
+            "📅 Enter the new appointment date.": "📅 ಹೊಸ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ದಿನಾಂಕವನ್ನು ನಮೂದಿಸಿ.",
+            "Format: YYYY-MM-DD": "ಸ್ವರೂಪ: YYYY-MM-DD",
+            "Page ": "ಪುಟ ",
+            " of ": " / ",
+            "Other date": "ಬೇರೆ ದಿನಾಂಕ",
+            "Other time": "ಬೇರೆ ಸಮಯ",
+            "Yes, cancel": "ಹೌದು, ರದ್ದು",
+            "Earlier times": "ಹಿಂದಿನ ಸಮಯ",
+            "More times": "ಹೆಚ್ಚು ಸಮಯ",
+            "Reschedule": "ಮರುಹೊಂದಿಸಿ",
+            "Choose option": "ಆಯ್ಕೆಯನ್ನು ಆರಿಸಿ",
+            "Select appointment": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಆರಿಸಿ",
+            "Choose time": "ಸಮಯ ಆರಿಸಿ",
+            "Select doctor": "ವೈದ್ಯರನ್ನು ಆರಿಸಿ",
+            "Select language": "ಭಾಷೆ ಆರಿಸಿ",
+            "Options": "ಆಯ್ಕೆಗಳು",
+            "No, go back": "ಇಲ್ಲ, ಹಿಂದೆ ಹೋಗಿ",
+            "Previous page": "ಹಿಂದಿನ ಪುಟ",
+            "Next page": "ಮುಂದಿನ ಪುಟ",
+            "More appointments": "ಹೆಚ್ಚು ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗಳು",
+            "Earlier appointments": "ಹಿಂದಿನ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗಳು",
+            "Schedule a visit": "ಭೇಟಿ ನಿಗದಿಪಡಿಸಿ",
+            "View upcoming": "ಮುಂದಿನವುಗಳನ್ನು ನೋಡಿ",
+            "Cancel a booking": "ಬುಕಿಂಗ್ ರದ್ದುಗೊಳಿಸಿ",
+            "Change date or time": "ದಿನಾಂಕ ಅಥವಾ ಸಮಯ ಬದಲಾಯಿಸಿ",
+            "More": "ಇನ್ನಷ್ಟು",
+            "More options": "ಹೆಚ್ಚಿನ ಆಯ್ಕೆಗಳು"
         },
 
         TA: {
@@ -587,7 +822,54 @@ function localizeWhatsAppReply(language, message) {
             "ABC Clinic is currently closed.": "ABC கிளினிக் தற்போது மூடப்பட்டுள்ளது.",
             "Our hours:": "எங்கள் நேரம்:",
             "Please message us during clinic hours to book or manage appointments.": "அப்பாயின்ட்மென்ட் பதிவு செய்ய அல்லது நிர்வகிக்க கிளினிக் நேரத்தில் எங்களுக்கு செய்தி அனுப்பவும்.",
-            "Reply Hi during open hours to get started.": "தொடங்க திறந்திருக்கும் நேரத்தில் Hi என பதிலளிக்கவும்."
+            "Reply Hi during open hours to get started.": "தொடங்க திறந்திருக்கும் நேரத்தில் Hi என பதிலளிக்கவும்.",
+            "How can we help you today?": "இன்று நாங்கள் உங்களுக்கு எப்படி உதவலாம்?",
+            "Choose your doctor.": "உங்கள் மருத்துவரைத் தேர்ந்தெடுக்கவும்.",
+            "Choose an appointment date.": "அப்பாயின்ட்மென்ட் தேதியைத் தேர்ந்தெடுக்கவும்.",
+            "Choose an available time.": "கிடைக்கும் நேரத்தைத் தேர்ந்தெடுக்கவும்.",
+            "Choose a new time.": "புதிய நேரத்தைத் தேர்ந்தெடுக்கவும்.",
+            "Choose your language.": "உங்கள் மொழியைத் தேர்ந்தெடுக்கவும்.",
+            "Your appointments": "உங்கள் அப்பாயின்ட்மென்ட்கள்",
+            "Cancel appointment": "அப்பாயின்ட்மென்டை ரத்து செய்யவும்",
+            "Select an appointment to cancel.": "ரத்து செய்ய அப்பாயின்ட்மென்டைத் தேர்ந்தெடுக்கவும்.",
+            "Reschedule appointment": "அப்பாயின்ட்மென்டை மாற்றியமைக்கவும்",
+            "Select an appointment to reschedule.": "மாற்றியமைக்க அப்பாயின்ட்மென்டைத் தேர்ந்தெடுக்கவும்.",
+            "Choose a new appointment date.": "புதிய அப்பாயின்ட்மென்ட் தேதியைத் தேர்ந்தெடுக்கவும்.",
+            "✅ Confirm appointment?": "✅ அப்பாயின்ட்மென்டை உறுதிப்படுத்தவா?",
+            "⚠️ Cancel this appointment?": "⚠️ இந்த அப்பாயின்ட்மென்டை ரத்து செய்யவா?",
+            "🔄 Confirm reschedule?": "🔄 மாற்றியமைப்பை உறுதிப்படுத்தவா?",
+            "Please choose a valid doctor.": "தயவுசெய்து சரியான மருத்துவரைத் தேர்ந்தெடுக்கவும்.",
+            "Please choose one of the available time slots.": "தயவுசெய்து கிடைக்கும் நேரங்களில் ஒன்றைத் தேர்ந்தெடுக்கவும்.",
+            "That time slot is no longer available.": "அந்த நேரம் இனி கிடைக்கவில்லை.",
+            "Please choose another time.": "தயவுசெய்து வேறு நேரத்தைத் தேர்ந்தெடுக்கவும்.",
+            "📅 Enter the appointment date.": "📅 அப்பாயின்ட்மென்ட் தேதியை உள்ளிடவும்.",
+            "📅 Enter the new appointment date.": "📅 புதிய அப்பாயின்ட்மென்ட் தேதியை உள்ளிடவும்.",
+            "Format: YYYY-MM-DD": "வடிவம்: YYYY-MM-DD",
+            "Page ": "பக்கம் ",
+            " of ": " / ",
+            "Other date": "வேறு தேதி",
+            "Other time": "வேறு நேரம்",
+            "Yes, cancel": "ஆம், ரத்து",
+            "Earlier times": "முந்தைய நேரம்",
+            "More times": "மேலும் நேரம்",
+            "Reschedule": "மாற்றியமை",
+            "Choose option": "விருப்பத்தைத் தேர்ந்தெடுக்கவும்",
+            "Select appointment": "அப்பாயின்ட்மென்டைத் தேர்ந்தெடுக்கவும்",
+            "Choose time": "நேரத்தைத் தேர்ந்தெடுக்கவும்",
+            "Select doctor": "மருத்துவரைத் தேர்ந்தெடுக்கவும்",
+            "Select language": "மொழியைத் தேர்ந்தெடுக்கவும்",
+            "Options": "விருப்பங்கள்",
+            "No, go back": "இல்லை, திரும்பிச் செல்லுங்கள்",
+            "Previous page": "முந்தைய பக்கம்",
+            "Next page": "அடுத்த பக்கம்",
+            "More appointments": "மேலும் அப்பாயின்ட்மென்ட்கள்",
+            "Earlier appointments": "முந்தைய அப்பாயின்ட்மென்ட்கள்",
+            "Schedule a visit": "வருகையை திட்டமிடுங்கள்",
+            "View upcoming": "வரவிருப்பவை பாருங்கள்",
+            "Cancel a booking": "பதிவை ரத்து செய்யுங்கள்",
+            "Change date or time": "தேதி அல்லது நேரத்தை மாற்றுங்கள்",
+            "More": "மேலும்",
+            "More options": "மேலும் விருப்பங்கள்"
         },
 
         ML: {
@@ -663,7 +945,54 @@ function localizeWhatsAppReply(language, message) {
             "ABC Clinic is currently closed.": "ABC ക്ലിനിക്ക് നിലവിൽ അടച്ചിരിക്കുന്നു.",
             "Our hours:": "ഞങ്ങളുടെ സമയം:",
             "Please message us during clinic hours to book or manage appointments.": "അപ്പോയിന്റ്മെന്റ് ബുക്ക് ചെയ്യാനോ കൈകാര്യം ചെയ്യാനോ ക്ലിനിക് സമയത്ത് ഞങ്ങൾക്ക് സന്ദേശം അയയ്ക്കുക.",
-            "Reply Hi during open hours to get started.": "തുടങ്ങാൻ തുറന്നിരിക്കുന്ന സമയത്ത് Hi എന്ന് മറുപടി നൽകുക."
+            "Reply Hi during open hours to get started.": "തുടങ്ങാൻ തുറന്നിരിക്കുന്ന സമയത്ത് Hi എന്ന് മറുപടി നൽകുക.",
+            "How can we help you today?": "ഇന്ന് ഞങ്ങൾക്ക് നിങ്ങളെ എങ്ങനെ സഹായിക്കാനാകും?",
+            "Choose your doctor.": "നിങ്ങളുടെ ഡോക്ടറെ തിരഞ്ഞെടുക്കുക.",
+            "Choose an appointment date.": "അപ്പോയിന്റ്മെന്റ് തീയതി തിരഞ്ഞെടുക്കുക.",
+            "Choose an available time.": "ലഭ്യമായ സമയം തിരഞ്ഞെടുക്കുക.",
+            "Choose a new time.": "പുതിയ സമയം തിരഞ്ഞെടുക്കുക.",
+            "Choose your language.": "നിങ്ങളുടെ ഭാഷ തിരഞ്ഞെടുക്കുക.",
+            "Your appointments": "നിങ്ങളുടെ അപ്പോയിന്റ്മെന്റുകൾ",
+            "Cancel appointment": "അപ്പോയിന്റ്മെന്റ് റദ്ദാക്കുക",
+            "Select an appointment to cancel.": "റദ്ദാക്കാൻ അപ്പോയിന്റ്മെന്റ് തിരഞ്ഞെടുക്കുക.",
+            "Reschedule appointment": "അപ്പോയിന്റ്മെന്റ് പുനഃക്രമീകരിക്കുക",
+            "Select an appointment to reschedule.": "പുനഃക്രമീകരിക്കാൻ അപ്പോയിന്റ്മെന്റ് തിരഞ്ഞെടുക്കുക.",
+            "Choose a new appointment date.": "പുതിയ അപ്പോയിന്റ്മെന്റ് തീയതി തിരഞ്ഞെടുക്കുക.",
+            "✅ Confirm appointment?": "✅ അപ്പോയിന്റ്മെന്റ് സ്ഥിരീകരിക്കണോ?",
+            "⚠️ Cancel this appointment?": "⚠️ ഈ അപ്പോയിന്റ്മെന്റ് റദ്ദാക്കണോ?",
+            "🔄 Confirm reschedule?": "🔄 പുനഃക്രമീകരണം സ്ഥിരീകരിക്കണോ?",
+            "Please choose a valid doctor.": "ദയവായി സാധുവായ ഡോക്ടറെ തിരഞ്ഞെടുക്കുക.",
+            "Please choose one of the available time slots.": "ദയവായി ലഭ്യമായ സമയങ്ങളിൽ ഒന്ന് തിരഞ്ഞെടുക്കുക.",
+            "That time slot is no longer available.": "ആ സമയ സ്ലോട്ട് ഇനി ലഭ്യമല്ല.",
+            "Please choose another time.": "ദയവായി മറ്റൊരു സമയം തിരഞ്ഞെടുക്കുക.",
+            "📅 Enter the appointment date.": "📅 അപ്പോയിന്റ്മെന്റ് തീയതി നൽകുക.",
+            "📅 Enter the new appointment date.": "📅 പുതിയ അപ്പോയിന്റ്മെന്റ് തീയതി നൽകുക.",
+            "Format: YYYY-MM-DD": "ഫോർമാറ്റ്: YYYY-MM-DD",
+            "Page ": "പേജ് ",
+            " of ": " / ",
+            "Other date": "മറ്റൊരു തീയതി",
+            "Other time": "മറ്റൊരു സമയം",
+            "Yes, cancel": "അതെ, റദ്ദാക്കുക",
+            "Earlier times": "മുമ്പത്തെ സമയം",
+            "More times": "കൂടുതൽ സമയം",
+            "Reschedule": "പുനഃക്രമീകരിക്കുക",
+            "Choose option": "ഓപ്ഷൻ തിരഞ്ഞെടുക്കുക",
+            "Select appointment": "അപ്പോയിന്റ്മെന്റ് തിരഞ്ഞെടുക്കുക",
+            "Choose time": "സമയം തിരഞ്ഞെടുക്കുക",
+            "Select doctor": "ഡോക്ടറെ തിരഞ്ഞെടുക്കുക",
+            "Select language": "ഭാഷ തിരഞ്ഞെടുക്കുക",
+            "Options": "ഓപ്ഷനുകൾ",
+            "No, go back": "ഇല്ല, തിരികെ പോകുക",
+            "Previous page": "മുൻ പേജ്",
+            "Next page": "അടുത്ത പേജ്",
+            "More appointments": "കൂടുതൽ അപ്പോയിന്റ്മെന്റുകൾ",
+            "Earlier appointments": "മുൻ അപ്പോയിന്റ്മെന്റുകൾ",
+            "Schedule a visit": "സന്ദർശനം ഷെഡ്യൂൾ ചെയ്യുക",
+            "View upcoming": "വരാനിരിക്കുന്നവ കാണുക",
+            "Cancel a booking": "ബുക്കിംഗ് റദ്ദാക്കുക",
+            "Change date or time": "തീയതി അല്ലെങ്കിൽ സമയം മാറ്റുക",
+            "More": "കൂടുതൽ",
+            "More options": "കൂടുതൽ ഓപ്ഷനുകൾ"
         }
     };
 
@@ -681,6 +1010,115 @@ function localizeWhatsAppReply(language, message) {
         });
 
     return localizedMessage;
+}
+
+
+
+function localizeInteractiveMenu(
+    language,
+    interactive
+) {
+
+    if (
+        !interactive ||
+        String(language || "EN").toUpperCase() === "EN"
+    ) {
+        return interactive;
+    }
+
+    const copy =
+        JSON.parse(
+            JSON.stringify(interactive)
+        );
+
+    if (
+        copy.type === "button" &&
+        copy.buttons
+    ) {
+
+        copy.buttons =
+            copy.buttons.map(
+                function (button) {
+
+                    return {
+                        id: button.id,
+                        title:
+                            truncateInteractiveLabel(
+                                localizeWhatsAppReply(
+                                    language,
+                                    button.title
+                                ),
+                                20
+                            )
+                    };
+                }
+            );
+    }
+
+    if (
+        copy.type === "list"
+    ) {
+
+        if (copy.buttonLabel) {
+
+            copy.buttonLabel =
+                truncateInteractiveLabel(
+                    localizeWhatsAppReply(
+                        language,
+                        copy.buttonLabel
+                    ),
+                    20
+                );
+        }
+
+        if (copy.sections) {
+
+            copy.sections =
+                copy.sections.map(
+                    function (section) {
+
+                        return {
+                            title:
+                                truncateInteractiveLabel(
+                                    localizeWhatsAppReply(
+                                        language,
+                                        section.title || ""
+                                    ),
+                                    24
+                                ),
+                            rows:
+                                (section.rows || [])
+                                    .map(
+                                        function (row) {
+
+                                            return {
+                                                id: row.id,
+                                                title:
+                                                    truncateInteractiveLabel(
+                                                        localizeWhatsAppReply(
+                                                            language,
+                                                            row.title
+                                                        ),
+                                                        24
+                                                    ),
+                                                description:
+                                                    truncateInteractiveLabel(
+                                                        localizeWhatsAppReply(
+                                                            language,
+                                                            row.description || ""
+                                                        ),
+                                                        72
+                                                    )
+                                            };
+                                        }
+                                    )
+                        };
+                    }
+                );
+        }
+    }
+
+    return copy;
 }
 
 
@@ -954,48 +1392,97 @@ function formatDoctorNext(result) {
 
 
 
-function buildDateMenuOptionsText() {
-
-    return (
-        "1️⃣ Today\n" +
-        "2️⃣ Tomorrow\n" +
-        "3️⃣ Enter another date"
-    );
-}
-
-
-function buildDateMenuPrompt(introText) {
-
-    return (
-        String(introText || "Please choose a date:") +
-        "\n\n" +
-        buildDateMenuOptionsText()
-    );
-}
-
-
-function buildInvalidDateMenuReply() {
-
-    return (
-        "❌ Invalid option.\n\n" +
-        "Please reply with:\n\n" +
-        buildDateMenuOptionsText()
-    );
-}
-
-
 function buildCustomDateEntryPrompt(isReschedule) {
 
     const prefix =
         isReschedule
-            ? "📅 Please enter the new date"
-            : "📅 Please enter the date";
+            ? "📅 Enter the new appointment date."
+            : "📅 Enter the appointment date.";
 
     return (
         prefix +
-        " in YYYY-MM-DD format.\n\n" +
-        "Example:\n" +
-        "2026-08-25"
+        "\n\n" +
+        "Format: YYYY-MM-DD\n" +
+        "Example: 2026-08-25"
+    );
+}
+
+
+function buildDoctorScheduleDateEntryPrompt() {
+
+    return (
+        "📅 Enter the date to view.\n\n" +
+        "Format: YYYY-MM-DD\n" +
+        "Example: 2026-08-25"
+    );
+}
+
+
+function validateScheduleViewISODate(typedDate) {
+
+    const trimmed =
+        String(typedDate || "").trim();
+
+    if (!isValidISODate(trimmed)) {
+
+        return {
+            valid: false,
+            message:
+                "❌ That doesn't look like a valid date.\n\n" +
+                buildDoctorScheduleDateEntryPrompt()
+        };
+    }
+
+    return {
+        valid: true,
+        date: trimmed
+    };
+}
+
+
+function buildBookingDateSelectionIntro(session) {
+
+    const doctorName =
+        session &&
+        session.doctorId
+            ? findDoctorById(session.doctorId)
+            : "";
+
+    if (doctorName) {
+
+        return (
+            "👨‍⚕️ " +
+            doctorName +
+            "\n\nChoose an appointment date."
+        );
+    }
+
+    return "Choose an appointment date.";
+}
+
+
+function buildRescheduleDateSelectionIntro(session) {
+
+    const doctorName =
+        session &&
+        session.doctorId
+            ? findDoctorById(session.doctorId)
+            : "Doctor";
+
+    return (
+        "🔄 " +
+        (doctorName || "Doctor") +
+        "\n\nChoose a new appointment date."
+    );
+}
+
+
+function buildDoctorRescheduleDateIntro(doctorId) {
+
+    return (
+        "🔄 " +
+        (findDoctorById(doctorId) || "Doctor") +
+        "\n\nChoose a new appointment date."
     );
 }
 
@@ -1027,17 +1514,20 @@ function buildBookingConfirmationMessage(
 ) {
 
     return (
-        "Please confirm your appointment:\n\n" +
-        "👤 Patient: " + patientName + "\n" +
-        "👨‍⚕️ Doctor: " +
+        "✅ Confirm appointment?\n\n" +
+        "👤 " + patientName + "\n" +
+        "👨‍⚕️ " +
         (
             findDoctorById(
                 session.doctorId
             ) || "Unknown Doctor"
         ) +
         "\n" +
-        "📅 Date: " + session.date + "\n" +
-        "🕐 Time: " + session.time + "\n\n" +
-        "Confirm appointment?"
+        "📅 " +
+        formatWhatsAppDisplayDate(
+            session.date
+        ) +
+        "\n" +
+        "🕐 " + session.time
     );
 }

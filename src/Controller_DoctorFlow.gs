@@ -41,126 +41,37 @@ if (
 
         return true;
 
+    } else if (normalizedMessage === "0") {
+
+        returnDoctorToMenu(
+            ss,
+            senderPhone,
+            doctorId
+        );
+
     } else if (
-        normalizedMessage === "0" ||
-        normalizedMessage === "9"
+        normalizedMessage === "menu_more" ||
+        normalizedMessage === "more"
     ) {
 
-        returnDoctorToMenu(
-            ss,
-            senderPhone,
-            doctorId
-        );
-
-    } else if (normalizedMessage === "1") {
-
-        returnDoctorToMenu(
+        showDoctorMenuMoreTier(
             ss,
             senderPhone,
             doctorId,
-            formatDoctorSchedule(
-                getDoctorTodaySchedule(
-                    doctorId
-                ),
-                "Today's Schedule"
-            )
+            1,
+            ""
         );
 
-    } else if (normalizedMessage === "2") {
-
-        returnDoctorToMenu(
+    } else if (
+        handleDoctorPortalMenuChoice(
             ss,
             senderPhone,
             doctorId,
-            formatDoctorNext(
-                getDoctorNextAppointment(
-                    doctorId
-                )
-            )
-        );
+            normalizedMessage
+        )
+    ) {
 
-    } else if (normalizedMessage === "3") {
-
-        returnDoctorToMenu(
-            ss,
-            senderPhone,
-            doctorId,
-            formatDoctorWeek(
-                getDoctorWeeklySchedule(
-                    doctorId
-                )
-            )
-        );
-
-    } else if (normalizedMessage === "4") {
-
-        saveWhatsAppSession(
-            senderPhone,
-            {
-                role: "DOCTOR",
-                state: "DOCTOR_DATE",
-                doctorId: doctorId,
-                date: "",
-                time: "",
-                appointmentId: ""
-            }
-        );
-
-        showDoctorDateSelection(
-            ss,
-            senderPhone
-        );
-
-    } else if (normalizedMessage === "5") {
-
-        showDoctorAvailabilityMenu(
-            ss,
-            senderPhone,
-            doctorId
-        );
-
-    } else if (normalizedMessage === "6") {
-
-        showDoctorLeavesMenu(
-            ss,
-            senderPhone,
-            doctorId
-        );
-
-    } else if (normalizedMessage === "7") {
-
-        returnDoctorToMenu(
-            ss,
-            senderPhone,
-            doctorId,
-            formatDoctorPatientsList(
-                doctorId
-            )
-        );
-
-    } else if (normalizedMessage === "8") {
-
-        beginDoctorCancelFlow(
-            ss,
-            senderPhone,
-            doctorId
-        );
-
-    } else if (normalizedMessage === "9") {
-
-        beginDoctorRescheduleFlow(
-            ss,
-            senderPhone,
-            doctorId
-        );
-
-    } else if (normalizedMessage === "10") {
-
-        beginDoctorStatusFlow(
-            ss,
-            senderPhone,
-            doctorId
-        );
+        // handled
 
     } else {
 
@@ -168,9 +79,103 @@ if (
             ss,
             senderPhone,
             doctorId,
-            "❌ Invalid option. Please choose 1, 2, 3, 4, 5, 6, 7, 8, 9, or 10."
+            "❌ Invalid option."
         );
     }
+
+    return true;
+}
+
+
+// ======================================================
+// DOCTOR MENU → MORE (button sub-menu tiers)
+// ======================================================
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_MENU_MORE"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    if (!doctorId) {
+        return true;
+    }
+
+    const tier =
+        Number(session.doctorMenuTier) || 1;
+
+    if (
+        normalizedMessage === "menu_more_2" &&
+        tier === 1
+    ) {
+
+        showDoctorMenuMoreTier(
+            ss,
+            senderPhone,
+            doctorId,
+            2,
+            ""
+        );
+
+    } else if (
+        normalizedMessage === "menu_more_3" &&
+        tier === 2
+    ) {
+
+        showDoctorMenuMoreTier(
+            ss,
+            senderPhone,
+            doctorId,
+            3,
+            ""
+        );
+
+    } else if (
+        normalizedMessage === "menu_more_4" &&
+        tier === 3
+    ) {
+
+        showDoctorMenuMoreTier(
+            ss,
+            senderPhone,
+            doctorId,
+            4,
+            ""
+        );
+
+    } else if (
+        isDoctorMenuChoiceAllowedForTier(
+            normalizedMessage,
+            tier
+        ) &&
+        handleDoctorPortalMenuChoice(
+            ss,
+            senderPhone,
+            doctorId,
+            normalizedMessage
+        )
+    ) {
+
+        // handled
+
+    } else {
+
+        sendDoctorMainMenuMoreReply(
+            ss,
+            senderPhone,
+            doctorId,
+            tier,
+            "❌ Invalid option."
+        );
+    }
+
     return true;
 }
 
@@ -519,9 +524,11 @@ if (
     sendWhatsAppMenuReply(
         ss,
         senderPhone,
-        "Please confirm new session:\n\n" +
-        "📅 " + dayName + "\n" +
-        "🕐 " + startTime + " - " + endTime,
+        buildDoctorAvailabilitySessionConfirmMessage(
+            dayName,
+            startTime,
+            endTime
+        ),
         getConfirmCancelSpec()
     );
 
@@ -559,7 +566,7 @@ if (
         return true;
     }
 
-    if (normalizedMessage === "1") {
+    if (isSimpleConfirmYesChoice(normalizedMessage)) {
 
         const result =
             addDoctorAvailabilitySession(
@@ -578,7 +585,7 @@ if (
             result.message
         );
 
-    } else if (normalizedMessage === "2") {
+    } else if (isSimpleConfirmCancelChoice(normalizedMessage)) {
 
         returnToDoctorDayAvailability(
             ss,
@@ -593,7 +600,12 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.",
+            "❌ Invalid option.\n\n" +
+            buildDoctorAvailabilitySessionConfirmMessage(
+                dayName,
+                startTime,
+                endTime
+            ),
             getConfirmCancelSpec()
         );
     }
@@ -678,7 +690,7 @@ if (
         return true;
     }
 
-    if (normalizedMessage === "1") {
+    if (isYesCancelConfirmChoice(normalizedMessage)) {
 
         const appointments =
             getDoctorConfirmedAppointments(
@@ -742,7 +754,7 @@ if (
             );
         }
 
-    } else if (normalizedMessage === "2") {
+    } else if (isNoGoBackConfirmChoice(normalizedMessage)) {
 
         returnDoctorToMenu(
             ss,
@@ -858,10 +870,10 @@ if (
 
     let targetStatus = "";
 
-    if (normalizedMessage === "1") {
+    if (isStatusCompletedChoice(normalizedMessage)) {
         targetStatus =
             APPOINTMENT_STATUS.COMPLETED;
-    } else if (normalizedMessage === "2") {
+    } else if (isStatusNoShowChoice(normalizedMessage)) {
         targetStatus =
             APPOINTMENT_STATUS.NO_SHOW;
     } else {
@@ -1030,7 +1042,10 @@ if (
         return true;
     }
 
-    if (normalizedMessage === "1") {
+    if (
+        normalizedMessage === "1" ||
+        normalizedMessage === "confirm_yes"
+    ) {
 
         if (
             !session.appointmentId ||
@@ -1130,7 +1145,10 @@ if (
             );
         }
 
-    } else if (normalizedMessage === "2") {
+    } else if (
+        normalizedMessage === "2" ||
+        normalizedMessage === "confirm_other_time"
+    ) {
 
         if (
             !session.doctorId ||
@@ -1156,7 +1174,10 @@ if (
             "DOCTOR_RESCHEDULE_TIME"
         );
 
-    } else if (normalizedMessage === "3") {
+    } else if (
+        normalizedMessage === "3" ||
+        normalizedMessage === "confirm_cancel"
+    ) {
 
         returnDoctorToMenu(
             ss,
@@ -1170,7 +1191,12 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\nPlease choose:",
+            "❌ Invalid option.\n\n" +
+            buildDoctorRescheduleSlotConfirmMessage(
+                session,
+                session.date,
+                session.time
+            ),
             getRescheduleConfirmSpec()
         );
     }
@@ -1410,12 +1436,9 @@ if (
     sendWhatsAppMenuReply(
         ss,
         senderPhone,
-        "Confirm leave:\n\n" +
-        "📅 " + leaveDate + "\n" +
-        (
+        buildDoctorLeaveConfirmMessage(
+            leaveDate,
             reason
-                ? "📝 " + reason + "\n"
-                : ""
         ),
         getConfirmCancelSpec()
     );
@@ -1449,7 +1472,7 @@ if (
         return true;
     }
 
-    if (normalizedMessage === "1") {
+    if (isSimpleConfirmYesChoice(normalizedMessage)) {
 
         const result =
             addDoctorLeave(
@@ -1466,7 +1489,7 @@ if (
             result.message
         );
 
-    } else if (normalizedMessage === "2") {
+    } else if (isSimpleConfirmCancelChoice(normalizedMessage)) {
 
         returnDoctorToMenu(
             ss,
@@ -1480,7 +1503,11 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.",
+            "❌ Invalid option.\n\n" +
+            buildDoctorLeaveConfirmMessage(
+                leaveDate,
+                reason
+            ),
             getConfirmCancelSpec()
         );
     }
@@ -1717,13 +1744,10 @@ if (
     sendWhatsAppMenuReply(
         ss,
         senderPhone,
-        "Confirm leave range:\n\n" +
-        "📅 " + startDate +
-        " to " + endDate + "\n" +
-        (
+        buildDoctorLeaveRangeConfirmMessage(
+            startDate,
+            endDate,
             reason
-                ? "📝 " + reason + "\n"
-                : ""
         ),
         getConfirmCancelSpec()
     );
@@ -1761,7 +1785,7 @@ if (
         return true;
     }
 
-    if (normalizedMessage === "1") {
+    if (isSimpleConfirmYesChoice(normalizedMessage)) {
 
         const result =
             addDoctorLeaveRange(
@@ -1779,7 +1803,7 @@ if (
             result.message
         );
 
-    } else if (normalizedMessage === "2") {
+    } else if (isSimpleConfirmCancelChoice(normalizedMessage)) {
 
         returnDoctorToMenu(
             ss,
@@ -1793,7 +1817,12 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.",
+            "❌ Invalid option.\n\n" +
+            buildDoctorLeaveRangeConfirmMessage(
+                startDate,
+                endDate,
+                reason
+            ),
             getConfirmCancelSpec()
         );
     }
@@ -1821,41 +1850,29 @@ if (
     if (!doctorId) {
 
         return true;
+    }
 
-    } else if (normalizedMessage === "1") {
+    const selectedDate =
+        getISODateFromMenuChoice(
+            normalizedMessage
+        );
+
+    if (selectedDate) {
 
         showDoctorScheduleForDateAndReturn(
             ss,
             senderPhone,
             doctorId,
-            Utilities.formatDate(
-                new Date(),
-                TIMEZONE,
-                "yyyy-MM-dd"
-            )
+            selectedDate
         );
 
-    } else if (normalizedMessage === "2") {
+        return true;
+    }
 
-        const tomorrow =
-            new Date();
-
-        tomorrow.setDate(
-            tomorrow.getDate() + 1
-        );
-
-        showDoctorScheduleForDateAndReturn(
-            ss,
-            senderPhone,
-            doctorId,
-            Utilities.formatDate(
-                tomorrow,
-                TIMEZONE,
-                "yyyy-MM-dd"
-            )
-        );
-
-    } else if (normalizedMessage === "3") {
+    if (
+        normalizedMessage === "3" ||
+        normalizedMessage === "date_custom"
+    ) {
 
         saveWhatsAppSession(
             senderPhone,
@@ -1872,19 +1889,18 @@ if (
         sendWhatsAppReply(
             ss,
             senderPhone,
-            "📅 Please enter the date in YYYY-MM-DD format.\n\n" +
-            "Example:\n" +
-            "2026-08-25"
+            buildDoctorScheduleDateEntryPrompt()
         );
 
-    } else {
-
-        sendDateMenuReply(
-            ss,
-            senderPhone,
-            "❌ Invalid option.\n\nPlease choose a date:"
-        );
+        return true;
     }
+
+    sendDateMenuReply(
+        ss,
+        senderPhone,
+        "❌ Invalid option.\n\nChoose a date to view."
+    );
+
     return true;
 }
 
@@ -1913,17 +1929,17 @@ if (
 
         return true;
 
-    } else if (
-        !isValidISODate(typedDate)
-    ) {
+    }
+
+    const dateCheck =
+        validateScheduleViewISODate(typedDate);
+
+    if (!dateCheck.valid) {
 
         sendWhatsAppReply(
             ss,
             senderPhone,
-            "❌ That doesn't look like a valid date.\n\n" +
-            "Please enter the date in YYYY-MM-DD format.\n\n" +
-            "Example:\n" +
-            "2026-08-25"
+            dateCheck.message
         );
 
     } else {
@@ -1932,7 +1948,7 @@ if (
             ss,
             senderPhone,
             doctorId,
-            typedDate
+            dateCheck.date
         );
     }
     return true;

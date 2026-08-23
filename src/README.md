@@ -51,14 +51,21 @@ list menu (`getLanguageMenuSpec()` in `View_Menus.gs`). Translation happens via 
 phrase substitution in `localizeWhatsAppReply()` (`View_Messages.gs`) — untranslated keys
 silently fall back to English rather than erroring, so partial coverage is safe.
 
+Patient-facing **message bodies** are localized (including UI cleanup copy: main menu,
+doctor/date/slot prompts, confirmations, custom date, pagination). **Interactive list/button
+titles** (Today, Confirm, etc.) remain English. Menu **fallback text** is localized when
+interactive mode fails.
+
+Smoke test: `testLocalizationUiCleanup()` in `ABC_Clinic_Tests.gs`.
+
 ⚠️ **Kannada/Tamil/Malayalam translations are an initial AI-assisted pass**, not yet
 reviewed by a native speaker — verify against real clinic usage before relying on them in
 production, especially for time/date-sensitive phrases. Telugu/Hindi predate this and have
 been in production use.
 
 Doctor Portal text and most error/validation messages remain English-only by design —
-localization only covers the specific patient-facing strings listed in the translation
-dictionaries.
+localization covers patient-facing message bodies listed in the translation dictionaries
+in `View_Messages.gs`.
 
 ---
 
@@ -186,8 +193,10 @@ Adjust after the first inbound message creates the sheet:
     patient's number to confirm both flows work.
 
 See the [repo root README](../README.md) for the full end-to-end deployment walkthrough,
-the manual WhatsApp test checklist, and the single-file (`ABC_Clinic_WhatsApp_Complete.gs`)
-alternative — this document only covers what's specific to the `src/` split.
+the manual WhatsApp test checklist, UI docs (`ABC_Clinic_WhatsApp_UI_README.md`,
+`ABC_Clinic_WhatsApp_UI_Cleanup_README.md`), and the single-file
+(`ABC_Clinic_WhatsApp_Complete.gs`) alternative — this document only covers what's
+specific to the `src/` split.
 
 ---
 
@@ -199,6 +208,8 @@ alternative — this document only covers what's specific to the `src/` split.
 node scripts/sync-monolith-from-src.js
 ```
 
-Then deploy **either** the monolith **or** all `src/` files — not both. The sync script replaces matching function bodies and inserts any new helpers; run it before copying Option A into Apps Script.
+Then deploy **either** the monolith **or** all `src/` files — not both. The sync script copies **all 20** `src/*.gs` function bodies into the monolith (277 functions); run it before copying Option A into Apps Script. Dry-run: `node scripts/sync-monolith-from-src.js --check`.
+
+**Note:** Top-level `const`/`var` blocks (e.g. `TIMEZONE` in `Config.gs`) are not auto-synced — only `function` bodies. Edit those in both places if you change constants.
 
 If you only maintain one layout, you can skip the script.

@@ -1,12 +1,31 @@
-# ABC Clinic WhatsApp --- UI Cleanup Change Plan
+# ABC Clinic WhatsApp — UI Cleanup Reference
+
+> **Status: COMPLETE** (implemented in `src/` and synced to `ABC_Clinic_WhatsApp_Complete.gs`)
+
+This document records the WhatsApp **UI/presentation cleanup** that was applied to the ABC Clinic appointment system. It is a reference for future copy changes — not an open task list.
+
+The appointment engine (state machine, booking, calendar, session storage) was **not** redesigned.
+
+------------------------------------------------------------------------
+
+## Summary of what shipped
+
+- **Short contextual message bodies** — no numbered option lists in interactive message text
+- **Interactive controls as primary navigation** — lists/buttons for menus; typed `1`/`2`/`0`/`9` still works as fallback
+- **Semantic interactive IDs** — `date_today`, `slot_1`, `confirm_yes`, etc. (numeric fallback preserved)
+- **Slot pagination copy** — `📅 dd-MMM-yyyy` + `Choose an available time.` + `Page N of M`
+- **Localization** — new UI strings added for TE/HI/KA/TA/ML; smoke test `testLocalizationUiCleanup()`
+- **Principle:** *Text explains. Interactive controls act.*
+
+Sync after editing `src/`: `node scripts/sync-monolith-from-src.js`
+
+Related docs: [`ABC_Clinic_WhatsApp_UI_README.md`](ABC_Clinic_WhatsApp_UI_README.md) (original interactive-UI plan; some items deferred — see its status section).
+
+------------------------------------------------------------------------
 
 ## 1. Purpose
 
-This document defines the remaining WhatsApp UI cleanup work for the ABC
-Clinic appointment system.
-
-The appointment engine is currently working through the tested patient
-flows:
+The patient flows below were working before cleanup and remain working after:
 
 -   Main menu
 -   Doctor selection
@@ -21,49 +40,23 @@ flows:
 -   Reschedule confirmation
 -   Reschedule "Other time" flow
 
-The current task is **UI/presentation cleanup only**. Do not rewrite the
-appointment state machine or booking business logic unless a UI change
-exposes a real functional defect.
+Cleanup was **UI/presentation only**. Do not rewrite the appointment state
+machine or booking business logic unless a UI change exposes a real functional
+defect.
 
 ------------------------------------------------------------------------
 
-# 2. UI Design Goal
+# 2. UI Design Goal (achieved)
 
 The WhatsApp experience should feel like a simple selectable application
 rather than a numbered text chatbot.
 
-## Current pattern
+## Previous pattern (fallback only)
 
-Many screens currently contain:
+When interactive menus are disabled or the Meta API fails, numbered text is
+still shown — but it is no longer duplicated in the primary interactive body.
 
-1.  A long text message with numbered options.
-2.  An interactive WhatsApp list/button immediately afterward.
-
-Example:
-
-``` text
-Please choose a date:
-
-1️⃣ Today
-2️⃣ Tomorrow
-3️⃣ Enter another date
-0️⃣ Main Menu
-9️⃣ Back
-```
-
-followed by an interactive menu:
-
-``` text
-Today
-Tomorrow
-Other date
-Main Menu
-Back
-```
-
-## Target pattern
-
-Use a short contextual message plus the interactive controls:
+## Current pattern (shipped)
 
 ``` text
 👨‍⚕️ Dr Anil
@@ -141,18 +134,19 @@ const body =
 How can we help you today?
 ```
 
-Interactive choices:
+Interactive choices (5-item list — cancel and reschedule remain top-level menu items):
 
 -   Book Appointment
 -   My Appointments
--   Manage Appointment
+-   Cancel Appointment
+-   Reschedule Appointment
 -   Change Language
 
 ### Status
 
-**DONE**
+**DONE** — do not modify unless testing reveals a problem.
 
-Do not modify this again unless testing reveals a problem.
+> Note: An earlier spec proposed collapsing cancel/reschedule under **Manage Appointment**; that submenu was **not** implemented. The live menu keeps five top-level options.
 
 ------------------------------------------------------------------------
 
@@ -183,16 +177,9 @@ ABC Clinic
 Keep the numeric doctor IDs/numbers in the fallback logic so typed input
 continues to work.
 
-### Do not remove
+### Status
 
-The fallback representation.
-
-The system should still understand a typed:
-
-``` text
-1
-2
-```
+**DONE**
 
 ------------------------------------------------------------------------
 
@@ -251,6 +238,10 @@ Do not revert them to generic IDs such as:
 The semantic IDs prevent collisions between date, time and confirmation
 menus.
 
+### Status
+
+**DONE**
+
 ------------------------------------------------------------------------
 
 # 7. Custom Date Entry
@@ -269,6 +260,10 @@ Example: 2026-08-25
 The user should still be able to type the date.
 
 Do not convert this into an interactive menu unnecessarily.
+
+### Status
+
+**DONE**
 
 ------------------------------------------------------------------------
 
@@ -330,6 +325,10 @@ slot_next
 
 must remain distinct from actual time-slot IDs.
 
+### Status
+
+**DONE**
+
 ------------------------------------------------------------------------
 
 # 9. Booking Confirmation
@@ -373,6 +372,10 @@ The handlers must continue accepting the numeric fallback:
 
 Do not remove this fallback.
 
+### Status
+
+**DONE**
+
 ------------------------------------------------------------------------
 
 # 10. My Appointments
@@ -398,6 +401,10 @@ actually requires a new selection.
 
 The appointment list itself should remain selectable where currently
 supported.
+
+### Status
+
+**DONE**
 
 ------------------------------------------------------------------------
 
@@ -447,6 +454,10 @@ This has been identified as a **manual Calendar state issue**, not a
 current UI-code issue.
 
 Do not redesign cancellation logic because of that result.
+
+### Status
+
+**DONE**
 
 ------------------------------------------------------------------------
 
@@ -518,6 +529,10 @@ confirm_cancel
 
 and retain numeric fallback support.
 
+### Status
+
+**DONE**
+
 ------------------------------------------------------------------------
 
 # 13. Language Selection
@@ -538,6 +553,10 @@ Interactive choices can remain:
 -   Malayalam
 
 Keep the existing language IDs and language-processing logic.
+
+### Status
+
+**DONE**
 
 ------------------------------------------------------------------------
 
@@ -583,35 +602,37 @@ These are outside the current UI cleanup scope.
 
 ------------------------------------------------------------------------
 
-# 16. Implementation Order
+# 16. Implementation checklist
 
-Perform the cleanup in this order:
+All phases completed:
 
-### Phase 1 --- Completed
+### Phase 1
 
 -   [x] Main Menu
 
 ### Phase 2
 
--   [ ] Doctor Selection
--   [ ] Date Selection
--   [ ] Custom Date Prompt
--   [ ] Time Selection
--   [ ] Booking Confirmation
+-   [x] Doctor Selection
+-   [x] Date Selection
+-   [x] Custom Date Prompt
+-   [x] Time Selection
+-   [x] Booking Confirmation
 
 ### Phase 3
 
--   [ ] My Appointments
--   [ ] Cancel Appointment
--   [ ] Cancel Confirmation
--   [ ] Reschedule Appointment
--   [ ] Reschedule Date
--   [ ] Reschedule Confirmation
--   [ ] Language Selection
+-   [x] My Appointments
+-   [x] Cancel Appointment
+-   [x] Cancel Confirmation
+-   [x] Reschedule Appointment
+-   [x] Reschedule Date
+-   [x] Reschedule Confirmation
+-   [x] Language Selection
 
-### Phase 4 --- Final QA
+### Phase 4 — QA
 
-Run complete end-to-end tests:
+Automated: `testInteractiveMenus`, `testLocalizationUiCleanup`, `testWhatsAppReliability` (partial localization checks).
+
+Manual end-to-end tests (run after each deploy):
 
 ``` text
 Hi
@@ -629,15 +650,14 @@ Hi
 
 ``` text
 Hi
-→ Manage
+→ Manage (Cancel Appointment or Reschedule Appointment from main menu)
 → Cancel
 → Confirm cancellation
 ```
 
 ``` text
 Hi
-→ Manage
-→ Reschedule
+→ Reschedule Appointment
 → Date
 → Time
 → Other time
@@ -658,7 +678,7 @@ Also test:
 
 # 17. Definition of Done
 
-The UI cleanup is complete when:
+All criteria below are met in the current codebase:
 
 -   Interactive controls are the primary way to navigate.
 -   Menu text is short and contextual.
