@@ -8,12 +8,45 @@ Google Apps Script project for ABC Clinic appointment booking over WhatsApp, bac
 
 ## Apps Script files
 
+There are two equivalent ways to source the production code — pick **one**, don't bind both:
+
+### Option A — single file (original)
+
 | File | Bind in production? | Purpose |
 |------|---------------------|---------|
 | `ABC_Clinic_WhatsApp_Complete.gs` | **Required** | Production code (webhook, booking, doctor portal) |
 | `ABC_Clinic_Tests.gs` | Optional | Test helpers — bind for dev/staging; safe to leave bound |
 
-Only bind the two files listed above — do not add other `.gs` files with duplicate function names.
+### Option B — `src/` split (recommended)
+
+The same code, reorganized into 20 smaller files by responsibility (Model/View/Controller-style). Apps Script merges every bound `.gs` file into one shared global scope regardless of file name or count, so this is behaviorally identical to Option A — just easier to navigate. Bind **every file in `src/`** (all 20) plus, optionally, `ABC_Clinic_Tests.gs`:
+
+| File | Purpose |
+|------|---------|
+| `src/Config.gs` | Constants, Settings sheet, debug/log-mode flags |
+| `src/Util_Common.gs` | Phone/date/time parsing & formatting helpers |
+| `src/Logging.gs` | `WhatsApp_Log` / `WhatsApp_Debug` sheets, retention cleanup |
+| `src/Model_Reminders.gs` | Appointment reminder scheduling & sending |
+| `src/Model_AppointmentStatus.gs` | Completed/No-Show status workflow, auto-complete |
+| `src/Model_AfterHours.gs` | Clinic-hours gate & after-hours auto-reply |
+| `src/Model_Doctors.gs` | Doctor records, availability, leaves, schedule views |
+| `src/Model_Calendar.gs` | Calendar event lookup & slot-availability engine |
+| `src/Model_Patients.gs` | Patients registry (find/upsert/sync) |
+| `src/Model_Appointments.gs` | Book/cancel/reschedule, appointment lookups |
+| `src/Model_Session.gs` | `WhatsApp_Sessions` sheet read/write |
+| `src/Api.gs` | `api()` HTTP-style dispatcher for external callers |
+| `src/Webhook.gs` | `doGet`/`doPost` entry points, inbound idempotency |
+| `src/View_Menus.gs` | Interactive list/button menu specs |
+| `src/View_Messages.gs` | WhatsApp reply text builders & localization |
+| `src/Controller_Shared.gs` | Flow helpers shared by patient & doctor state machines |
+| `src/Controller_Router.gs` | Top-level message dispatch (greeting/navigation/router) |
+| `src/Controller_DoctorFlow.gs` | Doctor-portal conversation state machine |
+| `src/Controller_PatientFlow.gs` | Patient conversation state machine |
+| `src/WhatsApp_Send.gs` | Low-level WhatsApp Cloud API senders |
+
+Every function/variable name is still globally unique across all files (Apps Script requirement) — verified by parsing all files concatenated together with no duplicate-declaration errors, and confirming the same 256 top-level functions/constants exist in both Option A and Option B with none missing, duplicated, or added.
+
+Don't bind both options at once — that would double-declare every function.
 
 ---
 
@@ -42,7 +75,7 @@ Only bind the two files listed above — do not add other `.gs` files with dupli
 ### Core
 
 - WhatsApp webhook (`doGet` / `doPost`) with idempotency and outbound dedup
-- Patient flows: book, cancel, reschedule, language (EN / TE / HI)
+- Patient flows: book, cancel, reschedule, language (EN / TE / HI / KA / TA / ML)
 - Doctor flows: schedule views (options 1–4) + self-service portal (options 5–10)
 - Google Sheets + Calendar booking with locking and rollback on reschedule failure
 
@@ -86,9 +119,11 @@ When a doctor cancels or reschedules, the **patient is notified** via WhatsApp a
 
 ### Localization
 
-- TE/HI via `localizeWhatsAppReply` for main booking strings (name prompt, confirmation, pickers)
-- Appointment reminder messages localized (EN / TE / HI)
+- 6 languages: **English, Telugu (TE), Hindi (HI), Kannada (KA), Tamil (TA), Malayalam (ML)** via `localizeWhatsAppReply` for main booking strings (name prompt, confirmation, pickers)
+- Appointment reminder messages localized in all 6 languages
+- Language picker is a tap-to-select **list menu** (not buttons — 6 options exceeds WhatsApp's 3-button limit)
 - Doctor portal and many error strings remain **English only** (by design)
+- ⚠️ **KA/TA/ML translations are an initial AI-assisted pass**, not yet reviewed by a native speaker — verify against real clinic usage before relying on them in production, especially for time/date-sensitive phrases. TE/HI predate this and have been in production use.
 
 ### Appointment reminders
 
@@ -130,7 +165,7 @@ When a doctor cancels or reschedules, the **patient is notified** via WhatsApp a
 - **Doctors bypass** after-hours — Doctor Portal works 24/7
 - Patients **mid-booking** (any state other than `MAIN_MENU`) can finish their current flow
 - Optional custom message via `AFTER_HOURS_MESSAGE`
-- Closed message localized for EN / TE / HI patients
+- Closed message localized for EN / TE / HI / KA / TA / ML patients
 
 ---
 
@@ -147,7 +182,7 @@ You need:
 - **Graph API credentials:** long-lived `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`
 - A **Google Sheet** that will hold clinic data (create new, or use your existing production sheet)
 
-Only bind `ABC_Clinic_WhatsApp_Complete.gs` (and optionally `ABC_Clinic_Tests.gs`) — do not add other `.gs` files with duplicate function names.
+Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/` (see [Apps Script files](#apps-script-files) above) — not both — plus, optionally, `ABC_Clinic_Tests.gs`. Don't add other `.gs` files with duplicate function names.
 
 ---
 
@@ -182,7 +217,9 @@ Only bind `ABC_Clinic_WhatsApp_Complete.gs` (and optionally `ABC_Clinic_Tests.gs
 
 1. In the spreadsheet: **Extensions → Apps Script**
 2. Remove any old/default `Code.gs` content if present (or delete the file).
-3. Add **`ABC_Clinic_WhatsApp_Complete.gs`** — copy the full file from this repo into a script file with that name.
+3. Add the production code — pick one:
+   - **Single file:** add **`ABC_Clinic_WhatsApp_Complete.gs`**, copying the full file from this repo into a script file with that name.
+   - **Split (`src/`):** add all 20 files from `src/` as separate script files, each with the same name (minus `.gs`, which the editor appends automatically).
 4. *(Optional, recommended for staging)* Add **`ABC_Clinic_Tests.gs`** for in-editor smoke tests.
 5. **Save** the project (Ctrl+S). Give the project a clear name, e.g. `ABC Clinic WhatsApp`.
 
@@ -355,7 +392,7 @@ Confirm **`WhatsApp_Log`** receives inbound rows and **`WhatsApp_Debug`** logs o
 
 When you pull new code from this repo:
 
-1. Copy updated `ABC_Clinic_WhatsApp_Complete.gs` into Apps Script (overwrite the existing file).
+1. Copy the updated file(s) into Apps Script (overwrite existing files) — either `ABC_Clinic_WhatsApp_Complete.gs`, or every changed file under `src/` if you're on the split layout.
 2. **Deploy → Manage deployments → Edit → New version → Deploy**
 3. Re-run a quick manual WhatsApp test (patient Hi + one booking).
 4. If new sheets or settings were added, they auto-create on first use — check **`Settings`** for new keys.
@@ -368,7 +405,7 @@ You do **not** need to re-verify the Meta webhook unless the deployment URL chan
 
 Use this after you have done the full steps above:
 
-- [ ] `ABC_Clinic_WhatsApp_Complete.gs` bound (only production + optional tests file)
+- [ ] Production code bound — either `ABC_Clinic_WhatsApp_Complete.gs` **or** all files under `src/` (not both) + optional tests file
 - [ ] `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` set
 - [ ] `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_WEBHOOK_POST_TOKEN` set (both required — webhook fails closed without them)
 - [ ] Web app deployed (**Execute as: Me**, **Anyone** can access)
@@ -426,6 +463,7 @@ Local Node unit tests (`tests/run-unit-tests.mjs`) are **not included yet** — 
 ## Known limitations
 
 - Localization is substring-based, not full i18n — only keyed English phrases translate
+- Kannada/Tamil/Malayalam translations have not been reviewed by a native speaker — treat as a starting point (see `localizeWhatsAppReply` in `View_Messages.gs` for the comment marking the AI-assisted entries)
 - `syncPatientsFromAppointments()` requires `DEBUG_MODE=true` (admin-only)
 - Some legacy tests (`testRealBooking`, etc.) hit live sheets/calendar — review before running in production spreadsheet
 - Doctor portal and many error strings remain English-only
@@ -436,7 +474,32 @@ Local Node unit tests (`tests/run-unit-tests.mjs`) are **not included yet** — 
 ## Repo layout
 
 ```
-ABC_Clinic_WhatsApp_Complete.gs   ← production (required)
-ABC_Clinic_Tests.gs               ← tests (optional bind)
+ABC_Clinic_WhatsApp_Complete.gs   ← production, Option A: single file
+ABC_Clinic_Tests.gs               ← tests (optional bind, either option)
+src/                               ← production, Option B: split into 20 files (see above)
+  Config.gs
+  Util_Common.gs
+  Logging.gs
+  Model_Reminders.gs
+  Model_AppointmentStatus.gs
+  Model_AfterHours.gs
+  Model_Doctors.gs
+  Model_Calendar.gs
+  Model_Patients.gs
+  Model_Appointments.gs
+  Model_Session.gs
+  Api.gs
+  Webhook.gs
+  View_Menus.gs
+  View_Messages.gs
+  Controller_Shared.gs
+  Controller_Router.gs
+  Controller_DoctorFlow.gs
+  Controller_PatientFlow.gs
+  WhatsApp_Send.gs
+landing/                           ← marketing website (Vercel / Replit)
+marketing/                         ← brochure, one-pager, offboarding docs
 README.md
 ```
+
+Option A and Option B are kept in sync manually — when editing one, mirror the change in the other (or regenerate one from the other) until one is retired.

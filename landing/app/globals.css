@@ -1,0 +1,42 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-inter: "Inter", system-ui, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-slate-50 text-slate-800 antialiased;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+.gradient-hero {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(20, 184, 166, 0.18), transparent),
+    radial-gradient(ellipse 50% 40% at 100% 0%, rgba(13, 148, 136, 0.1), transparent),
+    linear-gradient(to bottom, #f8fafc, #f0fdfa);
+}
+
+.glass-nav {
+  @apply border-b border-white/60 bg-white/80 backdrop-blur-lg;
+}
+
+.section-label {
+  @apply text-sm font-semibold uppercase tracking-wider text-brand-600;
+}
+
+.card-hover {
+  @apply transition-all duration-300 hover:-translate-y-1 hover:shadow-card;
+}
