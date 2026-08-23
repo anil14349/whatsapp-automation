@@ -266,6 +266,81 @@ function notifyPatientOfDoctorReschedule(
 
 
 
+function findConfirmedAppointmentForPhone(
+    phone,
+    appointmentId
+) {
+
+    const appointments =
+        getConfirmedAppointmentsForPhone(phone);
+
+    const target =
+        String(appointmentId || "")
+            .trim();
+
+    for (
+        let i = 0;
+        i < appointments.length;
+        i++
+    ) {
+
+        if (
+            String(
+                appointments[i].appointmentId
+            ).trim() === target
+        ) {
+            return appointments[i];
+        }
+    }
+
+    return null;
+}
+
+
+
+function handleWhatsAppMyAppointmentsState(
+    ss,
+    phone,
+    session,
+    normalizedMessage
+) {
+
+    handleWhatsAppAppointmentListSelection(
+        ss,
+        phone,
+        session,
+        normalizedMessage,
+        {
+            title:
+                "📋 Your appointments",
+            selectLine:
+                "Select an appointment.",
+            onChosen: function (chosen) {
+
+                saveWhatsAppSession(phone, {
+                    role: "PATIENT",
+                    state: "MAIN_MENU",
+                    doctorId: "",
+                    date: "",
+                    time: "",
+                    appointmentId: "",
+                    apptPage: 0
+                });
+
+                sendPatientMainMenuReply(
+                    ss,
+                    phone,
+                    buildAppointmentDetailMessage(
+                        chosen
+                    )
+                );
+            }
+        }
+    );
+}
+
+
+
 function handleDoctorWhatsAppAppointmentListSelection(
     ss,
     phone,
@@ -281,12 +356,39 @@ function handleDoctorWhatsAppAppointmentListSelection(
             ? session.doctorId
             : "";
 
-    if (normalizedMessage === "0") {
+    if (!doctorId) {
+        return;
+    }
+
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    if (
+        choice === "nav_main_menu" ||
+        choice === "main_menu" ||
+        normalizedMessage === "0"
+    ) {
 
         returnDoctorToMenu(
             ss,
             phone,
             doctorId
+        );
+
+        return;
+    }
+
+    if (
+        choice === "nav_back" ||
+        choice === "back"
+    ) {
+
+        goBackInDoctorWhatsAppFlow(
+            ss,
+            phone,
+            session
         );
 
         return;
@@ -301,11 +403,6 @@ function handleDoctorWhatsAppAppointmentListSelection(
 
     const currentPage =
         Number(session.apptPage) || 0;
-
-    const choice =
-        String(normalizedMessage || "")
-            .trim()
-            .toLowerCase();
 
     const pageInfo =
         getSlotSelectionPageInfo(
@@ -950,7 +1047,16 @@ function handleWhatsAppAppointmentListSelection(
 
     const opts = options || {};
 
-    if (normalizedMessage === "0") {
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    if (
+        choice === "nav_main_menu" ||
+        choice === "main_menu" ||
+        normalizedMessage === "0"
+    ) {
 
         saveWhatsAppSession(phone, {
             role: "PATIENT",
@@ -971,18 +1077,29 @@ function handleWhatsAppAppointmentListSelection(
         return;
     }
 
+    if (
+        choice === "nav_back" ||
+        choice === "back"
+    ) {
+
+        goBackInWhatsAppFlow(
+            ss,
+            phone,
+            session
+        );
+
+        return;
+    }
+
     const appointments =
-        getConfirmedAppointmentsForPhone(phone);
+        typeof opts.getAppointments === "function"
+            ? opts.getAppointments()
+            : getConfirmedAppointmentsForPhone(phone);
 
     const currentPage =
         session
             ? Number(session.apptPage) || 0
             : 0;
-
-    const choice =
-        String(normalizedMessage || "")
-            .trim()
-            .toLowerCase();
 
     const pageInfo =
         getSlotSelectionPageInfo(
@@ -1396,8 +1513,9 @@ function addWhatsAppNavigationOptions(session, message) {
             : "0️⃣ Main Menu";
 
     if (
-        String(message).indexOf("0️⃣ Back to Main Menu") === -1 &&
-        String(message).indexOf("0️⃣ Doctor Portal") === -1
+        String(message).indexOf("0️⃣ Main Menu") === -1 &&
+        String(message).indexOf("0️⃣ Doctor Portal") === -1 &&
+        String(message).indexOf("0️⃣ Back to Main Menu") === -1
     ) {
         options.push(homeLabel);
     }
@@ -2011,6 +2129,10 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             );
             return;
 
+        case "MY_APPOINTMENTS":
+            returnToMainMenu(ss, phone);
+            return;
+
         case "BOOK_DATE":
             saveWhatsAppSession(phone, {
                 state: "BOOK_DOCTOR",
@@ -2069,8 +2191,8 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "❌ Cancel Appointment",
-                "Select the appointment to cancel:",
+                "❌ Cancel appointment",
+                "Select an appointment to cancel.",
                 getConfirmedAppointmentsForPhone(phone)
             );
             return;
@@ -2087,8 +2209,8 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "🔄 Reschedule Appointment",
-                "Select the appointment to reschedule:",
+                "🔄 Reschedule appointment",
+                "Select an appointment to reschedule.",
                 getConfirmedAppointmentsForPhone(phone)
             );
             return;

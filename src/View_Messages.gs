@@ -67,11 +67,7 @@ function buildAppointmentPickerPrompt(
         title +
         "\n\n" +
         selectLine +
-        "\n\n" +
-        formatAppointmentsListForWhatsApp(
-            appointments
-        ) +
-        "0️⃣ Back to Main Menu"
+        "\n\n0️⃣ Main Menu\n9️⃣ Back"
     );
 }
 
@@ -81,8 +77,28 @@ function buildInvalidSlotSelectionReply(slots) {
 
     return (
         "❌ Invalid time selection.\n\n" +
-        "Please choose one of the available slots:\n\n" +
-        formatAvailableSlotsForWhatsApp(slots)
+        "Please choose one of the available slots."
+    );
+}
+
+
+
+function buildAppointmentDetailMessage(appt) {
+
+    const doctorName =
+        findDoctorById(
+            appt.doctorId
+        ) || "Unknown Doctor";
+
+    return (
+        "👨‍⚕️ " + doctorName + "\n" +
+        "📅 " +
+        formatWhatsAppDisplayDate(
+            appt.date
+        ) +
+        "\n" +
+        "🕐 " + appt.time + "\n" +
+        "🆔 " + appt.appointmentId
     );
 }
 
@@ -358,11 +374,7 @@ function buildLanguageSelectionIntro() {
 
 function buildLanguageSelectionMessage() {
 
-    return (
-        buildLanguageSelectionIntro() +
-        "\n\n" +
-        getLanguageMenuSpec().fallbackText
-    );
+    return buildLanguageSelectionIntro();
 }
 
 
@@ -458,6 +470,7 @@ function localizeWhatsAppReply(language, message) {
             "Choose a new time.": "కొత్త సమయాన్ని ఎంచుకోండి.",
             "Choose your language.": "మీ భాషను ఎంచుకోండి.",
             "Your appointments": "మీ అపాయింట్‌మెంట్‌లు",
+            "Select an appointment.": "అపాయింట్‌మెంట్‌ను ఎంచుకోండి.",
             "Cancel appointment": "అపాయింట్‌మెంట్ రద్దు",
             "Select an appointment to cancel.": "రద్దు చేయడానికి అపాయింట్‌మెంట్‌ను ఎంచుకోండి.",
             "Reschedule appointment": "అపాయింట్‌మెంట్ సమయం మార్చండి",
@@ -580,6 +593,7 @@ function localizeWhatsAppReply(language, message) {
             "Choose a new time.": "नया समय चुनें।",
             "Choose your language.": "अपनी भाषा चुनें।",
             "Your appointments": "आपके अपॉइंटमेंट",
+            "Select an appointment.": "अपॉइंटमेंट चुनें।",
             "Cancel appointment": "अपॉइंटमेंट रद्द करें",
             "Select an appointment to cancel.": "रद्द करने के लिए अपॉइंटमेंट चुनें।",
             "Reschedule appointment": "अपॉइंटमेंट का समय बदलें",
@@ -707,6 +721,7 @@ function localizeWhatsAppReply(language, message) {
             "Choose a new time.": "ಹೊಸ ಸಮಯವನ್ನು ಆರಿಸಿ.",
             "Choose your language.": "ನಿಮ್ಮ ಭಾಷೆಯನ್ನು ಆರಿಸಿ.",
             "Your appointments": "ನಿಮ್ಮ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗಳು",
+            "Select an appointment.": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಆಯ್ಕೆಮಾಡಿ.",
             "Cancel appointment": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ರದ್ದುಗೊಳಿಸಿ",
             "Select an appointment to cancel.": "ರದ್ದುಗೊಳಿಸಲು ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಆಯ್ಕೆಮಾಡಿ.",
             "Reschedule appointment": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಮರುಹೊಂದಿಸಿ",
@@ -830,6 +845,7 @@ function localizeWhatsAppReply(language, message) {
             "Choose a new time.": "புதிய நேரத்தைத் தேர்ந்தெடுக்கவும்.",
             "Choose your language.": "உங்கள் மொழியைத் தேர்ந்தெடுக்கவும்.",
             "Your appointments": "உங்கள் அப்பாயின்ட்மென்ட்கள்",
+            "Select an appointment.": "அப்பாயின்ட்மென்டைத் தேர்ந்தெடுக்கவும்.",
             "Cancel appointment": "அப்பாயின்ட்மென்டை ரத்து செய்யவும்",
             "Select an appointment to cancel.": "ரத்து செய்ய அப்பாயின்ட்மென்டைத் தேர்ந்தெடுக்கவும்.",
             "Reschedule appointment": "அப்பாயின்ட்மென்டை மாற்றியமைக்கவும்",
@@ -953,6 +969,7 @@ function localizeWhatsAppReply(language, message) {
             "Choose a new time.": "പുതിയ സമയം തിരഞ്ഞെടുക്കുക.",
             "Choose your language.": "നിങ്ങളുടെ ഭാഷ തിരഞ്ഞെടുക്കുക.",
             "Your appointments": "നിങ്ങളുടെ അപ്പോയിന്റ്മെന്റുകൾ",
+            "Select an appointment.": "അപ്പോയിന്റ്മെന്റ് തിരഞ്ഞെടുക്കുക.",
             "Cancel appointment": "അപ്പോയിന്റ്മെന്റ് റദ്ദാക്കുക",
             "Select an appointment to cancel.": "റദ്ദാക്കാൻ അപ്പോയിന്റ്മെന്റ് തിരഞ്ഞെടുക്കുക.",
             "Reschedule appointment": "അപ്പോയിന്റ്മെന്റ് പുനഃക്രമീകരിക്കുക",

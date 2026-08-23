@@ -214,18 +214,18 @@ if (
             }
         );
 
-    saveWhatsAppSession(
-        senderPhone,
-        {
-            role: "PATIENT",
-            state: "MAIN_MENU"
-        }
-    );
-
     if (
         !appointments ||
         appointments.length === 0
     ) {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "MAIN_MENU"
+            }
+        );
 
         sendPatientMainMenuReply(
             ss,
@@ -233,18 +233,25 @@ if (
             "📋 You have no upcoming appointments."
         );
 
-    } else {
-
-        sendWhatsAppMenuReply(
-            ss,
-            senderPhone,
-            "📋 Your appointments\n\n" +
-            formatAppointmentsListForWhatsApp(
-                appointments
-            ),
-            getPatientMainMenuSpec()
-        );
+        return true;
     }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "MY_APPOINTMENTS",
+            apptPage: 0
+        }
+    );
+
+    sendPatientAppointmentListMenuReply(
+        ss,
+        senderPhone,
+        "📋 Your appointments",
+        "Select an appointment.",
+        appointments
+    );
 
     return true;
 }
@@ -834,6 +841,25 @@ if (
 
 
 // ======================================================
+// MY APPOINTMENTS STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "MY_APPOINTMENTS"
+) {
+
+    handleWhatsAppMyAppointmentsState(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage
+    );
+    return true;
+}
+
+
+// ======================================================
 // CANCEL_SELECT STATE
 // ======================================================
 
@@ -929,10 +955,23 @@ if (
 
     } else {
 
+        const chosen =
+            findConfirmedAppointmentForPhone(
+                senderPhone,
+                session.appointmentId
+            );
+
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.",
+            "❌ Invalid option.\n\n" +
+            (
+                chosen
+                    ? buildCancelConfirmMessage(
+                        chosen
+                    )
+                    : "⚠️ Cancel this appointment?"
+            ),
             getYesNoConfirmSpec()
         );
     }

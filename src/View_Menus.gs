@@ -833,6 +833,46 @@ function getConfirmCancelSpec() {
 
 
 
+function appendAppointmentListNavRows(rows) {
+
+    if (
+        !rows ||
+        rows.length >= 10
+    ) {
+        return rows;
+    }
+
+    if (rows.length <= 8) {
+
+        rows.push({
+            id: "nav_main_menu",
+            title: "Main Menu",
+            description: "Return to home"
+        });
+
+        rows.push({
+            id: "nav_back",
+            title: "Back",
+            description: "Previous step"
+        });
+
+        return rows;
+    }
+
+    if (rows.length === 9) {
+
+        rows.push({
+            id: "nav_main_menu",
+            title: "Main Menu",
+            description: "Return to home"
+        });
+    }
+
+    return rows;
+}
+
+
+
 function getAppointmentListMenuSpec(
     appointments,
     mode,
@@ -947,6 +987,11 @@ function getAppointmentListMenuSpec(
         fallbackText += "\n▶ More appointments";
     }
 
+    fallbackText +=
+        listMode === "doctor"
+            ? "\n0️⃣ Doctor Portal\n9️⃣ Back"
+            : "\n0️⃣ Main Menu\n9️⃣ Back";
+
     const rows =
         listed.map(
             function (appt, index) {
@@ -1010,6 +1055,8 @@ function getAppointmentListMenuSpec(
             description: "Next page"
         });
     }
+
+    appendAppointmentListNavRows(rows);
 
     const interactive =
         buildInteractiveListSpec(

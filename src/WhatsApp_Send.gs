@@ -439,11 +439,6 @@ function sendPatientAppointmentListMenuReply(
             page || 0
         );
 
-    if (menuSpec.fallbackText) {
-        menuSpec.fallbackText +=
-            "\n0️⃣ Back to Main Menu";
-    }
-
     let body =
         title +
         "\n\n" +
@@ -485,11 +480,6 @@ function sendDoctorAppointmentListMenuReply(
             "doctor",
             page || 0
         );
-
-    if (menuSpec.fallbackText) {
-        menuSpec.fallbackText +=
-            "\n0️⃣ Doctor Portal";
-    }
 
     let body =
         title +

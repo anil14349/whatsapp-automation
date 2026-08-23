@@ -659,7 +659,7 @@ function testWhatsAppFlowHelpers() {
 
     if (
         prompt.indexOf("Test Title") === -1 ||
-        prompt.indexOf("0️⃣ Back to Main Menu") === -1
+        prompt.indexOf("0️⃣ Main Menu") === -1
     ) {
         throw new Error(
             "buildAppointmentPickerPrompt missing expected text"
@@ -673,11 +673,11 @@ function testWhatsAppFlowHelpers() {
         ]);
 
     if (
-        invalidSlots.indexOf("1️⃣ 10:00 AM") === -1 ||
-        invalidSlots.indexOf("2️⃣ 10:30 AM") === -1
+        invalidSlots.indexOf("Invalid time selection") === -1 ||
+        invalidSlots.indexOf("1️⃣ 10:00 AM") !== -1
     ) {
         throw new Error(
-            "buildInvalidSlotSelectionReply missing slot list"
+            "buildInvalidSlotSelectionReply should not duplicate slot list"
         );
     }
 
@@ -882,6 +882,13 @@ function testLocalizationUiCleanup() {
         "❌ Cancel appointment\n\nSelect an appointment to cancel.",
         "रद्द",
         "cancel selection body"
+    );
+
+    assertLocalized(
+        "TE",
+        "Select an appointment.",
+        "ఎంచుకోండి",
+        "my appointments select line"
     );
 
     assertLocalized(

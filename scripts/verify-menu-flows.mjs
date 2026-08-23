@@ -43,6 +43,21 @@ mustInclude(
     'state === "PATIENT_MAIN_MORE"',
     "patient PATIENT_MAIN_MORE state handler"
 );
+mustInclude(
+    "src/Controller_PatientFlow.gs",
+    'state === "MY_APPOINTMENTS"',
+    "patient MY_APPOINTMENTS state handler"
+);
+mustInclude(
+    "src/View_Menus.gs",
+    "nav_main_menu",
+    "appointment list nav_main_menu row"
+);
+mustInclude(
+    "src/View_Messages.gs",
+    "function buildAppointmentDetailMessage",
+    "appointment detail message builder"
+);
 
 // --- Doctor button sub-menu ---
 mustInclude(

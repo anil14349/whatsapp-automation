@@ -8370,11 +8370,7 @@ function buildAppointmentPickerPrompt(
         title +
         "\n\n" +
         selectLine +
-        "\n\n" +
-        formatAppointmentsListForWhatsApp(
-            appointments
-        ) +
-        "0️⃣ Back to Main Menu"
+        "\n\n0️⃣ Main Menu\n9️⃣ Back"
     );
 }
 
@@ -8383,8 +8379,7 @@ function buildInvalidSlotSelectionReply(slots) {
 
     return (
         "❌ Invalid time selection.\n\n" +
-        "Please choose one of the available slots:\n\n" +
-        formatAvailableSlotsForWhatsApp(slots)
+        "Please choose one of the available slots."
     );
 }
 
@@ -8829,12 +8824,39 @@ function handleDoctorWhatsAppAppointmentListSelection(
             ? session.doctorId
             : "";
 
-    if (normalizedMessage === "0") {
+    if (!doctorId) {
+        return;
+    }
+
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    if (
+        choice === "nav_main_menu" ||
+        choice === "main_menu" ||
+        normalizedMessage === "0"
+    ) {
 
         returnDoctorToMenu(
             ss,
             phone,
             doctorId
+        );
+
+        return;
+    }
+
+    if (
+        choice === "nav_back" ||
+        choice === "back"
+    ) {
+
+        goBackInDoctorWhatsAppFlow(
+            ss,
+            phone,
+            session
         );
 
         return;
@@ -8849,11 +8871,6 @@ function handleDoctorWhatsAppAppointmentListSelection(
 
     const currentPage =
         Number(session.apptPage) || 0;
-
-    const choice =
-        String(normalizedMessage || "")
-            .trim()
-            .toLowerCase();
 
     const pageInfo =
         getSlotSelectionPageInfo(
@@ -9682,6 +9699,11 @@ function getAppointmentListMenuSpec(
         fallbackText += "\n▶ More appointments";
     }
 
+    fallbackText +=
+        listMode === "doctor"
+            ? "\n0️⃣ Doctor Portal\n9️⃣ Back"
+            : "\n0️⃣ Main Menu\n9️⃣ Back";
+
     const rows =
         listed.map(
             function (appt, index) {
@@ -9745,6 +9767,8 @@ function getAppointmentListMenuSpec(
             description: "Next page"
         });
     }
+
+    appendAppointmentListNavRows(rows);
 
     const interactive =
         buildInteractiveListSpec(
@@ -10449,7 +10473,16 @@ function handleWhatsAppAppointmentListSelection(
 
     const opts = options || {};
 
-    if (normalizedMessage === "0") {
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    if (
+        choice === "nav_main_menu" ||
+        choice === "main_menu" ||
+        normalizedMessage === "0"
+    ) {
 
         saveWhatsAppSession(phone, {
             role: "PATIENT",
@@ -10470,18 +10503,29 @@ function handleWhatsAppAppointmentListSelection(
         return;
     }
 
+    if (
+        choice === "nav_back" ||
+        choice === "back"
+    ) {
+
+        goBackInWhatsAppFlow(
+            ss,
+            phone,
+            session
+        );
+
+        return;
+    }
+
     const appointments =
-        getConfirmedAppointmentsForPhone(phone);
+        typeof opts.getAppointments === "function"
+            ? opts.getAppointments()
+            : getConfirmedAppointmentsForPhone(phone);
 
     const currentPage =
         session
             ? Number(session.apptPage) || 0
             : 0;
-
-    const choice =
-        String(normalizedMessage || "")
-            .trim()
-            .toLowerCase();
 
     const pageInfo =
         getSlotSelectionPageInfo(
@@ -10774,11 +10818,7 @@ function handleWhatsAppRescheduleSelectState(
 
 function buildLanguageSelectionMessage() {
 
-    return (
-        buildLanguageSelectionIntro() +
-        "\n\n" +
-        getLanguageMenuSpec().fallbackText
-    );
+    return buildLanguageSelectionIntro();
 }
 
 
@@ -10873,6 +10913,7 @@ function localizeWhatsAppReply(language, message) {
             "Choose a new time.": "కొత్త సమయాన్ని ఎంచుకోండి.",
             "Choose your language.": "మీ భాషను ఎంచుకోండి.",
             "Your appointments": "మీ అపాయింట్‌మెంట్‌లు",
+            "Select an appointment.": "అపాయింట్‌మెంట్‌ను ఎంచుకోండి.",
             "Cancel appointment": "అపాయింట్‌మెంట్ రద్దు",
             "Select an appointment to cancel.": "రద్దు చేయడానికి అపాయింట్‌మెంట్‌ను ఎంచుకోండి.",
             "Reschedule appointment": "అపాయింట్‌మెంట్ సమయం మార్చండి",
@@ -10995,6 +11036,7 @@ function localizeWhatsAppReply(language, message) {
             "Choose a new time.": "नया समय चुनें।",
             "Choose your language.": "अपनी भाषा चुनें।",
             "Your appointments": "आपके अपॉइंटमेंट",
+            "Select an appointment.": "अपॉइंटमेंट चुनें।",
             "Cancel appointment": "अपॉइंटमेंट रद्द करें",
             "Select an appointment to cancel.": "रद्द करने के लिए अपॉइंटमेंट चुनें।",
             "Reschedule appointment": "अपॉइंटमेंट का समय बदलें",
@@ -11122,6 +11164,7 @@ function localizeWhatsAppReply(language, message) {
             "Choose a new time.": "ಹೊಸ ಸಮಯವನ್ನು ಆರಿಸಿ.",
             "Choose your language.": "ನಿಮ್ಮ ಭಾಷೆಯನ್ನು ಆರಿಸಿ.",
             "Your appointments": "ನಿಮ್ಮ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗಳು",
+            "Select an appointment.": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಆಯ್ಕೆಮಾಡಿ.",
             "Cancel appointment": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ರದ್ದುಗೊಳಿಸಿ",
             "Select an appointment to cancel.": "ರದ್ದುಗೊಳಿಸಲು ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಆಯ್ಕೆಮಾಡಿ.",
             "Reschedule appointment": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಮರುಹೊಂದಿಸಿ",
@@ -11245,6 +11288,7 @@ function localizeWhatsAppReply(language, message) {
             "Choose a new time.": "புதிய நேரத்தைத் தேர்ந்தெடுக்கவும்.",
             "Choose your language.": "உங்கள் மொழியைத் தேர்ந்தெடுக்கவும்.",
             "Your appointments": "உங்கள் அப்பாயின்ட்மென்ட்கள்",
+            "Select an appointment.": "அப்பாயின்ட்மென்டைத் தேர்ந்தெடுக்கவும்.",
             "Cancel appointment": "அப்பாயின்ட்மென்டை ரத்து செய்யவும்",
             "Select an appointment to cancel.": "ரத்து செய்ய அப்பாயின்ட்மென்டைத் தேர்ந்தெடுக்கவும்.",
             "Reschedule appointment": "அப்பாயின்ட்மென்டை மாற்றியமைக்கவும்",
@@ -11368,6 +11412,7 @@ function localizeWhatsAppReply(language, message) {
             "Choose a new time.": "പുതിയ സമയം തിരഞ്ഞെടുക്കുക.",
             "Choose your language.": "നിങ്ങളുടെ ഭാഷ തിരഞ്ഞെടുക്കുക.",
             "Your appointments": "നിങ്ങളുടെ അപ്പോയിന്റ്മെന്റുകൾ",
+            "Select an appointment.": "അപ്പോയിന്റ്മെന്റ് തിരഞ്ഞെടുക്കുക.",
             "Cancel appointment": "അപ്പോയിന്റ്മെന്റ് റദ്ദാക്കുക",
             "Select an appointment to cancel.": "റദ്ദാക്കാൻ അപ്പോയിന്റ്മെന്റ് തിരഞ്ഞെടുക്കുക.",
             "Reschedule appointment": "അപ്പോയിന്റ്മെന്റ് പുനഃക്രമീകരിക്കുക",
@@ -11851,8 +11896,9 @@ function addWhatsAppNavigationOptions(session, message) {
             : "0️⃣ Main Menu";
 
     if (
-        String(message).indexOf("0️⃣ Back to Main Menu") === -1 &&
-        String(message).indexOf("0️⃣ Doctor Portal") === -1
+        String(message).indexOf("0️⃣ Main Menu") === -1 &&
+        String(message).indexOf("0️⃣ Doctor Portal") === -1 &&
+        String(message).indexOf("0️⃣ Back to Main Menu") === -1
     ) {
         options.push(homeLabel);
     }
@@ -12255,6 +12301,10 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             );
             return;
 
+        case "MY_APPOINTMENTS":
+            returnToMainMenu(ss, phone);
+            return;
+
         case "BOOK_DATE":
             saveWhatsAppSession(phone, {
                 state: "BOOK_DOCTOR",
@@ -12313,8 +12363,8 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "❌ Cancel Appointment",
-                "Select the appointment to cancel:",
+                "❌ Cancel appointment",
+                "Select an appointment to cancel.",
                 getConfirmedAppointmentsForPhone(phone)
             );
             return;
@@ -12331,8 +12381,8 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "🔄 Reschedule Appointment",
-                "Select the appointment to reschedule:",
+                "🔄 Reschedule appointment",
+                "Select an appointment to reschedule.",
                 getConfirmedAppointmentsForPhone(phone)
             );
             return;
@@ -15222,18 +15272,18 @@ if (
             }
         );
 
-    saveWhatsAppSession(
-        senderPhone,
-        {
-            role: "PATIENT",
-            state: "MAIN_MENU"
-        }
-    );
-
     if (
         !appointments ||
         appointments.length === 0
     ) {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "MAIN_MENU"
+            }
+        );
 
         sendPatientMainMenuReply(
             ss,
@@ -15241,18 +15291,25 @@ if (
             "📋 You have no upcoming appointments."
         );
 
-    } else {
-
-        sendWhatsAppMenuReply(
-            ss,
-            senderPhone,
-            "📋 Your appointments\n\n" +
-            formatAppointmentsListForWhatsApp(
-                appointments
-            ),
-            getPatientMainMenuSpec()
-        );
+        return true;
     }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "MY_APPOINTMENTS",
+            apptPage: 0
+        }
+    );
+
+    sendPatientAppointmentListMenuReply(
+        ss,
+        senderPhone,
+        "📋 Your appointments",
+        "Select an appointment.",
+        appointments
+    );
 
     return true;
 }
@@ -15842,6 +15899,25 @@ if (
 
 
 // ======================================================
+// MY APPOINTMENTS STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "MY_APPOINTMENTS"
+) {
+
+    handleWhatsAppMyAppointmentsState(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage
+    );
+    return true;
+}
+
+
+// ======================================================
 // CANCEL_SELECT STATE
 // ======================================================
 
@@ -15937,10 +16013,23 @@ if (
 
     } else {
 
+        const chosen =
+            findConfirmedAppointmentForPhone(
+                senderPhone,
+                session.appointmentId
+            );
+
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.",
+            "❌ Invalid option.\n\n" +
+            (
+                chosen
+                    ? buildCancelConfirmMessage(
+                        chosen
+                    )
+                    : "⚠️ Cancel this appointment?"
+            ),
             getYesNoConfirmSpec()
         );
     }
@@ -17140,11 +17229,6 @@ function sendPatientAppointmentListMenuReply(
             page || 0
         );
 
-    if (menuSpec.fallbackText) {
-        menuSpec.fallbackText +=
-            "\n0️⃣ Back to Main Menu";
-    }
-
     let body =
         title +
         "\n\n" +
@@ -17185,11 +17269,6 @@ function sendDoctorAppointmentListMenuReply(
             "doctor",
             page || 0
         );
-
-    if (menuSpec.fallbackText) {
-        menuSpec.fallbackText +=
-            "\n0️⃣ Doctor Portal";
-    }
 
     let body =
         title +
@@ -18161,6 +18240,65 @@ function getDoctorMainMenuMoreSpec(tier) {
 }
 
 
+function appendAppointmentListNavRows(rows) {
+
+    if (
+        !rows ||
+        rows.length >= 10
+    ) {
+        return rows;
+    }
+
+    if (rows.length <= 8) {
+
+        rows.push({
+            id: "nav_main_menu",
+            title: "Main Menu",
+            description: "Return to home"
+        });
+
+        rows.push({
+            id: "nav_back",
+            title: "Back",
+            description: "Previous step"
+        });
+
+        return rows;
+    }
+
+    if (rows.length === 9) {
+
+        rows.push({
+            id: "nav_main_menu",
+            title: "Main Menu",
+            description: "Return to home"
+        });
+    }
+
+    return rows;
+}
+
+
+function buildAppointmentDetailMessage(appt) {
+
+    const doctorName =
+        findDoctorById(
+            appt.doctorId
+        ) || "Unknown Doctor";
+
+    return (
+        "👨‍⚕️ " + doctorName + "\n" +
+        "📅 " +
+        formatWhatsAppDisplayDate(
+            appt.date
+        ) +
+        "\n" +
+        "🕐 " + appt.time + "\n" +
+        "🆔 " + appt.appointmentId
+    );
+}
+
+
 function buildDoctorAvailabilitySessionConfirmMessage(
     dayName,
     startTime,
@@ -18263,6 +18401,79 @@ function isStatusNoShowChoice(normalizedMessage) {
     return (
         choice === "2" ||
         choice === "status_no_show"
+    );
+}
+
+
+function findConfirmedAppointmentForPhone(
+    phone,
+    appointmentId
+) {
+
+    const appointments =
+        getConfirmedAppointmentsForPhone(phone);
+
+    const target =
+        String(appointmentId || "")
+            .trim();
+
+    for (
+        let i = 0;
+        i < appointments.length;
+        i++
+    ) {
+
+        if (
+            String(
+                appointments[i].appointmentId
+            ).trim() === target
+        ) {
+            return appointments[i];
+        }
+    }
+
+    return null;
+}
+
+
+function handleWhatsAppMyAppointmentsState(
+    ss,
+    phone,
+    session,
+    normalizedMessage
+) {
+
+    handleWhatsAppAppointmentListSelection(
+        ss,
+        phone,
+        session,
+        normalizedMessage,
+        {
+            title:
+                "📋 Your appointments",
+            selectLine:
+                "Select an appointment.",
+            onChosen: function (chosen) {
+
+                saveWhatsAppSession(phone, {
+                    role: "PATIENT",
+                    state: "MAIN_MENU",
+                    doctorId: "",
+                    date: "",
+                    time: "",
+                    appointmentId: "",
+                    apptPage: 0
+                });
+
+                sendPatientMainMenuReply(
+                    ss,
+                    phone,
+                    buildAppointmentDetailMessage(
+                        chosen
+                    )
+                );
+            }
+        }
     );
 }
 
