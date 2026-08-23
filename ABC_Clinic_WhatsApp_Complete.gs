@@ -8309,8 +8309,7 @@ function formatAppointmentsListForWhatsApp(appointments) {
             (i + 1) + "️⃣ " +
             "👨‍⚕️ " + doctorName + "\n" +
             "   📅 " + appt.date +
-            "   🕐 " + appt.time + "\n" +
-            "   🆔 " + appt.appointmentId +
+            "   🕐 " + appt.time +
             "\n\n";
     }
 
@@ -8376,8 +8375,7 @@ function buildCancelConfirmMessage(chosen) {
             chosen.date
         ) +
         "\n" +
-        "🕐 " + chosen.time + "\n" +
-        "🆔 " + chosen.appointmentId
+        "🕐 " + chosen.time
     );
 }
 
@@ -8629,8 +8627,7 @@ function formatDoctorPatientAppointmentsListForWhatsApp(
             (i + 1) + "️⃣ " +
             "👤 " + appt.patientName + "\n" +
             "   📅 " + appt.date +
-            "   🕐 " + appt.time + "\n" +
-            "   🆔 " + appt.appointmentId +
+            "   🕐 " + appt.time +
             "\n\n";
     }
 
@@ -8668,10 +8665,7 @@ function buildDoctorCancelConfirmMessage(chosen) {
         chosen.date +
         "\n" +
         "🕐 Time: " +
-        chosen.time +
-        "\n" +
-        "🆔 " +
-        chosen.appointmentId
+        chosen.time
     );
 }
 
@@ -8762,14 +8756,11 @@ function notifyPatientOfDoctorReschedule(
         sendWhatsAppText(
             recipient,
             "ABC Clinic: Your appointment has been rescheduled by the clinic.\n\n" +
-            "📅 New Date: " +
+            "📅 " +
             result.date +
             "\n" +
-            "🕐 New Time: " +
+            "🕐 " +
             result.time +
-            "\n" +
-            "🆔 Appointment ID: " +
-            result.appointmentId +
             "\n\n" +
             "Reply Hi if you need to make changes."
         );
@@ -9079,10 +9070,7 @@ function buildDoctorStatusActionMessage(chosen) {
         chosen.date +
         "\n" +
         "🕐 Time: " +
-        chosen.time +
-        "\n" +
-        "🆔 " +
-        chosen.appointmentId
+        chosen.time
     );
 }
 
@@ -9626,9 +9614,6 @@ function getAppointmentListMenuSpec(
                             appt.date +
                             "   🕐 " +
                             appt.time +
-                            "\n" +
-                            "   🆔 " +
-                            appt.appointmentId +
                             "\n"
                         );
                     }
@@ -14178,13 +14163,10 @@ if (
                     ""
                 ) +
                 "\n" +
-                "🆔 Appointment ID: " +
-                result.appointmentId +
-                "\n" +
-                "📅 New Date: " +
+                "📅 " +
                 result.date +
                 "\n" +
-                "🕐 New Time: " +
+                "🕐 " +
                 result.time
             );
 
@@ -15679,16 +15661,13 @@ if (
 
             const reply =
                 "✅ Appointment confirmed!\n\n" +
-                "🆔 Appointment ID: " +
-                bookingResult.appointmentId +
-                "\n" +
-                "👨‍⚕️ Doctor: " +
+                "👨‍⚕️ " +
                 bookingResult.doctor +
                 "\n" +
-                "📅 Date: " +
+                "📅 " +
                 bookingResult.date +
                 "\n" +
-                "🕐 Time: " +
+                "🕐 " +
                 bookingResult.time +
                 "\n\n" +
                 "Thank you for choosing ABC Clinic.";
@@ -16129,16 +16108,13 @@ if (
 
             const reply =
                 "✅ Appointment rescheduled!\n\n" +
-                "🆔 Appointment ID: " +
-                result.appointmentId +
-                "\n" +
-                "👨‍⚕️ Doctor: " +
+                "👨‍⚕️ " +
                 result.doctor +
                 "\n" +
-                "📅 New Date: " +
+                "📅 " +
                 result.date +
                 "\n" +
-                "🕐 New Time: " +
+                "🕐 " +
                 result.time +
                 "\n\n" +
                 "Thank you for choosing ABC Clinic.";
@@ -18225,8 +18201,7 @@ function buildAppointmentDetailMessage(appt) {
             appt.date
         ) +
         "\n" +
-        "🕐 " + appt.time + "\n" +
-        "🆔 " + appt.appointmentId
+        "🕐 " + appt.time
     );
 }
 

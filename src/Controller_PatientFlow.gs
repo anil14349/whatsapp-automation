@@ -666,16 +666,13 @@ if (
 
             const reply =
                 "✅ Appointment confirmed!\n\n" +
-                "🆔 Appointment ID: " +
-                bookingResult.appointmentId +
-                "\n" +
-                "👨‍⚕️ Doctor: " +
+                "👨‍⚕️ " +
                 bookingResult.doctor +
                 "\n" +
-                "📅 Date: " +
+                "📅 " +
                 bookingResult.date +
                 "\n" +
-                "🕐 Time: " +
+                "🕐 " +
                 bookingResult.time +
                 "\n\n" +
                 "Thank you for choosing ABC Clinic.";
@@ -1116,16 +1113,13 @@ if (
 
             const reply =
                 "✅ Appointment rescheduled!\n\n" +
-                "🆔 Appointment ID: " +
-                result.appointmentId +
-                "\n" +
-                "👨‍⚕️ Doctor: " +
+                "👨‍⚕️ " +
                 result.doctor +
                 "\n" +
-                "📅 New Date: " +
+                "📅 " +
                 result.date +
                 "\n" +
-                "🕐 New Time: " +
+                "🕐 " +
                 result.time +
                 "\n\n" +
                 "Thank you for choosing ABC Clinic.";

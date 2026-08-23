@@ -241,14 +241,11 @@ function notifyPatientOfDoctorReschedule(
         sendWhatsAppText(
             recipient,
             "ABC Clinic: Your appointment has been rescheduled by the clinic.\n\n" +
-            "📅 New Date: " +
+            "📅 " +
             result.date +
             "\n" +
-            "🕐 New Time: " +
+            "🕐 " +
             result.time +
-            "\n" +
-            "🆔 Appointment ID: " +
-            result.appointmentId +
             "\n\n" +
             "Reply Hi if you need to make changes."
         );

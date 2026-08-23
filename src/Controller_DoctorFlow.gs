@@ -1120,13 +1120,10 @@ if (
                     ""
                 ) +
                 "\n" +
-                "🆔 Appointment ID: " +
-                result.appointmentId +
-                "\n" +
-                "📅 New Date: " +
+                "📅 " +
                 result.date +
                 "\n" +
-                "🕐 New Time: " +
+                "🕐 " +
                 result.time
             );
 

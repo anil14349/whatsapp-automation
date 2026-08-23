@@ -913,9 +913,6 @@ function getAppointmentListMenuSpec(
                             appt.date +
                             "   🕐 " +
                             appt.time +
-                            "\n" +
-                            "   🆔 " +
-                            appt.appointmentId +
                             "\n"
                         );
                     }

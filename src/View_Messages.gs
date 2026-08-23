@@ -27,8 +27,7 @@ function formatAppointmentsListForWhatsApp(appointments) {
             (i + 1) + "️⃣ " +
             "👨‍⚕️ " + doctorName + "\n" +
             "   📅 " + appt.date +
-            "   🕐 " + appt.time + "\n" +
-            "   🆔 " + appt.appointmentId +
+            "   🕐 " + appt.time +
             "\n\n";
     }
 
@@ -97,8 +96,7 @@ function buildAppointmentDetailMessage(appt) {
             appt.date
         ) +
         "\n" +
-        "🕐 " + appt.time + "\n" +
-        "🆔 " + appt.appointmentId
+        "🕐 " + appt.time
     );
 }
 
@@ -340,8 +338,7 @@ function buildCancelConfirmMessage(chosen) {
             chosen.date
         ) +
         "\n" +
-        "🕐 " + chosen.time + "\n" +
-        "🆔 " + chosen.appointmentId
+        "🕐 " + chosen.time
     );
 }
 
@@ -390,8 +387,7 @@ function formatDoctorPatientAppointmentsListForWhatsApp(
             (i + 1) + "️⃣ " +
             "👤 " + appt.patientName + "\n" +
             "   📅 " + appt.date +
-            "   🕐 " + appt.time + "\n" +
-            "   🆔 " + appt.appointmentId +
+            "   🕐 " + appt.time +
             "\n\n";
     }
 
@@ -431,10 +427,7 @@ function buildDoctorCancelConfirmMessage(chosen) {
         chosen.date +
         "\n" +
         "🕐 Time: " +
-        chosen.time +
-        "\n" +
-        "🆔 " +
-        chosen.appointmentId
+        chosen.time
     );
 }
 
@@ -537,10 +530,7 @@ function buildDoctorStatusActionMessage(chosen) {
         chosen.date +
         "\n" +
         "🕐 Time: " +
-        chosen.time +
-        "\n" +
-        "🆔 " +
-        chosen.appointmentId
+        chosen.time
     );
 }
 
