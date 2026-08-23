@@ -104,6 +104,227 @@ function buildAppointmentDetailMessage(appt) {
 
 
 
+function formatAppointmentListRowDescription(appt) {
+
+    return (
+        formatWhatsAppDisplayDate(
+            appt.date
+        ) +
+        " · " +
+        (appt.time || "")
+    );
+}
+
+
+
+function buildPatientAppointmentListBody(
+    title,
+    selectLine,
+    pageInfo,
+    prefix
+) {
+
+    let body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        title +
+        "\n\n" +
+        selectLine;
+
+    if (
+        pageInfo &&
+        pageInfo.totalPages > 1
+    ) {
+        body +=
+            "\n\nPage " +
+            (pageInfo.page + 1) +
+            " of " +
+            pageInfo.totalPages;
+    }
+
+    return body;
+}
+
+
+
+function buildMyAppointmentsListBody(
+    pageInfo,
+    prefix
+) {
+
+    return buildPatientAppointmentListBody(
+        "📋 Your appointments",
+        "Select an appointment.",
+        pageInfo,
+        prefix
+    );
+}
+
+
+
+function buildCancelAppointmentListBody(
+    pageInfo,
+    prefix
+) {
+
+    return buildPatientAppointmentListBody(
+        "❌ Cancel appointment",
+        "Select an appointment to cancel.",
+        pageInfo,
+        prefix
+    );
+}
+
+
+
+function buildRescheduleAppointmentListBody(
+    pageInfo,
+    prefix
+) {
+
+    return buildPatientAppointmentListBody(
+        "🔄 Reschedule appointment",
+        "Select an appointment to reschedule.",
+        pageInfo,
+        prefix
+    );
+}
+
+
+
+function buildPatientAppointmentListBodyForScreen(
+    listScreen,
+    pageInfo,
+    prefix
+) {
+
+    if (listScreen === "my_appointments") {
+        return buildMyAppointmentsListBody(
+            pageInfo,
+            prefix
+        );
+    }
+
+    if (listScreen === "cancel") {
+        return buildCancelAppointmentListBody(
+            pageInfo,
+            prefix
+        );
+    }
+
+    if (listScreen === "reschedule") {
+        return buildRescheduleAppointmentListBody(
+            pageInfo,
+            prefix
+        );
+    }
+
+    return buildPatientAppointmentListBody(
+        "Select an appointment",
+        "Choose one:",
+        pageInfo,
+        prefix
+    );
+}
+
+
+
+function buildCancelConfirmRetryBody(
+    chosen,
+    prefix
+) {
+
+    return (
+        String(
+            prefix || "❌ Invalid option."
+        ) +
+        "\n\n" +
+        buildCancelConfirmMessage(chosen)
+    );
+}
+
+
+
+function buildRescheduleConfirmRetryBody(
+    session,
+    prefix
+) {
+
+    return (
+        String(
+            prefix || "❌ Invalid option."
+        ) +
+        "\n\n" +
+        buildRescheduleSlotConfirmMessage(
+            session,
+            session.date,
+            session.time
+        )
+    );
+}
+
+
+
+function buildDoctorSelectionBody(prefix) {
+
+    return (
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        "📅 Book Appointment\n\n" +
+        "Choose your doctor."
+    );
+}
+
+
+
+function buildDoctorSelectionFallbackText(
+    doctors
+) {
+
+    if (
+        !doctors ||
+        doctors.length === 0
+    ) {
+        return "";
+    }
+
+    return doctors
+        .map(
+            function (doctor, index) {
+
+                let line =
+                    (index + 1) +
+                    ". " +
+                    doctor.doctorName;
+
+                if (doctor.clinicName) {
+                    line +=
+                        " — " +
+                        doctor.clinicName;
+                }
+
+                return line;
+            }
+        )
+        .join("\n");
+}
+
+
+
+function buildLanguageSelectionBody(prefix) {
+
+    return (
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        buildLanguageSelectionIntro()
+    );
+}
+
+
+
 function buildCancelConfirmMessage(chosen) {
 
     const doctorName =
@@ -499,6 +720,8 @@ function localizeWhatsAppReply(language, message) {
             "Choose time": "సమయాన్ని ఎంచుకోండి",
             "Select doctor": "డాక్టర్‌ను ఎంచుకోండి",
             "Select language": "భాషను ఎంచుకోండి",
+            "Choose language": "భాష ఎంచుకోండి",
+            "Invalid selection.": "చెల్లని ఎంపిక.",
             "Options": "ఎంపికలు",
             "No, go back": "లేదు, వెనక్కి",
             "Previous page": "మునుపటి పేజీ",
@@ -622,6 +845,8 @@ function localizeWhatsAppReply(language, message) {
             "Choose time": "समय चुनें",
             "Select doctor": "डॉक्टर चुनें",
             "Select language": "भाषा चुनें",
+            "Choose language": "भाषा चुनें",
+            "Invalid selection.": "अमान्य चयन।",
             "Options": "विकल्प",
             "No, go back": "नहीं, वापस जाएं",
             "Previous page": "पिछला पृष्ठ",
@@ -750,6 +975,8 @@ function localizeWhatsAppReply(language, message) {
             "Choose time": "ಸಮಯ ಆರಿಸಿ",
             "Select doctor": "ವೈದ್ಯರನ್ನು ಆರಿಸಿ",
             "Select language": "ಭಾಷೆ ಆರಿಸಿ",
+            "Choose language": "ಭಾಷೆ ಆರಿಸಿ",
+            "Invalid selection.": "ಅಮಾನ್ಯ ಆಯ್ಕೆ.",
             "Options": "ಆಯ್ಕೆಗಳು",
             "No, go back": "ಇಲ್ಲ, ಹಿಂದೆ ಹೋಗಿ",
             "Previous page": "ಹಿಂದಿನ ಪುಟ",
@@ -874,6 +1101,8 @@ function localizeWhatsAppReply(language, message) {
             "Choose time": "நேரத்தைத் தேர்ந்தெடுக்கவும்",
             "Select doctor": "மருத்துவரைத் தேர்ந்தெடுக்கவும்",
             "Select language": "மொழியைத் தேர்ந்தெடுக்கவும்",
+            "Choose language": "மொழியைத் தேர்ந்தெடுக்கவும்",
+            "Invalid selection.": "தவறான தேர்வு.",
             "Options": "விருப்பங்கள்",
             "No, go back": "இல்லை, திரும்பிச் செல்லுங்கள்",
             "Previous page": "முந்தைய பக்கம்",
@@ -998,6 +1227,8 @@ function localizeWhatsAppReply(language, message) {
             "Choose time": "സമയം തിരഞ്ഞെടുക്കുക",
             "Select doctor": "ഡോക്ടറെ തിരഞ്ഞെടുക്കുക",
             "Select language": "ഭാഷ തിരഞ്ഞെടുക്കുക",
+            "Choose language": "ഭാഷ തിരഞ്ഞെടുക്കുക",
+            "Invalid selection.": "അസാധുവായ തിരഞ്ഞെടുപ്പ്.",
             "Options": "ഓപ്ഷനുകൾ",
             "No, go back": "ഇല്ല, തിരികെ പോകുക",
             "Previous page": "മുൻ പേജ്",

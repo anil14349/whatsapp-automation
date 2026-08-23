@@ -38,7 +38,8 @@ if (
 
         sendLanguageMenuReply(
             ss,
-            senderPhone
+            senderPhone,
+            "❌ Invalid option."
         );
 
     } else {
@@ -96,7 +97,8 @@ if (
 
         sendLanguageMenuReply(
             ss,
-            senderPhone
+            senderPhone,
+            "❌ Invalid option."
         );
 
     } else {
@@ -248,8 +250,7 @@ if (
     sendPatientAppointmentListMenuReply(
         ss,
         senderPhone,
-        "📋 Your appointments",
-        "Select an appointment.",
+        "my_appointments",
         appointments
     );
 
@@ -426,8 +427,9 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Please choose a valid doctor.\n\n" +
-            "📅 Book Appointment\n\nChoose your doctor.",
+            buildDoctorSelectionBody(
+                "❌ Please choose a valid doctor."
+            ),
             getDoctorSelectionMenuSpec()
         );
 
@@ -925,11 +927,11 @@ if (
                     ? result.message
                     : "Unable to cancel the appointment.";
 
-            sendWhatsAppMenuReply(
+            sendCancelConfirmMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage,
-                getYesNoConfirmSpec()
+                chosen,
+                "❌ " + errorMessage
             );
         }
 
@@ -961,18 +963,11 @@ if (
                 session.appointmentId
             );
 
-        sendWhatsAppMenuReply(
+        sendCancelConfirmMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            (
-                chosen
-                    ? buildCancelConfirmMessage(
-                        chosen
-                    )
-                    : "⚠️ Cancel this appointment?"
-            ),
-            getYesNoConfirmSpec()
+            chosen,
+            "❌ Invalid option."
         );
     }
     return true;
@@ -1148,11 +1143,11 @@ if (
                     ? result.message
                     : "Unable to reschedule the appointment.";
 
-            sendWhatsAppMenuReply(
+            sendRescheduleConfirmMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage,
-                getRescheduleConfirmSpec()
+                session,
+                "❌ " + errorMessage
             );
         }
 
@@ -1213,16 +1208,11 @@ if (
 
     } else {
 
-        sendWhatsAppMenuReply(
+        sendRescheduleConfirmMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            buildRescheduleSlotConfirmMessage(
-                session,
-                session.date,
-                session.time
-            ),
-            getRescheduleConfirmSpec()
+            session,
+            "❌ Invalid option."
         );
     }
     return true;

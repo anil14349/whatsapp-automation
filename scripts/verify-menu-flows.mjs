@@ -59,9 +59,19 @@ mustInclude(
     "appointment lists use home nav only"
 );
 mustInclude(
+    "src/WhatsApp_Send.gs",
+    "function sendCancelConfirmMenuReply",
+    "cancel confirm menu sender"
+);
+mustInclude(
     "src/View_Messages.gs",
-    "function buildAppointmentDetailMessage",
-    "appointment detail message builder"
+    "function buildMyAppointmentsListBody",
+    "my appointments screen body builder"
+);
+mustInclude(
+    "src/View_Menus.gs",
+    "formatAppointmentListRowDescription",
+    "formatted appointment list row dates"
 );
 
 // --- Doctor button sub-menu ---

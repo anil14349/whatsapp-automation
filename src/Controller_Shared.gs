@@ -132,8 +132,7 @@ function beginWhatsAppCancelFlow(
     sendPatientAppointmentListMenuReply(
         ss,
         phone,
-        "❌ Cancel appointment",
-        "Select an appointment to cancel.",
+        "cancel",
         appointments
     );
 
@@ -178,8 +177,7 @@ function beginWhatsAppRescheduleFlow(
     sendPatientAppointmentListMenuReply(
         ss,
         phone,
-        "🔄 Reschedule appointment",
-        "Select an appointment to reschedule.",
+        "reschedule",
         appointments
     );
 
@@ -311,10 +309,7 @@ function handleWhatsAppMyAppointmentsState(
         session,
         normalizedMessage,
         {
-            title:
-                "📋 Your appointments",
-            selectLine:
-                "Select an appointment.",
+            listScreen: "my_appointments",
             onChosen: function (chosen) {
 
                 saveWhatsAppSession(phone, {
@@ -1107,12 +1102,8 @@ function handleWhatsAppAppointmentListSelection(
             currentPage
         );
 
-    const title =
-        opts.title ||
-        "Select an appointment";
-
-    const selectLine =
-        opts.selectLine;
+    const listScreen =
+        opts.listScreen || "";
 
     if (
         choice === "appt_prev" ||
@@ -1124,10 +1115,10 @@ function handleWhatsAppAppointmentListSelection(
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "❌ Invalid selection.\n\n" + title,
-                selectLine,
+                listScreen,
                 appointments,
-                currentPage
+                currentPage,
+                "❌ Invalid selection."
             );
 
             return;
@@ -1143,8 +1134,7 @@ function handleWhatsAppAppointmentListSelection(
         sendPatientAppointmentListMenuReply(
             ss,
             phone,
-            "",
-            selectLine,
+            listScreen,
             appointments,
             previousPage
         );
@@ -1162,10 +1152,10 @@ function handleWhatsAppAppointmentListSelection(
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "❌ Invalid selection.\n\n" + title,
-                selectLine,
+                listScreen,
                 appointments,
-                currentPage
+                currentPage,
+                "❌ Invalid selection."
             );
 
             return;
@@ -1181,8 +1171,7 @@ function handleWhatsAppAppointmentListSelection(
         sendPatientAppointmentListMenuReply(
             ss,
             phone,
-            "",
-            selectLine,
+            listScreen,
             appointments,
             nextPage
         );
@@ -1220,10 +1209,10 @@ function handleWhatsAppAppointmentListSelection(
         sendPatientAppointmentListMenuReply(
             ss,
             phone,
-            "❌ Invalid selection.\n\n" + title,
-            selectLine,
+            listScreen,
             appointments,
-            currentPage
+            currentPage,
+            "❌ Invalid selection."
         );
 
         return;
@@ -1336,10 +1325,7 @@ function handleWhatsAppCancelSelectState(
         session,
         normalizedMessage,
         {
-            title:
-                "❌ Cancel appointment",
-            selectLine:
-                "Select an appointment to cancel.",
+            listScreen: "cancel",
             onChosen: function (chosen) {
                 saveWhatsAppSession(
                     senderPhone,
@@ -1350,13 +1336,10 @@ function handleWhatsAppCancelSelectState(
                     }
                 );
 
-                sendWhatsAppMenuReply(
+                sendCancelConfirmMenuReply(
                     ss,
                     senderPhone,
-                    buildCancelConfirmMessage(
-                        chosen
-                    ),
-                    getYesNoConfirmSpec()
+                    chosen
                 );
             }
         }
@@ -1378,10 +1361,7 @@ function handleWhatsAppRescheduleSelectState(
         session,
         normalizedMessage,
         {
-            title:
-                "🔄 Reschedule appointment",
-            selectLine:
-                "Select an appointment to reschedule.",
+            listScreen: "reschedule",
             onChosen: function (chosen) {
                 beginRescheduleDateSelection(
                     ss,
@@ -2255,8 +2235,7 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "❌ Cancel appointment",
-                "Select an appointment to cancel.",
+                "cancel",
                 getConfirmedAppointmentsForPhone(phone)
             );
             return;
@@ -2273,8 +2252,7 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "🔄 Reschedule appointment",
-                "Select an appointment to reschedule.",
+                "reschedule",
                 getConfirmedAppointmentsForPhone(phone)
             );
             return;

@@ -445,7 +445,7 @@ function getLanguageMenuSpec() {
                 { id: "5", title: "Tamil", description: "தமிழ்" },
                 { id: "6", title: "Malayalam", description: "മലയാളം" }
             ],
-            "Select language"
+            "Choose language"
         );
 
     return {
@@ -493,22 +493,13 @@ function getDoctorSelectionMenuSpec() {
         return null;
     }
 
-    let fallbackText = "";
+    let fallbackText =
+        buildDoctorSelectionFallbackText(
+            doctors
+        );
 
     const rows = doctors.map(
         function (doctor, index) {
-
-            const line =
-                (index + 1) +
-                ". " +
-                doctor.doctorName +
-                (
-                    doctor.clinicName
-                        ? " — " + doctor.clinicName
-                        : ""
-                );
-
-            fallbackText += line + "\n";
 
             return {
                 id: String(index + 1),
@@ -518,9 +509,6 @@ function getDoctorSelectionMenuSpec() {
             };
         }
     );
-
-    fallbackText +=
-        "\nReply with the doctor's number.";
 
     const interactive =
         buildInteractiveListSpec(
@@ -6669,26 +6657,15 @@ function buildDoctorSelectionMessage() {
     }
 
     let message =
-        "📅 Book Appointment\n\n" +
-        "Select a doctor:\n\n";
+        buildDoctorSelectionBody();
 
-    for (
-        let i = 0;
-        i < doctors.length;
-        i++
-    ) {
+    message +=
+        "\n\n" +
+        buildDoctorSelectionFallbackText(
+            doctors
+        );
 
-        message +=
-            (i + 1) + ". " +
-            doctors[i].doctorName +
-            (doctors[i].clinicName
-                ? " — " + doctors[i].clinicName
-                : "") +
-            "\n";
-    }
-
-    return message +
-        "\nReply with the doctor's number.";
+    return message;
 }
 
 
@@ -8464,8 +8441,7 @@ function beginWhatsAppCancelFlow(
     sendPatientAppointmentListMenuReply(
         ss,
         phone,
-        "❌ Cancel appointment",
-        "Select an appointment to cancel.",
+        "cancel",
         appointments
     );
 
@@ -8509,8 +8485,7 @@ function beginWhatsAppRescheduleFlow(
     sendPatientAppointmentListMenuReply(
         ss,
         phone,
-        "🔄 Reschedule appointment",
-        "Select an appointment to reschedule.",
+        "reschedule",
         appointments
     );
 
@@ -9675,16 +9650,12 @@ function getAppointmentListMenuSpec(
                                 1
                             ) +
                             "️⃣ " +
-                            "👨‍⚕️ " +
                             doctorName +
                             "\n" +
-                            "   📅 " +
-                            appt.date +
-                            "   🕐 " +
-                            appt.time +
-                            "\n" +
-                            "   🆔 " +
-                            appt.appointmentId +
+                            "   " +
+                            formatAppointmentListRowDescription(
+                                appt
+                            ) +
                             "\n"
                         );
                     }
@@ -9743,9 +9714,9 @@ function getAppointmentListMenuSpec(
                         ),
                     title: doctorName,
                     description:
-                        (appt.date || "") +
-                        " · " +
-                        (appt.time || "")
+                        formatAppointmentListRowDescription(
+                            appt
+                        )
                 };
             }
         );
@@ -10536,12 +10507,8 @@ function handleWhatsAppAppointmentListSelection(
             currentPage
         );
 
-    const title =
-        opts.title ||
-        "Select an appointment";
-
-    const selectLine =
-        opts.selectLine;
+    const listScreen =
+        opts.listScreen || "";
 
     if (
         choice === "appt_prev" ||
@@ -10553,10 +10520,10 @@ function handleWhatsAppAppointmentListSelection(
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "❌ Invalid selection.\n\n" + title,
-                selectLine,
+                listScreen,
                 appointments,
-                currentPage
+                currentPage,
+                "❌ Invalid selection."
             );
 
             return;
@@ -10572,8 +10539,7 @@ function handleWhatsAppAppointmentListSelection(
         sendPatientAppointmentListMenuReply(
             ss,
             phone,
-            "",
-            selectLine,
+            listScreen,
             appointments,
             previousPage
         );
@@ -10591,10 +10557,10 @@ function handleWhatsAppAppointmentListSelection(
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "❌ Invalid selection.\n\n" + title,
-                selectLine,
+                listScreen,
                 appointments,
-                currentPage
+                currentPage,
+                "❌ Invalid selection."
             );
 
             return;
@@ -10610,8 +10576,7 @@ function handleWhatsAppAppointmentListSelection(
         sendPatientAppointmentListMenuReply(
             ss,
             phone,
-            "",
-            selectLine,
+            listScreen,
             appointments,
             nextPage
         );
@@ -10649,10 +10614,10 @@ function handleWhatsAppAppointmentListSelection(
         sendPatientAppointmentListMenuReply(
             ss,
             phone,
-            "❌ Invalid selection.\n\n" + title,
-            selectLine,
+            listScreen,
             appointments,
-            currentPage
+            currentPage,
+            "❌ Invalid selection."
         );
 
         return;
@@ -10762,10 +10727,7 @@ function handleWhatsAppCancelSelectState(
         session,
         normalizedMessage,
         {
-            title:
-                "❌ Cancel appointment",
-            selectLine:
-                "Select an appointment to cancel.",
+            listScreen: "cancel",
             onChosen: function (chosen) {
                 saveWhatsAppSession(
                     senderPhone,
@@ -10776,13 +10738,10 @@ function handleWhatsAppCancelSelectState(
                     }
                 );
 
-                sendWhatsAppMenuReply(
+                sendCancelConfirmMenuReply(
                     ss,
                     senderPhone,
-                    buildCancelConfirmMessage(
-                        chosen
-                    ),
-                    getYesNoConfirmSpec()
+                    chosen
                 );
             }
         }
@@ -10803,10 +10762,7 @@ function handleWhatsAppRescheduleSelectState(
         session,
         normalizedMessage,
         {
-            title:
-                "🔄 Reschedule appointment",
-            selectLine:
-                "Select an appointment to reschedule.",
+            listScreen: "reschedule",
             onChosen: function (chosen) {
                 beginRescheduleDateSelection(
                     ss,
@@ -10945,6 +10901,8 @@ function localizeWhatsAppReply(language, message) {
             "Choose time": "సమయాన్ని ఎంచుకోండి",
             "Select doctor": "డాక్టర్‌ను ఎంచుకోండి",
             "Select language": "భాషను ఎంచుకోండి",
+            "Choose language": "భాష ఎంచుకోండి",
+            "Invalid selection.": "చెల్లని ఎంపిక.",
             "Options": "ఎంపికలు",
             "No, go back": "లేదు, వెనక్కి",
             "Previous page": "మునుపటి పేజీ",
@@ -11068,6 +11026,8 @@ function localizeWhatsAppReply(language, message) {
             "Choose time": "समय चुनें",
             "Select doctor": "डॉक्टर चुनें",
             "Select language": "भाषा चुनें",
+            "Choose language": "भाषा चुनें",
+            "Invalid selection.": "अमान्य चयन।",
             "Options": "विकल्प",
             "No, go back": "नहीं, वापस जाएं",
             "Previous page": "पिछला पृष्ठ",
@@ -11196,6 +11156,8 @@ function localizeWhatsAppReply(language, message) {
             "Choose time": "ಸಮಯ ಆರಿಸಿ",
             "Select doctor": "ವೈದ್ಯರನ್ನು ಆರಿಸಿ",
             "Select language": "ಭಾಷೆ ಆರಿಸಿ",
+            "Choose language": "ಭಾಷೆ ಆರಿಸಿ",
+            "Invalid selection.": "ಅಮಾನ್ಯ ಆಯ್ಕೆ.",
             "Options": "ಆಯ್ಕೆಗಳು",
             "No, go back": "ಇಲ್ಲ, ಹಿಂದೆ ಹೋಗಿ",
             "Previous page": "ಹಿಂದಿನ ಪುಟ",
@@ -11320,6 +11282,8 @@ function localizeWhatsAppReply(language, message) {
             "Choose time": "நேரத்தைத் தேர்ந்தெடுக்கவும்",
             "Select doctor": "மருத்துவரைத் தேர்ந்தெடுக்கவும்",
             "Select language": "மொழியைத் தேர்ந்தெடுக்கவும்",
+            "Choose language": "மொழியைத் தேர்ந்தெடுக்கவும்",
+            "Invalid selection.": "தவறான தேர்வு.",
             "Options": "விருப்பங்கள்",
             "No, go back": "இல்லை, திரும்பிச் செல்லுங்கள்",
             "Previous page": "முந்தைய பக்கம்",
@@ -11444,6 +11408,8 @@ function localizeWhatsAppReply(language, message) {
             "Choose time": "സമയം തിരഞ്ഞെടുക്കുക",
             "Select doctor": "ഡോക്ടറെ തിരഞ്ഞെടുക്കുക",
             "Select language": "ഭാഷ തിരഞ്ഞെടുക്കുക",
+            "Choose language": "ഭാഷ തിരഞ്ഞെടുക്കുക",
+            "Invalid selection.": "അസാധുവായ തിരഞ്ഞെടുപ്പ്.",
             "Options": "ഓപ്ഷനുകൾ",
             "No, go back": "ഇല്ല, തിരികെ പോകുക",
             "Previous page": "മുൻ പേജ്",
@@ -12354,8 +12320,7 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "❌ Cancel appointment",
-                "Select an appointment to cancel.",
+                "cancel",
                 getConfirmedAppointmentsForPhone(phone)
             );
             return;
@@ -12372,8 +12337,7 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             sendPatientAppointmentListMenuReply(
                 ss,
                 phone,
-                "🔄 Reschedule appointment",
-                "Select an appointment to reschedule.",
+                "reschedule",
                 getConfirmedAppointmentsForPhone(phone)
             );
             return;
@@ -15087,7 +15051,8 @@ if (
 
         sendLanguageMenuReply(
             ss,
-            senderPhone
+            senderPhone,
+            "❌ Invalid option."
         );
 
     } else {
@@ -15145,7 +15110,8 @@ if (
 
         sendLanguageMenuReply(
             ss,
-            senderPhone
+            senderPhone,
+            "❌ Invalid option."
         );
 
     } else {
@@ -15297,8 +15263,7 @@ if (
     sendPatientAppointmentListMenuReply(
         ss,
         senderPhone,
-        "📋 Your appointments",
-        "Select an appointment.",
+        "my_appointments",
         appointments
     );
 
@@ -15475,8 +15440,9 @@ if (
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            "❌ Please choose a valid doctor.\n\n" +
-            "📅 Book Appointment\n\nChoose your doctor.",
+            buildDoctorSelectionBody(
+                "❌ Please choose a valid doctor."
+            ),
             getDoctorSelectionMenuSpec()
         );
 
@@ -15974,11 +15940,11 @@ if (
                     ? result.message
                     : "Unable to cancel the appointment.";
 
-            sendWhatsAppMenuReply(
+            sendCancelConfirmMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage,
-                getYesNoConfirmSpec()
+                chosen,
+                "❌ " + errorMessage
             );
         }
 
@@ -16010,18 +15976,11 @@ if (
                 session.appointmentId
             );
 
-        sendWhatsAppMenuReply(
+        sendCancelConfirmMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            (
-                chosen
-                    ? buildCancelConfirmMessage(
-                        chosen
-                    )
-                    : "⚠️ Cancel this appointment?"
-            ),
-            getYesNoConfirmSpec()
+            chosen,
+            "❌ Invalid option."
         );
     }
     return true;
@@ -16197,11 +16156,11 @@ if (
                     ? result.message
                     : "Unable to reschedule the appointment.";
 
-            sendWhatsAppMenuReply(
+            sendRescheduleConfirmMenuReply(
                 ss,
                 senderPhone,
-                "❌ " + errorMessage,
-                getRescheduleConfirmSpec()
+                session,
+                "❌ " + errorMessage
             );
         }
 
@@ -16262,16 +16221,11 @@ if (
 
     } else {
 
-        sendWhatsAppMenuReply(
+        sendRescheduleConfirmMenuReply(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\n" +
-            buildRescheduleSlotConfirmMessage(
-                session,
-                session.date,
-                session.time
-            ),
-            getRescheduleConfirmSpec()
+            session,
+            "❌ Invalid option."
         );
     }
     return true;
@@ -17155,12 +17109,16 @@ function sendDoctorMainMenuReply(
 }
 
 
-function sendLanguageMenuReply(ss, phone) {
+function sendLanguageMenuReply(
+    ss,
+    phone,
+    prefix
+) {
 
     sendWhatsAppMenuReply(
         ss,
         phone,
-        buildLanguageSelectionIntro(),
+        buildLanguageSelectionBody(prefix),
         getLanguageMenuSpec()
     );
 }
@@ -17198,7 +17156,7 @@ function sendDoctorSelectionReply(ss, phone) {
     sendWhatsAppMenuReply(
         ss,
         phone,
-        "📅 Book Appointment\n\nChoose your doctor.",
+        buildDoctorSelectionBody(),
         menuSpec
     );
 }
@@ -17207,10 +17165,10 @@ function sendDoctorSelectionReply(ss, phone) {
 function sendPatientAppointmentListMenuReply(
     ss,
     phone,
-    title,
-    selectLine,
+    listScreen,
     appointments,
-    page
+    page,
+    prefix
 ) {
 
     const menuSpec =
@@ -17220,21 +17178,18 @@ function sendPatientAppointmentListMenuReply(
             page || 0
         );
 
-    let body =
-        title +
-        "\n\n" +
-        selectLine;
+    const pageInfo = {
+        page: menuSpec.page || 0,
+        totalPages:
+            menuSpec.totalPages || 1
+    };
 
-    if (
-        menuSpec &&
-        menuSpec.totalPages > 1
-    ) {
-        body +=
-            "\n\nPage " +
-            (menuSpec.page + 1) +
-            " of " +
-            menuSpec.totalPages;
-    }
+    const body =
+        buildPatientAppointmentListBodyForScreen(
+            listScreen,
+            pageInfo,
+            prefix
+        );
 
     sendWhatsAppMenuReply(
         ss,
@@ -18276,6 +18231,216 @@ function buildAppointmentDetailMessage(appt) {
 }
 
 
+function formatAppointmentListRowDescription(appt) {
+
+    return (
+        formatWhatsAppDisplayDate(
+            appt.date
+        ) +
+        " · " +
+        (appt.time || "")
+    );
+}
+
+
+function buildPatientAppointmentListBody(
+    title,
+    selectLine,
+    pageInfo,
+    prefix
+) {
+
+    let body =
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        title +
+        "\n\n" +
+        selectLine;
+
+    if (
+        pageInfo &&
+        pageInfo.totalPages > 1
+    ) {
+        body +=
+            "\n\nPage " +
+            (pageInfo.page + 1) +
+            " of " +
+            pageInfo.totalPages;
+    }
+
+    return body;
+}
+
+
+function buildMyAppointmentsListBody(
+    pageInfo,
+    prefix
+) {
+
+    return buildPatientAppointmentListBody(
+        "📋 Your appointments",
+        "Select an appointment.",
+        pageInfo,
+        prefix
+    );
+}
+
+
+function buildCancelAppointmentListBody(
+    pageInfo,
+    prefix
+) {
+
+    return buildPatientAppointmentListBody(
+        "❌ Cancel appointment",
+        "Select an appointment to cancel.",
+        pageInfo,
+        prefix
+    );
+}
+
+
+function buildRescheduleAppointmentListBody(
+    pageInfo,
+    prefix
+) {
+
+    return buildPatientAppointmentListBody(
+        "🔄 Reschedule appointment",
+        "Select an appointment to reschedule.",
+        pageInfo,
+        prefix
+    );
+}
+
+
+function buildPatientAppointmentListBodyForScreen(
+    listScreen,
+    pageInfo,
+    prefix
+) {
+
+    if (listScreen === "my_appointments") {
+        return buildMyAppointmentsListBody(
+            pageInfo,
+            prefix
+        );
+    }
+
+    if (listScreen === "cancel") {
+        return buildCancelAppointmentListBody(
+            pageInfo,
+            prefix
+        );
+    }
+
+    if (listScreen === "reschedule") {
+        return buildRescheduleAppointmentListBody(
+            pageInfo,
+            prefix
+        );
+    }
+
+    return buildPatientAppointmentListBody(
+        "Select an appointment",
+        "Choose one:",
+        pageInfo,
+        prefix
+    );
+}
+
+
+function buildCancelConfirmRetryBody(
+    chosen,
+    prefix
+) {
+
+    return (
+        String(
+            prefix || "❌ Invalid option."
+        ) +
+        "\n\n" +
+        buildCancelConfirmMessage(chosen)
+    );
+}
+
+
+function buildRescheduleConfirmRetryBody(
+    session,
+    prefix
+) {
+
+    return (
+        String(
+            prefix || "❌ Invalid option."
+        ) +
+        "\n\n" +
+        buildRescheduleSlotConfirmMessage(
+            session,
+            session.date,
+            session.time
+        )
+    );
+}
+
+
+function buildDoctorSelectionBody(prefix) {
+
+    return (
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        "📅 Book Appointment\n\n" +
+        "Choose your doctor."
+    );
+}
+
+
+function buildDoctorSelectionFallbackText(
+    doctors
+) {
+
+    if (
+        !doctors ||
+        doctors.length === 0
+    ) {
+        return "";
+    }
+
+    return doctors
+        .map(
+            function (doctor, index) {
+
+                let line =
+                    (index + 1) +
+                    ". " +
+                    doctor.doctorName;
+
+                if (doctor.clinicName) {
+                    line +=
+                        " — " +
+                        doctor.clinicName;
+                }
+
+                return line;
+            }
+        )
+        .join("\n");
+}
+
+
+function buildLanguageSelectionBody(prefix) {
+
+    return (
+        (prefix
+            ? String(prefix) + "\n\n"
+            : "") +
+        buildLanguageSelectionIntro()
+    );
+}
+
+
 function buildDoctorAvailabilitySessionConfirmMessage(
     dayName,
     startTime,
@@ -18426,10 +18591,7 @@ function handleWhatsAppMyAppointmentsState(
         session,
         normalizedMessage,
         {
-            title:
-                "📋 Your appointments",
-            selectLine:
-                "Select an appointment.",
+            listScreen: "my_appointments",
             onChosen: function (chosen) {
 
                 saveWhatsAppSession(phone, {
@@ -18807,5 +18969,66 @@ function sendDoctorMainMenuMoreReply(
         getDoctorMainMenuMoreSpec(
             Number(tier) || 1
         )
+    );
+}
+
+
+function sendCancelConfirmMenuReply(
+    ss,
+    phone,
+    chosen,
+    prefix
+) {
+
+    let body;
+
+    if (chosen) {
+        body =
+            prefix
+                ? buildCancelConfirmRetryBody(
+                    chosen,
+                    prefix
+                )
+                : buildCancelConfirmMessage(
+                    chosen
+                );
+    } else {
+        body =
+            String(
+                prefix || "❌ Invalid option."
+            ) +
+            "\n\n⚠️ Cancel this appointment?";
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        getYesNoConfirmSpec()
+    );
+}
+
+
+function sendRescheduleConfirmMenuReply(
+    ss,
+    phone,
+    session,
+    prefix
+) {
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        prefix
+            ? buildRescheduleConfirmRetryBody(
+                session,
+                prefix
+            )
+            : buildRescheduleSlotConfirmMessage(
+                session,
+                session.date,
+                session.time
+            ),
+        getRescheduleConfirmSpec()
     );
 }

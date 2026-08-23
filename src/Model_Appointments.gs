@@ -1198,26 +1198,15 @@ function buildDoctorSelectionMessage() {
     }
 
     let message =
-        "📅 Book Appointment\n\n" +
-        "Select a doctor:\n\n";
+        buildDoctorSelectionBody();
 
-    for (
-        let i = 0;
-        i < doctors.length;
-        i++
-    ) {
+    message +=
+        "\n\n" +
+        buildDoctorSelectionFallbackText(
+            doctors
+        );
 
-        message +=
-            (i + 1) + ". " +
-            doctors[i].doctorName +
-            (doctors[i].clinicName
-                ? " — " + doctors[i].clinicName
-                : "") +
-            "\n";
-    }
-
-    return message +
-        "\nReply with the doctor's number.";
+    return message;
 }
 
 

@@ -333,7 +333,7 @@ function getLanguageMenuSpec() {
                 { id: "5", title: "Tamil", description: "தமிழ்" },
                 { id: "6", title: "Malayalam", description: "മലയാളം" }
             ],
-            "Select language"
+            "Choose language"
         );
 
     return {
@@ -383,22 +383,13 @@ function getDoctorSelectionMenuSpec() {
         return null;
     }
 
-    let fallbackText = "";
+    let fallbackText =
+        buildDoctorSelectionFallbackText(
+            doctors
+        );
 
     const rows = doctors.map(
         function (doctor, index) {
-
-            const line =
-                (index + 1) +
-                ". " +
-                doctor.doctorName +
-                (
-                    doctor.clinicName
-                        ? " — " + doctor.clinicName
-                        : ""
-                );
-
-            fallbackText += line + "\n";
 
             return {
                 id: String(index + 1),
@@ -408,9 +399,6 @@ function getDoctorSelectionMenuSpec() {
             };
         }
     );
-
-    fallbackText +=
-        "\nReply with the doctor's number.";
 
     const interactive =
         buildInteractiveListSpec(
@@ -949,16 +937,12 @@ function getAppointmentListMenuSpec(
                                 1
                             ) +
                             "️⃣ " +
-                            "👨‍⚕️ " +
                             doctorName +
                             "\n" +
-                            "   📅 " +
-                            appt.date +
-                            "   🕐 " +
-                            appt.time +
-                            "\n" +
-                            "   🆔 " +
-                            appt.appointmentId +
+                            "   " +
+                            formatAppointmentListRowDescription(
+                                appt
+                            ) +
                             "\n"
                         );
                     }
@@ -1017,9 +1001,9 @@ function getAppointmentListMenuSpec(
                         ),
                     title: doctorName,
                     description:
-                        (appt.date || "") +
-                        " · " +
-                        (appt.time || "")
+                        formatAppointmentListRowDescription(
+                            appt
+                        )
                 };
             }
         );

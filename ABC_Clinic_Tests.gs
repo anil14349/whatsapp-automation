@@ -733,6 +733,50 @@ function testWhatsAppFlowHelpers() {
         );
     }
 
+    const myApptBody =
+        buildMyAppointmentsListBody({
+            page: 0,
+            totalPages: 1
+        });
+
+    if (
+        myApptBody.indexOf("📋 Your appointments") === -1 ||
+        myApptBody.indexOf("Select an appointment.") === -1
+    ) {
+        throw new Error(
+            "my appointments list body invalid"
+        );
+    }
+
+    const cancelBody =
+        buildCancelAppointmentListBody(
+            { page: 0, totalPages: 1 },
+            "❌ Invalid selection."
+        );
+
+    if (
+        cancelBody.indexOf("Cancel appointment") === -1 ||
+        cancelBody.indexOf("Invalid selection") === -1
+    ) {
+        throw new Error(
+            "cancel list retry body invalid"
+        );
+    }
+
+    const languageRetry =
+        buildLanguageSelectionBody(
+            "❌ Invalid option."
+        );
+
+    if (
+        languageRetry.indexOf("Choose your language") === -1 ||
+        languageRetry.indexOf("Invalid option") === -1
+    ) {
+        throw new Error(
+            "language selection retry body invalid"
+        );
+    }
+
     Logger.log(
         "WhatsApp flow helper smoke tests passed"
     );
@@ -876,17 +920,36 @@ function testLocalizationUiCleanup() {
 
     assertLocalized(
         "TE",
-        "📅 Book Appointment\n\nChoose your doctor.",
+        buildDoctorSelectionBody(),
         "డాక్టర్",
         "doctor selection body"
     );
 
     assertLocalized(
         "HI",
-        "📅 Book Appointment\n\nChoose your doctor.",
+        buildDoctorSelectionBody(),
         "डॉक्टर",
         "doctor selection body"
     );
+
+    const doctorFallback =
+        buildDoctorSelectionFallbackText([
+            {
+                doctorName: "Dr Anil",
+                clinicName: "ABC Clinic"
+            }
+        ]);
+
+    if (
+        doctorFallback.indexOf("Dr Anil") === -1 ||
+        doctorFallback.indexOf(
+            "Reply with the doctor"
+        ) !== -1
+    ) {
+        throw new Error(
+            "doctor selection fallback should be compact numbered list"
+        );
+    }
 
     assertLocalized(
         "TE",
