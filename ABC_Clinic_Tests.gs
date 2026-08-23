@@ -681,6 +681,58 @@ function testWhatsAppFlowHelpers() {
         );
     }
 
+    if (
+        whatsAppNavigationShowsBack({
+            role: "PATIENT",
+            state: "CANCEL_SELECT"
+        })
+    ) {
+        throw new Error(
+            "flat patient list should not show Back hint"
+        );
+    }
+
+    if (
+        !whatsAppNavigationShowsBack({
+            role: "PATIENT",
+            state: "BOOK_TIME"
+        })
+    ) {
+        throw new Error(
+            "book time should show Back hint"
+        );
+    }
+
+    const flatHints =
+        buildWhatsAppNavigationHintText({
+            role: "PATIENT",
+            state: "MY_APPOINTMENTS"
+        });
+
+    if (
+        flatHints.indexOf("Main Menu") === -1 ||
+        flatHints.indexOf("Back") !== -1
+    ) {
+        throw new Error(
+            "my appointments nav should be Main Menu only"
+        );
+    }
+
+    const deepHints =
+        buildWhatsAppNavigationHintText({
+            role: "PATIENT",
+            state: "RESCHEDULE_CONFIRM"
+        });
+
+    if (
+        deepHints.indexOf("Main Menu") === -1 ||
+        deepHints.indexOf("Back") === -1
+    ) {
+        throw new Error(
+            "reschedule confirm nav should include Back"
+        );
+    }
+
     Logger.log(
         "WhatsApp flow helper smoke tests passed"
     );

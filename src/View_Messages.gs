@@ -67,7 +67,7 @@ function buildAppointmentPickerPrompt(
         title +
         "\n\n" +
         selectLine +
-        "\n\n0️⃣ Main Menu\n9️⃣ Back"
+        "\n\n0️⃣ Main Menu"
     );
 }
 

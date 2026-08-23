@@ -49,9 +49,14 @@ mustInclude(
     "patient MY_APPOINTMENTS state handler"
 );
 mustInclude(
+    "src/Controller_Shared.gs",
+    "function whatsAppNavigationShowsBack",
+    "smart navigation back detection"
+);
+mustInclude(
     "src/View_Menus.gs",
-    "nav_main_menu",
-    "appointment list nav_main_menu row"
+    /appendAppointmentListNavRows[\s\S]*?nav_main_menu[\s\S]*?Doctor Portal/,
+    "appointment lists use home nav only"
 );
 mustInclude(
     "src/View_Messages.gs",

@@ -1492,7 +1492,53 @@ function showDoctorLeavesMenu(
 
 
 
-function addWhatsAppNavigationOptions(session, message) {
+function whatsAppNavigationShowsBack(session) {
+
+    if (
+        !session ||
+        !session.state
+    ) {
+        return false;
+    }
+
+    const state =
+        session.state;
+
+    const role =
+        session.role || "PATIENT";
+
+    if (role === "DOCTOR") {
+
+        const doctorFlatHome = [
+            "DOCTOR_DATE",
+            "DOCTOR_DATE_CUSTOM",
+            "DOCTOR_AVAIL_MENU",
+            "DOCTOR_LEAVE_MENU",
+            "DOCTOR_CANCEL_SELECT",
+            "DOCTOR_RESCHEDULE_SELECT",
+            "DOCTOR_STATUS_SELECT"
+        ];
+
+        return (
+            doctorFlatHome.indexOf(state) === -1
+        );
+    }
+
+    const patientFlatHome = [
+        "BOOK_DOCTOR",
+        "MY_APPOINTMENTS",
+        "CANCEL_SELECT",
+        "RESCHEDULE_SELECT"
+    ];
+
+    return (
+        patientFlatHome.indexOf(state) === -1
+    );
+}
+
+
+
+function buildWhatsAppNavigationHintText(session) {
 
     if (
         !session ||
@@ -1503,28 +1549,46 @@ function addWhatsAppNavigationOptions(session, message) {
         session.state === "LANGUAGE_SELECT" ||
         session.state === "LANGUAGE_CHANGE"
     ) {
-        return message;
+        return "";
     }
 
-    const options = [];
     const homeLabel =
         session.role === "DOCTOR"
             ? "0️⃣ Doctor Portal"
             : "0️⃣ Main Menu";
 
-    if (
-        String(message).indexOf("0️⃣ Main Menu") === -1 &&
-        String(message).indexOf("0️⃣ Doctor Portal") === -1 &&
-        String(message).indexOf("0️⃣ Back to Main Menu") === -1
-    ) {
-        options.push(homeLabel);
+    const hints = [homeLabel];
+
+    if (whatsAppNavigationShowsBack(session)) {
+        hints.push("9️⃣ Back");
     }
 
-    options.push("9️⃣ Back");
+    return hints.join("\n");
+}
 
-    return String(message) +
-        "\n\n" +
-        options.join("\n");
+
+
+function addWhatsAppNavigationOptions(session, message) {
+
+    const hints =
+        buildWhatsAppNavigationHintText(session);
+
+    if (!hints) {
+        return message;
+    }
+
+    const text =
+        String(message || "");
+
+    if (
+        text.indexOf("0️⃣ Main Menu") !== -1 ||
+        text.indexOf("0️⃣ Doctor Portal") !== -1 ||
+        text.indexOf("0️⃣ Back to Main Menu") !== -1
+    ) {
+        return message;
+    }
+
+    return text + "\n\n" + hints;
 }
 
 

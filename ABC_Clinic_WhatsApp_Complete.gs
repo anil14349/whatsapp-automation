@@ -8370,7 +8370,7 @@ function buildAppointmentPickerPrompt(
         title +
         "\n\n" +
         selectLine +
-        "\n\n0️⃣ Main Menu\n9️⃣ Back"
+        "\n\n0️⃣ Main Menu"
     );
 }
 
@@ -9701,8 +9701,8 @@ function getAppointmentListMenuSpec(
 
     fallbackText +=
         listMode === "doctor"
-            ? "\n0️⃣ Doctor Portal\n9️⃣ Back"
-            : "\n0️⃣ Main Menu\n9️⃣ Back";
+            ? "\n0️⃣ Doctor Portal"
+            : "\n0️⃣ Main Menu";
 
     const rows =
         listed.map(
@@ -9768,7 +9768,10 @@ function getAppointmentListMenuSpec(
         });
     }
 
-    appendAppointmentListNavRows(rows);
+    appendAppointmentListNavRows(
+        rows,
+        listMode
+    );
 
     const interactive =
         buildInteractiveListSpec(
@@ -11877,37 +11880,25 @@ function formatDoctorNext(result) {
 
 function addWhatsAppNavigationOptions(session, message) {
 
+    const hints =
+        buildWhatsAppNavigationHintText(session);
+
+    if (!hints) {
+        return message;
+    }
+
+    const text =
+        String(message || "");
+
     if (
-        !session ||
-        !session.state ||
-        session.state === "MAIN_MENU" ||
-        session.state === "DOCTOR_MENU" ||
-        session.state === "DOCTOR_MENU_MORE" ||
-        session.state === "LANGUAGE_SELECT" ||
-        session.state === "LANGUAGE_CHANGE"
+        text.indexOf("0️⃣ Main Menu") !== -1 ||
+        text.indexOf("0️⃣ Doctor Portal") !== -1 ||
+        text.indexOf("0️⃣ Back to Main Menu") !== -1
     ) {
         return message;
     }
 
-    const options = [];
-    const homeLabel =
-        session.role === "DOCTOR"
-            ? "0️⃣ Doctor Portal"
-            : "0️⃣ Main Menu";
-
-    if (
-        String(message).indexOf("0️⃣ Main Menu") === -1 &&
-        String(message).indexOf("0️⃣ Doctor Portal") === -1 &&
-        String(message).indexOf("0️⃣ Back to Main Menu") === -1
-    ) {
-        options.push(homeLabel);
-    }
-
-    options.push("9️⃣ Back");
-
-    return String(message) +
-        "\n\n" +
-        options.join("\n");
+    return text + "\n\n" + hints;
 }
 
 
@@ -18240,7 +18231,10 @@ function getDoctorMainMenuMoreSpec(tier) {
 }
 
 
-function appendAppointmentListNavRows(rows) {
+function appendAppointmentListNavRows(
+    rows,
+    listMode
+) {
 
     if (
         !rows ||
@@ -18249,31 +18243,14 @@ function appendAppointmentListNavRows(rows) {
         return rows;
     }
 
-    if (rows.length <= 8) {
-
-        rows.push({
-            id: "nav_main_menu",
-            title: "Main Menu",
-            description: "Return to home"
-        });
-
-        rows.push({
-            id: "nav_back",
-            title: "Back",
-            description: "Previous step"
-        });
-
-        return rows;
-    }
-
-    if (rows.length === 9) {
-
-        rows.push({
-            id: "nav_main_menu",
-            title: "Main Menu",
-            description: "Return to home"
-        });
-    }
+    rows.push({
+        id: "nav_main_menu",
+        title:
+            listMode === "doctor"
+                ? "Doctor Portal"
+                : "Main Menu",
+        description: "Return to home"
+    });
 
     return rows;
 }
@@ -18475,6 +18452,80 @@ function handleWhatsAppMyAppointmentsState(
             }
         }
     );
+}
+
+
+function whatsAppNavigationShowsBack(session) {
+
+    if (
+        !session ||
+        !session.state
+    ) {
+        return false;
+    }
+
+    const state =
+        session.state;
+
+    const role =
+        session.role || "PATIENT";
+
+    if (role === "DOCTOR") {
+
+        const doctorFlatHome = [
+            "DOCTOR_DATE",
+            "DOCTOR_DATE_CUSTOM",
+            "DOCTOR_AVAIL_MENU",
+            "DOCTOR_LEAVE_MENU",
+            "DOCTOR_CANCEL_SELECT",
+            "DOCTOR_RESCHEDULE_SELECT",
+            "DOCTOR_STATUS_SELECT"
+        ];
+
+        return (
+            doctorFlatHome.indexOf(state) === -1
+        );
+    }
+
+    const patientFlatHome = [
+        "BOOK_DOCTOR",
+        "MY_APPOINTMENTS",
+        "CANCEL_SELECT",
+        "RESCHEDULE_SELECT"
+    ];
+
+    return (
+        patientFlatHome.indexOf(state) === -1
+    );
+}
+
+
+function buildWhatsAppNavigationHintText(session) {
+
+    if (
+        !session ||
+        !session.state ||
+        session.state === "MAIN_MENU" ||
+        session.state === "DOCTOR_MENU" ||
+        session.state === "DOCTOR_MENU_MORE" ||
+        session.state === "LANGUAGE_SELECT" ||
+        session.state === "LANGUAGE_CHANGE"
+    ) {
+        return "";
+    }
+
+    const homeLabel =
+        session.role === "DOCTOR"
+            ? "0️⃣ Doctor Portal"
+            : "0️⃣ Main Menu";
+
+    const hints = [homeLabel];
+
+    if (whatsAppNavigationShowsBack(session)) {
+        hints.push("9️⃣ Back");
+    }
+
+    return hints.join("\n");
 }
 
 
