@@ -207,6 +207,19 @@ assert(
     "missing goBack handler"
 );
 
+assert(
+    "appointment list paging uses slotPage not apptPage",
+    !shared.includes("apptPage") &&
+        shared.includes("getAppointmentListPageInfo"),
+    "stale apptPage reference"
+);
+
+assert(
+    "welcome image skips duplicate after language pick",
+    read("src/Controller_PatientFlow.gs").includes("skipWelcomeImage: true"),
+    "missing skipWelcomeImage"
+);
+
 // listScreen call sites use known screens
 const listCallRe =
     /sendPatientAppointmentListMenuReply\(\s*[\s\S]*?,\s*"(my_appointments|cancel|reschedule)"/g;

@@ -1870,7 +1870,9 @@ function testInteractiveMenus() {
 
     if (
         !appointmentList.interactive ||
-        appointmentList.interactive.sections[0].rows.length !== 1
+        appointmentList.interactive.sections[0].rows.length !== 2 ||
+        appointmentList.interactive.sections[0].rows[1].id !==
+            "nav_main_menu"
     ) {
         throw new Error(
             "appointment list menu spec invalid"
@@ -2019,7 +2021,9 @@ function testInteractiveMenus() {
         !apptPage0.interactive ||
         apptPage0.interactive.sections[0].rows.length !==
             10 ||
-        apptPage0.totalPages !== 2
+        apptPage0.totalPages !== 2 ||
+        apptPage0.interactive.sections[0].rows[9].id !==
+            "nav_main_menu"
     ) {
         throw new Error(
             "appointment page 0 spec invalid"
@@ -2036,7 +2040,9 @@ function testInteractiveMenus() {
     if (
         !apptPage1.interactive ||
         apptPage1.interactive.sections[0].rows.length !==
-            7
+            9 ||
+        apptPage1.interactive.sections[0].rows[8].id !==
+            "nav_main_menu"
     ) {
         throw new Error(
             "appointment page 1 spec invalid"
