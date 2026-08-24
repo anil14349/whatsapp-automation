@@ -363,6 +363,44 @@ if (
 
 
 // ======================================================
+// MAIN MENU / MORE → CONTACT & LOCATION
+// ======================================================
+
+if (
+    (
+        normalizedMessage === "menu_contact" ||
+        normalizedMessage === "6"
+    ) &&
+    session &&
+    (
+        session.state === "MAIN_MENU" ||
+        session.state === "PATIENT_MAIN_MORE"
+    )
+) {
+
+    if (
+        session.state === "MAIN_MENU"
+    ) {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "PATIENT_MAIN_MORE"
+            }
+        );
+    }
+
+    sendClinicContactReply(
+        ss,
+        senderPhone
+    );
+
+    return true;
+}
+
+
+// ======================================================
 // MAIN MORE → UNRECOGNIZED OPTION
 // ======================================================
 

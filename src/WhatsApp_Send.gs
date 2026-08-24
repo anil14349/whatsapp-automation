@@ -383,6 +383,35 @@ function sendPatientMainMoreMenuReply(
 
 
 
+function sendClinicContactReply(
+    ss,
+    phone
+) {
+
+    const session =
+        getWhatsAppSession(phone);
+
+    const language =
+        resolvePatientLanguage(
+            phone,
+            session
+        );
+
+    const message =
+        localizeWhatsAppReply(
+            language,
+            buildClinicContactMessage()
+        );
+
+    sendWhatsAppReply(
+        ss,
+        phone,
+        message
+    );
+}
+
+
+
 function sendDoctorMainMenuReply(
     ss,
     phone,

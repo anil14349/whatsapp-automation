@@ -1820,3 +1820,96 @@ function buildOwnerDailyDigestMessage(stats) {
 
     return text;
 }
+
+
+
+function getClinicBrandingSettings() {
+
+    ensureSettingsSheet();
+
+    const hours =
+        getAfterHoursSettings();
+
+    return {
+        name:
+            String(
+                getSetting(
+                    "CLINIC_NAME",
+                    "ABC Clinic"
+                ) || "ABC Clinic"
+            ).trim(),
+        address:
+            String(
+                getSetting(
+                    "CLINIC_ADDRESS",
+                    ""
+                ) || ""
+            ).trim(),
+        phone:
+            String(
+                getSetting(
+                    "CLINIC_PHONE",
+                    ""
+                ) || ""
+            ).trim(),
+        mapUrl:
+            String(
+                getSetting(
+                    "CLINIC_MAP_URL",
+                    ""
+                ) || ""
+            ).trim(),
+        openTimeDisplay:
+            hours.openTimeDisplay,
+        closeTimeDisplay:
+            hours.closeTimeDisplay,
+        workingDaysDisplay:
+            hours.workingDaysDisplay
+    };
+}
+
+
+
+function buildClinicContactMessage() {
+
+    const clinic =
+        getClinicBrandingSettings();
+
+    let text =
+        "🏥 " +
+        clinic.name +
+        "\n\n";
+
+    if (clinic.address) {
+        text +=
+            "📍 " +
+            clinic.address +
+            "\n";
+    }
+
+    if (clinic.phone) {
+        text +=
+            "📞 " +
+            clinic.phone +
+            "\n";
+    }
+
+    text +=
+        "🕐 " +
+        clinic.workingDaysDisplay +
+        ", " +
+        clinic.openTimeDisplay +
+        " – " +
+        clinic.closeTimeDisplay;
+
+    if (clinic.mapUrl) {
+        text +=
+            "\n\n🗺️ Directions:\n" +
+            clinic.mapUrl;
+    }
+
+    text +=
+        "\n\nSend Hi anytime to book or manage appointments.";
+
+    return text;
+}

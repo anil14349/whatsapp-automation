@@ -52,6 +52,9 @@
 //   AFTER_HOURS_MESSAGE | (optional custom text)
 //   CLINIC_WELCOME_IMAGE_URL | (optional public HTTPS URL — e.g. https://your-domain.com/clinic-welcome.png from landing/public/)
 //   CLINIC_NAME | ABC Clinic
+//   CLINIC_ADDRESS | (optional clinic address)
+//   CLINIC_PHONE | (optional clinic phone for patients)
+//   CLINIC_MAP_URL | (optional Google Maps link)
 //   ENABLE_OWNER_DAILY_DIGEST | FALSE
 //   CLINIC_OWNER_PHONE | (owner WhatsApp for daily summary)
 //   OWNER_DIGEST_HOUR | 8
@@ -391,6 +394,21 @@ function ensureSettingsSheet() {
         ]);
 
         sheet.appendRow([
+            "CLINIC_ADDRESS",
+            ""
+        ]);
+
+        sheet.appendRow([
+            "CLINIC_PHONE",
+            ""
+        ]);
+
+        sheet.appendRow([
+            "CLINIC_MAP_URL",
+            ""
+        ]);
+
+        sheet.appendRow([
             "ENABLE_OWNER_DAILY_DIGEST",
             "FALSE"
         ]);
@@ -474,6 +492,21 @@ function ensureSettingsSheet() {
             sheet,
             "CLINIC_NAME",
             "ABC Clinic"
+        );
+        ensureSettingKey(
+            sheet,
+            "CLINIC_ADDRESS",
+            ""
+        );
+        ensureSettingKey(
+            sheet,
+            "CLINIC_PHONE",
+            ""
+        );
+        ensureSettingKey(
+            sheet,
+            "CLINIC_MAP_URL",
+            ""
         );
         ensureSettingKey(
             sheet,

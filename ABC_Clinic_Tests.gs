@@ -54,6 +54,7 @@ function runAllTests() {
         ["testAppointmentReminders", testAppointmentReminders],
         ["testOwnerDailyDigest", testOwnerDailyDigest],
         ["testReminderActionButtons", testReminderActionButtons],
+        ["testClinicBranding", testClinicBranding],
         ["testDoctorCancelReschedule", testDoctorCancelReschedule],
         ["testAppointmentStatus", testAppointmentStatus],
         ["testAfterHoursReply", testAfterHoursReply],
@@ -1112,7 +1113,7 @@ function testLocalizationUiCleanup() {
         );
 
     if (
-        localizedMoreMenu.buttons[0].title.indexOf(
+        localizedMoreMenu.sections[0].rows[0].title.indexOf(
             "Cancel"
         ) !== -1
     ) {
@@ -1463,6 +1464,57 @@ function testReminderActionButtons() {
 
     Logger.log(
         "Reminder action button smoke tests passed"
+    );
+}
+
+
+
+function testClinicBranding() {
+
+    requireDebugMode("testClinicBranding");
+
+    ensureSettingsSheet();
+
+    const message =
+        buildClinicContactMessage();
+
+    if (
+        message.indexOf("🏥") === -1 ||
+        message.indexOf("Send Hi anytime") === -1 ||
+        message.indexOf("🕐") === -1
+    ) {
+        throw new Error(
+            "buildClinicContactMessage failed"
+        );
+    }
+
+    const branding =
+        getClinicBrandingSettings();
+
+    if (
+        !branding.name ||
+        !branding.workingDaysDisplay ||
+        !branding.openTimeDisplay
+    ) {
+        throw new Error(
+            "getClinicBrandingSettings failed"
+        );
+    }
+
+    const moreSpec =
+        getPatientMainMoreMenuSpec();
+
+    if (
+        !moreSpec.interactive ||
+        moreSpec.interactive.type !== "list"
+    ) {
+        throw new Error(
+            "patient more menu should be list"
+        );
+    }
+
+    Logger.log(
+        "Clinic branding smoke tests passed"
     );
 }
 
@@ -1837,9 +1889,11 @@ function testInteractiveMenus() {
     if (
         !patientMoreSpec.interactive ||
         patientMoreSpec.interactive.type !==
-            "button" ||
-        patientMoreSpec.interactive.buttons.length !==
-            3
+            "list" ||
+        patientMoreSpec.interactive.sections[0].rows.length !==
+            4 ||
+        patientMoreSpec.interactive.sections[0].rows[3].id !==
+            "menu_contact"
     ) {
         throw new Error(
             "patient main more menu spec invalid"

@@ -368,7 +368,7 @@ function getPatientMainMenuSpec() {
     const fallbackText =
         "1️⃣ Book Appointment\n" +
         "2️⃣ My Appointments\n" +
-        "3️⃣ More (Cancel / Reschedule / Language)";
+        "3️⃣ More (Cancel / Reschedule / Language / Contact)";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -935,6 +935,21 @@ function ensureSettingsSheet() {
         ]);
 
         sheet.appendRow([
+            "CLINIC_ADDRESS",
+            ""
+        ]);
+
+        sheet.appendRow([
+            "CLINIC_PHONE",
+            ""
+        ]);
+
+        sheet.appendRow([
+            "CLINIC_MAP_URL",
+            ""
+        ]);
+
+        sheet.appendRow([
             "ENABLE_OWNER_DAILY_DIGEST",
             "FALSE"
         ]);
@@ -1018,6 +1033,21 @@ function ensureSettingsSheet() {
             sheet,
             "CLINIC_NAME",
             "ABC Clinic"
+        );
+        ensureSettingKey(
+            sheet,
+            "CLINIC_ADDRESS",
+            ""
+        );
+        ensureSettingKey(
+            sheet,
+            "CLINIC_PHONE",
+            ""
+        );
+        ensureSettingKey(
+            sheet,
+            "CLINIC_MAP_URL",
+            ""
         );
         ensureSettingKey(
             sheet,
@@ -15506,6 +15536,44 @@ if (
 
 
 // ======================================================
+// MAIN MENU / MORE → CONTACT & LOCATION
+// ======================================================
+
+if (
+    (
+        normalizedMessage === "menu_contact" ||
+        normalizedMessage === "6"
+    ) &&
+    session &&
+    (
+        session.state === "MAIN_MENU" ||
+        session.state === "PATIENT_MAIN_MORE"
+    )
+) {
+
+    if (
+        session.state === "MAIN_MENU"
+    ) {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "PATIENT_MAIN_MORE"
+            }
+        );
+    }
+
+    sendClinicContactReply(
+        ss,
+        senderPhone
+    );
+
+    return true;
+}
+
+
+// ======================================================
 // MAIN MORE → UNRECOGNIZED OPTION
 // ======================================================
 
@@ -18774,23 +18842,37 @@ function getPatientMainMoreMenuSpec() {
     const fallbackText =
         "3️⃣ Cancel Appointment\n" +
         "4️⃣ Reschedule Appointment\n" +
-        "5️⃣ Change Language";
+        "5️⃣ Change Language\n" +
+        "6️⃣ Contact & Location";
+
+    const rows = [
+        {
+            id: "3",
+            title: "Cancel Appointment",
+            description: "Cancel a booking"
+        },
+        {
+            id: "4",
+            title: "Reschedule",
+            description: "Change date or time"
+        },
+        {
+            id: "5",
+            title: "Change Language",
+            description: "Pick your language"
+        },
+        {
+            id: "menu_contact",
+            title: "Contact & Location",
+            description: "Address, hours, map"
+        }
+    ];
 
     const interactive =
-        buildInteractiveButtonSpec([
-            {
-                id: "3",
-                title: "Cancel Appointment"
-            },
-            {
-                id: "4",
-                title: "Reschedule"
-            },
-            {
-                id: "5",
-                title: "Change Language"
-            }
-        ]);
+        buildInteractiveListSpec(
+            rows,
+            "More options"
+        );
 
     return {
         fallbackText: fallbackText,
@@ -19380,6 +19462,97 @@ function buildOwnerDailyDigestMessage(stats) {
         "• " +
         (Number(data.tomorrowScheduled) || 0) +
         " scheduled";
+
+    return text;
+}
+
+
+function getClinicBrandingSettings() {
+
+    ensureSettingsSheet();
+
+    const hours =
+        getAfterHoursSettings();
+
+    return {
+        name:
+            String(
+                getSetting(
+                    "CLINIC_NAME",
+                    "ABC Clinic"
+                ) || "ABC Clinic"
+            ).trim(),
+        address:
+            String(
+                getSetting(
+                    "CLINIC_ADDRESS",
+                    ""
+                ) || ""
+            ).trim(),
+        phone:
+            String(
+                getSetting(
+                    "CLINIC_PHONE",
+                    ""
+                ) || ""
+            ).trim(),
+        mapUrl:
+            String(
+                getSetting(
+                    "CLINIC_MAP_URL",
+                    ""
+                ) || ""
+            ).trim(),
+        openTimeDisplay:
+            hours.openTimeDisplay,
+        closeTimeDisplay:
+            hours.closeTimeDisplay,
+        workingDaysDisplay:
+            hours.workingDaysDisplay
+    };
+}
+
+
+function buildClinicContactMessage() {
+
+    const clinic =
+        getClinicBrandingSettings();
+
+    let text =
+        "🏥 " +
+        clinic.name +
+        "\n\n";
+
+    if (clinic.address) {
+        text +=
+            "📍 " +
+            clinic.address +
+            "\n";
+    }
+
+    if (clinic.phone) {
+        text +=
+            "📞 " +
+            clinic.phone +
+            "\n";
+    }
+
+    text +=
+        "🕐 " +
+        clinic.workingDaysDisplay +
+        ", " +
+        clinic.openTimeDisplay +
+        " – " +
+        clinic.closeTimeDisplay;
+
+    if (clinic.mapUrl) {
+        text +=
+            "\n\n🗺️ Directions:\n" +
+            clinic.mapUrl;
+    }
+
+    text +=
+        "\n\nSend Hi anytime to book or manage appointments.";
 
     return text;
 }
@@ -20068,6 +20241,34 @@ function sendPatientMainMoreMenuReply(
         phone,
         body,
         getPatientMainMoreMenuSpec()
+    );
+}
+
+
+function sendClinicContactReply(
+    ss,
+    phone
+) {
+
+    const session =
+        getWhatsAppSession(phone);
+
+    const language =
+        resolvePatientLanguage(
+            phone,
+            session
+        );
+
+    const message =
+        localizeWhatsAppReply(
+            language,
+            buildClinicContactMessage()
+        );
+
+    sendWhatsAppReply(
+        ss,
+        phone,
+        message
     );
 }
 

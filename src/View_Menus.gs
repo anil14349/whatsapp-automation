@@ -149,7 +149,7 @@ function getPatientMainMenuSpec() {
     const fallbackText =
         "1️⃣ Book Appointment\n" +
         "2️⃣ My Appointments\n" +
-        "3️⃣ More (Cancel / Reschedule / Language)";
+        "3️⃣ More (Cancel / Reschedule / Language / Contact)";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -180,23 +180,37 @@ function getPatientMainMoreMenuSpec() {
     const fallbackText =
         "3️⃣ Cancel Appointment\n" +
         "4️⃣ Reschedule Appointment\n" +
-        "5️⃣ Change Language";
+        "5️⃣ Change Language\n" +
+        "6️⃣ Contact & Location";
+
+    const rows = [
+        {
+            id: "3",
+            title: "Cancel Appointment",
+            description: "Cancel a booking"
+        },
+        {
+            id: "4",
+            title: "Reschedule",
+            description: "Change date or time"
+        },
+        {
+            id: "5",
+            title: "Change Language",
+            description: "Pick your language"
+        },
+        {
+            id: "menu_contact",
+            title: "Contact & Location",
+            description: "Address, hours, map"
+        }
+    ];
 
     const interactive =
-        buildInteractiveButtonSpec([
-            {
-                id: "3",
-                title: "Cancel Appointment"
-            },
-            {
-                id: "4",
-                title: "Reschedule"
-            },
-            {
-                id: "5",
-                title: "Change Language"
-            }
-        ]);
+        buildInteractiveListSpec(
+            rows,
+            "More options"
+        );
 
     return {
         fallbackText: fallbackText,
