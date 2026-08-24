@@ -79,6 +79,7 @@ const expectedPatientStates = [
     "WAITLIST_DOCTOR",
     "MY_APPOINTMENTS",
     "BOOK_DOCTOR",
+    "BOOK_SERVICE",
     "BOOK_DATE",
     "BOOK_DATE_CUSTOM",
     "BOOK_NAME",
@@ -263,6 +264,7 @@ assert(
 
 // Back-nav coverage for multi-step patient flows
 [
+    "BOOK_SERVICE",
     "BOOK_DATE",
     "BOOK_TIME",
     "BOOK_CONFIRM",

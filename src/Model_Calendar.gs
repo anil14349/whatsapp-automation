@@ -164,7 +164,8 @@ function findCalendarEventForAppointment(
 
 function getAvailableSlots(
     doctorId,
-    dateString
+    dateString,
+    durationMinutes
 ) {
 
     const date =
@@ -219,10 +220,20 @@ function getAvailableSlots(
 
     try {
 
-        appointmentDuration =
-            getDoctorAppointmentDuration(
-                doctorId
-            );
+        if (
+            durationMinutes !== undefined &&
+            durationMinutes !== null &&
+            durationMinutes !== "" &&
+            Number(durationMinutes) > 0
+        ) {
+            appointmentDuration =
+                Number(durationMinutes);
+        } else {
+            appointmentDuration =
+                getDoctorAppointmentDuration(
+                    doctorId
+                );
+        }
 
     } catch (durationError) {
 

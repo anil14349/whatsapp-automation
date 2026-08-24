@@ -57,6 +57,7 @@ function runAllTests() {
         ["testClinicBranding", testClinicBranding],
         ["testWaitlist", testWaitlist],
         ["testPostVisitFeedback", testPostVisitFeedback],
+        ["testVisitTypeSelection", testVisitTypeSelection],
         ["testDoctorCancelReschedule", testDoctorCancelReschedule],
         ["testAppointmentStatus", testAppointmentStatus],
         ["testAfterHoursReply", testAfterHoursReply],
@@ -1701,6 +1702,91 @@ function testPostVisitFeedback() {
 
     Logger.log(
         "Post-visit feedback smoke tests passed"
+    );
+}
+
+
+
+function testVisitTypeSelection() {
+
+    requireDebugMode("testVisitTypeSelection");
+
+    ensureSettingsSheet();
+
+    const settings =
+        getVisitTypeSettings();
+
+    if (!settings.enabled) {
+        throw new Error(
+            "default visit type selection disabled"
+        );
+    }
+
+    ensureServicesSheet();
+
+    const activeServices =
+        getActiveServices();
+
+    if (activeServices.length < 2) {
+        throw new Error(
+            "expected seeded services for tests"
+        );
+    }
+
+    const duration =
+        resolveBookingDurationMinutes(
+            "D001",
+            "S002"
+        );
+
+    if (
+        !duration ||
+        duration !== 15
+    ) {
+        throw new Error(
+            "resolveBookingDurationMinutes failed for follow-up"
+        );
+    }
+
+    const menuSpec =
+        getVisitTypeSelectionMenuSpec();
+
+    if (
+        !menuSpec ||
+        !menuSpec.interactive ||
+        menuSpec.interactive.sections[0].rows.length !==
+            activeServices.length ||
+        menuSpec.interactive.sections[0].rows[0].title.indexOf(
+            "Consultation"
+        ) === -1
+    ) {
+        throw new Error(
+            "getVisitTypeSelectionMenuSpec failed"
+        );
+    }
+
+    const confirmMessage =
+        buildBookingConfirmationMessage(
+            {
+                doctorId: "D001",
+                serviceId: "S001",
+                date: "2026-08-18",
+                time: "10:00 AM"
+            },
+            "Test Patient"
+        );
+
+    if (
+        confirmMessage.indexOf("Consultation") === -1 ||
+        confirmMessage.indexOf("Confirm appointment") === -1
+    ) {
+        throw new Error(
+            "buildBookingConfirmationMessage missing visit type"
+        );
+    }
+
+    Logger.log(
+        "Visit type selection smoke tests passed"
     );
 }
 

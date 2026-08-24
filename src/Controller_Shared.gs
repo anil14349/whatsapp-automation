@@ -1317,9 +1317,10 @@ function handleWhatsAppSlotSelection(
     ) {
 
         const slots =
-            getAvailableSlots(
+            getAvailableSlotsForBooking(
                 session.doctorId,
-                isoDate
+                isoDate,
+                session.serviceId
             );
 
         const currentPage =
@@ -1374,9 +1375,10 @@ function handleWhatsAppSlotSelection(
     ) {
 
         const slots =
-            getAvailableSlots(
+            getAvailableSlotsForBooking(
                 session.doctorId,
-                isoDate
+                isoDate,
+                session.serviceId
             );
 
         const currentPage =
@@ -1447,9 +1449,10 @@ function handleWhatsAppSlotSelection(
     }
 
     const slots =
-        getAvailableSlots(
+        getAvailableSlotsForBooking(
             session.doctorId,
-            isoDate
+            isoDate,
+            session.serviceId
         );
 
     if (
@@ -2676,6 +2679,18 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             returnToMainMenu(ss, phone);
             return;
 
+        case "BOOK_SERVICE":
+            saveWhatsAppSession(phone, {
+                state: "BOOK_DOCTOR",
+                doctorId: "",
+                serviceId: ""
+            });
+            sendDoctorSelectionReply(
+                ss,
+                phone
+            );
+            return;
+
         case "PATIENT_MAIN_MORE":
             returnToMainMenu(
                 ss,
@@ -2696,14 +2711,34 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             return;
 
         case "BOOK_DATE":
-            saveWhatsAppSession(phone, {
-                state: "BOOK_DOCTOR",
-                doctorId: ""
-            });
-            sendDoctorSelectionReply(
-                ss,
-                phone
-            );
+            if (
+                shouldOfferVisitTypeSelection() &&
+                session.doctorId
+            ) {
+                saveWhatsAppSession(phone, {
+                    state: "BOOK_SERVICE",
+                    date: "",
+                    time: "",
+                    serviceId: ""
+                });
+                sendVisitTypeSelectionReply(
+                    ss,
+                    phone,
+                    findDoctorById(
+                        session.doctorId
+                    ) || "your doctor"
+                );
+            } else {
+                saveWhatsAppSession(phone, {
+                    state: "BOOK_DOCTOR",
+                    doctorId: "",
+                    serviceId: ""
+                });
+                sendDoctorSelectionReply(
+                    ss,
+                    phone
+                );
+            }
             return;
 
         case "BOOK_DATE_CUSTOM":
@@ -3214,10 +3249,20 @@ function whatsAppShowSlotsForDate(
     nextState
 ) {
 
+    const session =
+        getWhatsAppSession(senderPhone);
+
+    const serviceId =
+        session &&
+        session.serviceId
+            ? session.serviceId
+            : "";
+
     const slots =
-        getAvailableSlots(
+        getAvailableSlotsForBooking(
             doctorId,
-            selectedDate
+            selectedDate,
+            serviceId
         );
 
     if (

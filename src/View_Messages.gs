@@ -1746,12 +1746,67 @@ function buildInvalidPatientNameReply() {
 
 
 
+function buildVisitTypeSelectionFallbackText(
+    services
+) {
+
+    let text =
+        "Choose a visit type:\n\n";
+
+    services.forEach(
+        function (service, index) {
+
+            const durationLabel =
+                service.durationMinutes > 0
+                    ? " (" +
+                      service.durationMinutes +
+                      " min)"
+                    : "";
+
+            text +=
+                String(index + 1) +
+                "️⃣ " +
+                service.name +
+                durationLabel +
+                "\n";
+        }
+    );
+
+    return text.trim();
+}
+
+
+
+function buildVisitTypeSelectionBody(
+    doctorName,
+    suffix
+) {
+
+    let text =
+        "🩺 Choose visit type\n\n" +
+        "👨‍⚕️ " +
+        String(doctorName || "Doctor").trim();
+
+    if (suffix) {
+        text += "\n\n" + suffix;
+    }
+
+    return text;
+}
+
+
+
 function buildBookingConfirmationMessage(
     session,
     patientName
 ) {
 
-    return (
+    const visitType =
+        getServiceDisplayName(
+            session.serviceId
+        );
+
+    let text =
         "✅ Confirm appointment?\n\n" +
         "👤 " + patientName + "\n" +
         "👨‍⚕️ " +
@@ -1759,7 +1814,17 @@ function buildBookingConfirmationMessage(
             findDoctorById(
                 session.doctorId
             ) || "Unknown Doctor"
-        ) +
+        );
+
+    if (visitType) {
+        text +=
+            "\n" +
+            "🩺 " +
+            visitType;
+    }
+
+    return (
+        text +
         "\n" +
         "📅 " +
         formatWhatsAppDisplayDate(

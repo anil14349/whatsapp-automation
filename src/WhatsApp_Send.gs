@@ -849,6 +849,38 @@ function sendDoctorSelectionReply(ss, phone) {
 
 
 
+function sendVisitTypeSelectionReply(
+    ss,
+    phone,
+    doctorName
+) {
+
+    const menuSpec =
+        getVisitTypeSelectionMenuSpec();
+
+    if (!menuSpec) {
+
+        sendWhatsAppReply(
+            ss,
+            phone,
+            "❌ No visit types are currently available."
+        );
+
+        return;
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        buildVisitTypeSelectionBody(
+            doctorName
+        ),
+        menuSpec
+    );
+}
+
+
+
 function sendWhatsAppReply(
     ss,
     phone,

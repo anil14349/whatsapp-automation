@@ -10,13 +10,29 @@
 // 3. BOOK APPOINTMENT
 // ============================================================
 
+function ensureAppointmentsVisitTypeColumn(
+    sheet
+) {
+
+    if (
+        !sheet.getRange(1, 10).getValue()
+    ) {
+        sheet
+            .getRange(1, 10)
+            .setValue("Visit Type");
+    }
+}
+
+
+
 function bookAppointment(
     doctorId,
     dateString,
     timeString,
     patientName,
     patientPhone,
-    patientLanguage
+    patientLanguage,
+    serviceId
 ) {
 
     const ss =
@@ -89,9 +105,13 @@ function bookAppointment(
     }
 
     const appointmentDuration =
-        getDoctorAppointmentDuration(
-            doctorId
+        resolveBookingDurationMinutes(
+            doctorId,
+            serviceId
         );
+
+    const visitTypeName =
+        getServiceDisplayName(serviceId);
 
     const endTime =
         new Date(
@@ -132,9 +152,10 @@ function bookAppointment(
     // ----------------------------------------------------------
 
     const availableSlots =
-        getAvailableSlots(
+        getAvailableSlotsForBooking(
             doctorId,
-            dateString
+            dateString,
+            serviceId
         );
 
     const formattedRequestedTime =
@@ -219,14 +240,21 @@ function bookAppointment(
 
         event =
             calendar.createEvent(
-                `Appointment - ${patientName}`,
+                visitTypeName
+                    ? `Appointment - ${patientName} (${visitTypeName})`
+                    : `Appointment - ${patientName}`,
                 startTime,
                 endTime,
                 {
                     description:
                         `Appointment ID: ${appointmentId}\n` +
                         `Doctor: ${doctorName}\n` +
-                        `Patient: ${patientName}`,
+                        `Patient: ${patientName}` +
+                        (
+                            visitTypeName
+                                ? `\nVisit type: ${visitTypeName}`
+                                : ""
+                        ),
 
                     location: clinicName
                 }
@@ -247,6 +275,10 @@ function bookAppointment(
             patientRecord.success
                 ? patientRecord.patientId
                 : "";
+
+        ensureAppointmentsVisitTypeColumn(
+            appointmentSheet
+        );
 
         appointmentSheet.appendRow([
 
@@ -274,7 +306,9 @@ function bookAppointment(
 
             event.getId(),
 
-            patientId
+            patientId,
+
+            visitTypeName || ""
 
         ]);
 

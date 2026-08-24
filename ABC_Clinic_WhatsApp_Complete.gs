@@ -1003,6 +1003,11 @@ function ensureSettingsSheet() {
             "CLINIC_REVIEW_URL",
             ""
         ]);
+
+        sheet.appendRow([
+            "ENABLE_VISIT_TYPE_SELECTION",
+            "TRUE"
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -1138,6 +1143,11 @@ function ensureSettingsSheet() {
             sheet,
             "CLINIC_REVIEW_URL",
             ""
+        );
+        ensureSettingKey(
+            sheet,
+            "ENABLE_VISIT_TYPE_SELECTION",
+            "TRUE"
         );
     }
 
@@ -4736,7 +4746,8 @@ function findCalendarEventForAppointment(
 
 function getAvailableSlots(
     doctorId,
-    dateString
+    dateString,
+    durationMinutes
 ) {
 
     const date =
@@ -4791,10 +4802,20 @@ function getAvailableSlots(
 
     try {
 
-        appointmentDuration =
-            getDoctorAppointmentDuration(
-                doctorId
-            );
+        if (
+            durationMinutes !== undefined &&
+            durationMinutes !== null &&
+            durationMinutes !== "" &&
+            Number(durationMinutes) > 0
+        ) {
+            appointmentDuration =
+                Number(durationMinutes);
+        } else {
+            appointmentDuration =
+                getDoctorAppointmentDuration(
+                    doctorId
+                );
+        }
 
     } catch (durationError) {
 
@@ -5619,7 +5640,8 @@ function bookAppointment(
     timeString,
     patientName,
     patientPhone,
-    patientLanguage
+    patientLanguage,
+    serviceId
 ) {
 
     const ss =
@@ -5692,9 +5714,13 @@ function bookAppointment(
     }
 
     const appointmentDuration =
-        getDoctorAppointmentDuration(
-            doctorId
+        resolveBookingDurationMinutes(
+            doctorId,
+            serviceId
         );
+
+    const visitTypeName =
+        getServiceDisplayName(serviceId);
 
     const endTime =
         new Date(
@@ -5735,9 +5761,10 @@ function bookAppointment(
     // ----------------------------------------------------------
 
     const availableSlots =
-        getAvailableSlots(
+        getAvailableSlotsForBooking(
             doctorId,
-            dateString
+            dateString,
+            serviceId
         );
 
     const formattedRequestedTime =
@@ -5822,14 +5849,21 @@ function bookAppointment(
 
         event =
             calendar.createEvent(
-                `Appointment - ${patientName}`,
+                visitTypeName
+                    ? `Appointment - ${patientName} (${visitTypeName})`
+                    : `Appointment - ${patientName}`,
                 startTime,
                 endTime,
                 {
                     description:
                         `Appointment ID: ${appointmentId}\n` +
                         `Doctor: ${doctorName}\n` +
-                        `Patient: ${patientName}`,
+                        `Patient: ${patientName}` +
+                        (
+                            visitTypeName
+                                ? `\nVisit type: ${visitTypeName}`
+                                : ""
+                        ),
 
                     location: clinicName
                 }
@@ -5850,6 +5884,10 @@ function bookAppointment(
             patientRecord.success
                 ? patientRecord.patientId
                 : "";
+
+        ensureAppointmentsVisitTypeColumn(
+            appointmentSheet
+        );
 
         appointmentSheet.appendRow([
 
@@ -5877,7 +5915,9 @@ function bookAppointment(
 
             event.getId(),
 
-            patientId
+            patientId,
+
+            visitTypeName || ""
 
         ]);
 
@@ -7134,9 +7174,10 @@ function api(
 
         case "getAvailableSlots":
 
-            return getAvailableSlots(
+            return getAvailableSlotsForBooking(
                 data.doctorId,
-                data.date
+                data.date,
+                data.serviceId || ""
             );
 
 
@@ -7158,7 +7199,9 @@ function api(
 
                 data.patientPhone,
 
-                data.patientLanguage
+                data.patientLanguage,
+
+                data.serviceId || ""
             );
 
 
@@ -10476,9 +10519,10 @@ function handleWhatsAppSlotSelection(
     ) {
 
         const slots =
-            getAvailableSlots(
+            getAvailableSlotsForBooking(
                 session.doctorId,
-                isoDate
+                isoDate,
+                session.serviceId
             );
 
         const currentPage =
@@ -10533,9 +10577,10 @@ function handleWhatsAppSlotSelection(
     ) {
 
         const slots =
-            getAvailableSlots(
+            getAvailableSlotsForBooking(
                 session.doctorId,
-                isoDate
+                isoDate,
+                session.serviceId
             );
 
         const currentPage =
@@ -10606,9 +10651,10 @@ function handleWhatsAppSlotSelection(
     }
 
     const slots =
-        getAvailableSlots(
+        getAvailableSlotsForBooking(
             session.doctorId,
-            isoDate
+            isoDate,
+            session.serviceId
         );
 
     if (
@@ -12488,6 +12534,18 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             returnToMainMenu(ss, phone);
             return;
 
+        case "BOOK_SERVICE":
+            saveWhatsAppSession(phone, {
+                state: "BOOK_DOCTOR",
+                doctorId: "",
+                serviceId: ""
+            });
+            sendDoctorSelectionReply(
+                ss,
+                phone
+            );
+            return;
+
         case "PATIENT_MAIN_MORE":
             returnToMainMenu(
                 ss,
@@ -12508,14 +12566,34 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             return;
 
         case "BOOK_DATE":
-            saveWhatsAppSession(phone, {
-                state: "BOOK_DOCTOR",
-                doctorId: ""
-            });
-            sendDoctorSelectionReply(
-                ss,
-                phone
-            );
+            if (
+                shouldOfferVisitTypeSelection() &&
+                session.doctorId
+            ) {
+                saveWhatsAppSession(phone, {
+                    state: "BOOK_SERVICE",
+                    date: "",
+                    time: "",
+                    serviceId: ""
+                });
+                sendVisitTypeSelectionReply(
+                    ss,
+                    phone,
+                    findDoctorById(
+                        session.doctorId
+                    ) || "your doctor"
+                );
+            } else {
+                saveWhatsAppSession(phone, {
+                    state: "BOOK_DOCTOR",
+                    doctorId: "",
+                    serviceId: ""
+                });
+                sendDoctorSelectionReply(
+                    ss,
+                    phone
+                );
+            }
             return;
 
         case "BOOK_DATE_CUSTOM":
@@ -12974,7 +13052,12 @@ function buildBookingConfirmationMessage(
     patientName
 ) {
 
-    return (
+    const visitType =
+        getServiceDisplayName(
+            session.serviceId
+        );
+
+    let text =
         "✅ Confirm appointment?\n\n" +
         "👤 " + patientName + "\n" +
         "👨‍⚕️ " +
@@ -12982,7 +13065,17 @@ function buildBookingConfirmationMessage(
             findDoctorById(
                 session.doctorId
             ) || "Unknown Doctor"
-        ) +
+        );
+
+    if (visitType) {
+        text +=
+            "\n" +
+            "🩺 " +
+            visitType;
+    }
+
+    return (
+        text +
         "\n" +
         "📅 " +
         formatWhatsAppDisplayDate(
@@ -13066,10 +13159,20 @@ function whatsAppShowSlotsForDate(
     nextState
 ) {
 
+    const session =
+        getWhatsAppSession(senderPhone);
+
+    const serviceId =
+        session &&
+        session.serviceId
+            ? session.serviceId
+            : "";
+
     const slots =
-        getAvailableSlots(
+        getAvailableSlotsForBooking(
             doctorId,
-            selectedDate
+            selectedDate,
+            serviceId
         );
 
     if (
@@ -15859,28 +15962,130 @@ if (
 
     else {
 
-        saveWhatsAppSession(
-            senderPhone,
-            {
-                role: "PATIENT",
-                state: "BOOK_DATE",
-                doctorId:
-                    doctor.doctorId
-            }
-        );
+        const autoServiceId =
+            getAutoSelectedServiceId();
 
+        if (
+            shouldOfferVisitTypeSelection()
+        ) {
 
-        sendDateMenuReply(
-            ss,
-            senderPhone,
-            "👨‍⚕️ " +
-            doctor.doctorName +
-            "\n\nChoose an appointment date."
-        );
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    role: "PATIENT",
+                    state: "BOOK_SERVICE",
+                    doctorId:
+                        doctor.doctorId,
+                    serviceId: "",
+                    slotPage: 0
+                }
+            );
+
+            sendVisitTypeSelectionReply(
+                ss,
+                senderPhone,
+                doctor.doctorName
+            );
+
+        } else {
+
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    role: "PATIENT",
+                    state: "BOOK_DATE",
+                    doctorId:
+                        doctor.doctorId,
+                    serviceId:
+                        autoServiceId,
+                    slotPage: 0
+                }
+            );
+
+            sendDateMenuReply(
+                ss,
+                senderPhone,
+                "👨‍⚕️ " +
+                doctor.doctorName +
+                "\n\nChoose an appointment date."
+            );
+        }
     }
 
     return true;
 }
+
+// ======================================================
+// BOOK_SERVICE STATE (visit type)
+// ======================================================
+
+if (
+    session &&
+    session.state === "BOOK_SERVICE"
+) {
+
+    const services =
+        getActiveServices();
+
+    let service = null;
+
+    const serviceNumber =
+        Number(messageText.trim());
+
+    if (
+        Number.isInteger(serviceNumber) &&
+        serviceNumber >= 1 &&
+        serviceNumber <= services.length
+    ) {
+        service =
+            services[serviceNumber - 1];
+    }
+
+    const doctorName =
+        findDoctorById(
+            session.doctorId
+        ) || "your doctor";
+
+    if (!service) {
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            buildVisitTypeSelectionBody(
+                doctorName,
+                "❌ Please choose a valid visit type."
+            ),
+            getVisitTypeSelectionMenuSpec()
+        );
+
+        return true;
+    }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "BOOK_DATE",
+            serviceId:
+                service.serviceId,
+            slotPage: 0
+        }
+    );
+
+    sendDateMenuReply(
+        ss,
+        senderPhone,
+        "👨‍⚕️ " +
+        doctorName +
+        "\n" +
+        "🩺 " +
+        service.name +
+        "\n\nChoose an appointment date."
+    );
+
+    return true;
+}
+
 
 // ======================================================
 // BOOK_DATE STATE
@@ -16060,7 +16265,8 @@ if (
                     resolvePatientLanguage(
                         senderPhone,
                         session
-                    )
+                    ),
+                session.serviceId || ""
             );
 
         if (
@@ -16081,10 +16287,20 @@ if (
                 }
             );
 
+            const visitType =
+                getServiceDisplayName(
+                    session.serviceId
+                );
+
             const reply =
                 "✅ Appointment confirmed!\n\n" +
                 "👨‍⚕️ " +
                 bookingResult.doctor +
+                (
+                    visitType
+                        ? "\n🩺 " + visitType
+                        : ""
+                ) +
                 "\n" +
                 "📅 " +
                 bookingResult.date +
@@ -16143,9 +16359,10 @@ if (
         }
 
         const slots =
-            getAvailableSlots(
+            getAvailableSlotsForBooking(
                 session.doctorId,
-                session.date
+                session.date,
+                session.serviceId
             );
 
         if (
@@ -18234,7 +18451,10 @@ function getWhatsAppSession(phone) {
                     : parseInt(
                         data[i][10],
                         10
-                    ) || 0
+                    ) || 0,
+
+            serviceId:
+                String(data[i][11] || "").trim()
         };
     }
 
@@ -18321,6 +18541,7 @@ function saveWhatsAppSession(
     ensureWhatsAppSessionLanguageColumn(sheet);
     ensureWhatsAppSessionPatientNameColumn(sheet);
     ensureWhatsAppSessionSlotPageColumn(sheet);
+    ensureWhatsAppSessionServiceIdColumn(sheet);
 
     const existing =
         getWhatsAppSession(phone);
@@ -18335,11 +18556,11 @@ function saveWhatsAppSession(
 
         const current =
             sheet
-                .getRange(row, 1, 1, 11)
+                .getRange(row, 1, 1, 12)
                 .getValues()[0];
 
         sheet
-            .getRange(row, 1, 1, 11)
+            .getRange(row, 1, 1, 12)
             .setValues([[
                 phone,
 
@@ -18385,6 +18606,12 @@ function saveWhatsAppSession(
                         current[10] === null
                             ? 0
                             : current[10]
+                    ),
+
+                updates.serviceId !== undefined
+                    ? updates.serviceId
+                    : (
+                        current[11] || ""
                     )
             ]]);
 
@@ -18403,7 +18630,8 @@ function saveWhatsAppSession(
             updates.patientName || "",
             updates.slotPage !== undefined
                 ? updates.slotPage
-                : 0
+                : 0,
+            updates.serviceId || ""
         ]);
     }
 }
@@ -20632,6 +20860,266 @@ function previewPostVisitFeedback() {
 }
 
 
+function getVisitTypeSettings() {
+
+    ensureSettingsSheet();
+
+    const enabled =
+        parseSettingsBoolean(
+            getSetting(
+                "ENABLE_VISIT_TYPE_SELECTION",
+                "TRUE"
+            ),
+            true
+        );
+
+    return {
+        enabled: enabled
+    };
+}
+
+
+function ensureServicesSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName("Services");
+
+    if (!sheet) {
+
+        sheet =
+            ss.insertSheet("Services");
+
+        sheet.appendRow([
+            "Service ID",
+            "Name",
+            "Duration Minutes",
+            "Active"
+        ]);
+
+        [
+            ["S001", "Consultation", 30, "TRUE"],
+            ["S002", "Follow-up", 15, "TRUE"],
+            ["S003", "Vaccination", 20, "TRUE"],
+            ["S004", "Health check", 45, "TRUE"]
+        ].forEach(function (row) {
+            sheet.appendRow(row);
+        });
+    }
+
+    return sheet;
+}
+
+
+function getActiveServices() {
+
+    const sheet =
+        ensureServicesSheet();
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const services = [];
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const active =
+            parseSettingsBoolean(
+                data[i][3],
+                true
+            );
+
+        if (!active) {
+            continue;
+        }
+
+        const serviceId =
+            String(data[i][0] || "").trim();
+
+        const name =
+            String(data[i][1] || "").trim();
+
+        if (
+            !serviceId ||
+            !name
+        ) {
+            continue;
+        }
+
+        let durationMinutes =
+            Number(data[i][2]);
+
+        if (
+            isNaN(durationMinutes) ||
+            durationMinutes <= 0
+        ) {
+            durationMinutes = 0;
+        }
+
+        services.push({
+            serviceId: serviceId,
+            name: name,
+            durationMinutes:
+                durationMinutes
+        });
+    }
+
+    return services;
+}
+
+
+function getServiceRecord(serviceId) {
+
+    const target =
+        String(serviceId || "")
+            .trim()
+            .toUpperCase();
+
+    if (!target) {
+        return null;
+    }
+
+    const services =
+        getActiveServices();
+
+    for (
+        let i = 0;
+        i < services.length;
+        i++
+    ) {
+
+        if (
+            String(
+                services[i].serviceId || ""
+            )
+                .trim()
+                .toUpperCase() ===
+            target
+        ) {
+            return services[i];
+        }
+    }
+
+    return null;
+}
+
+
+function getServiceDisplayName(
+    serviceId
+) {
+
+    const service =
+        getServiceRecord(serviceId);
+
+    return service
+        ? service.name
+        : "";
+}
+
+
+function resolveBookingDurationMinutes(
+    doctorId,
+    serviceId
+) {
+
+    const service =
+        getServiceRecord(serviceId);
+
+    if (
+        service &&
+        service.durationMinutes > 0
+    ) {
+        return service.durationMinutes;
+    }
+
+    return getDoctorAppointmentDuration(
+        doctorId
+    );
+}
+
+
+function getAvailableSlotsForBooking(
+    doctorId,
+    dateString,
+    serviceId
+) {
+
+    return getAvailableSlots(
+        doctorId,
+        dateString,
+        resolveBookingDurationMinutes(
+            doctorId,
+            serviceId
+        )
+    );
+}
+
+
+function shouldOfferVisitTypeSelection() {
+
+    const settings =
+        getVisitTypeSettings();
+
+    if (!settings.enabled) {
+        return false;
+    }
+
+    return (
+        getActiveServices().length > 1
+    );
+}
+
+
+function getAutoSelectedServiceId() {
+
+    const settings =
+        getVisitTypeSettings();
+
+    if (!settings.enabled) {
+        return "";
+    }
+
+    const services =
+        getActiveServices();
+
+    if (services.length === 1) {
+        return services[0].serviceId;
+    }
+
+    return "";
+}
+
+
+function ensureAppointmentsVisitTypeColumn(
+    sheet
+) {
+
+    if (
+        !sheet.getRange(1, 10).getValue()
+    ) {
+        sheet
+            .getRange(1, 10)
+            .setValue("Visit Type");
+    }
+}
+
+
+function ensureWhatsAppSessionServiceIdColumn(sheet) {
+
+    if (!sheet.getRange(1, 12).getValue()) {
+        sheet
+            .getRange(1, 12)
+            .setValue("Service ID");
+    }
+}
+
+
 function getAppointmentReminderButtonSpec(
     appointmentId
 ) {
@@ -20920,6 +21408,50 @@ function getDoctorMainMenuMoreSpec(tier) {
                 title: "Mark Visit Status"
             }
         ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+function getVisitTypeSelectionMenuSpec() {
+
+    const services =
+        getActiveServices();
+
+    if (services.length === 0) {
+        return null;
+    }
+
+    let fallbackText =
+        buildVisitTypeSelectionFallbackText(
+            services
+        );
+
+    const rows = services.map(
+        function (service, index) {
+
+            const durationLabel =
+                service.durationMinutes > 0
+                    ? service.durationMinutes +
+                      " min"
+                    : "Standard duration";
+
+            return {
+                id: String(index + 1),
+                title: service.name,
+                description: durationLabel
+            };
+        }
+    );
+
+    const interactive =
+        buildInteractiveListSpec(
+            rows,
+            "Select visit type"
+        );
 
     return {
         fallbackText: fallbackText,
@@ -21346,6 +21878,54 @@ function buildDoctorLeaveRangeConfirmMessage(
                 : ""
         )
     );
+}
+
+
+function buildVisitTypeSelectionFallbackText(
+    services
+) {
+
+    let text =
+        "Choose a visit type:\n\n";
+
+    services.forEach(
+        function (service, index) {
+
+            const durationLabel =
+                service.durationMinutes > 0
+                    ? " (" +
+                      service.durationMinutes +
+                      " min)"
+                    : "";
+
+            text +=
+                String(index + 1) +
+                "️⃣ " +
+                service.name +
+                durationLabel +
+                "\n";
+        }
+    );
+
+    return text.trim();
+}
+
+
+function buildVisitTypeSelectionBody(
+    doctorName,
+    suffix
+) {
+
+    let text =
+        "🩺 Choose visit type\n\n" +
+        "👨‍⚕️ " +
+        String(doctorName || "Doctor").trim();
+
+    if (suffix) {
+        text += "\n\n" + suffix;
+    }
+
+    return text;
 }
 
 
@@ -22634,6 +23214,37 @@ function sendRescheduleConfirmMenuReply(
                 session.time
             ),
         getRescheduleConfirmSpec()
+    );
+}
+
+
+function sendVisitTypeSelectionReply(
+    ss,
+    phone,
+    doctorName
+) {
+
+    const menuSpec =
+        getVisitTypeSelectionMenuSpec();
+
+    if (!menuSpec) {
+
+        sendWhatsAppReply(
+            ss,
+            phone,
+            "❌ No visit types are currently available."
+        );
+
+        return;
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        buildVisitTypeSelectionBody(
+            doctorName
+        ),
+        menuSpec
     );
 }
 

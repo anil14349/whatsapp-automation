@@ -528,6 +528,51 @@ function getDateMenuSpec() {
 
 
 
+function getVisitTypeSelectionMenuSpec() {
+
+    const services =
+        getActiveServices();
+
+    if (services.length === 0) {
+        return null;
+    }
+
+    let fallbackText =
+        buildVisitTypeSelectionFallbackText(
+            services
+        );
+
+    const rows = services.map(
+        function (service, index) {
+
+            const durationLabel =
+                service.durationMinutes > 0
+                    ? service.durationMinutes +
+                      " min"
+                    : "Standard duration";
+
+            return {
+                id: String(index + 1),
+                title: service.name,
+                description: durationLabel
+            };
+        }
+    );
+
+    const interactive =
+        buildInteractiveListSpec(
+            rows,
+            "Select visit type"
+        );
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+
 function getDoctorSelectionMenuSpec() {
 
     const doctors = getDoctors();

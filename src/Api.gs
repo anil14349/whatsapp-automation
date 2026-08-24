@@ -32,9 +32,10 @@ function api(
 
         case "getAvailableSlots":
 
-            return getAvailableSlots(
+            return getAvailableSlotsForBooking(
                 data.doctorId,
-                data.date
+                data.date,
+                data.serviceId || ""
             );
 
 
@@ -56,7 +57,9 @@ function api(
 
                 data.patientPhone,
 
-                data.patientLanguage
+                data.patientLanguage,
+
+                data.serviceId || ""
             );
 
 

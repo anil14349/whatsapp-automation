@@ -1,7 +1,7 @@
 /**
  * Sync top-level function bodies from src/*.gs into ABC_Clinic_WhatsApp_Complete.gs.
  *
- * All 22 production files under src/ are included (same set as Option B in README).
+ * All 23 production files under src/ are included (same set as Option B in README).
  * Only `function` bodies are copied — top-level const/var blocks in Config.gs stay
  * duplicated manually in the monolith header.
  *
@@ -24,6 +24,7 @@ const SRC_FILES = [
     "src/Model_OwnerDigest.gs",
     "src/Model_Waitlist.gs",
     "src/Model_Feedback.gs",
+    "src/Model_Services.gs",
     "src/Model_AppointmentStatus.gs",
     "src/Model_AfterHours.gs",
     "src/Model_Doctors.gs",

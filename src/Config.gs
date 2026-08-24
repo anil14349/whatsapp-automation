@@ -45,6 +45,7 @@
 //   ENABLE_APPOINTMENT_WAITLIST | TRUE
 //   WAITLIST_NOTIFY_COUNT | 3
 //   ENABLE_POST_VISIT_FEEDBACK | TRUE
+//   ENABLE_VISIT_TYPE_SELECTION | TRUE
 //   FEEDBACK_HOURS_AFTER | 2
 //   FEEDBACK_WINDOW_MINUTES | 45
 //   FEEDBACK_MIN_RATING_FOR_REVIEW | 4
@@ -83,6 +84,7 @@
 //   src/Model_OwnerDigest.gs      — daily owner WhatsApp summary
 //   src/Model_Waitlist.gs         — slot-alert waitlist and offer notifications
 //   src/Model_Feedback.gs           — post-visit ratings and review link follow-up
+//   src/Model_Services.gs           — visit type catalog and booking duration
 //   src/Model_AppointmentStatus.gs — Completed/No-Show status workflow, auto-complete
 //   src/Model_AfterHours.gs       — clinic-hours gate & after-hours auto-reply
 //   src/Model_Doctors.gs          — doctor records, availability, leaves, schedule views
@@ -471,6 +473,11 @@ function ensureSettingsSheet() {
             "CLINIC_REVIEW_URL",
             ""
         ]);
+
+        sheet.appendRow([
+            "ENABLE_VISIT_TYPE_SELECTION",
+            "TRUE"
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -606,6 +613,11 @@ function ensureSettingsSheet() {
             sheet,
             "CLINIC_REVIEW_URL",
             ""
+        );
+        ensureSettingKey(
+            sheet,
+            "ENABLE_VISIT_TYPE_SELECTION",
+            "TRUE"
         );
     }
 

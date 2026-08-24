@@ -139,7 +139,10 @@ function getWhatsAppSession(phone) {
                     : parseInt(
                         data[i][10],
                         10
-                    ) || 0
+                    ) || 0,
+
+            serviceId:
+                String(data[i][11] || "").trim()
         };
     }
 
@@ -180,6 +183,17 @@ function ensureWhatsAppSessionSlotPageColumn(sheet) {
 
 
 
+function ensureWhatsAppSessionServiceIdColumn(sheet) {
+
+    if (!sheet.getRange(1, 12).getValue()) {
+        sheet
+            .getRange(1, 12)
+            .setValue("Service ID");
+    }
+}
+
+
+
 function saveWhatsAppSession(
     phone,
     updates
@@ -202,6 +216,7 @@ function saveWhatsAppSession(
     ensureWhatsAppSessionLanguageColumn(sheet);
     ensureWhatsAppSessionPatientNameColumn(sheet);
     ensureWhatsAppSessionSlotPageColumn(sheet);
+    ensureWhatsAppSessionServiceIdColumn(sheet);
 
     const existing =
         getWhatsAppSession(phone);
@@ -216,11 +231,11 @@ function saveWhatsAppSession(
 
         const current =
             sheet
-                .getRange(row, 1, 1, 11)
+                .getRange(row, 1, 1, 12)
                 .getValues()[0];
 
         sheet
-            .getRange(row, 1, 1, 11)
+            .getRange(row, 1, 1, 12)
             .setValues([[
                 phone,
 
@@ -266,6 +281,12 @@ function saveWhatsAppSession(
                         current[10] === null
                             ? 0
                             : current[10]
+                    ),
+
+                updates.serviceId !== undefined
+                    ? updates.serviceId
+                    : (
+                        current[11] || ""
                     )
             ]]);
 
@@ -284,7 +305,8 @@ function saveWhatsAppSession(
             updates.patientName || "",
             updates.slotPage !== undefined
                 ? updates.slotPage
-                : 0
+                : 0,
+            updates.serviceId || ""
         ]);
     }
 }
