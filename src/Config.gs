@@ -41,6 +41,7 @@
 //   ENABLE_APPOINTMENT_REMINDERS | TRUE
 //   REMINDER_HOURS_BEFORE | 24
 //   REMINDER_WINDOW_MINUTES | 45
+//   ENABLE_REMINDER_ACTION_BUTTONS | TRUE
 //   ENABLE_INTERACTIVE_MENUS | TRUE
 //   AUTO_COMPLETE_PAST_APPOINTMENTS | FALSE
 //   AUTO_COMPLETE_HOURS_AFTER | 4
@@ -403,6 +404,11 @@ function ensureSettingsSheet() {
             "OWNER_DIGEST_HOUR",
             "8"
         ]);
+
+        sheet.appendRow([
+            "ENABLE_REMINDER_ACTION_BUTTONS",
+            "TRUE"
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -483,6 +489,11 @@ function ensureSettingsSheet() {
             sheet,
             "OWNER_DIGEST_HOUR",
             "8"
+        );
+        ensureSettingKey(
+            sheet,
+            "ENABLE_REMINDER_ACTION_BUTTONS",
+            "TRUE"
         );
     }
 

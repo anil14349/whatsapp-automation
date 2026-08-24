@@ -948,6 +948,11 @@ function ensureSettingsSheet() {
             "OWNER_DIGEST_HOUR",
             "8"
         ]);
+
+        sheet.appendRow([
+            "ENABLE_REMINDER_ACTION_BUTTONS",
+            "TRUE"
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -1028,6 +1033,11 @@ function ensureSettingsSheet() {
             sheet,
             "OWNER_DIGEST_HOUR",
             "8"
+        );
+        ensureSettingKey(
+            sheet,
+            "ENABLE_REMINDER_ACTION_BUTTONS",
+            "TRUE"
         );
     }
 
@@ -1635,7 +1645,15 @@ function getReminderSettings() {
         windowMinutes:
             windowMinutes > 0
                 ? windowMinutes
-                : 45
+                : 45,
+        actionButtons:
+            parseSettingsBoolean(
+                getSetting(
+                    "ENABLE_REMINDER_ACTION_BUTTONS",
+                    "TRUE"
+                ),
+                true
+            )
     };
 }
 
@@ -1842,7 +1860,8 @@ function resolvePatientLanguageFromRegistry(phone) {
 function buildAppointmentReminderMessage(
     appointment,
     doctorName,
-    hoursBefore
+    hoursBefore,
+    useActionButtons
 ) {
 
     const displayDate =
@@ -1860,6 +1879,11 @@ function buildAppointmentReminderMessage(
             ? "1 hour"
             : hoursBefore + " hours";
 
+    const footer =
+        useActionButtons
+            ? "Please tap a button below."
+            : "Reply Hi to reschedule or cancel.";
+
     return (
         "🔔 Appointment Reminder\n\n" +
         "Reminder: " +
@@ -1874,7 +1898,7 @@ function buildAppointmentReminderMessage(
         "Time: " +
         displayTime +
         "\n\n" +
-        "Reply Hi to reschedule or cancel."
+        footer
     );
 }
 
@@ -1903,13 +1927,21 @@ function sendOneAppointmentReminder(
             appointment.phone
         );
 
+    const settings =
+        getReminderSettings();
+
+    const useActionButtons =
+        settings.actionButtons &&
+        interactiveMenusEnabled();
+
     const message =
         localizeWhatsAppReply(
             language,
             buildAppointmentReminderMessage(
                 appointment,
                 doctorName,
-                hoursBefore
+                hoursBefore,
+                useActionButtons
             )
         );
 
@@ -1924,11 +1956,67 @@ function sendOneAppointmentReminder(
         );
     }
 
-    const sendResult =
-        sendWhatsAppText(
-            recipient,
-            message
-        );
+    let sendResult = null;
+    let outboundLog = message;
+
+    if (useActionButtons) {
+
+        const menuSpec =
+            getAppointmentReminderButtonSpec(
+                appointment.appointmentId
+            );
+
+        if (
+            menuSpec &&
+            menuSpec.interactive
+        ) {
+
+            try {
+
+                sendResult =
+                    sendWhatsAppInteractiveMessage(
+                        recipient,
+                        message,
+                        menuSpec.interactive
+                    );
+
+                outboundLog =
+                    "[interactive:button] " +
+                    message;
+
+            } catch (interactiveError) {
+
+                Logger.log(
+                    "Reminder buttons failed; using text fallback: " +
+                    interactiveError.message
+                );
+
+                sendResult = null;
+            }
+        }
+    }
+
+    if (!sendResult) {
+
+        const fallbackMessage =
+            localizeWhatsAppReply(
+                language,
+                buildAppointmentReminderMessage(
+                    appointment,
+                    doctorName,
+                    hoursBefore,
+                    false
+                )
+            );
+
+        sendResult =
+            sendWhatsAppText(
+                recipient,
+                fallbackMessage
+            );
+
+        outboundLog = fallbackMessage;
+    }
 
     appendWhatsAppDebugLog(
         ss,
@@ -1936,7 +2024,7 @@ function sendOneAppointmentReminder(
             direction: "REMINDER",
             phone: recipient,
             status: "SUCCESS",
-            response: message
+            response: outboundLog
         }
     );
 
@@ -10192,6 +10280,7 @@ function beginRescheduleDateSelection(
 ) {
 
     saveWhatsAppSession(phone, {
+        role: "PATIENT",
         state: "RESCHEDULE_DATE",
         appointmentId:
             chosen.appointmentId,
@@ -16301,6 +16390,17 @@ function processWhatsAppTextMessage(
     }
 
     if (
+        handleWhatsAppReminderAction(
+            ss,
+            senderPhone,
+            session,
+            normalizedMessage
+        )
+    ) {
+        return;
+    }
+
+    if (
         handleWhatsAppGreeting(
             ss,
             senderPhone,
@@ -18107,6 +18207,84 @@ function findDoctorByName(doctorName) {
 // ============================================================
 
 
+function ensureReminderResponseLogSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName(
+            "Reminder_Responses"
+        );
+
+    if (!sheet) {
+
+        sheet =
+            ss.insertSheet(
+                "Reminder_Responses"
+            );
+
+        sheet.appendRow([
+            "Responded At",
+            "Appointment ID",
+            "Phone",
+            "Action",
+            "Status"
+        ]);
+    }
+
+    return sheet;
+}
+
+
+function logReminderPatientResponse(
+    appointmentId,
+    phone,
+    action,
+    status
+) {
+
+    const sheet =
+        ensureReminderResponseLogSheet();
+
+    sheet.appendRow([
+        new Date(),
+        String(appointmentId || "").trim(),
+        String(phone || "").trim(),
+        String(action || "").trim(),
+        String(status || "SUCCESS").trim()
+    ]);
+}
+
+
+function buildReminderConfirmAckMessage(
+    appointment,
+    doctorName
+) {
+
+    const displayDate =
+        formatAppointmentDisplayDate(
+            appointment.date
+        );
+
+    const displayTime =
+        formatAppointmentDisplayTime(
+            appointment.time
+        );
+
+    return (
+        "✅ Thank you for confirming!\n\n" +
+        "See you on " +
+        displayDate +
+        " at " +
+        displayTime +
+        " with " +
+        String(doctorName || "your doctor").trim() +
+        "."
+    );
+}
+
+
 function parseOwnerDigestHour(value) {
 
     const hour =
@@ -18546,6 +18724,47 @@ function installOwnerDailyDigestTrigger() {
             " (" +
             TIMEZONE +
             ")."
+    };
+}
+
+
+function getAppointmentReminderButtonSpec(
+    appointmentId
+) {
+
+    const id =
+        String(appointmentId || "").trim();
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            {
+                id:
+                    "reminder_confirm_" +
+                    id,
+                title: "Confirm"
+            },
+            {
+                id:
+                    "reminder_reschedule_" +
+                    id,
+                title: "Reschedule"
+            },
+            {
+                id:
+                    "reminder_cancel_" +
+                    id,
+                title: "Cancel"
+            }
+        ]);
+
+    const fallbackText =
+        "1️⃣ Confirm\n" +
+        "2️⃣ Reschedule\n" +
+        "3️⃣ Cancel";
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
     };
 }
 
@@ -19166,6 +19385,242 @@ function buildOwnerDailyDigestMessage(stats) {
 }
 
 
+function parseReminderButtonChoice(
+    normalizedMessage
+) {
+
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    const prefixes = [
+        {
+            prefix: "reminder_confirm_",
+            action: "confirm"
+        },
+        {
+            prefix: "reminder_cancel_",
+            action: "cancel"
+        },
+        {
+            prefix: "reminder_reschedule_",
+            action: "reschedule"
+        }
+    ];
+
+    for (
+        let i = 0;
+        i < prefixes.length;
+        i++
+    ) {
+
+        const entry =
+            prefixes[i];
+
+        if (
+            choice.indexOf(
+                entry.prefix
+            ) === 0
+        ) {
+
+            const appointmentId =
+                choice.substring(
+                    entry.prefix.length
+                );
+
+            if (!appointmentId) {
+                return null;
+            }
+
+            return {
+                action: entry.action,
+                appointmentId: appointmentId
+            };
+        }
+    }
+
+    return null;
+}
+
+
+function findConfirmedAppointmentForPhone(
+    phone,
+    appointmentId
+) {
+
+    const appointments =
+        getConfirmedAppointmentsForPhone(phone);
+
+    const target =
+        String(appointmentId || "")
+            .trim();
+
+    for (
+        let i = 0;
+        i < appointments.length;
+        i++
+    ) {
+
+        if (
+            String(
+                appointments[i].appointmentId
+            ).trim() === target
+        ) {
+            return appointments[i];
+        }
+    }
+
+    return null;
+}
+
+
+function handleWhatsAppReminderAction(
+    ss,
+    senderPhone,
+    session,
+    normalizedMessage
+) {
+
+    const parsed =
+        parseReminderButtonChoice(
+            normalizedMessage
+        );
+
+    if (!parsed) {
+        return false;
+    }
+
+    if (
+        session &&
+        session.role === "DOCTOR"
+    ) {
+        return false;
+    }
+
+    const appointment =
+        findConfirmedAppointmentForPhone(
+            senderPhone,
+            parsed.appointmentId
+        );
+
+    if (!appointment) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "❌ That appointment is no longer available.\n\n" +
+            "Send Hi to view your current appointments."
+        );
+
+        logReminderPatientResponse(
+            parsed.appointmentId,
+            senderPhone,
+            parsed.action,
+            "NOT_FOUND"
+        );
+
+        return true;
+    }
+
+    const doctor =
+        getDoctorRecord(
+            appointment.doctorId
+        );
+
+    const doctorName =
+        doctor &&
+        doctor.doctorName
+            ? doctor.doctorName
+            : String(
+                appointment.doctorId || ""
+            ).trim();
+
+    if (parsed.action === "confirm") {
+
+        logReminderPatientResponse(
+            appointment.appointmentId,
+            senderPhone,
+            "confirm",
+            "SUCCESS"
+        );
+
+        const language =
+            resolvePatientLanguage(
+                senderPhone,
+                session
+            );
+
+        sendWhatsAppText(
+            formatWhatsAppRecipientPhone(
+                senderPhone
+            ),
+            localizeWhatsAppReply(
+                language,
+                buildReminderConfirmAckMessage(
+                    appointment,
+                    doctorName
+                )
+            )
+        );
+
+        return true;
+    }
+
+    if (parsed.action === "cancel") {
+
+        logReminderPatientResponse(
+            appointment.appointmentId,
+            senderPhone,
+            "cancel",
+            "STARTED"
+        );
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "CANCEL_CONFIRM",
+                appointmentId:
+                    appointment.appointmentId,
+                doctorId: "",
+                date: "",
+                time: "",
+                slotPage: 0
+            }
+        );
+
+        sendCancelConfirmMenuReply(
+            ss,
+            senderPhone,
+            appointment
+        );
+
+        return true;
+    }
+
+    if (parsed.action === "reschedule") {
+
+        logReminderPatientResponse(
+            appointment.appointmentId,
+            senderPhone,
+            "reschedule",
+            "STARTED"
+        );
+
+        beginRescheduleDateSelection(
+            ss,
+            senderPhone,
+            appointment
+        );
+
+        return true;
+    }
+
+    return false;
+}
+
+
 function isSimpleConfirmYesChoice(normalizedMessage) {
 
     const choice =
@@ -19219,37 +19674,6 @@ function isStatusNoShowChoice(normalizedMessage) {
         choice === "2" ||
         choice === "status_no_show"
     );
-}
-
-
-function findConfirmedAppointmentForPhone(
-    phone,
-    appointmentId
-) {
-
-    const appointments =
-        getConfirmedAppointmentsForPhone(phone);
-
-    const target =
-        String(appointmentId || "")
-            .trim();
-
-    for (
-        let i = 0;
-        i < appointments.length;
-        i++
-    ) {
-
-        if (
-            String(
-                appointments[i].appointmentId
-            ).trim() === target
-        ) {
-            return appointments[i];
-        }
-    }
-
-    return null;
 }
 
 

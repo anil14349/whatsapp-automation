@@ -156,6 +156,18 @@ assert(
     "unexpected dispatch order"
 );
 
+const reminderIdx = processBody.indexOf(
+    "handleWhatsAppReminderAction"
+);
+
+assert(
+    "router order reminder → greeting",
+    reminderIdx !== -1 &&
+        greetingIdx !== -1 &&
+        reminderIdx < greetingIdx,
+    "reminder actions must run before greeting"
+);
+
 // Doctor menu: 9 excluded from universal back (reschedule on main menu)
 assert(
     "DOCTOR_MENU excluded from universal 9",

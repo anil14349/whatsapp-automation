@@ -53,6 +53,7 @@ function runAllTests() {
         ["testLogSettings", testLogSettings],
         ["testAppointmentReminders", testAppointmentReminders],
         ["testOwnerDailyDigest", testOwnerDailyDigest],
+        ["testReminderActionButtons", testReminderActionButtons],
         ["testDoctorCancelReschedule", testDoctorCancelReschedule],
         ["testAppointmentStatus", testAppointmentStatus],
         ["testAfterHoursReply", testAfterHoursReply],
@@ -1257,14 +1258,16 @@ function testAppointmentReminders() {
                 time: "10:00"
             },
             "Dr Ravi",
-            24
+            24,
+            true
         );
 
     if (
         message.indexOf("Appointment Reminder") === -1 ||
         message.indexOf("Dr Ravi") === -1 ||
         message.indexOf("24 hours") === -1 ||
-        message.indexOf("Appointment ID") !== -1
+        message.indexOf("Appointment ID") !== -1 ||
+        message.indexOf("tap a button") === -1
     ) {
         throw new Error(
             "buildAppointmentReminderMessage failed"
@@ -1372,6 +1375,94 @@ function testOwnerDailyDigest() {
 
     Logger.log(
         "Owner daily digest smoke tests passed"
+    );
+}
+
+
+
+function testReminderActionButtons() {
+
+    requireDebugMode("testReminderActionButtons");
+
+    const parsedConfirm =
+        parseReminderButtonChoice(
+            "reminder_confirm_a202608181000"
+        );
+
+    if (
+        !parsedConfirm ||
+        parsedConfirm.action !== "confirm" ||
+        parsedConfirm.appointmentId !==
+            "a202608181000"
+    ) {
+        throw new Error(
+            "parseReminderButtonChoice confirm failed"
+        );
+    }
+
+    const parsedCancel =
+        parseReminderButtonChoice(
+            "reminder_cancel_apt001"
+        );
+
+    if (
+        !parsedCancel ||
+        parsedCancel.action !== "cancel"
+    ) {
+        throw new Error(
+            "parseReminderButtonChoice cancel failed"
+        );
+    }
+
+    const menuSpec =
+        getAppointmentReminderButtonSpec(
+            "APT001"
+        );
+
+    if (
+        !menuSpec.interactive ||
+        menuSpec.interactive.buttons.length !== 3 ||
+        menuSpec.interactive.buttons[0].id !==
+            "reminder_confirm_APT001" ||
+        menuSpec.interactive.buttons[2].id !==
+            "reminder_cancel_APT001"
+    ) {
+        throw new Error(
+            "getAppointmentReminderButtonSpec failed"
+        );
+    }
+
+    const ack =
+        buildReminderConfirmAckMessage(
+            {
+                date: "18-Aug-2026",
+                time: "10:00 AM"
+            },
+            "Dr Ravi"
+        );
+
+    if (
+        ack.indexOf("Thank you for confirming") === -1 ||
+        ack.indexOf("Dr Ravi") === -1
+    ) {
+        throw new Error(
+            "buildReminderConfirmAckMessage failed"
+        );
+    }
+
+    ensureSettingsSheet();
+
+    const settings =
+        getReminderSettings();
+
+    if (!settings.actionButtons) {
+        throw new Error(
+            "default reminder action buttons disabled"
+        );
+    }
+
+    Logger.log(
+        "Reminder action button smoke tests passed"
     );
 }
 

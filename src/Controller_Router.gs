@@ -237,6 +237,17 @@ function processWhatsAppTextMessage(
     }
 
     if (
+        handleWhatsAppReminderAction(
+            ss,
+            senderPhone,
+            session,
+            normalizedMessage
+        )
+    ) {
+        return;
+    }
+
+    if (
         handleWhatsAppGreeting(
             ss,
             senderPhone,

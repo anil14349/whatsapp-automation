@@ -102,6 +102,48 @@ function buildInteractiveButtonSpec(buttons) {
 
 
 
+function getAppointmentReminderButtonSpec(
+    appointmentId
+) {
+
+    const id =
+        String(appointmentId || "").trim();
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            {
+                id:
+                    "reminder_confirm_" +
+                    id,
+                title: "Confirm"
+            },
+            {
+                id:
+                    "reminder_reschedule_" +
+                    id,
+                title: "Reschedule"
+            },
+            {
+                id:
+                    "reminder_cancel_" +
+                    id,
+                title: "Cancel"
+            }
+        ]);
+
+    const fallbackText =
+        "1️⃣ Confirm\n" +
+        "2️⃣ Reschedule\n" +
+        "3️⃣ Cancel";
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+
 function getPatientMainMenuSpec() {
 
     const fallbackText =

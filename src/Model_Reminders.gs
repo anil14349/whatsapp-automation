@@ -70,7 +70,15 @@ function getReminderSettings() {
         windowMinutes:
             windowMinutes > 0
                 ? windowMinutes
-                : 45
+                : 45,
+        actionButtons:
+            parseSettingsBoolean(
+                getSetting(
+                    "ENABLE_REMINDER_ACTION_BUTTONS",
+                    "TRUE"
+                ),
+                true
+            )
     };
 }
 
@@ -99,6 +107,58 @@ function ensureReminderLogSheet() {
     }
 
     return sheet;
+}
+
+
+
+function ensureReminderResponseLogSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName(
+            "Reminder_Responses"
+        );
+
+    if (!sheet) {
+
+        sheet =
+            ss.insertSheet(
+                "Reminder_Responses"
+            );
+
+        sheet.appendRow([
+            "Responded At",
+            "Appointment ID",
+            "Phone",
+            "Action",
+            "Status"
+        ]);
+    }
+
+    return sheet;
+}
+
+
+
+function logReminderPatientResponse(
+    appointmentId,
+    phone,
+    action,
+    status
+) {
+
+    const sheet =
+        ensureReminderResponseLogSheet();
+
+    sheet.appendRow([
+        new Date(),
+        String(appointmentId || "").trim(),
+        String(phone || "").trim(),
+        String(action || "").trim(),
+        String(status || "SUCCESS").trim()
+    ]);
 }
 
 
@@ -192,7 +252,8 @@ function resolvePatientLanguageFromRegistry(phone) {
 function buildAppointmentReminderMessage(
     appointment,
     doctorName,
-    hoursBefore
+    hoursBefore,
+    useActionButtons
 ) {
 
     const displayDate =
@@ -210,6 +271,11 @@ function buildAppointmentReminderMessage(
             ? "1 hour"
             : hoursBefore + " hours";
 
+    const footer =
+        useActionButtons
+            ? "Please tap a button below."
+            : "Reply Hi to reschedule or cancel.";
+
     return (
         "🔔 Appointment Reminder\n\n" +
         "Reminder: " +
@@ -224,7 +290,36 @@ function buildAppointmentReminderMessage(
         "Time: " +
         displayTime +
         "\n\n" +
-        "Reply Hi to reschedule or cancel."
+        footer
+    );
+}
+
+
+
+function buildReminderConfirmAckMessage(
+    appointment,
+    doctorName
+) {
+
+    const displayDate =
+        formatAppointmentDisplayDate(
+            appointment.date
+        );
+
+    const displayTime =
+        formatAppointmentDisplayTime(
+            appointment.time
+        );
+
+    return (
+        "✅ Thank you for confirming!\n\n" +
+        "See you on " +
+        displayDate +
+        " at " +
+        displayTime +
+        " with " +
+        String(doctorName || "your doctor").trim() +
+        "."
     );
 }
 
@@ -254,13 +349,21 @@ function sendOneAppointmentReminder(
             appointment.phone
         );
 
+    const settings =
+        getReminderSettings();
+
+    const useActionButtons =
+        settings.actionButtons &&
+        interactiveMenusEnabled();
+
     const message =
         localizeWhatsAppReply(
             language,
             buildAppointmentReminderMessage(
                 appointment,
                 doctorName,
-                hoursBefore
+                hoursBefore,
+                useActionButtons
             )
         );
 
@@ -275,11 +378,67 @@ function sendOneAppointmentReminder(
         );
     }
 
-    const sendResult =
-        sendWhatsAppText(
-            recipient,
-            message
-        );
+    let sendResult = null;
+    let outboundLog = message;
+
+    if (useActionButtons) {
+
+        const menuSpec =
+            getAppointmentReminderButtonSpec(
+                appointment.appointmentId
+            );
+
+        if (
+            menuSpec &&
+            menuSpec.interactive
+        ) {
+
+            try {
+
+                sendResult =
+                    sendWhatsAppInteractiveMessage(
+                        recipient,
+                        message,
+                        menuSpec.interactive
+                    );
+
+                outboundLog =
+                    "[interactive:button] " +
+                    message;
+
+            } catch (interactiveError) {
+
+                Logger.log(
+                    "Reminder buttons failed; using text fallback: " +
+                    interactiveError.message
+                );
+
+                sendResult = null;
+            }
+        }
+    }
+
+    if (!sendResult) {
+
+        const fallbackMessage =
+            localizeWhatsAppReply(
+                language,
+                buildAppointmentReminderMessage(
+                    appointment,
+                    doctorName,
+                    hoursBefore,
+                    false
+                )
+            );
+
+        sendResult =
+            sendWhatsAppText(
+                recipient,
+                fallbackMessage
+            );
+
+        outboundLog = fallbackMessage;
+    }
 
     appendWhatsAppDebugLog(
         ss,
@@ -287,7 +446,7 @@ function sendOneAppointmentReminder(
             direction: "REMINDER",
             phone: recipient,
             status: "SUCCESS",
-            response: message
+            response: outboundLog
         }
     );
 

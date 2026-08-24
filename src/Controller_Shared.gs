@@ -36,6 +36,252 @@ function isNoGoBackConfirmChoice(normalizedMessage) {
 
 
 
+function parseReminderButtonChoice(
+    normalizedMessage
+) {
+
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    const prefixes = [
+        {
+            prefix: "reminder_confirm_",
+            action: "confirm"
+        },
+        {
+            prefix: "reminder_cancel_",
+            action: "cancel"
+        },
+        {
+            prefix: "reminder_reschedule_",
+            action: "reschedule"
+        }
+    ];
+
+    for (
+        let i = 0;
+        i < prefixes.length;
+        i++
+    ) {
+
+        const entry =
+            prefixes[i];
+
+        if (
+            choice.indexOf(
+                entry.prefix
+            ) === 0
+        ) {
+
+            const appointmentId =
+                choice.substring(
+                    entry.prefix.length
+                );
+
+            if (!appointmentId) {
+                return null;
+            }
+
+            return {
+                action: entry.action,
+                appointmentId: appointmentId
+            };
+        }
+    }
+
+    return null;
+}
+
+
+
+function findConfirmedAppointmentForPhone(
+    phone,
+    appointmentId
+) {
+
+    const appointments =
+        getConfirmedAppointmentsForPhone(
+            phone
+        );
+
+    const target =
+        String(appointmentId || "")
+            .trim()
+            .toUpperCase();
+
+    for (
+        let i = 0;
+        i < appointments.length;
+        i++
+    ) {
+
+        if (
+            String(
+                appointments[i].appointmentId ||
+                ""
+            )
+                .trim()
+                .toUpperCase() ===
+            target
+        ) {
+            return appointments[i];
+        }
+    }
+
+    return null;
+}
+
+
+
+function handleWhatsAppReminderAction(
+    ss,
+    senderPhone,
+    session,
+    normalizedMessage
+) {
+
+    const parsed =
+        parseReminderButtonChoice(
+            normalizedMessage
+        );
+
+    if (!parsed) {
+        return false;
+    }
+
+    if (
+        session &&
+        session.role === "DOCTOR"
+    ) {
+        return false;
+    }
+
+    const appointment =
+        findConfirmedAppointmentForPhone(
+            senderPhone,
+            parsed.appointmentId
+        );
+
+    if (!appointment) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "❌ That appointment is no longer available.\n\n" +
+            "Send Hi to view your current appointments."
+        );
+
+        logReminderPatientResponse(
+            parsed.appointmentId,
+            senderPhone,
+            parsed.action,
+            "NOT_FOUND"
+        );
+
+        return true;
+    }
+
+    const doctor =
+        getDoctorRecord(
+            appointment.doctorId
+        );
+
+    const doctorName =
+        doctor &&
+        doctor.doctorName
+            ? doctor.doctorName
+            : String(
+                appointment.doctorId || ""
+            ).trim();
+
+    if (parsed.action === "confirm") {
+
+        logReminderPatientResponse(
+            appointment.appointmentId,
+            senderPhone,
+            "confirm",
+            "SUCCESS"
+        );
+
+        const language =
+            resolvePatientLanguage(
+                senderPhone,
+                session
+            );
+
+        sendWhatsAppText(
+            formatWhatsAppRecipientPhone(
+                senderPhone
+            ),
+            localizeWhatsAppReply(
+                language,
+                buildReminderConfirmAckMessage(
+                    appointment,
+                    doctorName
+                )
+            )
+        );
+
+        return true;
+    }
+
+    if (parsed.action === "cancel") {
+
+        logReminderPatientResponse(
+            appointment.appointmentId,
+            senderPhone,
+            "cancel",
+            "STARTED"
+        );
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "CANCEL_CONFIRM",
+                appointmentId:
+                    appointment.appointmentId,
+                doctorId: "",
+                date: "",
+                time: "",
+                slotPage: 0
+            }
+        );
+
+        sendCancelConfirmMenuReply(
+            ss,
+            senderPhone,
+            appointment
+        );
+
+        return true;
+    }
+
+    if (parsed.action === "reschedule") {
+
+        logReminderPatientResponse(
+            appointment.appointmentId,
+            senderPhone,
+            "reschedule",
+            "STARTED"
+        );
+
+        beginRescheduleDateSelection(
+            ss,
+            senderPhone,
+            appointment
+        );
+
+        return true;
+    }
+
+    return false;
+}
+
+
+
 function isSimpleConfirmYesChoice(normalizedMessage) {
 
     const choice =
@@ -750,6 +996,7 @@ function beginRescheduleDateSelection(
 ) {
 
     saveWhatsAppSession(phone, {
+        role: "PATIENT",
         state: "RESCHEDULE_DATE",
         appointmentId:
             chosen.appointmentId,
