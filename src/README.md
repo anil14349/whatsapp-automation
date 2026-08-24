@@ -61,13 +61,7 @@ Dry-run: `node scripts/sync-monolith-from-src.js --check`
 Static checks (from repo root):
 
 ```bash
-node scripts/verify-flow-coverage.mjs
-node scripts/verify-owner-digest.mjs
-node scripts/verify-reminder-actions.mjs
-node scripts/verify-clinic-branding.mjs
-node scripts/verify-waitlist.mjs
-node scripts/verify-post-visit-feedback.mjs
-node scripts/verify-visit-type.mjs
+npm run verify
 ```
 
 **Note:** Top-level `const` blocks in `Config.gs` are duplicated manually in the monolith header — only `function` bodies are auto-synced.

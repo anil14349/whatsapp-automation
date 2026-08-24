@@ -457,17 +457,18 @@ syncPatientsFromAppointments()
 No Apps Script deploy required — validates wiring in `src/`:
 
 ```bash
-node scripts/sync-monolith-from-src.js --check   # optional: monolith in sync with src/
-node scripts/verify-flow-coverage.mjs
-node scripts/verify-menu-flows.mjs
-node scripts/verify-appointment-list-pages.mjs
-node scripts/verify-owner-digest.mjs
-node scripts/verify-reminder-actions.mjs
-node scripts/verify-clinic-branding.mjs
-node scripts/verify-waitlist.mjs
-node scripts/verify-post-visit-feedback.mjs
-node scripts/verify-visit-type.mjs
+npm run verify
 ```
+
+Or run scripts individually:
+
+```bash
+node scripts/sync-monolith-from-src.js --check   # monolith in sync with src/
+node scripts/verify-flow-coverage.mjs
+# ... see scripts/verify-*.mjs
+```
+
+**CI:** GitHub Actions runs `npm run verify` on push and pull requests (`.github/workflows/verify.yml`). No Google or Meta secrets required.
 
 #### Automated smoke tests (staging / optional)
 
@@ -648,8 +649,11 @@ src/                               ← production, Option B: 24 files (see [Apps
 landing/                           ← marketing site — see landing/README.md
 marketing/                         ← brochure, one-pager, offboarding docs
 scripts/
+  run-verify-all.mjs               ← npm run verify (sync check + all verify-*.mjs)
   sync-monolith-from-src.js        ← copy src/ function bodies into ABC_Clinic_WhatsApp_Complete.gs
   verify-*.mjs                     ← static flow/feature checks (no deploy)
+.github/workflows/verify.yml         ← CI: runs npm run verify on push/PR
+package.json                       ← npm run verify | sync | sync:check
 README.md
 ```
 

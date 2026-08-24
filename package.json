@@ -1,0 +1,13 @@
+{
+  "name": "whatsapp-automation",
+  "private": true,
+  "description": "ABC Clinic WhatsApp appointment bot — Apps Script + local verify tooling",
+  "scripts": {
+    "verify": "node scripts/run-verify-all.mjs",
+    "sync": "node scripts/sync-monolith-from-src.js",
+    "sync:check": "node scripts/sync-monolith-from-src.js --check"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
