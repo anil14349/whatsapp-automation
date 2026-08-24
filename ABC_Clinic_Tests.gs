@@ -52,6 +52,7 @@ function runAllTests() {
         ["testWhatsAppReliability", testWhatsAppReliability],
         ["testLogSettings", testLogSettings],
         ["testAppointmentReminders", testAppointmentReminders],
+        ["testOwnerDailyDigest", testOwnerDailyDigest],
         ["testDoctorCancelReschedule", testDoctorCancelReschedule],
         ["testAppointmentStatus", testAppointmentStatus],
         ["testAfterHoursReply", testAfterHoursReply],
@@ -1306,6 +1307,71 @@ function testAppointmentReminders() {
 
     Logger.log(
         "Appointment reminder smoke tests passed"
+    );
+}
+
+
+
+function testOwnerDailyDigest() {
+
+    requireDebugMode("testOwnerDailyDigest");
+
+    const hour =
+        parseOwnerDigestHour("8");
+
+    if (hour !== 8) {
+        throw new Error(
+            "parseOwnerDigestHour failed"
+        );
+    }
+
+    const invalidHour =
+        parseOwnerDigestHour("99");
+
+    if (invalidHour !== 8) {
+        throw new Error(
+            "parseOwnerDigestHour default failed"
+        );
+    }
+
+    const message =
+        buildOwnerDailyDigestMessage({
+            clinicName: "ABC Clinic",
+            summaryDate: "Monday, 24-Aug-2026",
+            todayScheduled: 5,
+            todayCompleted: 2,
+            todayNoShow: 1,
+            todayCancelled: 1,
+            tomorrowScheduled: 8
+        });
+
+    if (
+        message.indexOf("Daily Summary") === -1 ||
+        message.indexOf("5 scheduled") === -1 ||
+        message.indexOf("8 scheduled") === -1 ||
+        message.indexOf("1 cancelled") === -1
+    ) {
+        throw new Error(
+            "buildOwnerDailyDigestMessage failed"
+        );
+    }
+
+    ensureSettingsSheet();
+
+    const settings =
+        getOwnerDigestSettings();
+
+    if (
+        settings.clinicName !== "ABC Clinic" ||
+        settings.digestHour !== 8
+    ) {
+        throw new Error(
+            "default owner digest settings invalid"
+        );
+    }
+
+    Logger.log(
+        "Owner daily digest smoke tests passed"
     );
 }
 

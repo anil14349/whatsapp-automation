@@ -1769,3 +1769,54 @@ function buildBookingConfirmationMessage(
         "🕐 " + session.time
     );
 }
+
+
+
+function buildOwnerDailyDigestMessage(stats) {
+
+    const data = stats || {};
+
+    const clinicName =
+        String(
+            data.clinicName ||
+            "ABC Clinic"
+        ).trim();
+
+    let text =
+        "📊 " +
+        clinicName +
+        " — Daily Summary\n" +
+        String(
+            data.summaryDate || ""
+        ).trim() +
+        "\n\n" +
+        "📅 Today\n" +
+        "• " +
+        (Number(data.todayScheduled) || 0) +
+        " scheduled\n" +
+        "• " +
+        (Number(data.todayCompleted) || 0) +
+        " completed\n" +
+        "• " +
+        (Number(data.todayNoShow) || 0) +
+        " no-show";
+
+    const cancelled =
+        Number(data.todayCancelled) || 0;
+
+    if (cancelled > 0) {
+        text +=
+            "\n• " +
+            cancelled +
+            " cancelled";
+    }
+
+    text +=
+        "\n\n" +
+        "📅 Tomorrow\n" +
+        "• " +
+        (Number(data.tomorrowScheduled) || 0) +
+        " scheduled";
+
+    return text;
+}

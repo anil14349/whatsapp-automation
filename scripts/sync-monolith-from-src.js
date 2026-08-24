@@ -21,6 +21,7 @@ const SRC_FILES = [
     "src/Util_Common.gs",
     "src/Logging.gs",
     "src/Model_Reminders.gs",
+    "src/Model_OwnerDigest.gs",
     "src/Model_AppointmentStatus.gs",
     "src/Model_AfterHours.gs",
     "src/Model_Doctors.gs",

@@ -50,6 +50,10 @@
 //   CLINIC_WORKING_DAYS | Mon,Tue,Wed,Thu,Fri,Sat
 //   AFTER_HOURS_MESSAGE | (optional custom text)
 //   CLINIC_WELCOME_IMAGE_URL | (optional public HTTPS URL — e.g. https://your-domain.com/clinic-welcome.png from landing/public/)
+//   CLINIC_NAME | ABC Clinic
+//   ENABLE_OWNER_DAILY_DIGEST | FALSE
+//   CLINIC_OWNER_PHONE | (owner WhatsApp for daily summary)
+//   OWNER_DIGEST_HOUR | 8
 //
 // Script Properties:
 //   WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID (required)
@@ -65,6 +69,7 @@
 //   src/Util_Common.gs            — phone/date/time parsing & formatting helpers
 //   src/Logging.gs                — WhatsApp_Log / WhatsApp_Debug sheets, retention cleanup
 //   src/Model_Reminders.gs        — appointment reminder scheduling & sending
+//   src/Model_OwnerDigest.gs      — daily owner WhatsApp summary
 //   src/Model_AppointmentStatus.gs — Completed/No-Show status workflow, auto-complete
 //   src/Model_AfterHours.gs       — clinic-hours gate & after-hours auto-reply
 //   src/Model_Doctors.gs          — doctor records, availability, leaves, schedule views
@@ -378,6 +383,26 @@ function ensureSettingsSheet() {
             "CLINIC_WELCOME_IMAGE_URL",
             ""
         ]);
+
+        sheet.appendRow([
+            "CLINIC_NAME",
+            "ABC Clinic"
+        ]);
+
+        sheet.appendRow([
+            "ENABLE_OWNER_DAILY_DIGEST",
+            "FALSE"
+        ]);
+
+        sheet.appendRow([
+            "CLINIC_OWNER_PHONE",
+            ""
+        ]);
+
+        sheet.appendRow([
+            "OWNER_DIGEST_HOUR",
+            "8"
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -438,6 +463,26 @@ function ensureSettingsSheet() {
             sheet,
             "CLINIC_WELCOME_IMAGE_URL",
             ""
+        );
+        ensureSettingKey(
+            sheet,
+            "CLINIC_NAME",
+            "ABC Clinic"
+        );
+        ensureSettingKey(
+            sheet,
+            "ENABLE_OWNER_DAILY_DIGEST",
+            "FALSE"
+        );
+        ensureSettingKey(
+            sheet,
+            "CLINIC_OWNER_PHONE",
+            ""
+        );
+        ensureSettingKey(
+            sheet,
+            "OWNER_DIGEST_HOUR",
+            "8"
         );
     }
 
