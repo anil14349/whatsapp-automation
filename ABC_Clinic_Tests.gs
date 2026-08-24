@@ -56,6 +56,7 @@ function runAllTests() {
         ["testReminderActionButtons", testReminderActionButtons],
         ["testClinicBranding", testClinicBranding],
         ["testWaitlist", testWaitlist],
+        ["testPostVisitFeedback", testPostVisitFeedback],
         ["testDoctorCancelReschedule", testDoctorCancelReschedule],
         ["testAppointmentStatus", testAppointmentStatus],
         ["testAfterHoursReply", testAfterHoursReply],
@@ -1604,6 +1605,102 @@ function testWaitlist() {
 
     Logger.log(
         "Waitlist smoke tests passed"
+    );
+}
+
+
+
+function testPostVisitFeedback() {
+
+    requireDebugMode("testPostVisitFeedback");
+
+    ensureSettingsSheet();
+
+    const settings =
+        getFeedbackSettings();
+
+    if (
+        !settings.enabled ||
+        settings.hoursAfter < 0
+    ) {
+        throw new Error(
+            "default feedback settings invalid"
+        );
+    }
+
+    const parsed =
+        parseFeedbackRatingChoice(
+            "feedback_rate_5_a202608181000"
+        );
+
+    if (
+        !parsed ||
+        parsed.rating !== 5 ||
+        parsed.appointmentId !==
+            "a202608181000"
+    ) {
+        throw new Error(
+            "parseFeedbackRatingChoice failed"
+        );
+    }
+
+    const menuSpec =
+        getPostVisitFeedbackRatingSpec(
+            "A202608181000"
+        );
+
+    if (
+        !menuSpec.interactive ||
+        menuSpec.interactive.sections[0].rows.length !==
+            5 ||
+        menuSpec.interactive.sections[0].rows[0].id !==
+            "feedback_rate_5_A202608181000"
+    ) {
+        throw new Error(
+            "getPostVisitFeedbackRatingSpec failed"
+        );
+    }
+
+    const requestMessage =
+        buildPostVisitFeedbackMessage(
+            {
+                date: "18-Aug-2026",
+                time: "10:00 AM"
+            },
+            "Dr Ravi",
+            true
+        );
+
+    if (
+        requestMessage.indexOf("How was your visit") === -1 ||
+        requestMessage.indexOf("Dr Ravi") === -1
+    ) {
+        throw new Error(
+            "buildPostVisitFeedbackMessage failed"
+        );
+    }
+
+    const thankYou =
+        buildFeedbackThankYouMessage(
+            5,
+            "https://g.page/example/review",
+            4
+        );
+
+    if (
+        thankYou.indexOf("Google review") === -1 ||
+        thankYou.indexOf("https://g.page/example/review") === -1
+    ) {
+        throw new Error(
+            "buildFeedbackThankYouMessage failed"
+        );
+    }
+
+    ensureFeedbackSentLogSheet();
+    ensureFeedbackResponseLogSheet();
+
+    Logger.log(
+        "Post-visit feedback smoke tests passed"
     );
 }
 

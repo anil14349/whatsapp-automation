@@ -163,15 +163,20 @@ const reminderIdx = processBody.indexOf(
 const waitlistIdx = processBody.indexOf(
     "handleWhatsAppWaitlistOfferAction"
 );
+const feedbackIdx = processBody.indexOf(
+    "handleWhatsAppFeedbackAction"
+);
 
 assert(
-    "router order waitlist → reminder → greeting",
+    "router order waitlist → feedback → reminder → greeting",
     waitlistIdx !== -1 &&
+        feedbackIdx !== -1 &&
         reminderIdx !== -1 &&
         greetingIdx !== -1 &&
-        waitlistIdx < reminderIdx &&
+        waitlistIdx < feedbackIdx &&
+        feedbackIdx < reminderIdx &&
         reminderIdx < greetingIdx,
-    "waitlist and reminder actions must run before greeting"
+    "waitlist, feedback, and reminder actions must run before greeting"
 );
 
 assert(

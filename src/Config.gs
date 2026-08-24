@@ -44,6 +44,11 @@
 //   ENABLE_REMINDER_ACTION_BUTTONS | TRUE
 //   ENABLE_APPOINTMENT_WAITLIST | TRUE
 //   WAITLIST_NOTIFY_COUNT | 3
+//   ENABLE_POST_VISIT_FEEDBACK | TRUE
+//   FEEDBACK_HOURS_AFTER | 2
+//   FEEDBACK_WINDOW_MINUTES | 45
+//   FEEDBACK_MIN_RATING_FOR_REVIEW | 4
+//   CLINIC_REVIEW_URL | (optional Google review link)
 //   ENABLE_INTERACTIVE_MENUS | TRUE
 //   AUTO_COMPLETE_PAST_APPOINTMENTS | FALSE
 //   AUTO_COMPLETE_HOURS_AFTER | 4
@@ -77,6 +82,7 @@
 //   src/Model_Reminders.gs        — appointment reminder scheduling & sending
 //   src/Model_OwnerDigest.gs      — daily owner WhatsApp summary
 //   src/Model_Waitlist.gs         — slot-alert waitlist and offer notifications
+//   src/Model_Feedback.gs           — post-visit ratings and review link follow-up
 //   src/Model_AppointmentStatus.gs — Completed/No-Show status workflow, auto-complete
 //   src/Model_AfterHours.gs       — clinic-hours gate & after-hours auto-reply
 //   src/Model_Doctors.gs          — doctor records, availability, leaves, schedule views
@@ -440,6 +446,31 @@ function ensureSettingsSheet() {
             "WAITLIST_NOTIFY_COUNT",
             "3"
         ]);
+
+        sheet.appendRow([
+            "ENABLE_POST_VISIT_FEEDBACK",
+            "TRUE"
+        ]);
+
+        sheet.appendRow([
+            "FEEDBACK_HOURS_AFTER",
+            "2"
+        ]);
+
+        sheet.appendRow([
+            "FEEDBACK_WINDOW_MINUTES",
+            "45"
+        ]);
+
+        sheet.appendRow([
+            "FEEDBACK_MIN_RATING_FOR_REVIEW",
+            "4"
+        ]);
+
+        sheet.appendRow([
+            "CLINIC_REVIEW_URL",
+            ""
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -550,6 +581,31 @@ function ensureSettingsSheet() {
             sheet,
             "WAITLIST_NOTIFY_COUNT",
             "3"
+        );
+        ensureSettingKey(
+            sheet,
+            "ENABLE_POST_VISIT_FEEDBACK",
+            "TRUE"
+        );
+        ensureSettingKey(
+            sheet,
+            "FEEDBACK_HOURS_AFTER",
+            "2"
+        );
+        ensureSettingKey(
+            sheet,
+            "FEEDBACK_WINDOW_MINUTES",
+            "45"
+        );
+        ensureSettingKey(
+            sheet,
+            "FEEDBACK_MIN_RATING_FOR_REVIEW",
+            "4"
+        );
+        ensureSettingKey(
+            sheet,
+            "CLINIC_REVIEW_URL",
+            ""
         );
     }
 

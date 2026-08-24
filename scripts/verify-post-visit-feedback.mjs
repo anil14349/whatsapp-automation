@@ -1,6 +1,6 @@
 /**
- * Static checks for appointment waitlist / slot-alert feature.
- * Run: node scripts/verify-waitlist.mjs
+ * Static checks for post-visit feedback feature.
+ * Run: node scripts/verify-post-visit-feedback.mjs
  */
 
 import fs from "fs";
@@ -22,37 +22,33 @@ function assert(name, condition, detail) {
     }
 }
 
-const waitlist = read("src/Model_Waitlist.gs");
+const feedback = read("src/Model_Feedback.gs");
 const shared = read("src/Controller_Shared.gs");
 const router = read("src/Controller_Router.gs");
 const menus = read("src/View_Menus.gs");
 const messages = read("src/View_Messages.gs");
-const patientFlow = read("src/Controller_PatientFlow.gs");
-const appointments = read("src/Model_Appointments.gs");
 const config = read("src/Config.gs");
 const tests = read("ABC_Clinic_Tests.gs");
 const sync = read("scripts/sync-monolith-from-src.js");
 
 [
-    "getWaitlistSettings",
-    "ensureWaitlistSheet",
-    "ensureSlotOfferSheet",
-    "addPatientToWaitlist",
-    "findActiveWaitlistPatients",
-    "notifyWaitlistForOpenedSlot",
-    "acceptWaitlistSlotOffer",
-    "buildOpenedSlotFromAppointmentRow"
+    "getFeedbackSettings",
+    "sendPostVisitFeedbackRequests",
+    "installPostVisitFeedbackTrigger",
+    "findCompletedAppointmentForPhone",
+    "logFeedbackResponse",
+    "hasFeedbackRequestBeenSent"
 ].forEach(function (fn) {
     assert(
         `function ${fn} exists`,
-        waitlist.includes(`function ${fn}`),
-        "missing in Model_Waitlist.gs"
+        feedback.includes(`function ${fn}`),
+        "missing in Model_Feedback.gs"
     );
 });
 
 [
-    "parseWaitlistOfferChoice",
-    "handleWhatsAppWaitlistOfferAction"
+    "parseFeedbackRatingChoice",
+    "handleWhatsAppFeedbackAction"
 ].forEach(function (fn) {
     assert(
         `function ${fn} exists`,
@@ -62,8 +58,8 @@ const sync = read("scripts/sync-monolith-from-src.js");
 });
 
 [
-    "buildWaitlistJoinIntro",
-    "buildWaitlistOfferMessage"
+    "buildPostVisitFeedbackMessage",
+    "buildFeedbackThankYouMessage"
 ].forEach(function (fn) {
     assert(
         `function ${fn} exists`,
@@ -73,44 +69,27 @@ const sync = read("scripts/sync-monolith-from-src.js");
 });
 
 assert(
-    "More menu includes Slot alerts",
-    menus.includes("menu_waitlist") &&
-        menus.includes("Slot alerts"),
-    "missing list row"
+    "feedback rating list spec",
+    menus.includes("getPostVisitFeedbackRatingSpec") &&
+        menus.includes("feedback_rate_5_"),
+    "missing in View_Menus.gs"
 );
 
-assert(
-    "waitlist offer button spec",
-    menus.includes("getWaitlistOfferButtonSpec") &&
-        menus.includes("waitlist_accept_"),
-    "missing button spec"
-);
+[
+    "ENABLE_POST_VISIT_FEEDBACK",
+    "FEEDBACK_HOURS_AFTER",
+    "CLINIC_REVIEW_URL"
+].forEach(function (key) {
+    assert(
+        `Settings key ${key}`,
+        config.includes(`"${key}"`),
+        "missing in Config.gs"
+    );
+});
 
 assert(
-    "patient flow handles menu_waitlist",
-    patientFlow.includes("menu_waitlist") &&
-        patientFlow.includes("WAITLIST_DOCTOR") &&
-        patientFlow.includes("addPatientToWaitlist"),
-    "missing handler"
-);
-
-assert(
-    "cancel triggers waitlist notify",
-    appointments.includes("notifyWaitlistForOpenedSlot") &&
-        appointments.includes("buildOpenedSlotFromAppointmentRow"),
-    "missing cancel hook"
-);
-
-assert(
-    "waitlist settings in Config",
-    config.includes("ENABLE_APPOINTMENT_WAITLIST") &&
-        config.includes("WAITLIST_NOTIFY_COUNT"),
-    "missing settings"
-);
-
-assert(
-    "Model_Waitlist in sync script",
-    sync.includes("src/Model_Waitlist.gs"),
+    "Model_Feedback in sync script",
+    sync.includes("src/Model_Feedback.gs"),
     "missing from sync-monolith-from-src.js"
 );
 
@@ -119,7 +98,7 @@ const processIdx = router.indexOf(
 );
 const processBody = router.slice(
     processIdx,
-    processIdx + 2500
+    processIdx + 2800
 );
 const waitlistIdx = processBody.indexOf(
     "handleWhatsAppWaitlistOfferAction"
@@ -135,7 +114,7 @@ const greetingIdx = processBody.indexOf(
 );
 
 assert(
-    "router handles waitlist offers before feedback and reminders",
+    "router handles feedback before reminder actions",
     waitlistIdx !== -1 &&
         feedbackIdx !== -1 &&
         reminderIdx !== -1 &&
@@ -147,25 +126,29 @@ assert(
 );
 
 assert(
-    "waitlist back nav returns to More",
-    /case "WAITLIST_DOCTOR":[\s\S]*?returnToPatientMainMore/.test(
-        shared
-    ),
-    "missing goBack handler"
+    "feedback only targets completed appointments",
+    feedback.includes("APPOINTMENT_STATUS.COMPLETED"),
+    "missing completed status check"
+);
+
+assert(
+    "review link in thank-you message",
+    messages.includes("Google review"),
+    "missing review prompt"
 );
 
 assert(
     "runtime smoke test registered",
-    tests.includes("testWaitlist"),
+    tests.includes("testPostVisitFeedback"),
     "missing test"
 );
 
 if (failures.length > 0) {
-    console.error("verify-waitlist: FAILED");
+    console.error("verify-post-visit-feedback: FAILED");
     failures.forEach(function (item) {
         console.error(" - " + item.name + ": " + item.detail);
     });
     process.exit(1);
 }
 
-console.log("verify-waitlist: all checks passed");
+console.log("verify-post-visit-feedback: all checks passed");

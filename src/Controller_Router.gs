@@ -248,6 +248,17 @@ function processWhatsAppTextMessage(
     }
 
     if (
+        handleWhatsAppFeedbackAction(
+            ss,
+            senderPhone,
+            session,
+            normalizedMessage
+        )
+    ) {
+        return;
+    }
+
+    if (
         handleWhatsAppReminderAction(
             ss,
             senderPhone,

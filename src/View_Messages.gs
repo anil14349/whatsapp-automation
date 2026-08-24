@@ -1945,3 +1945,86 @@ function buildWaitlistOfferMessage(
         "Tap below to book. First come, first served."
     );
 }
+
+
+
+function buildPostVisitFeedbackMessage(
+    appointment,
+    doctorName,
+    useInteractive
+) {
+
+    const displayDate =
+        formatAppointmentDisplayDate(
+            appointment.date
+        );
+
+    const footer =
+        useInteractive
+            ? "Please tap a rating below."
+            : "Reply with a number 1–5 (5 = excellent).";
+
+    return (
+        "🙏 How was your visit?\n\n" +
+        "We hope your appointment with " +
+        String(doctorName || "your doctor").trim() +
+        " on " +
+        displayDate +
+        " went well.\n\n" +
+        footer
+    );
+}
+
+
+
+function buildFeedbackThankYouMessage(
+    rating,
+    reviewUrl,
+    minRatingForReview
+) {
+
+    const stars =
+        Number(rating) || 0;
+
+    const threshold =
+        Number(minRatingForReview) || 4;
+
+    const url =
+        String(reviewUrl || "").trim();
+
+    if (
+        stars >= threshold &&
+        url
+    ) {
+
+        return (
+            "✅ Thank you for the " +
+            stars +
+            "-star rating!\n\n" +
+            "We're glad you had a good experience. " +
+            "Would you mind leaving us a Google review?\n\n" +
+            "⭐ " +
+            url +
+            "\n\n" +
+            "Send Hi anytime to book again."
+        );
+    }
+
+    if (stars >= threshold) {
+
+        return (
+            "✅ Thank you for the " +
+            stars +
+            "-star rating!\n\n" +
+            "We're glad you had a good experience.\n\n" +
+            "Send Hi anytime to book again."
+        );
+    }
+
+    return (
+        "✅ Thank you for your honest feedback.\n\n" +
+        "We're sorry your visit wasn't perfect. " +
+        "Our team will work to improve.\n\n" +
+        "Send Hi anytime if you need help."
+    );
+}

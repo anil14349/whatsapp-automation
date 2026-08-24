@@ -282,6 +282,146 @@ function handleWhatsAppReminderAction(
 
 
 
+function parseFeedbackRatingChoice(
+    normalizedMessage
+) {
+
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    const match =
+        choice.match(
+            /^feedback_rate_([1-5])_(.+)$/
+        );
+
+    if (!match) {
+        return null;
+    }
+
+    return {
+        rating: Number(match[1]),
+        appointmentId: match[2]
+    };
+}
+
+
+
+function handleWhatsAppFeedbackAction(
+    ss,
+    senderPhone,
+    session,
+    normalizedMessage
+) {
+
+    const parsed =
+        parseFeedbackRatingChoice(
+            normalizedMessage
+        );
+
+    if (!parsed) {
+        return false;
+    }
+
+    if (
+        session &&
+        session.role === "DOCTOR"
+    ) {
+        return false;
+    }
+
+    if (
+        hasFeedbackResponse(
+            parsed.appointmentId
+        )
+    ) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "ℹ️ We already received your feedback. Thank you!\n\n" +
+            "Send Hi to return to the main menu."
+        );
+
+        return true;
+    }
+
+    const appointment =
+        findCompletedAppointmentForPhone(
+            senderPhone,
+            parsed.appointmentId
+        );
+
+    if (!appointment) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "❌ That feedback link is no longer valid.\n\n" +
+            "Send Hi to return to the main menu."
+        );
+
+        logFeedbackResponse(
+            parsed.appointmentId,
+            senderPhone,
+            parsed.rating,
+            "NOT_FOUND"
+        );
+
+        return true;
+    }
+
+    logFeedbackResponse(
+        appointment.appointmentId,
+        senderPhone,
+        parsed.rating,
+        "SUCCESS"
+    );
+
+    const settings =
+        getFeedbackSettings();
+
+    const language =
+        resolvePatientLanguage(
+            senderPhone,
+            session
+        );
+
+    const thankYou =
+        localizeWhatsAppReply(
+            language,
+            buildFeedbackThankYouMessage(
+                parsed.rating,
+                settings.reviewUrl,
+                settings.minRatingForReview
+            )
+        );
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "MAIN_MENU",
+            doctorId: "",
+            date: "",
+            time: "",
+            appointmentId: "",
+            slotPage: 0
+        }
+    );
+
+    sendPatientMainMenuReply(
+        ss,
+        senderPhone,
+        thankYou
+    );
+
+    return true;
+}
+
+
+
 function parseWaitlistOfferChoice(
     normalizedMessage
 ) {

@@ -251,6 +251,72 @@ function getWaitlistOfferButtonSpec(
 }
 
 
+
+function getPostVisitFeedbackRatingSpec(
+    appointmentId
+) {
+
+    const id =
+        String(appointmentId || "").trim();
+
+    const fallbackText =
+        "1️⃣ Poor\n" +
+        "2️⃣ Fair\n" +
+        "3️⃣ Okay\n" +
+        "4️⃣ Good\n" +
+        "5️⃣ Excellent";
+
+    const rows = [
+        {
+            id:
+                "feedback_rate_5_" +
+                id,
+            title: "5 — Excellent",
+            description: "⭐⭐⭐⭐⭐"
+        },
+        {
+            id:
+                "feedback_rate_4_" +
+                id,
+            title: "4 — Good",
+            description: "⭐⭐⭐⭐"
+        },
+        {
+            id:
+                "feedback_rate_3_" +
+                id,
+            title: "3 — Okay",
+            description: "⭐⭐⭐"
+        },
+        {
+            id:
+                "feedback_rate_2_" +
+                id,
+            title: "2 — Fair",
+            description: "⭐⭐"
+        },
+        {
+            id:
+                "feedback_rate_1_" +
+                id,
+            title: "1 — Poor",
+            description: "⭐"
+        }
+    ];
+
+    const interactive =
+        buildInteractiveListSpec(
+            rows,
+            "Rate your visit"
+        );
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
 function getDoctorMainMenuSpec() {
 
     const fallbackText =
