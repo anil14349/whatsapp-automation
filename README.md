@@ -2,7 +2,7 @@
 
 Google Apps Script project for ABC Clinic appointment booking over WhatsApp, backed by Google Sheets and Google Calendar.
 
-**Active branch:** `refactor/whatsapp-v2`
+**Active development branch:** `feature/welcome-clinic-image` (Growth features: owner digest, reminder buttons, branding, waitlist, feedback, visit types). Stable baseline: `refactor/whatsapp-v2`.
 
 ---
 
@@ -19,7 +19,7 @@ There are two equivalent ways to source the production code — pick **one**, do
 
 ### Option B — `src/` split (recommended)
 
-The same code, reorganized into 20 smaller files by responsibility (Model/View/Controller-style). Apps Script merges every bound `.gs` file into one shared global scope regardless of file name or count, so this is behaviorally identical to Option A — just easier to navigate. Bind **every file in `src/`** (all 20) plus, optionally, `ABC_Clinic_Tests.gs`:
+The same code, reorganized into 24 smaller files by responsibility (Model/View/Controller-style). Apps Script merges every bound `.gs` file into one shared global scope regardless of file name or count, so this is behaviorally identical to Option A — just easier to navigate. Bind **every file in `src/`** (all 24) plus, optionally, `ABC_Clinic_Tests.gs`:
 
 | File | Purpose |
 |------|---------|
@@ -27,6 +27,10 @@ The same code, reorganized into 20 smaller files by responsibility (Model/View/C
 | `src/Util_Common.gs` | Phone/date/time parsing & formatting helpers |
 | `src/Logging.gs` | `WhatsApp_Log` / `WhatsApp_Debug` sheets, retention cleanup |
 | `src/Model_Reminders.gs` | Appointment reminder scheduling & sending |
+| `src/Model_OwnerDigest.gs` | Daily owner WhatsApp summary |
+| `src/Model_Waitlist.gs` | Slot-alert waitlist & cancellation offers |
+| `src/Model_Feedback.gs` | Post-visit star ratings & review link |
+| `src/Model_Services.gs` | Visit type catalog & per-service slot durations |
 | `src/Model_AppointmentStatus.gs` | Completed/No-Show status workflow, auto-complete |
 | `src/Model_AfterHours.gs` | Clinic-hours gate & after-hours auto-reply |
 | `src/Model_Doctors.gs` | Doctor records, availability, leaves, schedule views |
@@ -44,7 +48,7 @@ The same code, reorganized into 20 smaller files by responsibility (Model/View/C
 | `src/Controller_PatientFlow.gs` | Patient conversation state machine |
 | `src/WhatsApp_Send.gs` | Low-level WhatsApp Cloud API senders |
 
-Every function/variable name is still globally unique across all files (Apps Script requirement) — verified by parsing all files concatenated together with no duplicate-declaration errors, and confirming the same 256 top-level functions/constants exist in both Option A and Option B with none missing, duplicated, or added.
+Every function/variable name is still globally unique across all files (Apps Script requirement). Keep Option A and Option B in sync with `node scripts/sync-monolith-from-src.js` after editing `src/` (~390 functions as of the Growth feature set).
 
 Don't bind both options at once — that would double-declare every function.
 
@@ -70,16 +74,38 @@ Don't bind both options at once — that would double-declare every function.
 
 ---
 
-## Implemented on `refactor/whatsapp-v2`
+## Implemented features
 
-### Core
+### Core (all branches)
 
 - WhatsApp webhook (`doGet` / `doPost`) with idempotency and outbound dedup
 - Patient flows: book, cancel, reschedule, language (EN / TE / HI / KA / TA / ML)
-- Doctor flows: schedule views (options 1–4) + self-service portal (options 5–10)
+- Doctor flows: schedule views + self-service portal (availability, leaves, patients, cancel/reschedule, visit status)
 - Google Sheets + Calendar booking with locking and rollback on reschedule failure
+- **Patient main menu:** Book Appointment · My Appointments · **More** (Cancel, Reschedule, Change Language, Contact & Location, Slot alerts)
+- **No appointment IDs in patient-facing WhatsApp copy** (IDs remain in sheets/calendar for staff)
+- Welcome clinic image on first `Hi` when `CLINIC_WELCOME_IMAGE_URL` is set
 
-### Patients registry
+### UI principle
+
+**Text explains. Interactive controls act.** — Short message bodies; lists/buttons carry the choices. Typed numbers (`1`, `2`, `0`, `9`) still work as fallback when interactive mode is off or Meta API fails.
+
+### Growth features (`feature/welcome-clinic-image`)
+
+| Feature | Patient / owner experience | Settings / sheets |
+|---------|---------------------------|-------------------|
+| **Owner daily digest** | WhatsApp summary to owner each morning | `ENABLE_OWNER_DAILY_DIGEST`, `CLINIC_OWNER_PHONE`, `OWNER_DIGEST_HOUR`, `CLINIC_NAME` |
+| **Reminder action buttons** | Confirm / Reschedule / Cancel on reminder messages | `ENABLE_REMINDER_ACTION_BUTTONS` · log: `Reminder_Responses` |
+| **Contact & location** | More → Contact & Location (address, phone, hours, map) | `CLINIC_ADDRESS`, `CLINIC_PHONE`, `CLINIC_MAP_URL` |
+| **Waitlist / slot alerts** | More → Slot alerts; notified when a slot opens on cancel | `ENABLE_APPOINTMENT_WAITLIST`, `WAITLIST_NOTIFY_COUNT` · `Waitlist`, `Slot_Offers` |
+| **Post-visit feedback** | 1–5 star rating after completed visits; review link for 4–5 stars | `ENABLE_POST_VISIT_FEEDBACK`, `FEEDBACK_HOURS_AFTER`, `CLINIC_REVIEW_URL` |
+| **Visit type selection** | Pick service after doctor (Consultation, Follow-up, …) | `ENABLE_VISIT_TYPE_SELECTION` · `Services` sheet (auto-seeded) |
+
+---
+
+## Core detail (patient & doctor)
+
+### Core booking & registry
 
 - Auto-created `Patients` sheet; `BOOK_NAME` for first-time bookers
 - Name from appointment history; language sync on select/change and Hi greeting
@@ -110,7 +136,7 @@ When a doctor cancels or reschedules, the **patient is notified** via WhatsApp a
 - **Navigation:** users can still type `0` (main menu / doctor portal) and `9` (back one step)
 - Toggle via **`Settings`** → `ENABLE_INTERACTIVE_MENUS` (`TRUE` / `FALSE`, default `TRUE`)
 - Falls back to **numbered text** only when menus are disabled, the Meta API fails, or a list cannot be built
-- **UI copy:** short contextual message bodies (no duplicated numbered menus in interactive text) — see [`ABC_Clinic_WhatsApp_UI_Cleanup_README.md`](ABC_Clinic_WhatsApp_UI_Cleanup_README.md)
+- **UI copy:** short contextual bodies — no duplicated numbered menus in interactive message text (see [UI principle](#ui-principle) above)
 
 #### Meta limits & pagination
 
@@ -189,7 +215,7 @@ Typed numbers still work everywhere as a backup (including global slot numbers a
 
 ## Deployment steps
 
-Follow these in order for a **new install** or when promoting `refactor/whatsapp-v2` to production.
+Follow these in order for a **new install** or when promoting a feature branch to production.
 
 ### Before you start
 
@@ -225,9 +251,11 @@ Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/`
 
 4. Add an **`Appointments`** sheet if you don’t have one:
 
-   | Appointment ID | Date | Time | Doctor ID | Patient Name | Phone | Status | Calendar Event ID | Patient ID |
+   | Appointment ID | Date | Time | Doctor ID | Patient Name | Phone | Status | Calendar Event ID | Patient ID | Visit Type |
 
-5. Other sheets (`Patients`, `Doctor_Leaves`, `WhatsApp_Sessions`, `WhatsApp_Log`, `WhatsApp_Debug`, `Settings`, `Reminder_Log`) are **auto-created** on first use — you do not need to create them manually. On upgrade, `WhatsApp_Sessions` may gain new columns (e.g. **Language**, **Patient Name**, **Slot Page**) automatically when a session is saved.
+   Column **Visit Type** is auto-added on first booking when visit types are used.
+
+5. Other sheets (`Patients`, `Doctor_Leaves`, `WhatsApp_Sessions`, `WhatsApp_Log`, `WhatsApp_Debug`, `Settings`, `Reminder_Log`, `Reminder_Responses`, `Waitlist`, `Slot_Offers`, `Feedback_Sent_Log`, `Feedback_Responses`, `Owner_Digest_Log`, `Services`) are **auto-created** on first use. On upgrade, `WhatsApp_Sessions` may gain new columns (**Language**, **Patient Name**, **Slot Page**, **Service ID**) automatically when a session is saved.
 
 ---
 
@@ -237,7 +265,7 @@ Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/`
 2. Remove any old/default `Code.gs` content if present (or delete the file).
 3. Add the production code — pick one:
    - **Single file:** add **`ABC_Clinic_WhatsApp_Complete.gs`**, copying the full file from this repo into a script file with that name.
-   - **Split (`src/`):** add all 20 files from `src/` as separate script files, each with the same name (minus `.gs`, which the editor appends automatically).
+   - **Split (`src/`):** add all **24** files from `src/` as separate script files, each with the same name (minus `.gs`, which the editor appends automatically).
 4. *(Optional, recommended for staging)* Add **`ABC_Clinic_Tests.gs`** for in-editor smoke tests.
 5. **Save** the project (Ctrl+S). Give the project a clear name, e.g. `ABC Clinic WhatsApp`.
 
@@ -348,16 +376,38 @@ After the first inbound message, a **`Settings`** sheet is created. Adjust as ne
 | `CLINIC_CLOSE_TIME` | `18:00` | Clinic closes |
 | `CLINIC_WORKING_DAYS` | `Mon,Tue,Wed,Thu,Fri,Sat` | Days the clinic accepts patient messages |
 | `AFTER_HOURS_MESSAGE` | *(empty)* | Optional custom closed message (overrides default) |
+| `CLINIC_WELCOME_IMAGE_URL` | *(empty)* | Public HTTPS URL for welcome image on first Hi |
+| `CLINIC_NAME` | `ABC Clinic` | Branding, digest, contact block |
+| `CLINIC_ADDRESS` | *(empty)* | Shown in Contact & Location |
+| `CLINIC_PHONE` | *(empty)* | Shown in Contact & Location |
+| `CLINIC_MAP_URL` | *(empty)* | Google Maps link in Contact & Location |
+| `ENABLE_OWNER_DAILY_DIGEST` | `FALSE` | Daily WhatsApp summary to owner |
+| `CLINIC_OWNER_PHONE` | *(empty)* | Owner WhatsApp number (with country code) |
+| `OWNER_DIGEST_HOUR` | `8` | Hour (0–23) to send digest |
+| `ENABLE_REMINDER_ACTION_BUTTONS` | `TRUE` | Confirm / Reschedule / Cancel on reminders |
+| `ENABLE_APPOINTMENT_WAITLIST` | `TRUE` | Slot alerts + notify on cancel |
+| `WAITLIST_NOTIFY_COUNT` | `3` | Max waitlisted patients per opened slot |
+| `ENABLE_POST_VISIT_FEEDBACK` | `TRUE` | Star rating request after completed visits |
+| `FEEDBACK_HOURS_AFTER` | `2` | Hours after visit end before feedback send |
+| `FEEDBACK_WINDOW_MINUTES` | `45` | Hourly job catch window |
+| `FEEDBACK_MIN_RATING_FOR_REVIEW` | `4` | Min stars before showing review link |
+| `CLINIC_REVIEW_URL` | *(empty)* | Google review URL (4–5 star thank-you) |
+| `ENABLE_VISIT_TYPE_SELECTION` | `TRUE` | Service picker after doctor (when 2+ services) |
 
-Optional scheduled jobs (run once in Apps Script editor):
+Optional scheduled jobs (run **once** in Apps Script editor after deploy):
 
 ```javascript
-installDailyLogCleanupTrigger()       // log cleanup at 3 AM daily
-installAppointmentReminderTrigger()   // check reminders every hour
+installDailyLogCleanupTrigger()              // log cleanup at 3 AM daily
+installAppointmentReminderTrigger()          // check reminders every hour
 installAutoCompletePastAppointmentsTrigger() // auto-complete at 11 PM daily (if enabled)
-sendAppointmentReminders()            // manual reminder run (also used by trigger)
-autoCompletePastAppointments()        // manual auto-complete run
-cleanupAllWhatsAppLogs()              // manual log cleanup
+installOwnerDailyDigestTrigger()             // owner digest at OWNER_DIGEST_HOUR
+installPostVisitFeedbackTrigger()            // post-visit feedback every hour
+sendAppointmentReminders()                   // manual reminder run
+sendPostVisitFeedbackRequests()              // manual feedback run
+sendOwnerDailyDigest()                       // manual digest preview
+previewPostVisitFeedback()                   // feedback settings + dry run
+autoCompletePastAppointments()               // manual auto-complete run
+cleanupAllWhatsAppLogs()                     // manual log cleanup
 ```
 
 #### Upgrading from an older version
@@ -371,6 +421,23 @@ syncPatientsFromAppointments()
 ---
 
 ### Step 9 — Verify deployment
+
+#### Local static checks (from repo clone)
+
+No Apps Script deploy required — validates wiring in `src/`:
+
+```bash
+node scripts/sync-monolith-from-src.js --check   # optional: monolith in sync with src/
+node scripts/verify-flow-coverage.mjs
+node scripts/verify-menu-flows.mjs
+node scripts/verify-appointment-list-pages.mjs
+node scripts/verify-owner-digest.mjs
+node scripts/verify-reminder-actions.mjs
+node scripts/verify-clinic-branding.mjs
+node scripts/verify-waitlist.mjs
+node scripts/verify-post-visit-feedback.mjs
+node scripts/verify-visit-type.mjs
+```
 
 #### Automated smoke tests (staging / optional)
 
@@ -387,7 +454,12 @@ Review failures — some legacy tests touch live sheets/calendar; run on a copy 
 | Actor | Action | Expected |
 |-------|--------|----------|
 | Patient | Send `Hi` | Main menu (tap-to-select list); language prompt if first time |
-| Patient | Book appointment | Tappable doctor → date → slot menus; confirm with buttons; row in `Appointments`; calendar event |
+| Patient | Book appointment | Doctor → *(visit type if enabled)* → date → time → confirm; row in `Appointments`; calendar event |
+| Patient | More → Contact & Location | Clinic address/phone/hours/map when configured |
+| Patient | More → Slot alerts | Join waitlist for a doctor |
+| Patient | Tap reminder Confirm / Cancel / Reschedule | Ack or enters cancel/reschedule flow |
+| Patient | After completed visit (~2h) | Feedback star rating; review link if 4–5 stars + URL set |
+| Patient | Cancel (doctor or patient) | Waitlisted patients may receive **Book this slot** offer |
 | Patient | Book on a busy day (>9 slots) | Slot list shows **More times** / **Earlier times** pages |
 | Patient | Cancel | Appointment status updated; calendar event removed |
 | Patient | Reschedule | New slot saved; calendar updated |
@@ -434,8 +506,10 @@ Use this after you have done the full steps above:
 - [ ] Patient + doctor WhatsApp smoke tests passed
 - [ ] `Settings` log retention configured (optional)
 - [ ] `installAppointmentReminderTrigger()` run if reminders enabled (optional)
+- [ ] `installOwnerDailyDigestTrigger()` run if owner digest enabled (optional)
+- [ ] `installPostVisitFeedbackTrigger()` run if feedback enabled (optional)
 - [ ] `installAutoCompletePastAppointmentsTrigger()` run if auto-complete enabled (optional)
-- [ ] `ENABLE_AFTER_HOURS_REPLY` configured if using closed auto-reply (optional)
+- [ ] `CLINIC_REVIEW_URL` / `Services` sheet reviewed if using feedback / visit types (optional)
 - [ ] `syncPatientsFromAppointments()` run if upgrading (one-time)
 
 ---
@@ -467,6 +541,12 @@ Set `TEST_SKIP_WHATSAPP_SEND=true` to avoid real WhatsApp API calls during send 
 | `testWhatsAppReliability` | Idempotency / dedup helpers |
 | `testLogSettings` | Log retention settings |
 | `testAppointmentReminders` | Reminder parsing, message build, settings |
+| `testOwnerDailyDigest` | Owner digest settings and message build |
+| `testReminderActionButtons` | Reminder button IDs and confirm ack |
+| `testClinicBranding` | Contact & location message |
+| `testWaitlist` | Waitlist offer parsing and menu spec |
+| `testPostVisitFeedback` | Feedback rating parsing and thank-you copy |
+| `testVisitTypeSelection` | Services sheet, duration resolution, confirm message |
 | `testDoctorCancelReschedule` | Doctor cancel/reschedule UI helpers |
 | `testAppointmentStatus` | Completed / No-Show status workflow |
 | `testAfterHoursReply` | Clinic hours parsing, closed message, patient gate |
@@ -496,34 +576,13 @@ Local Node unit tests (`tests/run-unit-tests.mjs`) are **not included yet** — 
 ```
 ABC_Clinic_WhatsApp_Complete.gs   ← production, Option A: single file
 ABC_Clinic_Tests.gs               ← tests (optional bind, either option)
-ABC_Clinic_WhatsApp_UI_README.md  ← interactive UI plan + implementation status
-ABC_Clinic_WhatsApp_UI_Cleanup_README.md  ← completed UI copy cleanup reference
-src/                               ← production, Option B: split into 20 files (see above)
-  Config.gs
-  Util_Common.gs
-  Logging.gs
-  Model_Reminders.gs
-  Model_AppointmentStatus.gs
-  Model_AfterHours.gs
-  Model_Doctors.gs
-  Model_Calendar.gs
-  Model_Patients.gs
-  Model_Appointments.gs
-  Model_Session.gs
-  Api.gs
-  Webhook.gs
-  View_Menus.gs
-  View_Messages.gs
-  Controller_Shared.gs
-  Controller_Router.gs
-  Controller_DoctorFlow.gs
-  Controller_PatientFlow.gs
-  WhatsApp_Send.gs
+src/                               ← production, Option B: 24 files (see [Apps Script files](#apps-script-files))
 landing/                           ← marketing website (Vercel / Replit)
 marketing/                         ← brochure, one-pager, offboarding docs
 scripts/
   sync-monolith-from-src.js        ← copy src/ function bodies into ABC_Clinic_WhatsApp_Complete.gs
+  verify-*.mjs                     ← static flow/feature checks (no deploy)
 README.md
 ```
 
-Option A and Option B are kept in sync with `node scripts/sync-monolith-from-src.js` after editing `src/` — the script copies all **20** `src/*.gs` files into the monolith (function bodies only). Use `--check` for a dry-run. Run it before deploying the monolith. If you only use one layout, you can ignore the script.
+Option A and Option B are kept in sync with `node scripts/sync-monolith-from-src.js` after editing `src/` — the script copies all **24** `src/*.gs` function bodies into the monolith (function bodies only). Use `--check` for a dry-run. Run it before deploying the monolith. If you only use one layout, you can ignore the script.
