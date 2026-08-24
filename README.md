@@ -98,8 +98,9 @@ Don't bind both options at once — that would double-declare every function.
 | **Reminder action buttons** | Confirm / Reschedule / Cancel on reminder messages | `ENABLE_REMINDER_ACTION_BUTTONS` · log: `Reminder_Responses` |
 | **Contact & location** | More → Contact & Location (address, phone, hours, map) | `CLINIC_ADDRESS`, `CLINIC_PHONE`, `CLINIC_MAP_URL` |
 | **Waitlist / slot alerts** | More → Slot alerts; notified when a slot opens on cancel | `ENABLE_APPOINTMENT_WAITLIST`, `WAITLIST_NOTIFY_COUNT` · `Waitlist`, `Slot_Offers` |
-| **Post-visit feedback** | 1–5 star rating after completed visits; review link for 4–5 stars | `ENABLE_POST_VISIT_FEEDBACK`, `FEEDBACK_HOURS_AFTER`, `CLINIC_REVIEW_URL` |
+| **Post-visit feedback** | 1–5 star rating after completed visits; review link for 4–5 stars | `ENABLE_POST_VISIT_FEEDBACK`, `FEEDBACK_HOURS_AFTER`, `CLINIC_REVIEW_URL` · requires status **Completed** (doctor marks visit or auto-complete enabled) |
 | **Visit type selection** | Pick service after doctor (Consultation, Follow-up, …) | `ENABLE_VISIT_TYPE_SELECTION` · `Services` sheet (auto-seeded) |
+| **Welcome clinic image** | Image on first `Hi` for new/returning patients | `CLINIC_WELCOME_IMAGE_URL` — public HTTPS URL (e.g. host from [`landing/`](landing/README.md)) |
 
 ---
 
@@ -112,18 +113,33 @@ Don't bind both options at once — that would double-declare every function.
 - Patient ID on Appointments column 9; session column 10 for booking name
 - One-time backfill: `syncPatientsFromAppointments()` (admin; requires `DEBUG_MODE=true`)
 
-### Doctor portal (WhatsApp options 5–10)
+### Doctor portal (3-button menus + More tiers)
 
-| Option | Feature | Sheet |
-|--------|---------|-------|
-| 5 | Manage Availability — multiple sessions per weekday | `Availability` |
-| 6 | Manage Leaves — single day or date range | `Doctor_Leaves` |
-| 7 | My Patients — unique patients from history | `Appointments` |
-| 8 | Cancel Patient Appointment — cancel on behalf of patient | `Appointments` + Calendar |
-| 9 | Reschedule Patient Appointment — move to new slot | `Appointments` + Calendar |
-| 10 | Mark Visit Status — mark **Completed** or **No-Show** | `Appointments` |
+Doctors see **3 tap buttons** per screen (not a flat 1–10 list). Use **More** to drill into deeper options. Typed numbers still work as fallback where noted.
 
-Navigation: `0` → Doctor Portal · `9` → back one step (`goBackInDoctorWhatsAppFlow`)
+| Screen | Buttons |
+|--------|---------|
+| **Main** | Today's Schedule · Next Appointment · **More** |
+| **More tier 1** | This Week · Schedule by Date · **More** |
+| **More tier 2** | Manage Availability · Manage Leaves · **More** |
+| **More tier 3** | My Patients · Cancel Patient · **More** |
+| **More tier 4** | Reschedule Patient · Mark Visit Status *(2 buttons only)* |
+
+| Feature | Sheet / effect |
+|---------|----------------|
+| Today's / week / date schedule, next appointment | Read-only from `Appointments` + Calendar |
+| Manage Availability | `Availability` |
+| Manage Leaves | `Doctor_Leaves` |
+| My Patients | Derived from `Appointments` |
+| Cancel / reschedule patient appointment | `Appointments` + Calendar; **patient notified** |
+| Mark Visit Status (Completed / No-Show) | `Appointments` |
+
+**Navigation**
+
+- **`0`** — return to doctor main menu (or patient main menu for patients)
+- **`9`** — **Back** one step on sub-screens (universal nav)
+- **`9` on doctor main menu only** — shortcut to **Reschedule Patient** (not Back; main menu is excluded from universal Back)
+- Options **3–10** still work as typed shortcuts from the doctor main menu when interactive mode is off
 
 When a doctor cancels or reschedules, the **patient is notified** via WhatsApp automatically.
 
@@ -131,7 +147,7 @@ When a doctor cancels or reschedules, the **patient is notified** via WhatsApp a
 
 - Tap-to-select **list** and **button** menus (Meta interactive messages) — no need to type `1`, `2`, `3` for most steps
 - **Patient:** language, main menu, doctor picker, date (Today / Tomorrow / Other), time slots, booking confirm, cancel/reschedule pickers, yes/no confirms
-- **Doctor:** portal menu (10 options), weekday availability, day actions, leaves, appointment pickers, status (Completed / No-Show), confirm/cancel dialogs
+- **Doctor:** 3-button menus with **More** tiers (schedule, availability, patients, cancel/reschedule, visit status)
 - **Free-text steps** (not menus): custom date (`YYYY-MM-DD`), patient name, availability times, leave reason
 - **Navigation:** users can still type `0` (main menu / doctor portal) and `9` (back one step)
 - Toggle via **`Settings`** → `ENABLE_INTERACTIVE_MENUS` (`TRUE` / `FALSE`, default `TRUE`)
@@ -189,7 +205,16 @@ Typed numbers still work everywhere as a backup (including global slot numbers a
 - Only appointments whose start time has passed (plus a 15-minute grace) appear in the picker
 - **Completed** and **No-Show** appointments are hidden from schedule views and excluded from reminders
 - Cancel/reschedule is blocked for appointments already marked Completed or No-Show
-- Optional auto-close: set `AUTO_COMPLETE_PAST_APPOINTMENTS` to `TRUE` in **`Settings`**, then run `installAutoCompletePastAppointmentsTrigger()` — confirmed appointments auto-mark **Completed** after `AUTO_COMPLETE_HOURS_AFTER` (default 4 hours)
+- Optional auto-close: set `AUTO_COMPLETE_PAST_APPOINTMENTS` to `TRUE` in **`Settings`**, then run `installAutoCompletePastAppointmentsTrigger()` — confirmed appointments auto-mark **Completed** after `AUTO_COMPLETE_HOURS_AFTER` (default 4 hours). **Post-visit feedback** only runs for **Completed** appointments, so enable auto-complete or have doctors mark visits completed.
+
+### Visit type selection (detail)
+
+When `ENABLE_VISIT_TYPE_SELECTION` is `TRUE`:
+
+- **2+ active rows** on the auto-created **`Services`** sheet → patient picks visit type after doctor
+- **Exactly 1 active service** → auto-selected (no extra step)
+- **Per-service duration** in `Services` column C overrides doctor `AppointmentDuration` for slot calculation; leave blank/`0` to use the doctor default
+- Visit type name is stored on **`Appointments`** column **Visit Type** and in the calendar event title
 
 ### Reliability & security hardening (latest)
 
@@ -225,6 +250,11 @@ You need:
 - A **Meta WhatsApp Business** app with a phone number connected to the Cloud API
 - **Graph API credentials:** long-lived `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`
 - A **Google Sheet** that will hold clinic data (create new, or use your existing production sheet)
+- **Node.js** (optional, for local repo checks) — run `node scripts/verify-*.mjs` and `node scripts/sync-monolith-from-src.js` from a clone of this repo
+
+**Important:** The Apps Script project must be **container-bound** to the clinic spreadsheet (**Extensions → Apps Script** from that sheet). Standalone script projects cannot access `SpreadsheetApp.getActiveSpreadsheet()` correctly.
+
+**Timezone:** All dates/times use **`Asia/Kolkata`** (`TIMEZONE` in `Config.gs`). Clinics in other regions should change this constant in `Config.gs` (and the monolith header if using Option A) before go-live.
 
 Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/` (see [Apps Script files](#apps-script-files) above) — not both — plus, optionally, `ABC_Clinic_Tests.gs`. Don't add other `.gs` files with duplicate function names.
 
@@ -249,7 +279,7 @@ Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/`
 
    Example: `D001`, `Monday`, `09:00 AM`, `01:00 PM`
 
-4. Add an **`Appointments`** sheet if you don’t have one:
+4. Add an **`Appointments`** sheet if you don’t have one (**required** — unlike most other sheets, this one is not auto-created):
 
    | Appointment ID | Date | Time | Doctor ID | Patient Name | Phone | Status | Calendar Event ID | Patient ID | Visit Type |
 
@@ -347,8 +377,8 @@ Send a test message to your WhatsApp Business number. Check the **`WhatsApp_Log`
 
    Use `TRUE` in **Active** for leave rows that should block booking.
 
-4. Send **Hi** from a doctor’s WhatsApp number — you should see the Doctor Portal menu (options 1–10).
-5. Send **Hi** from a patient number — you should see the patient main menu.
+4. Send **Hi** from a doctor’s WhatsApp number — you should see the doctor main menu (Today's Schedule · Next Appointment · More).
+5. Send **Hi** from a patient number — you should see the patient main menu (Book · My Appointments · More).
 
 ---
 
@@ -376,7 +406,7 @@ After the first inbound message, a **`Settings`** sheet is created. Adjust as ne
 | `CLINIC_CLOSE_TIME` | `18:00` | Clinic closes |
 | `CLINIC_WORKING_DAYS` | `Mon,Tue,Wed,Thu,Fri,Sat` | Days the clinic accepts patient messages |
 | `AFTER_HOURS_MESSAGE` | *(empty)* | Optional custom closed message (overrides default) |
-| `CLINIC_WELCOME_IMAGE_URL` | *(empty)* | Public HTTPS URL for welcome image on first Hi |
+| `CLINIC_WELCOME_IMAGE_URL` | *(empty)* | Public **HTTPS** URL for welcome image on first Hi (e.g. deploy [`landing/`](landing/README.md) and use the hosted image URL) |
 | `CLINIC_NAME` | `ABC Clinic` | Branding, digest, contact block |
 | `CLINIC_ADDRESS` | *(empty)* | Shown in Contact & Location |
 | `CLINIC_PHONE` | *(empty)* | Shown in Contact & Location |
@@ -463,14 +493,15 @@ Review failures — some legacy tests touch live sheets/calendar; run on a copy 
 | Patient | Book on a busy day (>9 slots) | Slot list shows **More times** / **Earlier times** pages |
 | Patient | Cancel | Appointment status updated; calendar event removed |
 | Patient | Reschedule | New slot saved; calendar updated |
-| Doctor | Send `Hi` | Doctor Portal menu (tap-to-select list) |
-| Doctor | Options 1–4 | Schedule views work |
-| Doctor | Option 5 | Add/remove availability sessions (tappable day + action menus) |
-| Doctor | Option 6 | Add single-day or range leave (tappable leave menu) |
-| Doctor | Option 7 | Patient list from history |
-| Doctor | Option 8 | Cancel a patient appointment |
-| Doctor | Option 9 | Reschedule a patient appointment |
-| Doctor | Option 10 | Mark appointment Completed or No-Show |
+| Doctor | Send `Hi` | Doctor main menu: Today's Schedule · Next Appointment · More |
+| Doctor | More → tier 1 | This Week · Schedule by Date · More |
+| Doctor | More → tier 2 | Manage Availability · Manage Leaves · More |
+| Doctor | More → tier 3 | My Patients · Cancel Patient · More |
+| Doctor | More → tier 4 | Reschedule Patient · Mark Visit Status |
+| Doctor | Manage Availability | Add/remove sessions (tappable day + action menus) |
+| Doctor | Manage Leaves | Single-day or range leave |
+| Doctor | Cancel / reschedule patient | Patient notified; sheet + calendar updated |
+| Doctor | Mark Visit Status | Completed or No-Show |
 | Patient | Send `Hi` outside hours (with after-hours enabled) | Closed message with clinic hours |
 | Patient | Mid-booking outside hours | Flow continues until complete |
 | Doctor | Send `Hi` outside hours | Doctor Portal still works |
@@ -509,8 +540,29 @@ Use this after you have done the full steps above:
 - [ ] `installOwnerDailyDigestTrigger()` run if owner digest enabled (optional)
 - [ ] `installPostVisitFeedbackTrigger()` run if feedback enabled (optional)
 - [ ] `installAutoCompletePastAppointmentsTrigger()` run if auto-complete enabled (optional)
+- [ ] `ENABLE_AFTER_HOURS_REPLY` configured if using closed auto-reply (optional)
 - [ ] `CLINIC_REVIEW_URL` / `Services` sheet reviewed if using feedback / visit types (optional)
 - [ ] `syncPatientsFromAppointments()` run if upgrading (one-time)
+
+---
+
+## Unified API (`api()`)
+
+For dashboards or external tools in the **same** Apps Script project, call `api(action, data)` (`Api.gs`):
+
+| Action | `data` fields | Returns |
+|--------|---------------|---------|
+| `getDoctors` | — | Doctor list |
+| `getAvailableSlots` | `doctorId`, `date`, optional `serviceId` | Slot strings |
+| `book` | `doctorId`, `date`, `time`, `patientName`, `patientPhone`, `patientLanguage`, optional `serviceId` | Booking result |
+| `getMyAppointments` | `patientPhone` | Appointments for phone |
+| `cancel` | `appointmentId`, `patientPhone` | Cancel result |
+| `reschedule` | `appointmentId`, `patientPhone`, `newDate`, `newTime` | Reschedule result |
+| `doctorToday` / `doctorWeek` / `doctorNext` | `doctorId` | Schedule helpers |
+| `doctorPatients` | `doctorId` | Patients seen |
+| `doctorAvailability` / `doctorLeaves` | `doctorId` | Availability / leave rows |
+
+There is no public HTTP endpoint — wrap in your own web app if you need remote access.
 
 ---
 
@@ -561,6 +613,22 @@ Local Node unit tests (`tests/run-unit-tests.mjs`) are **not included yet** — 
 
 ---
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| Meta webhook verify fails | `WHATSAPP_VERIFY_TOKEN` mismatch | Match Meta dashboard and Script Properties exactly |
+| No rows in `WhatsApp_Log` | Wrong URL, missing `?token=`, or stale deployment | Use full web app URL with `WHATSAPP_WEBHOOK_POST_TOKEN`; **Deploy → New version** after code changes |
+| Patient gets no reply | After-hours gate, or script error | Check `Settings` → `ENABLE_AFTER_HOURS_REPLY`; check **Executions** in Apps Script |
+| Reminders never send | Trigger not installed or reminders disabled | Run `installAppointmentReminderTrigger()`; check `ENABLE_APPOINTMENT_REMINDERS` |
+| Feedback never send | No **Completed** appointments, or trigger missing | Mark visits completed (doctor or auto-complete); run `installPostVisitFeedbackTrigger()` |
+| Owner digest missing | Disabled or no owner phone | Set `ENABLE_OWNER_DAILY_DIGEST`, `CLINIC_OWNER_PHONE`; run `installOwnerDailyDigestTrigger()` |
+| “Booking is busy” | Concurrent booking lock | Retry; avoid double-tapping confirm |
+| Slots look wrong after visit types | Service duration differs from doctor default | Edit **`Services`** sheet or disable `ENABLE_VISIT_TYPE_SELECTION` |
+| `runAllTests()` fails immediately | `DEBUG_MODE` not set | Script Property `DEBUG_MODE=true` |
+
+---
+
 ## Known limitations
 
 - Localization is substring-based, not full i18n — doctor portal tap labels stay English; patient interactive labels and message bodies localize via `localizeInteractiveMenu()` / `localizeWhatsAppReply()`
@@ -577,7 +645,7 @@ Local Node unit tests (`tests/run-unit-tests.mjs`) are **not included yet** — 
 ABC_Clinic_WhatsApp_Complete.gs   ← production, Option A: single file
 ABC_Clinic_Tests.gs               ← tests (optional bind, either option)
 src/                               ← production, Option B: 24 files (see [Apps Script files](#apps-script-files))
-landing/                           ← marketing website (Vercel / Replit)
+landing/                           ← marketing site — see landing/README.md
 marketing/                         ← brochure, one-pager, offboarding docs
 scripts/
   sync-monolith-from-src.js        ← copy src/ function bodies into ABC_Clinic_WhatsApp_Complete.gs
