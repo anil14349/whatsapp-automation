@@ -55,6 +55,7 @@ function runAllTests() {
         ["testOwnerDailyDigest", testOwnerDailyDigest],
         ["testReminderActionButtons", testReminderActionButtons],
         ["testClinicBranding", testClinicBranding],
+        ["testWaitlist", testWaitlist],
         ["testDoctorCancelReschedule", testDoctorCancelReschedule],
         ["testAppointmentStatus", testAppointmentStatus],
         ["testAfterHoursReply", testAfterHoursReply],
@@ -1519,6 +1520,95 @@ function testClinicBranding() {
 }
 
 
+function testWaitlist() {
+
+    requireDebugMode("testWaitlist");
+
+    ensureSettingsSheet();
+
+    const settings =
+        getWaitlistSettings();
+
+    if (
+        !settings.enabled ||
+        settings.notifyCount < 1
+    ) {
+        throw new Error(
+            "default waitlist settings invalid"
+        );
+    }
+
+    const parsed =
+        parseWaitlistOfferChoice(
+            "waitlist_accept_w202608241030001"
+        );
+
+    if (
+        !parsed ||
+        parsed.offerId !==
+            "w202608241030001"
+    ) {
+        throw new Error(
+            "parseWaitlistOfferChoice failed"
+        );
+    }
+
+    const menuSpec =
+        getWaitlistOfferButtonSpec(
+            "w202608241030001"
+        );
+
+    if (
+        !menuSpec.interactive ||
+        menuSpec.interactive.buttons.length !== 1 ||
+        menuSpec.interactive.buttons[0].id !==
+            "waitlist_accept_w202608241030001"
+    ) {
+        throw new Error(
+            "getWaitlistOfferButtonSpec failed"
+        );
+    }
+
+    const intro =
+        buildWaitlistJoinIntro();
+
+    if (
+        intro.indexOf("Slot alerts") === -1 ||
+        intro.indexOf("Choose a doctor") === -1
+    ) {
+        throw new Error(
+            "buildWaitlistJoinIntro failed"
+        );
+    }
+
+    const offerMessage =
+        buildWaitlistOfferMessage(
+            {
+                displayDate: "24-Aug-2026",
+                time: "10:30 AM"
+            },
+            "Dr Ravi"
+        );
+
+    if (
+        offerMessage.indexOf("Dr Ravi") === -1 ||
+        offerMessage.indexOf("First come, first served") === -1
+    ) {
+        throw new Error(
+            "buildWaitlistOfferMessage failed"
+        );
+    }
+
+    ensureWaitlistSheet();
+    ensureSlotOfferSheet();
+
+    Logger.log(
+        "Waitlist smoke tests passed"
+    );
+}
+
+
+
 function testDoctorCancelReschedule() {
 
     requireDebugMode("testDoctorCancelReschedule");
@@ -1891,9 +1981,11 @@ function testInteractiveMenus() {
         patientMoreSpec.interactive.type !==
             "list" ||
         patientMoreSpec.interactive.sections[0].rows.length !==
-            4 ||
+            5 ||
         patientMoreSpec.interactive.sections[0].rows[3].id !==
-            "menu_contact"
+            "menu_contact" ||
+        patientMoreSpec.interactive.sections[0].rows[4].id !==
+            "menu_waitlist"
     ) {
         throw new Error(
             "patient main more menu spec invalid"

@@ -401,6 +401,42 @@ if (
 
 
 // ======================================================
+// MAIN MENU / MORE → SLOT ALERTS (WAITLIST)
+// ======================================================
+
+if (
+    (
+        normalizedMessage === "menu_waitlist" ||
+        normalizedMessage === "7"
+    ) &&
+    session &&
+    (
+        session.state === "MAIN_MENU" ||
+        session.state === "PATIENT_MAIN_MORE"
+    )
+) {
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "WAITLIST_DOCTOR",
+            slotPage: 0
+        }
+    );
+
+    sendWhatsAppMenuReply(
+        ss,
+        senderPhone,
+        buildWaitlistJoinIntro(),
+        getDoctorSelectionMenuSpec()
+    );
+
+    return true;
+}
+
+
+// ======================================================
 // MAIN MORE → UNRECOGNIZED OPTION
 // ======================================================
 
@@ -432,6 +468,80 @@ if (
         senderPhone,
         "❌ Invalid option."
     );
+    return true;
+}
+
+
+// ======================================================
+// WAITLIST_DOCTOR STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "WAITLIST_DOCTOR"
+) {
+
+    const doctors =
+        getDoctors();
+
+    let doctor = null;
+
+    const doctorNumber =
+        Number(messageText.trim());
+
+    if (
+        Number.isInteger(doctorNumber) &&
+        doctorNumber >= 1 &&
+        doctorNumber <= doctors.length
+    ) {
+        doctor =
+            doctors[doctorNumber - 1];
+    }
+
+    if (!doctor) {
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            buildWaitlistJoinIntro() +
+            "\n\n❌ Please choose a valid doctor.",
+            getDoctorSelectionMenuSpec()
+        );
+
+        return true;
+    }
+
+    const patient =
+        findPatientByPhone(senderPhone);
+
+    const result =
+        addPatientToWaitlist(
+            senderPhone,
+            doctor.doctorId,
+            patient &&
+            patient.name
+                ? patient.name
+                : senderName || "Patient"
+        );
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "PATIENT_MAIN_MORE",
+            doctorId: "",
+            slotPage: 0
+        }
+    );
+
+    sendPatientMainMoreMenuReply(
+        ss,
+        senderPhone,
+        result.success
+            ? "✅ " + result.message
+            : "ℹ️ " + result.message
+    );
+
     return true;
 }
 

@@ -237,6 +237,17 @@ function processWhatsAppTextMessage(
     }
 
     if (
+        handleWhatsAppWaitlistOfferAction(
+            ss,
+            senderPhone,
+            session,
+            normalizedMessage
+        )
+    ) {
+        return;
+    }
+
+    if (
         handleWhatsAppReminderAction(
             ss,
             senderPhone,

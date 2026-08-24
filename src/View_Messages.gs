@@ -1913,3 +1913,35 @@ function buildClinicContactMessage() {
 
     return text;
 }
+
+
+
+function buildWaitlistJoinIntro() {
+
+    return (
+        "🔔 Slot alerts\n\n" +
+        "Choose a doctor. We will notify you when a cancelled slot opens."
+    );
+}
+
+
+
+function buildWaitlistOfferMessage(
+    slot,
+    doctorName
+) {
+
+    return (
+        "🟢 A slot is available!\n\n" +
+        "👨‍⚕️ " +
+        String(doctorName || "Doctor").trim() +
+        "\n" +
+        "📅 " +
+        slot.displayDate +
+        "\n" +
+        "🕐 " +
+        slot.time +
+        "\n\n" +
+        "Tap below to book. First come, first served."
+    );
+}

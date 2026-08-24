@@ -42,6 +42,8 @@
 //   REMINDER_HOURS_BEFORE | 24
 //   REMINDER_WINDOW_MINUTES | 45
 //   ENABLE_REMINDER_ACTION_BUTTONS | TRUE
+//   ENABLE_APPOINTMENT_WAITLIST | TRUE
+//   WAITLIST_NOTIFY_COUNT | 3
 //   ENABLE_INTERACTIVE_MENUS | TRUE
 //   AUTO_COMPLETE_PAST_APPOINTMENTS | FALSE
 //   AUTO_COMPLETE_HOURS_AFTER | 4
@@ -74,6 +76,7 @@
 //   src/Logging.gs                — WhatsApp_Log / WhatsApp_Debug sheets, retention cleanup
 //   src/Model_Reminders.gs        — appointment reminder scheduling & sending
 //   src/Model_OwnerDigest.gs      — daily owner WhatsApp summary
+//   src/Model_Waitlist.gs         — slot-alert waitlist and offer notifications
 //   src/Model_AppointmentStatus.gs — Completed/No-Show status workflow, auto-complete
 //   src/Model_AfterHours.gs       — clinic-hours gate & after-hours auto-reply
 //   src/Model_Doctors.gs          — doctor records, availability, leaves, schedule views
@@ -427,6 +430,16 @@ function ensureSettingsSheet() {
             "ENABLE_REMINDER_ACTION_BUTTONS",
             "TRUE"
         ]);
+
+        sheet.appendRow([
+            "ENABLE_APPOINTMENT_WAITLIST",
+            "TRUE"
+        ]);
+
+        sheet.appendRow([
+            "WAITLIST_NOTIFY_COUNT",
+            "3"
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -527,6 +540,16 @@ function ensureSettingsSheet() {
             sheet,
             "ENABLE_REMINDER_ACTION_BUTTONS",
             "TRUE"
+        );
+        ensureSettingKey(
+            sheet,
+            "ENABLE_APPOINTMENT_WAITLIST",
+            "TRUE"
+        );
+        ensureSettingKey(
+            sheet,
+            "WAITLIST_NOTIFY_COUNT",
+            "3"
         );
     }
 

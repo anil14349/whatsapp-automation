@@ -570,6 +570,22 @@ function cancelAppointment(
                     .getRange(i + 1, 7)
                     .setValue("Cancelled");
 
+                try {
+
+                    notifyWaitlistForOpenedSlot(
+                        buildOpenedSlotFromAppointmentRow(
+                            appointmentData[i]
+                        )
+                    );
+
+                } catch (waitlistError) {
+
+                    Logger.log(
+                        "Waitlist notify failed after cancel: " +
+                        waitlistError.message
+                    );
+                }
+
                 return {
 
                     success: true,

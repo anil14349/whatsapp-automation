@@ -181,7 +181,8 @@ function getPatientMainMoreMenuSpec() {
         "3️⃣ Cancel Appointment\n" +
         "4️⃣ Reschedule Appointment\n" +
         "5️⃣ Change Language\n" +
-        "6️⃣ Contact & Location";
+        "6️⃣ Contact & Location\n" +
+        "7️⃣ Slot alerts";
 
     const rows = [
         {
@@ -203,6 +204,11 @@ function getPatientMainMoreMenuSpec() {
             id: "menu_contact",
             title: "Contact & Location",
             description: "Address, hours, map"
+        },
+        {
+            id: "menu_waitlist",
+            title: "Slot alerts",
+            description: "Notify when slots open"
         }
     ];
 
@@ -218,6 +224,31 @@ function getPatientMainMoreMenuSpec() {
     };
 }
 
+
+
+function getWaitlistOfferButtonSpec(
+    offerId
+) {
+
+    const id =
+        String(offerId || "").trim();
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            {
+                id:
+                    "waitlist_accept_" +
+                    id,
+                title: "Book this slot"
+            }
+        ]);
+
+    return {
+        fallbackText:
+            "1️⃣ Book this slot",
+        interactive: interactive
+    };
+}
 
 
 function getDoctorMainMenuSpec() {

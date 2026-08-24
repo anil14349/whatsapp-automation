@@ -282,6 +282,106 @@ function handleWhatsAppReminderAction(
 
 
 
+function parseWaitlistOfferChoice(
+    normalizedMessage
+) {
+
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    const prefix =
+        "waitlist_accept_";
+
+    if (
+        choice.indexOf(prefix) !== 0
+    ) {
+        return null;
+    }
+
+    const offerId =
+        choice.substring(
+            prefix.length
+        );
+
+    if (!offerId) {
+        return null;
+    }
+
+    return {
+        offerId: offerId
+    };
+}
+
+
+
+function handleWhatsAppWaitlistOfferAction(
+    ss,
+    senderPhone,
+    session,
+    normalizedMessage
+) {
+
+    const parsed =
+        parseWaitlistOfferChoice(
+            normalizedMessage
+        );
+
+    if (!parsed) {
+        return false;
+    }
+
+    if (
+        session &&
+        session.role === "DOCTOR"
+    ) {
+        return false;
+    }
+
+    const result =
+        acceptWaitlistSlotOffer(
+            parsed.offerId,
+            senderPhone
+        );
+
+    if (result.success) {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "MAIN_MENU",
+                doctorId: "",
+                date: "",
+                time: "",
+                appointmentId: "",
+                slotPage: 0
+            }
+        );
+
+        sendPatientMainMenuReply(
+            ss,
+            senderPhone,
+            result.message
+        );
+
+    } else {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "❌ " +
+            result.message +
+            "\n\nSend Hi to return to the main menu."
+        );
+    }
+
+    return true;
+}
+
+
+
 function isSimpleConfirmYesChoice(normalizedMessage) {
 
     const choice =
@@ -2441,6 +2541,13 @@ function goBackInWhatsAppFlow(ss, phone, session) {
                 ss,
                 phone,
                 ""
+            );
+            return;
+
+        case "WAITLIST_DOCTOR":
+            returnToPatientMainMore(
+                ss,
+                phone
             );
             return;
 

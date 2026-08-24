@@ -76,6 +76,7 @@ const expectedPatientStates = [
     "LANGUAGE_CHANGE",
     "MAIN_MENU",
     "PATIENT_MAIN_MORE",
+    "WAITLIST_DOCTOR",
     "MY_APPOINTMENTS",
     "BOOK_DOCTOR",
     "BOOK_DATE",
@@ -158,6 +159,19 @@ assert(
 
 const reminderIdx = processBody.indexOf(
     "handleWhatsAppReminderAction"
+);
+const waitlistIdx = processBody.indexOf(
+    "handleWhatsAppWaitlistOfferAction"
+);
+
+assert(
+    "router order waitlist → reminder → greeting",
+    waitlistIdx !== -1 &&
+        reminderIdx !== -1 &&
+        greetingIdx !== -1 &&
+        waitlistIdx < reminderIdx &&
+        reminderIdx < greetingIdx,
+    "waitlist and reminder actions must run before greeting"
 );
 
 assert(
@@ -253,7 +267,8 @@ assert(
     "RESCHEDULE_DATE",
     "RESCHEDULE_TIME",
     "RESCHEDULE_CONFIRM",
-    "MY_APPOINTMENTS"
+    "MY_APPOINTMENTS",
+    "WAITLIST_DOCTOR"
 ].forEach(function (state) {
     assert(
         `patient back nav defines ${state}`,
