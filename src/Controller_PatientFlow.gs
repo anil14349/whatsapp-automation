@@ -246,7 +246,7 @@ if (
         {
             role: "PATIENT",
             state: "MY_APPOINTMENTS",
-            apptPage: 0
+            slotPage: 0
         }
     );
 

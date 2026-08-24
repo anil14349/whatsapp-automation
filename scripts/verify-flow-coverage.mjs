@@ -189,6 +189,24 @@ assert(
     "missing in View_Messages.gs"
 );
 
+assert(
+    "getAppointmentListPageInfo exists",
+    read("src/View_Menus.gs").includes("function getAppointmentListPageInfo"),
+    "missing in View_Menus.gs"
+);
+
+assert(
+    "returnToPatientMainMore exists",
+    shared.includes("function returnToPatientMainMore"),
+    "missing in Controller_Shared.gs"
+);
+
+assert(
+    "cancel/reschedule back returns to More",
+    /case "CANCEL_SELECT":[\s\S]*?returnToPatientMainMore/.test(shared),
+    "missing goBack handler"
+);
+
 // listScreen call sites use known screens
 const listCallRe =
     /sendPatientAppointmentListMenuReply\(\s*[\s\S]*?,\s*"(my_appointments|cancel|reschedule)"/g;
@@ -204,7 +222,9 @@ assert(
     "BOOK_DATE",
     "BOOK_TIME",
     "BOOK_CONFIRM",
+    "CANCEL_SELECT",
     "CANCEL_CONFIRM",
+    "RESCHEDULE_SELECT",
     "RESCHEDULE_DATE",
     "RESCHEDULE_TIME",
     "RESCHEDULE_CONFIRM",

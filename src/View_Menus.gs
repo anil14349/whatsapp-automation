@@ -847,6 +847,125 @@ function appendAppointmentListNavRows(
 
 
 
+function buildAppointmentListPages(totalAppointments) {
+
+    const total =
+        Number(totalAppointments) || 0;
+
+    const pages = [];
+
+    if (total <= 0) {
+        return pages;
+    }
+
+    let index = 0;
+
+    while (index < total) {
+
+        const isFirst =
+            pages.length === 0;
+
+        const remaining =
+            total - index;
+
+        let reserved =
+            1;
+
+        if (!isFirst) {
+            reserved += 1;
+        }
+
+        const maxWithoutNext =
+            10 - reserved;
+
+        if (remaining <= maxWithoutNext) {
+
+            pages.push({
+                start: index,
+                end: total,
+                hasPrev: !isFirst,
+                hasNext: false
+            });
+
+            break;
+        }
+
+        reserved += 1;
+
+        const maxWithNext =
+            10 - reserved;
+
+        const count =
+            Math.min(
+                remaining,
+                maxWithNext
+            );
+
+        pages.push({
+            start: index,
+            end: index + count,
+            hasPrev: !isFirst,
+            hasNext: true
+        });
+
+        index += count;
+    }
+
+    return pages;
+}
+
+
+
+function getAppointmentListPageInfo(
+    totalAppointments,
+    page
+) {
+
+    const total =
+        Number(totalAppointments) || 0;
+
+    const pages =
+        buildAppointmentListPages(total);
+
+    if (pages.length === 0) {
+
+        return {
+            start: 0,
+            end: 0,
+            hasPrev: false,
+            hasNext: false,
+            page: 0,
+            totalPages: 0
+        };
+    }
+
+    let safePage =
+        Number(page) || 0;
+
+    if (safePage < 0) {
+        safePage = 0;
+    }
+
+    if (safePage >= pages.length) {
+        safePage =
+            pages.length - 1;
+    }
+
+    const current =
+        pages[safePage];
+
+    return {
+        start: current.start,
+        end: current.end,
+        hasPrev: current.hasPrev,
+        hasNext: current.hasNext,
+        page: safePage,
+        totalPages: pages.length
+    };
+}
+
+
+
 function getAppointmentListMenuSpec(
     appointments,
     mode,
@@ -872,7 +991,7 @@ function getAppointmentListMenuSpec(
         appointments.length;
 
     const pageInfo =
-        getSlotSelectionPageInfo(
+        getAppointmentListPageInfo(
             total,
             page || 0
         );

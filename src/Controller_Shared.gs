@@ -126,7 +126,7 @@ function beginWhatsAppCancelFlow(
     saveWhatsAppSession(phone, {
         role: "PATIENT",
         state: "CANCEL_SELECT",
-        apptPage: 0
+        slotPage: 0
     });
 
     sendPatientAppointmentListMenuReply(
@@ -171,7 +171,7 @@ function beginWhatsAppRescheduleFlow(
     saveWhatsAppSession(phone, {
         role: "PATIENT",
         state: "RESCHEDULE_SELECT",
-        apptPage: 0
+        slotPage: 0
     });
 
     sendPatientAppointmentListMenuReply(
@@ -316,7 +316,7 @@ function handleWhatsAppMyAppointmentsState(
                     date: "",
                     time: "",
                     appointmentId: "",
-                    apptPage: 0
+                    slotPage: 0
                 });
 
                 sendPatientMainMenuReply(
@@ -394,10 +394,10 @@ function handleDoctorWhatsAppAppointmentListSelection(
             );
 
     const currentPage =
-        Number(session.apptPage) || 0;
+        Number(session.slotPage) || 0;
 
     const pageInfo =
-        getSlotSelectionPageInfo(
+        getAppointmentListPageInfo(
             appointments.length,
             currentPage
         );
@@ -425,7 +425,7 @@ function handleDoctorWhatsAppAppointmentListSelection(
             currentPage - 1;
 
         saveWhatsAppSession(phone, {
-            apptPage: previousPage
+            slotPage: previousPage
         });
 
         sendDoctorAppointmentListMenuReply(
@@ -463,7 +463,7 @@ function handleDoctorWhatsAppAppointmentListSelection(
             currentPage + 1;
 
         saveWhatsAppSession(phone, {
-            apptPage: nextPage
+            slotPage: nextPage
         });
 
         sendDoctorAppointmentListMenuReply(
@@ -518,7 +518,7 @@ function handleDoctorWhatsAppAppointmentListSelection(
     }
 
     saveWhatsAppSession(phone, {
-        apptPage: 0
+        slotPage: 0
     });
 
     opts.onChosen(
@@ -558,7 +558,7 @@ function beginDoctorCancelFlow(
         date: "",
         time: "",
         appointmentId: "",
-        apptPage: 0
+        slotPage: 0
     });
 
     sendDoctorAppointmentListMenuReply(
@@ -604,7 +604,7 @@ function beginDoctorRescheduleFlow(
         date: "",
         time: "",
         appointmentId: "",
-        apptPage: 0
+        slotPage: 0
     });
 
     sendDoctorAppointmentListMenuReply(
@@ -1057,7 +1057,7 @@ function handleWhatsAppAppointmentListSelection(
             date: "",
             time: "",
             appointmentId: "",
-            apptPage: 0
+            slotPage: 0
         });
 
         sendPatientMainMenuReply(
@@ -1090,11 +1090,11 @@ function handleWhatsAppAppointmentListSelection(
 
     const currentPage =
         session
-            ? Number(session.apptPage) || 0
+            ? Number(session.slotPage) || 0
             : 0;
 
     const pageInfo =
-        getSlotSelectionPageInfo(
+        getAppointmentListPageInfo(
             appointments.length,
             currentPage
         );
@@ -1125,7 +1125,7 @@ function handleWhatsAppAppointmentListSelection(
             currentPage - 1;
 
         saveWhatsAppSession(phone, {
-            apptPage: previousPage
+            slotPage: previousPage
         });
 
         sendPatientAppointmentListMenuReply(
@@ -1162,7 +1162,7 @@ function handleWhatsAppAppointmentListSelection(
             currentPage + 1;
 
         saveWhatsAppSession(phone, {
-            apptPage: nextPage
+            slotPage: nextPage
         });
 
         sendPatientAppointmentListMenuReply(
@@ -1216,7 +1216,7 @@ function handleWhatsAppAppointmentListSelection(
     }
 
     saveWhatsAppSession(phone, {
-        apptPage: 0
+        slotPage: 0
     });
 
     opts.onChosen(
@@ -1503,9 +1503,7 @@ function whatsAppNavigationShowsBack(session) {
 
     const patientFlatHome = [
         "BOOK_DOCTOR",
-        "MY_APPOINTMENTS",
-        "CANCEL_SELECT",
-        "RESCHEDULE_SELECT"
+        "MY_APPOINTMENTS"
     ];
 
     return (
@@ -1876,7 +1874,8 @@ function returnToMainMenu(ss, phone, prefix) {
             doctorId: "",
             date: "",
             time: "",
-            appointmentId: ""
+            appointmentId: "",
+            slotPage: 0
         }
     );
 
@@ -1884,6 +1883,34 @@ function returnToMainMenu(ss, phone, prefix) {
         ss,
         phone,
         prefix || "👋 Back to main menu."
+    );
+}
+
+
+
+function returnToPatientMainMore(
+    ss,
+    phone,
+    prefix
+) {
+
+    saveWhatsAppSession(
+        phone,
+        {
+            role: "PATIENT",
+            state: "PATIENT_MAIN_MORE",
+            doctorId: "",
+            date: "",
+            time: "",
+            appointmentId: "",
+            slotPage: 0
+        }
+    );
+
+    sendPatientMainMoreMenuReply(
+        ss,
+        phone,
+        prefix || ""
     );
 }
 
@@ -2227,7 +2254,7 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             saveWhatsAppSession(phone, {
                 state: "CANCEL_SELECT",
                 appointmentId: "",
-                apptPage: 0
+                slotPage: 0
             });
             sendPatientAppointmentListMenuReply(
                 ss,
@@ -2237,6 +2264,11 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             );
             return;
 
+        case "CANCEL_SELECT":
+        case "RESCHEDULE_SELECT":
+            returnToPatientMainMore(ss, phone);
+            return;
+
         case "RESCHEDULE_DATE":
             saveWhatsAppSession(phone, {
                 state: "RESCHEDULE_SELECT",
@@ -2244,7 +2276,7 @@ function goBackInWhatsAppFlow(ss, phone, session) {
                 doctorId: "",
                 date: "",
                 time: "",
-                apptPage: 0
+                slotPage: 0
             });
             sendPatientAppointmentListMenuReply(
                 ss,
@@ -2448,7 +2480,7 @@ function goBackInDoctorWhatsAppFlow(
                 patientName: "",
                 date: "",
                 time: "",
-                apptPage: 0
+                slotPage: 0
             });
             sendDoctorAppointmentListMenuReply(
                 ss,
