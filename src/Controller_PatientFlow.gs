@@ -65,7 +65,10 @@ if (
         sendPatientMainMenuReply(
             ss,
             senderPhone,
-            "👋 Welcome to ABC Clinic!"
+            "👋 Welcome to ABC Clinic!",
+            {
+                skipWelcomeImage: true
+            }
         );
     }
     return true;

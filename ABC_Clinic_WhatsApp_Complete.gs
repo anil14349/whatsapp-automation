@@ -923,6 +923,11 @@ function ensureSettingsSheet() {
             "AFTER_HOURS_MESSAGE",
             ""
         ]);
+
+        sheet.appendRow([
+            "CLINIC_WELCOME_IMAGE_URL",
+            ""
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -977,6 +982,11 @@ function ensureSettingsSheet() {
         ensureSettingKey(
             sheet,
             "AFTER_HOURS_MESSAGE",
+            ""
+        );
+        ensureSettingKey(
+            sheet,
+            "CLINIC_WELCOME_IMAGE_URL",
             ""
         );
     }
@@ -1823,9 +1833,6 @@ function buildAppointmentReminderMessage(
         "\n" +
         "Time: " +
         displayTime +
-        "\n" +
-        "Appointment ID: " +
-        appointment.appointmentId +
         "\n\n" +
         "Reply Hi to reschedule or cancel."
     );
@@ -12959,6 +12966,12 @@ if (
                 }
             );
 
+            sendClinicWelcomeImageReply(
+                ss,
+                senderPhone,
+                "👋 Welcome to ABC Clinic!"
+            );
+
             sendLanguageMenuReply(
                 ss,
                 senderPhone
@@ -15060,7 +15073,10 @@ if (
         sendPatientMainMenuReply(
             ss,
             senderPhone,
-            "👋 Welcome to ABC Clinic!"
+            "👋 Welcome to ABC Clinic!",
+            {
+                skipWelcomeImage: true
+            }
         );
     }
     return true;
@@ -17040,12 +17056,40 @@ function sendWhatsAppMenuReply(
 function sendPatientMainMenuReply(
     ss,
     phone,
-    prefix
+    prefix,
+    options
 ) {
 
+    const opts = options || {};
+
+    const welcomePrefix =
+        String(
+            prefix ||
+            "👋 Welcome to ABC Clinic!"
+        );
+
+    const isWelcomeMessage =
+        welcomePrefix.indexOf(
+            "Welcome to ABC Clinic"
+        ) !== -1;
+
+    if (
+        isWelcomeMessage &&
+        !opts.skipWelcomeImage
+    ) {
+        sendClinicWelcomeImageReply(
+            ss,
+            phone,
+            welcomePrefix
+        );
+    }
+
     const body =
-        String(prefix || "👋 Welcome to ABC Clinic!") +
-        "\n\nHow can we help you today?";
+        isWelcomeMessage &&
+        getClinicWelcomeImageUrl()
+            ? "How can we help you today?"
+            : welcomePrefix +
+            "\n\nHow can we help you today?";
 
     sendWhatsAppMenuReply(
         ss,
@@ -19006,4 +19050,124 @@ function sendRescheduleConfirmMenuReply(
             ),
         getRescheduleConfirmSpec()
     );
+}
+
+
+function getClinicWelcomeImageUrl() {
+
+    return String(
+        getSetting(
+            "CLINIC_WELCOME_IMAGE_URL",
+            ""
+        ) || ""
+    ).trim();
+}
+
+
+function sendWhatsAppImageMessage(
+    to,
+    imageUrl,
+    caption
+) {
+
+    if (shouldSkipOutboundWhatsApp()) {
+        return {
+            skipped: true,
+            to: to,
+            imageUrl: imageUrl,
+            caption: caption || ""
+        };
+    }
+
+    const imagePayload = {
+        link: String(imageUrl)
+    };
+
+    if (caption) {
+        imagePayload.caption = String(caption);
+    }
+
+    return sendWhatsAppGraphPayload(
+        to,
+        {
+            messaging_product: "whatsapp",
+            recipient_type: "individual",
+            to: String(to),
+            type: "image",
+            image: imagePayload
+        }
+    );
+}
+
+
+function sendClinicWelcomeImageReply(
+    ss,
+    phone,
+    caption
+) {
+
+    const imageUrl =
+        getClinicWelcomeImageUrl();
+
+    if (!imageUrl) {
+        return null;
+    }
+
+    try {
+
+        const session =
+            getWhatsAppSession(phone);
+
+        const language =
+            resolvePatientLanguage(
+                phone,
+                session
+            );
+
+        const localizedCaption =
+            localizeWhatsAppReply(
+                language,
+                String(caption || "")
+            );
+
+        const sendResult =
+            sendWhatsAppImageMessage(
+                phone,
+                imageUrl,
+                localizedCaption
+            );
+
+        appendWhatsAppDebugLog(
+            ss,
+            {
+                direction: "OUTBOUND",
+                phone: phone,
+                status: "SUCCESS",
+                response:
+                    "[image] " +
+                    localizedCaption
+            }
+        );
+
+        return sendResult;
+
+    } catch (error) {
+
+        appendWhatsAppDebugLog(
+            ss,
+            {
+                direction: "OUTBOUND",
+                phone: phone,
+                status: "ERROR",
+                response: error.message
+            }
+        );
+
+        Logger.log(
+            "Welcome image failed; continuing without image: " +
+            error.message
+        );
+
+        return null;
+    }
 }

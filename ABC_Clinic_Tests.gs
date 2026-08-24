@@ -1262,7 +1262,8 @@ function testAppointmentReminders() {
     if (
         message.indexOf("Appointment Reminder") === -1 ||
         message.indexOf("Dr Ravi") === -1 ||
-        message.indexOf("24 hours") === -1
+        message.indexOf("24 hours") === -1 ||
+        message.indexOf("Appointment ID") !== -1
     ) {
         throw new Error(
             "buildAppointmentReminderMessage failed"

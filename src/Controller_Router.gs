@@ -114,6 +114,12 @@ if (
                 }
             );
 
+            sendClinicWelcomeImageReply(
+                ss,
+                senderPhone,
+                "👋 Welcome to ABC Clinic!"
+            );
+
             sendLanguageMenuReply(
                 ss,
                 senderPhone

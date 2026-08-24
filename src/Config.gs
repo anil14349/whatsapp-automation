@@ -49,6 +49,7 @@
 //   CLINIC_CLOSE_TIME | 18:00
 //   CLINIC_WORKING_DAYS | Mon,Tue,Wed,Thu,Fri,Sat
 //   AFTER_HOURS_MESSAGE | (optional custom text)
+//   CLINIC_WELCOME_IMAGE_URL | (optional public HTTPS URL — e.g. https://your-domain.com/clinic-welcome.png from landing/public/)
 //
 // Script Properties:
 //   WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID (required)
@@ -372,6 +373,11 @@ function ensureSettingsSheet() {
             "AFTER_HOURS_MESSAGE",
             ""
         ]);
+
+        sheet.appendRow([
+            "CLINIC_WELCOME_IMAGE_URL",
+            ""
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -426,6 +432,11 @@ function ensureSettingsSheet() {
         ensureSettingKey(
             sheet,
             "AFTER_HOURS_MESSAGE",
+            ""
+        );
+        ensureSettingKey(
+            sheet,
+            "CLINIC_WELCOME_IMAGE_URL",
             ""
         );
     }

@@ -223,9 +223,6 @@ function buildAppointmentReminderMessage(
         "\n" +
         "Time: " +
         displayTime +
-        "\n" +
-        "Appointment ID: " +
-        appointment.appointmentId +
         "\n\n" +
         "Reply Hi to reschedule or cancel."
     );

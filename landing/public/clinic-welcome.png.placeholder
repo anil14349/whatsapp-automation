@@ -1,0 +1,2 @@
+Place your clinic welcome image here as clinic-welcome.png, deploy the landing site,
+then set Settings → CLINIC_WELCOME_IMAGE_URL to https://your-domain.com/clinic-welcome.png
