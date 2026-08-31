@@ -10,6 +10,63 @@
 // 3. BOOK APPOINTMENT
 // ============================================================
 
+// Appointment IDs are an 8-hex-char UUID prefix — short for readability,
+// but not collision-proof on its own over a long-lived, high-volume
+// sheet. Checked against every existing ID (retrying on the rare
+// collision) so cancelAppointment/rescheduleAppointment's "find the row
+// whose ID matches" lookups can never land on the wrong appointment.
+// Must be called while bookAppointment's lock is held, so two concurrent
+// bookings can't both pick the same candidate before either is written.
+function generateUniqueAppointmentId(appointmentSheet) {
+
+    const data =
+        appointmentSheet.getDataRange().getValues();
+
+    const existingIds = {};
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const id =
+            String(data[i][0] || "").trim();
+
+        if (id) {
+            existingIds[id] = true;
+        }
+    }
+
+    const maxAttempts = 5;
+
+    for (
+        let attempt = 0;
+        attempt < maxAttempts;
+        attempt++
+    ) {
+
+        const candidate =
+            "A" +
+            Utilities.getUuid()
+                .replace(/-/g, "")
+                .substring(0, 8)
+                .toUpperCase();
+
+        if (!existingIds[candidate]) {
+            return candidate;
+        }
+    }
+
+    throw new Error(
+        "Unable to generate a unique appointment ID after " +
+        maxAttempts +
+        " attempts."
+    );
+}
+
+
+
 function bookAppointment(
     doctorId,
     dateString,
@@ -158,17 +215,6 @@ function bookAppointment(
     }
 
     // ----------------------------------------------------------
-    // Generate appointment ID
-    // ----------------------------------------------------------
-
-    const appointmentId =
-        "A" +
-        Utilities.getUuid()
-            .replace(/-/g, "")
-            .substring(0, 8)
-            .toUpperCase();
-
-    // ----------------------------------------------------------
     // Create Calendar event
     // ----------------------------------------------------------
 
@@ -176,6 +222,7 @@ function bookAppointment(
         LockService.getScriptLock();
 
     let event = null;
+    let appointmentId = null;
 
     try {
 
@@ -216,6 +263,13 @@ function bookAppointment(
                     "This appointment slot is already booked."
             };
         }
+
+        // Generated (and checked for uniqueness) only after the lock is
+        // held, so two concurrent bookings can never race on the same ID.
+        appointmentId =
+            generateUniqueAppointmentId(
+                appointmentSheet
+            );
 
         event =
             calendar.createEvent(
