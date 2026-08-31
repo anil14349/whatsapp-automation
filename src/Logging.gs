@@ -167,6 +167,10 @@ function truncateLogText(text, maxChars) {
 
 
 
+// REMINDER rows (Direction column) are the dedup ledger reminders depend
+// on to avoid double-sending — they're exempt from both the age-based
+// and row-cap eviction below, so routine chat-log volume/retention can
+// never evict a reminder record hasReminderBeenSent still needs.
 function cleanupLogSheet(sheet, settings) {
 
     if (
@@ -182,7 +186,13 @@ function cleanupLogSheet(sheet, settings) {
     }
 
     const opts = settings || getLogSettings();
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const rowsToDelete = {};
     let deletedByAge = 0;
+    let deletedByCap = 0;
 
     if (opts.retentionDays > 0) {
 
@@ -196,16 +206,15 @@ function cleanupLogSheet(sheet, settings) {
                 1000
             );
 
-        const data =
-            sheet.getDataRange().getValues();
-
-        const rowsToDelete = [];
-
         for (
             let i = 1;
             i < data.length;
             i++
         ) {
+
+            if (data[i][1] === "REMINDER") {
+                continue;
+            }
 
             const timestamp =
                 parseLogTimestamp(
@@ -217,31 +226,54 @@ function cleanupLogSheet(sheet, settings) {
                 timestamp.getTime() <
                 cutoff.getTime()
             ) {
-                rowsToDelete.push(i + 1);
+                rowsToDelete[i + 1] = true;
+                deletedByAge++;
             }
         }
-
-        rowsToDelete
-            .sort(function (a, b) {
-                return b - a;
-            })
-            .forEach(function (row) {
-                sheet.deleteRow(row);
-                deletedByAge++;
-            });
     }
 
-    let deletedByCap = 0;
-    const maxRows =
-        opts.maxRows + 1;
+    const survivingNonReminderRows = [];
 
-    while (sheet.getLastRow() > maxRows) {
-        sheet.deleteRows(
-            2,
-            sheet.getLastRow() - maxRows
-        );
-        deletedByCap++;
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const row = i + 1;
+
+        if (
+            data[i][1] !== "REMINDER" &&
+            !rowsToDelete[row]
+        ) {
+            survivingNonReminderRows.push(row);
+        }
     }
+
+    const excess =
+        survivingNonReminderRows.length -
+        opts.maxRows;
+
+    if (excess > 0) {
+
+        for (
+            let k = 0;
+            k < excess;
+            k++
+        ) {
+            rowsToDelete[survivingNonReminderRows[k]] = true;
+            deletedByCap++;
+        }
+    }
+
+    Object.keys(rowsToDelete)
+        .map(Number)
+        .sort(function (a, b) {
+            return b - a;
+        })
+        .forEach(function (row) {
+            sheet.deleteRow(row);
+        });
 
     return {
         deletedByAge: deletedByAge,
