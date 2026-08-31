@@ -201,3 +201,119 @@ function initializeWhatsAppBotSheets() {
         sheets: results
     };
 }
+
+
+
+// ============================================================
+// HOSPITAL LOGO SETUP (one-time, run manually from the Apps Script editor)
+// ============================================================
+//
+// 1. Upload the logo image to Google Drive.
+// 2. Right-click the file → "Share" → set to "Anyone with the link" (only
+//    needed for this upload step — the file does not need to stay public
+//    afterward, since WhatsApp stores its own permanent copy).
+// 3. Copy the file ID out of its URL:
+//      https://drive.google.com/file/d/<FILE_ID>/view
+// 4. In the Apps Script editor, select uploadWhatsAppMediaFromDriveFile
+//    from the function dropdown, run it once (paste the file ID in when
+//    prompted, or edit the call below), and check the execution log for
+//    the returned media ID.
+// 5. Add a row to the Settings sheet: HOSPITAL_LOGO_MEDIA_ID = <that ID>.
+//    The greeting will start sending the logo automatically — no other
+//    code change needed. Add CLINIC_NAME to the Settings sheet too if you
+//    want the welcome caption to say something other than "ABC Clinic".
+//
+// Media IDs don't expire from normal use, but Meta does eventually garbage
+// -collect media that hasn't been referenced in a long time — if sends
+// ever start failing with a "media not found" error, just re-run this
+// function and update the Settings row with the new ID.
+
+function uploadWhatsAppMediaFromDriveFile(driveFileId) {
+
+    requireDebugMode(
+        "uploadWhatsAppMediaFromDriveFile"
+    );
+
+    const file =
+        DriveApp.getFileById(driveFileId);
+
+    const blob =
+        file.getBlob();
+
+    const properties =
+        PropertiesService.getScriptProperties();
+
+    const accessToken =
+        properties.getProperty(
+            "WHATSAPP_ACCESS_TOKEN"
+        );
+
+    const phoneNumberId =
+        properties.getProperty(
+            "WHATSAPP_PHONE_NUMBER_ID"
+        );
+
+    if (!accessToken) {
+        throw new Error(
+            "WHATSAPP_ACCESS_TOKEN is missing."
+        );
+    }
+
+    if (!phoneNumberId) {
+        throw new Error(
+            "WHATSAPP_PHONE_NUMBER_ID is missing."
+        );
+    }
+
+    const url =
+        "https://graph.facebook.com/v26.0/" +
+        phoneNumberId +
+        "/media";
+
+    const response =
+        UrlFetchApp.fetch(
+            url,
+            {
+                method: "post",
+                headers: {
+                    Authorization:
+                        "Bearer " + accessToken
+                },
+                payload: {
+                    messaging_product: "whatsapp",
+                    type: blob.getContentType(),
+                    file: blob
+                },
+                muteHttpExceptions: true
+            }
+        );
+
+    const responseCode =
+        response.getResponseCode();
+
+    const responseBody =
+        response.getContentText();
+
+    if (
+        responseCode < 200 ||
+        responseCode >= 300
+    ) {
+        throw new Error(
+            "WhatsApp media upload error: " +
+            responseBody
+        );
+    }
+
+    const result =
+        JSON.parse(responseBody);
+
+    Logger.log(
+        "Uploaded '" +
+        file.getName() +
+        "' to WhatsApp. Media ID: " +
+        result.id +
+        " -- add this to the Settings sheet as HOSPITAL_LOGO_MEDIA_ID."
+    );
+
+    return result;
+}

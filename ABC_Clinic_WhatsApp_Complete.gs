@@ -12585,6 +12585,15 @@ if (
                 savedLanguage
             ) !== -1;
 
+        // Logo is optional (only sent once HOSPITAL_LOGO_MEDIA_ID is set
+        // in the Settings sheet — see uploadWhatsAppMediaFromDriveFile in
+        // Setup.gs). When it does send, skip repeating the welcome line
+        // in the text that follows.
+        const logoSent =
+            sendHospitalLogoGreeting(
+                senderPhone
+            );
+
         if (hasSavedLanguage) {
 
             saveWhatsAppSession(
@@ -12603,7 +12612,11 @@ if (
             sendPatientMainMenuReply(
                 ss,
                 senderPhone,
-                "👋 Welcome to ABC Clinic!"
+                logoSent
+                    ? ""
+                    : "👋 Welcome to " +
+                    getClinicName() +
+                    "!"
             );
 
         } else {
@@ -12624,7 +12637,12 @@ if (
 
             sendLanguageMenuReply(
                 ss,
-                senderPhone
+                senderPhone,
+                logoSent
+                    ? ""
+                    : "👋 Welcome to " +
+                    getClinicName() +
+                    "!"
             );
         }
     }
@@ -16701,9 +16719,20 @@ function sendPatientMainMenuReply(
     prefix
 ) {
 
+    // A caller can pass "" explicitly to omit the welcome line entirely
+    // (e.g. when the hospital logo image already carried the welcome as
+    // its caption) — only an omitted (undefined) prefix falls back to
+    // the default. Any other non-empty string is used as-is.
+    const line =
+        prefix !== undefined
+            ? String(prefix)
+            : "👋 Welcome to " +
+            getClinicName() +
+            "!";
+
     const body =
-        String(prefix || "👋 Welcome to ABC Clinic!") +
-        "\n\nHow can we help you today?";
+        (line ? line + "\n\n" : "") +
+        "How can we help you today?";
 
     sendWhatsAppMenuReply(
         ss,
@@ -17644,6 +17673,20 @@ function findDoctorByName(doctorName) {
 // ============================================================
 
 
+function getClinicName() {
+
+    const name =
+        String(
+            getSetting(
+                "CLINIC_NAME",
+                "ABC Clinic"
+            ) || ""
+        ).trim();
+
+    return name || "ABC Clinic";
+}
+
+
 function appendWhatsAppLogEntry(
     ss,
     entry
@@ -17906,6 +17949,97 @@ function initializeWhatsAppBotSheets() {
         success: true,
         sheets: results
     };
+}
+
+
+function uploadWhatsAppMediaFromDriveFile(driveFileId) {
+
+    requireDebugMode(
+        "uploadWhatsAppMediaFromDriveFile"
+    );
+
+    const file =
+        DriveApp.getFileById(driveFileId);
+
+    const blob =
+        file.getBlob();
+
+    const properties =
+        PropertiesService.getScriptProperties();
+
+    const accessToken =
+        properties.getProperty(
+            "WHATSAPP_ACCESS_TOKEN"
+        );
+
+    const phoneNumberId =
+        properties.getProperty(
+            "WHATSAPP_PHONE_NUMBER_ID"
+        );
+
+    if (!accessToken) {
+        throw new Error(
+            "WHATSAPP_ACCESS_TOKEN is missing."
+        );
+    }
+
+    if (!phoneNumberId) {
+        throw new Error(
+            "WHATSAPP_PHONE_NUMBER_ID is missing."
+        );
+    }
+
+    const url =
+        "https://graph.facebook.com/v26.0/" +
+        phoneNumberId +
+        "/media";
+
+    const response =
+        UrlFetchApp.fetch(
+            url,
+            {
+                method: "post",
+                headers: {
+                    Authorization:
+                        "Bearer " + accessToken
+                },
+                payload: {
+                    messaging_product: "whatsapp",
+                    type: blob.getContentType(),
+                    file: blob
+                },
+                muteHttpExceptions: true
+            }
+        );
+
+    const responseCode =
+        response.getResponseCode();
+
+    const responseBody =
+        response.getContentText();
+
+    if (
+        responseCode < 200 ||
+        responseCode >= 300
+    ) {
+        throw new Error(
+            "WhatsApp media upload error: " +
+            responseBody
+        );
+    }
+
+    const result =
+        JSON.parse(responseBody);
+
+    Logger.log(
+        "Uploaded '" +
+        file.getName() +
+        "' to WhatsApp. Media ID: " +
+        result.id +
+        " -- add this to the Settings sheet as HOSPITAL_LOGO_MEDIA_ID."
+    );
+
+    return result;
 }
 
 
@@ -18975,4 +19109,77 @@ function sendRescheduleConfirmMenuReply(
             ),
         getRescheduleConfirmSpec()
     );
+}
+
+
+function sendWhatsAppImageMessage(
+    to,
+    mediaId,
+    caption
+) {
+
+    if (shouldSkipOutboundWhatsApp()) {
+        return {
+            skipped: true,
+            to: to,
+            mediaId: mediaId
+        };
+    }
+
+    const image = {
+        id: String(mediaId)
+    };
+
+    if (caption) {
+        image.caption = String(caption);
+    }
+
+    return sendWhatsAppGraphPayload(
+        to,
+        {
+            messaging_product: "whatsapp",
+            recipient_type: "individual",
+            to: String(to),
+            type: "image",
+            image: image
+        }
+    );
+}
+
+
+function sendHospitalLogoGreeting(phone) {
+
+    const mediaId =
+        String(
+            getSetting(
+                "HOSPITAL_LOGO_MEDIA_ID",
+                ""
+            ) || ""
+        ).trim();
+
+    if (!mediaId) {
+        return false;
+    }
+
+    try {
+
+        sendWhatsAppImageMessage(
+            phone,
+            mediaId,
+            "👋 Welcome to " +
+            getClinicName() +
+            "!"
+        );
+
+        return true;
+
+    } catch (error) {
+
+        Logger.log(
+            "Failed to send hospital logo greeting: " +
+            error.message
+        );
+
+        return false;
+    }
 }

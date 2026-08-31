@@ -307,9 +307,20 @@ function sendPatientMainMenuReply(
     prefix
 ) {
 
+    // A caller can pass "" explicitly to omit the welcome line entirely
+    // (e.g. when the hospital logo image already carried the welcome as
+    // its caption) — only an omitted (undefined) prefix falls back to
+    // the default. Any other non-empty string is used as-is.
+    const line =
+        prefix !== undefined
+            ? String(prefix)
+            : "👋 Welcome to " +
+            getClinicName() +
+            "!";
+
     const body =
-        String(prefix || "👋 Welcome to ABC Clinic!") +
-        "\n\nHow can we help you today?";
+        (line ? line + "\n\n" : "") +
+        "How can we help you today?";
 
     sendWhatsAppMenuReply(
         ss,
@@ -892,6 +903,90 @@ function sendWhatsAppText(to, messageText) {
             }
         }
     );
+}
+
+
+
+// Sends an image message referencing a media ID already uploaded to
+// WhatsApp (see uploadWhatsAppMediaFromDriveFile in Setup.gs) — not a
+// public URL. `caption` is optional, shown under the image.
+function sendWhatsAppImageMessage(
+    to,
+    mediaId,
+    caption
+) {
+
+    if (shouldSkipOutboundWhatsApp()) {
+        return {
+            skipped: true,
+            to: to,
+            mediaId: mediaId
+        };
+    }
+
+    const image = {
+        id: String(mediaId)
+    };
+
+    if (caption) {
+        image.caption = String(caption);
+    }
+
+    return sendWhatsAppGraphPayload(
+        to,
+        {
+            messaging_product: "whatsapp",
+            recipient_type: "individual",
+            to: String(to),
+            type: "image",
+            image: image
+        }
+    );
+}
+
+
+
+// Sends the hospital logo (if HOSPITAL_LOGO_MEDIA_ID is configured in the
+// Settings sheet) with a "Welcome to <clinic>" caption. Returns true if an
+// image was actually sent, so callers can skip repeating the welcome text
+// in the message that follows. No-ops (returns false) if the setting is
+// unset, and never throws — a logo-send failure should not block the
+// actual greeting/menu that follows it.
+function sendHospitalLogoGreeting(phone) {
+
+    const mediaId =
+        String(
+            getSetting(
+                "HOSPITAL_LOGO_MEDIA_ID",
+                ""
+            ) || ""
+        ).trim();
+
+    if (!mediaId) {
+        return false;
+    }
+
+    try {
+
+        sendWhatsAppImageMessage(
+            phone,
+            mediaId,
+            "👋 Welcome to " +
+            getClinicName() +
+            "!"
+        );
+
+        return true;
+
+    } catch (error) {
+
+        Logger.log(
+            "Failed to send hospital logo greeting: " +
+            error.message
+        );
+
+        return false;
+    }
 }
 
 

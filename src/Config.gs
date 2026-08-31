@@ -565,6 +565,24 @@ function getSetting(key, defaultValue) {
 
 
 
+// Hospital/clinic display name used in greetings and the logo caption.
+// Configurable via the Settings sheet (CLINIC_NAME) instead of being
+// hardcoded, so rebranding doesn't require a code change.
+function getClinicName() {
+
+    const name =
+        String(
+            getSetting(
+                "CLINIC_NAME",
+                "ABC Clinic"
+            ) || ""
+        ).trim();
+
+    return name || "ABC Clinic";
+}
+
+
+
 // ============================================================
 // AFTER-HOURS / CLINIC CLOSED REPLY
 // ============================================================

@@ -77,6 +77,15 @@ if (
                 savedLanguage
             ) !== -1;
 
+        // Logo is optional (only sent once HOSPITAL_LOGO_MEDIA_ID is set
+        // in the Settings sheet — see uploadWhatsAppMediaFromDriveFile in
+        // Setup.gs). When it does send, skip repeating the welcome line
+        // in the text that follows.
+        const logoSent =
+            sendHospitalLogoGreeting(
+                senderPhone
+            );
+
         if (hasSavedLanguage) {
 
             saveWhatsAppSession(
@@ -95,7 +104,11 @@ if (
             sendPatientMainMenuReply(
                 ss,
                 senderPhone,
-                "👋 Welcome to ABC Clinic!"
+                logoSent
+                    ? ""
+                    : "👋 Welcome to " +
+                    getClinicName() +
+                    "!"
             );
 
         } else {
@@ -116,7 +129,12 @@ if (
 
             sendLanguageMenuReply(
                 ss,
-                senderPhone
+                senderPhone,
+                logoSent
+                    ? ""
+                    : "👋 Welcome to " +
+                    getClinicName() +
+                    "!"
             );
         }
     }

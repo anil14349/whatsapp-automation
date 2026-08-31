@@ -179,6 +179,8 @@ Adjust after the first inbound message creates the sheet:
 | `CLINIC_CLOSE_TIME` | `18:00` | Clinic closes |
 | `CLINIC_WORKING_DAYS` | `Mon,Tue,Wed,Thu,Fri,Sat` | Days the clinic accepts patient messages |
 | `AFTER_HOURS_MESSAGE` | *(empty)* | Optional custom closed message (overrides default) |
+| `CLINIC_NAME` | `ABC Clinic` | Display name used in the "Welcome to..." greeting and the logo caption |
+| `HOSPITAL_LOGO_MEDIA_ID` | *(empty)* | WhatsApp media ID for the hospital logo/photo, sent as an image before the greeting text on every "Hi". Unset by default (no image sent). See `uploadWhatsAppMediaFromDriveFile()` in `Setup.gs` for the one-time upload step to get this ID — it's a WhatsApp media ID, not a public URL |
 
 ---
 
