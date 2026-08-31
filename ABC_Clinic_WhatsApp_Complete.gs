@@ -512,11 +512,18 @@ function getDoctorSelectionMenuSpec() {
     const rows = doctors.map(
         function (doctor, index) {
 
+            const description =
+                [
+                    doctor.specialization,
+                    doctor.clinicName
+                ]
+                    .filter(Boolean)
+                    .join(" — ");
+
             return {
                 id: String(index + 1),
                 title: doctor.doctorName,
-                description:
-                    doctor.clinicName || ""
+                description: description
             };
         }
     );
@@ -6450,6 +6457,8 @@ function getDoctors() {
     const sheet =
         ss.getSheetByName("Doctors");
 
+    ensureDoctorSpecializationColumn(sheet);
+
     const data =
         sheet.getDataRange().getValues();
 
@@ -6474,7 +6483,10 @@ function getDoctors() {
                 data[i][1],
 
             clinicName:
-                data[i][2]
+                data[i][2],
+
+            specialization:
+                String(data[i][7] || "").trim()
         });
     }
 
@@ -17738,6 +17750,16 @@ function appendWhatsAppLogEntry(
 }
 
 
+function ensureDoctorSpecializationColumn(sheet) {
+
+    if (!sheet.getRange(1, 8).getValue()) {
+        sheet
+            .getRange(1, 8)
+            .setValue("Specialization");
+    }
+}
+
+
 function ensureWhatsAppSessionsSheet() {
 
     const ss =
@@ -17790,7 +17812,8 @@ function ensureDoctorsSheet() {
             "Calendar ID",
             "WhatsApp",
             "AppointmentDuration",
-            "Active"
+            "Active",
+            "Specialization"
         ]);
     }
 
@@ -18422,10 +18445,17 @@ function buildDoctorSelectionFallbackText(
                     ". " +
                     doctor.doctorName;
 
-                if (doctor.clinicName) {
+                if (doctor.specialization) {
                     line +=
                         " — " +
-                        doctor.clinicName;
+                        doctor.specialization;
+                }
+
+                if (doctor.clinicName) {
+                    line +=
+                        " (" +
+                        doctor.clinicName +
+                        ")";
                 }
 
                 return line;

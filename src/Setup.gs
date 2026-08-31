@@ -37,7 +37,8 @@ function ensureDoctorsSheet() {
             "Calendar ID",
             "WhatsApp",
             "AppointmentDuration",
-            "Active"
+            "Active",
+            "Specialization"
         ]);
     }
 

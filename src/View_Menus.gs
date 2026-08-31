@@ -406,11 +406,18 @@ function getDoctorSelectionMenuSpec() {
     const rows = doctors.map(
         function (doctor, index) {
 
+            const description =
+                [
+                    doctor.specialization,
+                    doctor.clinicName
+                ]
+                    .filter(Boolean)
+                    .join(" — ");
+
             return {
                 id: String(index + 1),
                 title: doctor.doctorName,
-                description:
-                    doctor.clinicName || ""
+                description: description
             };
         }
     );

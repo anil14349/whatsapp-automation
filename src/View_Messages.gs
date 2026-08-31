@@ -272,10 +272,17 @@ function buildDoctorSelectionFallbackText(
                     ". " +
                     doctor.doctorName;
 
-                if (doctor.clinicName) {
+                if (doctor.specialization) {
                     line +=
                         " — " +
-                        doctor.clinicName;
+                        doctor.specialization;
+                }
+
+                if (doctor.clinicName) {
+                    line +=
+                        " (" +
+                        doctor.clinicName +
+                        ")";
                 }
 
                 return line;

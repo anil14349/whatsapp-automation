@@ -991,6 +991,23 @@ function getDoctorPatientsSeen(doctorId) {
 // 9. GET DOCTORS
 // ============================================================
 
+// Doctors sheet historically had 7 columns (through Active). Existing
+// spreadsheets won't have an 8th "Specialization" column yet — this
+// self-heals the header the same way the WhatsApp_Sessions sheet grew
+// its Language/Patient Name/Slot Page columns, so nothing needs manual
+// sheet surgery on upgrade. New sheets already get it from
+// ensureDoctorsSheet (Setup.gs).
+function ensureDoctorSpecializationColumn(sheet) {
+
+    if (!sheet.getRange(1, 8).getValue()) {
+        sheet
+            .getRange(1, 8)
+            .setValue("Specialization");
+    }
+}
+
+
+
 function getDoctors() {
 
     const ss =
@@ -998,6 +1015,8 @@ function getDoctors() {
 
     const sheet =
         ss.getSheetByName("Doctors");
+
+    ensureDoctorSpecializationColumn(sheet);
 
     const data =
         sheet.getDataRange().getValues();
@@ -1023,7 +1042,10 @@ function getDoctors() {
                 data[i][1],
 
             clinicName:
-                data[i][2]
+                data[i][2],
+
+            specialization:
+                String(data[i][7] || "").trim()
         });
     }
 

@@ -89,14 +89,18 @@ below before booking will work.
 
 **`Doctors`** — one row per doctor:
 
-| Doctor ID | Doctor Name | Clinic | Calendar ID | WhatsApp | AppointmentDuration | Active |
-|-----------|-------------|--------|-------------|----------|----------------------|--------|
+| Doctor ID | Doctor Name | Clinic | Calendar ID | WhatsApp | AppointmentDuration | Active | Specialization |
+|-----------|-------------|--------|-------------|----------|----------------------|--------|----------------|
 
 - **Doctor ID** — any short unique string, e.g. `D001`
 - **Calendar ID** — from Google Calendar → Settings → Integrate calendar → Calendar ID
 - **WhatsApp** — doctor's mobile number with country code, e.g. `919876543210`
 - **AppointmentDuration** — slot length in minutes, e.g. `30`
 - **Active** — `YES` to allow this doctor to log into the Doctor Portal via WhatsApp
+- **Specialization** — optional, e.g. `Cardiologist`. Shown next to the doctor's name in the
+  "choose a doctor" list during booking; blank is fine if not set. Existing sheets get this
+  column's header added automatically the next time the doctor list loads (no manual sheet
+  edit needed) — you only need to fill in the values per doctor
 
 **`Availability`** — weekly recurring hours per doctor (or let doctors fill this via WhatsApp
 Doctor Portal → option 5 instead of pre-populating it):
