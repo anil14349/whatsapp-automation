@@ -192,11 +192,27 @@ if (
 }
 
 // States whose numbered list content can legitimately reach a 9th item
-// (doctor selection, leave-cancel list, session-remove list) reserve the
-// literal digit "9" for that content instead of treating it as "back" —
-// same reasoning as the DOCTOR_MENU_MORE tier-4 carve-out below. The
-// "nav_back"/"back" aliases (typed word, or a tapped nav button) are
-// never ambiguous with numbered content, so they always still work.
+// reserve the literal digit "9" for that content instead of treating it
+// as "back" — same reasoning as the DOCTOR_MENU_MORE tier-4 carve-out
+// below. This includes every "flat" list state (see
+// whatsAppNavigationShowsBack, which already treats this exact set of
+// states as not having a meaningful "back" step) plus the doctor
+// leave/session-remove pickers, which use the same numbered-list
+// pattern. The "nav_back"/"back" aliases (typed word, or a tapped nav
+// button) are never ambiguous with numbered content, so they always
+// still work everywhere.
+const WHATSAPP_NINTH_ITEM_LIST_STATES = [
+    "BOOK_DOCTOR",
+    "MY_APPOINTMENTS",
+    "CANCEL_SELECT",
+    "RESCHEDULE_SELECT",
+    "DOCTOR_CANCEL_SELECT",
+    "DOCTOR_RESCHEDULE_SELECT",
+    "DOCTOR_STATUS_SELECT",
+    "DOCTOR_LEAVE_CANCEL_PICK",
+    "DOCTOR_AVAIL_REMOVE"
+];
+
 if (
     session &&
     session.state !== "MAIN_MENU" &&
@@ -214,11 +230,9 @@ if (
     ) &&
     !(
         normalizedMessage === "9" &&
-        (
-            session.state === "BOOK_DOCTOR" ||
-            session.state === "DOCTOR_LEAVE_CANCEL_PICK" ||
-            session.state === "DOCTOR_AVAIL_REMOVE"
-        )
+        WHATSAPP_NINTH_ITEM_LIST_STATES.indexOf(
+            session.state
+        ) !== -1
     )
 ) {
 
