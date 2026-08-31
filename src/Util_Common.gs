@@ -557,18 +557,28 @@ function parseAppointmentDateTime(
         return null;
     }
 
-    const timeParts =
-        time24.split(":");
+    // Build the instant with an explicit +05:30 offset instead of the
+    // new Date(y, m, d, h, min) constructor, which resolves its
+    // components in the Apps Script *project's* configured timezone —
+    // not necessarily the TIMEZONE constant (Asia/Kolkata) used
+    // everywhere else. Matches parseAppointmentSheetDateTime's approach
+    // so the two parsers can never disagree on what "now" means relative
+    // to a given appointment.
+    const iso =
+        String(year).padStart(4, "0") +
+        "-" +
+        String(month + 1).padStart(2, "0") +
+        "-" +
+        String(day).padStart(2, "0");
 
-    return new Date(
-        year,
-        month,
-        day,
-        Number(timeParts[0]),
-        Number(timeParts[1]),
-        0,
-        0
-    );
+    const dateTime =
+        new Date(
+            iso + "T" + time24 + ":00+05:30"
+        );
+
+    return isNaN(dateTime.getTime())
+        ? null
+        : dateTime;
 }
 
 
