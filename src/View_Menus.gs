@@ -403,35 +403,46 @@ function getDoctorSelectionMenuSpec() {
             doctors
         );
 
-    const rows = doctors.map(
-        function (doctor, index) {
+    // Cap at 9 so appendWhatsAppHomeNavRow always has room for the nav
+    // row (9 + 1 = 10, the WhatsApp interactive-list cap). Beyond that,
+    // skip building an interactive list entirely rather than silently
+    // dropping the nav row or doctors past the 9th — sendWhatsAppMenuReply
+    // falls back to fallbackText (which lists every doctor, uncapped)
+    // whenever menuSpec.interactive is null.
+    let interactive = null;
 
-            const description =
-                [
-                    doctor.specialization,
-                    doctor.clinicName
-                ]
-                    .filter(Boolean)
-                    .join(" — ");
+    if (doctors.length <= 9) {
 
-            return {
-                id: String(index + 1),
-                title: doctor.doctorName,
-                description: description
-            };
-        }
-    );
+        const rows = doctors.map(
+            function (doctor, index) {
 
-    appendWhatsAppHomeNavRow(
-        rows,
-        "patient"
-    );
+                const description =
+                    [
+                        doctor.specialization,
+                        doctor.clinicName
+                    ]
+                        .filter(Boolean)
+                        .join(" — ");
 
-    const interactive =
-        buildInteractiveListSpec(
-            rows,
-            "Select doctor"
+                return {
+                    id: String(index + 1),
+                    title: doctor.doctorName,
+                    description: description
+                };
+            }
         );
+
+        appendWhatsAppHomeNavRow(
+            rows,
+            "patient"
+        );
+
+        interactive =
+            buildInteractiveListSpec(
+                rows,
+                "Select doctor"
+            );
+    }
 
     return {
         fallbackText: fallbackText,
@@ -1233,41 +1244,56 @@ function getDoctorSessionRemoveListSpec(sessions) {
 
     let fallbackText = "";
 
-    const rows =
-        sessions.map(
-            function (session, index) {
+    sessions.forEach(
+        function (session, index) {
 
-                const label =
-                    session.start +
-                    " - " +
-                    session.end;
-
-                fallbackText +=
-                    (index + 1) +
-                    ". " +
-                    label +
-                    "\n";
-
-                return {
-                    id: String(index + 1),
-                    title: label,
-                    description: ""
-                };
-            }
-        );
-
-    appendWhatsAppHomeNavRow(
-        rows,
-        "doctor"
+            fallbackText +=
+                (index + 1) +
+                ". " +
+                session.start +
+                " - " +
+                session.end +
+                "\n";
+        }
     );
 
-    return {
-        fallbackText: fallbackText.trim(),
-        interactive:
+    // Cap at 9 so appendWhatsAppHomeNavRow always has room for the nav
+    // row — see the identical comment in getDoctorSelectionMenuSpec.
+    // fallbackText above already lists every session, uncapped.
+    let interactive = null;
+
+    if (sessions.length <= 9) {
+
+        const rows =
+            sessions.map(
+                function (session, index) {
+
+                    return {
+                        id: String(index + 1),
+                        title:
+                            session.start +
+                            " - " +
+                            session.end,
+                        description: ""
+                    };
+                }
+            );
+
+        appendWhatsAppHomeNavRow(
+            rows,
+            "doctor"
+        );
+
+        interactive =
             buildInteractiveListSpec(
                 rows,
                 "Remove session"
-            )
+            );
+    }
+
+    return {
+        fallbackText: fallbackText.trim(),
+        interactive: interactive
     };
 }
 
