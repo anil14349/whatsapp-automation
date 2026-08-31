@@ -1,8 +1,25 @@
 // ============================================================
 // Logging — part of the ABC Clinic WhatsApp bot
-// WhatsApp_Log / WhatsApp_Debug sheet management, retention cleanup, log settings.
+// Single-sheet WhatsApp_Log: inbound messages, send/webhook errors, and the
+// reminder dedup ledger all live in one sheet with a shared schema. Only
+// inbound messages, errors, and reminder outcomes are logged — successful
+// outbound replies are not (their content is already the reply the patient/
+// doctor received; logging them doubled write volume for little value).
 // See src/Config.gs for the full file-layout map and Script Properties.
 // ============================================================
+
+
+// WhatsApp_Log columns:
+//   Timestamp | Direction | Phone | Name | Status | Message | Appointment ID | Hours Before | Phone Number ID
+// Direction: INBOUND | OUTBOUND (errors only) | WEBHOOK (fatal errors) | REMINDER
+// Appointment ID / Hours Before are only populated for REMINDER rows
+// (the reminder dedup ledger — see hasReminderBeenSent/markReminderSent).
+// Phone Number ID is only populated for INBOUND rows.
+// NOTE: the sheet name "WhatsApp_Log" is intentionally repeated as a string
+// literal (not a shared constant) in each function below — this file is
+// synced into the single-file monolith by function body only, so a
+// module-level const here would not carry over. See src/Config.gs for how
+// its own top-level consts are duplicated manually into the monolith header.
 
 
 function trimWhatsAppLogSheet(sheet) {
@@ -247,10 +264,13 @@ function ensureWhatsAppLogSheet(ss) {
 
         sheet.appendRow([
             "Timestamp",
+            "Direction",
             "Phone",
             "Name",
-            "Type",
+            "Status",
             "Message",
+            "Appointment ID",
+            "Hours Before",
             "Phone Number ID"
         ]);
     }
@@ -260,31 +280,17 @@ function ensureWhatsAppLogSheet(ss) {
 
 
 
-function ensureWhatsAppDebugSheet(ss) {
-
-    let sheet =
-        ss.getSheetByName("WhatsApp_Debug");
-
-    if (!sheet) {
-
-        sheet =
-            ss.insertSheet("WhatsApp_Debug");
-
-        sheet.appendRow([
-            "Timestamp",
-            "Direction",
-            "Phone",
-            "Status",
-            "Response"
-        ]);
-    }
-
-    return sheet;
-}
-
-
-
-function appendInboundWhatsAppLog(
+// Single entry point for every diagnostic log row (inbound messages, send
+// errors, webhook errors).
+//   INBOUND         — gated by ENABLE_INBOUND_LOG
+//   WEBHOOK         — always written; these are rare, fatal doPost crashes,
+//                      not routine diagnostics, so they aren't silenceable
+//   anything else   — gated by ENABLE_DEBUG_LOG (currently just OUTBOUND
+//                      send errors — successful sends are not logged here)
+// Reminder ledger rows do NOT go through here — see markReminderSent,
+// which always writes regardless of these settings, since it's the
+// functional dedup record reminders depend on, not just diagnostics.
+function appendWhatsAppLogEntry(
     ss,
     entry
 ) {
@@ -292,7 +298,18 @@ function appendInboundWhatsAppLog(
     const settings =
         getLogSettings();
 
-    if (!settings.enableInboundLog) {
+    if (
+        entry.direction === "INBOUND" &&
+        !settings.enableInboundLog
+    ) {
+        return;
+    }
+
+    if (
+        entry.direction !== "INBOUND" &&
+        entry.direction !== "WEBHOOK" &&
+        !settings.enableDebugLog
+    ) {
         return;
     }
 
@@ -301,51 +318,20 @@ function appendInboundWhatsAppLog(
 
     sheet.appendRow([
         new Date(),
-        entry.phone,
+        entry.direction || "",
+        entry.phone || "",
         truncateLogText(
             entry.name,
             100
         ),
-        entry.type,
+        entry.status || "",
         truncateLogText(
             entry.message,
             settings.messageMaxChars
         ),
+        "",
+        "",
         entry.phoneNumberId || ""
-    ]);
-
-    cleanupLogSheet(
-        sheet,
-        settings
-    );
-}
-
-
-
-function appendWhatsAppDebugLog(
-    ss,
-    entry
-) {
-
-    const settings =
-        getLogSettings();
-
-    if (!settings.enableDebugLog) {
-        return;
-    }
-
-    const sheet =
-        ensureWhatsAppDebugSheet(ss);
-
-    sheet.appendRow([
-        new Date(),
-        entry.direction || "OUTBOUND",
-        entry.phone || "",
-        entry.status || "",
-        truncateLogText(
-            entry.response,
-            settings.messageMaxChars
-        )
     ]);
 
     cleanupLogSheet(
@@ -371,27 +357,21 @@ function cleanupAllWhatsAppLogs() {
         sheets: {}
     };
 
-    [
-        "WhatsApp_Log",
-        "WhatsApp_Debug"
-    ].forEach(function (name) {
+    const sheet =
+        ss.getSheetByName("WhatsApp_Log");
 
-        const sheet =
-            ss.getSheetByName(name);
-
-        results.sheets[name] =
-            sheet
-                ? cleanupLogSheet(
-                    sheet,
-                    settings
-                )
-                : {
-                    deletedByAge: 0,
-                    deletedByCap: 0,
-                    retentionKey:
-                        settings.retentionKey
-                };
-    });
+    results.sheets["WhatsApp_Log"] =
+        sheet
+            ? cleanupLogSheet(
+                sheet,
+                settings
+            )
+            : {
+                deletedByAge: 0,
+                deletedByCap: 0,
+                retentionKey:
+                    settings.retentionKey
+            };
 
     Logger.log(
         "cleanupAllWhatsAppLogs: " +

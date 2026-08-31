@@ -62,7 +62,7 @@
 // don't matter to the runtime, only to humans reading the code):
 //   src/Config.gs                 — constants, Settings sheet, debug/log-mode flags
 //   src/Util_Common.gs            — phone/date/time parsing & formatting helpers
-//   src/Logging.gs                — WhatsApp_Log / WhatsApp_Debug sheets, retention cleanup
+//   src/Logging.gs                — single WhatsApp_Log sheet (inbound/errors/reminders), retention cleanup
 //   src/Model_Reminders.gs        — appointment reminder scheduling & sending
 //   src/Model_AppointmentStatus.gs — Completed/No-Show status workflow, auto-complete
 //   src/Model_AfterHours.gs       — clinic-hours gate & after-hours auto-reply

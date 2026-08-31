@@ -76,40 +76,21 @@ function getReminderSettings() {
 
 
 
-function ensureReminderLogSheet() {
-
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
-    let sheet =
-        ss.getSheetByName("Reminder_Log");
-
-    if (!sheet) {
-
-        sheet =
-            ss.insertSheet("Reminder_Log");
-
-        sheet.appendRow([
-            "Sent At",
-            "Appointment ID",
-            "Hours Before",
-            "Phone",
-            "Status"
-        ]);
-    }
-
-    return sheet;
-}
-
-
-
+// The reminder dedup ledger lives in the shared WhatsApp_Log sheet as rows
+// with Direction="REMINDER" (columns: Appointment ID, Hours Before, Status
+// in the shared schema — see Logging.gs). This always writes/reads
+// regardless of ENABLE_DEBUG_LOG: it's functional state the reminder
+// scheduler depends on to avoid double-sending, not just diagnostics.
 function hasReminderBeenSent(
     appointmentId,
     hoursBefore
 ) {
 
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
     const sheet =
-        ensureReminderLogSheet();
+        ensureWhatsAppLogSheet(ss);
 
     const data =
         sheet.getDataRange().getValues();
@@ -127,9 +108,10 @@ function hasReminderBeenSent(
     ) {
 
         if (
-            String(data[i][1] || "").trim() ===
+            data[i][1] === "REMINDER" &&
+            String(data[i][6] || "").trim() ===
             targetId &&
-            Number(data[i][2]) === targetHours &&
+            Number(data[i][7]) === targetHours &&
             String(data[i][4] || "")
                 .trim()
                 .toUpperCase() ===
@@ -151,15 +133,22 @@ function markReminderSent(
     status
 ) {
 
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
     const sheet =
-        ensureReminderLogSheet();
+        ensureWhatsAppLogSheet(ss);
 
     sheet.appendRow([
         new Date(),
+        "REMINDER",
+        phone,
+        "",
+        status,
+        "",
         appointmentId,
         hoursBefore,
-        phone,
-        status
+        ""
     ]);
 }
 
@@ -284,15 +273,9 @@ function sendOneAppointmentReminder(
             message
         );
 
-    appendWhatsAppDebugLog(
-        ss,
-        {
-            direction: "REMINDER",
-            phone: recipient,
-            status: "SUCCESS",
-            response: message
-        }
-    );
+    // No separate diagnostic log entry here — markReminderSent (called by
+    // the caller right after this returns) already records this outcome
+    // in the shared WhatsApp_Log sheet as the REMINDER ledger row.
 
     return sendResult;
 }

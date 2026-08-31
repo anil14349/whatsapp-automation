@@ -277,12 +277,13 @@ function doPost(e) {
                 ? value.metadata.phone_number_id
                 : "";
 
-        appendInboundWhatsAppLog(
+        appendWhatsAppLogEntry(
             ss,
             {
+                direction: "INBOUND",
                 phone: senderPhone,
                 name: senderName,
-                type: messageType,
+                status: messageType,
                 message: messageText,
                 phoneNumberId: phoneNumberId
             }
@@ -348,36 +349,17 @@ function doPost(e) {
                 SpreadsheetApp
                     .getActiveSpreadsheet();
 
-            let debugSheet =
-                ss.getSheetByName(
-                    "WhatsApp_Debug"
-                );
-
-            if (!debugSheet) {
-
-                debugSheet =
-                    ss.insertSheet(
-                        "WhatsApp_Debug"
-                    );
-
-                debugSheet.appendRow([
-                    "Timestamp",
-                    "Direction",
-                    "Phone",
-                    "Status",
-                    "Response"
-                ]);
-            }
-
-            debugSheet.appendRow([
-                new Date(),
-                "WEBHOOK",
-                "",
-                "ERROR",
-                error.message +
-                "\n" +
-                error.stack
-            ]);
+            appendWhatsAppLogEntry(
+                ss,
+                {
+                    direction: "WEBHOOK",
+                    status: "ERROR",
+                    message:
+                        error.message +
+                        "\n" +
+                        error.stack
+                }
+            );
 
         } catch (debugError) {
 
