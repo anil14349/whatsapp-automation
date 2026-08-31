@@ -509,35 +509,46 @@ function getDoctorSelectionMenuSpec() {
             doctors
         );
 
-    const rows = doctors.map(
-        function (doctor, index) {
+    // Cap at 9 so appendWhatsAppHomeNavRow always has room for the nav
+    // row (9 + 1 = 10, the WhatsApp interactive-list cap). Beyond that,
+    // skip building an interactive list entirely rather than silently
+    // dropping the nav row or doctors past the 9th — sendWhatsAppMenuReply
+    // falls back to fallbackText (which lists every doctor, uncapped)
+    // whenever menuSpec.interactive is null.
+    let interactive = null;
 
-            const description =
-                [
-                    doctor.specialization,
-                    doctor.clinicName
-                ]
-                    .filter(Boolean)
-                    .join(" — ");
+    if (doctors.length <= 9) {
 
-            return {
-                id: String(index + 1),
-                title: doctor.doctorName,
-                description: description
-            };
-        }
-    );
+        const rows = doctors.map(
+            function (doctor, index) {
 
-    appendWhatsAppHomeNavRow(
-        rows,
-        "patient"
-    );
+                const description =
+                    [
+                        doctor.specialization,
+                        doctor.clinicName
+                    ]
+                        .filter(Boolean)
+                        .join(" — ");
 
-    const interactive =
-        buildInteractiveListSpec(
-            rows,
-            "Select doctor"
+                return {
+                    id: String(index + 1),
+                    title: doctor.doctorName,
+                    description: description
+                };
+            }
         );
+
+        appendWhatsAppHomeNavRow(
+            rows,
+            "patient"
+        );
+
+        interactive =
+            buildInteractiveListSpec(
+                rows,
+                "Select doctor"
+            );
+    }
 
     return {
         fallbackText: fallbackText,
@@ -1293,7 +1304,13 @@ function cleanupLogSheet(sheet, settings) {
     }
 
     const opts = settings || getLogSettings();
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const rowsToDelete = {};
     let deletedByAge = 0;
+    let deletedByCap = 0;
 
     if (opts.retentionDays > 0) {
 
@@ -1307,16 +1324,15 @@ function cleanupLogSheet(sheet, settings) {
                 1000
             );
 
-        const data =
-            sheet.getDataRange().getValues();
-
-        const rowsToDelete = [];
-
         for (
             let i = 1;
             i < data.length;
             i++
         ) {
+
+            if (data[i][1] === "REMINDER") {
+                continue;
+            }
 
             const timestamp =
                 parseLogTimestamp(
@@ -1328,31 +1344,54 @@ function cleanupLogSheet(sheet, settings) {
                 timestamp.getTime() <
                 cutoff.getTime()
             ) {
-                rowsToDelete.push(i + 1);
+                rowsToDelete[i + 1] = true;
+                deletedByAge++;
             }
         }
-
-        rowsToDelete
-            .sort(function (a, b) {
-                return b - a;
-            })
-            .forEach(function (row) {
-                sheet.deleteRow(row);
-                deletedByAge++;
-            });
     }
 
-    let deletedByCap = 0;
-    const maxRows =
-        opts.maxRows + 1;
+    const survivingNonReminderRows = [];
 
-    while (sheet.getLastRow() > maxRows) {
-        sheet.deleteRows(
-            2,
-            sheet.getLastRow() - maxRows
-        );
-        deletedByCap++;
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const row = i + 1;
+
+        if (
+            data[i][1] !== "REMINDER" &&
+            !rowsToDelete[row]
+        ) {
+            survivingNonReminderRows.push(row);
+        }
     }
+
+    const excess =
+        survivingNonReminderRows.length -
+        opts.maxRows;
+
+    if (excess > 0) {
+
+        for (
+            let k = 0;
+            k < excess;
+            k++
+        ) {
+            rowsToDelete[survivingNonReminderRows[k]] = true;
+            deletedByCap++;
+        }
+    }
+
+    Object.keys(rowsToDelete)
+        .map(Number)
+        .sort(function (a, b) {
+            return b - a;
+        })
+        .forEach(function (row) {
+            sheet.deleteRow(row);
+        });
 
     return {
         deletedByAge: deletedByAge,
@@ -2017,17 +2056,24 @@ function installAppointmentReminderTrigger() {
             }
         });
 
+    // Apps Script doesn't guarantee exact trigger timing (documented
+    // multi-minute variance for load balancing), and the eligibility
+    // window (REMINDER_WINDOW_MINUTES, default 45) is narrower than an
+    // hour — an hourly cadence left almost no margin for two consecutive
+    // runs to land more than an hour apart and skip a window entirely.
+    // 30-minute cadence keeps comfortable overlap with the 45-minute
+    // window even accounting for that jitter.
     ScriptApp.newTrigger(
         "sendAppointmentReminders"
     )
         .timeBased()
-        .everyHours(1)
+        .everyMinutes(30)
         .create();
 
     return {
         success: true,
         message:
-            "Hourly appointment reminder trigger installed."
+            "Appointment reminder trigger installed (every 30 minutes)."
     };
 }
 
@@ -5417,17 +5463,6 @@ function bookAppointment(
     }
 
     // ----------------------------------------------------------
-    // Generate appointment ID
-    // ----------------------------------------------------------
-
-    const appointmentId =
-        "A" +
-        Utilities.getUuid()
-            .replace(/-/g, "")
-            .substring(0, 8)
-            .toUpperCase();
-
-    // ----------------------------------------------------------
     // Create Calendar event
     // ----------------------------------------------------------
 
@@ -5435,6 +5470,7 @@ function bookAppointment(
         LockService.getScriptLock();
 
     let event = null;
+    let appointmentId = null;
 
     try {
 
@@ -5475,6 +5511,13 @@ function bookAppointment(
                     "This appointment slot is already booked."
             };
         }
+
+        // Generated (and checked for uniqueness) only after the lock is
+        // held, so two concurrent bookings can never race on the same ID.
+        appointmentId =
+            generateUniqueAppointmentId(
+                appointmentSheet
+            );
 
         event =
             calendar.createEvent(
@@ -8126,18 +8169,28 @@ function parseAppointmentDateTime(
         return null;
     }
 
-    const timeParts =
-        time24.split(":");
+    // Build the instant with an explicit +05:30 offset instead of the
+    // new Date(y, m, d, h, min) constructor, which resolves its
+    // components in the Apps Script *project's* configured timezone —
+    // not necessarily the TIMEZONE constant (Asia/Kolkata) used
+    // everywhere else. Matches parseAppointmentSheetDateTime's approach
+    // so the two parsers can never disagree on what "now" means relative
+    // to a given appointment.
+    const iso =
+        String(year).padStart(4, "0") +
+        "-" +
+        String(month + 1).padStart(2, "0") +
+        "-" +
+        String(day).padStart(2, "0");
 
-    return new Date(
-        year,
-        month,
-        day,
-        Number(timeParts[0]),
-        Number(timeParts[1]),
-        0,
-        0
-    );
+    const dateTime =
+        new Date(
+            iso + "T" + time24 + ":00+05:30"
+        );
+
+    return isNaN(dateTime.getTime())
+        ? null
+        : dateTime;
 }
 
 
@@ -9704,41 +9757,56 @@ function getDoctorSessionRemoveListSpec(sessions) {
 
     let fallbackText = "";
 
-    const rows =
-        sessions.map(
-            function (session, index) {
+    sessions.forEach(
+        function (session, index) {
 
-                const label =
-                    session.start +
-                    " - " +
-                    session.end;
-
-                fallbackText +=
-                    (index + 1) +
-                    ". " +
-                    label +
-                    "\n";
-
-                return {
-                    id: String(index + 1),
-                    title: label,
-                    description: ""
-                };
-            }
-        );
-
-    appendWhatsAppHomeNavRow(
-        rows,
-        "doctor"
+            fallbackText +=
+                (index + 1) +
+                ". " +
+                session.start +
+                " - " +
+                session.end +
+                "\n";
+        }
     );
 
-    return {
-        fallbackText: fallbackText.trim(),
-        interactive:
+    // Cap at 9 so appendWhatsAppHomeNavRow always has room for the nav
+    // row — see the identical comment in getDoctorSelectionMenuSpec.
+    // fallbackText above already lists every session, uncapped.
+    let interactive = null;
+
+    if (sessions.length <= 9) {
+
+        const rows =
+            sessions.map(
+                function (session, index) {
+
+                    return {
+                        id: String(index + 1),
+                        title:
+                            session.start +
+                            " - " +
+                            session.end,
+                        description: ""
+                    };
+                }
+            );
+
+        appendWhatsAppHomeNavRow(
+            rows,
+            "doctor"
+        );
+
+        interactive =
             buildInteractiveListSpec(
                 rows,
                 "Remove session"
-            )
+            );
+    }
+
+    return {
+        fallbackText: fallbackText.trim(),
+        interactive: interactive
     };
 }
 
@@ -12711,11 +12779,27 @@ if (
 }
 
 // States whose numbered list content can legitimately reach a 9th item
-// (doctor selection, leave-cancel list, session-remove list) reserve the
-// literal digit "9" for that content instead of treating it as "back" —
-// same reasoning as the DOCTOR_MENU_MORE tier-4 carve-out below. The
-// "nav_back"/"back" aliases (typed word, or a tapped nav button) are
-// never ambiguous with numbered content, so they always still work.
+// reserve the literal digit "9" for that content instead of treating it
+// as "back" — same reasoning as the DOCTOR_MENU_MORE tier-4 carve-out
+// below. This includes every "flat" list state (see
+// whatsAppNavigationShowsBack, which already treats this exact set of
+// states as not having a meaningful "back" step) plus the doctor
+// leave/session-remove pickers, which use the same numbered-list
+// pattern. The "nav_back"/"back" aliases (typed word, or a tapped nav
+// button) are never ambiguous with numbered content, so they always
+// still work everywhere.
+const WHATSAPP_NINTH_ITEM_LIST_STATES = [
+    "BOOK_DOCTOR",
+    "MY_APPOINTMENTS",
+    "CANCEL_SELECT",
+    "RESCHEDULE_SELECT",
+    "DOCTOR_CANCEL_SELECT",
+    "DOCTOR_RESCHEDULE_SELECT",
+    "DOCTOR_STATUS_SELECT",
+    "DOCTOR_LEAVE_CANCEL_PICK",
+    "DOCTOR_AVAIL_REMOVE"
+];
+
 if (
     session &&
     session.state !== "MAIN_MENU" &&
@@ -12733,11 +12817,9 @@ if (
     ) &&
     !(
         normalizedMessage === "9" &&
-        (
-            session.state === "BOOK_DOCTOR" ||
-            session.state === "DOCTOR_LEAVE_CANCEL_PICK" ||
-            session.state === "DOCTOR_AVAIL_REMOVE"
-        )
+        WHATSAPP_NINTH_ITEM_LIST_STATES.indexOf(
+            session.state
+        ) !== -1
     )
 ) {
 
@@ -15637,6 +15719,12 @@ if (
                     ? result.message
                     : "Unable to cancel the appointment.";
 
+            const chosen =
+                findConfirmedAppointmentForPhone(
+                    senderPhone,
+                    session.appointmentId
+                );
+
             sendCancelConfirmMenuReply(
                 ss,
                 senderPhone,
@@ -16374,11 +16462,28 @@ function tryBeginWhatsAppMessageProcessing(messageId) {
     const lock =
         LockService.getScriptLock();
 
-    try {
+    let acquired = false;
 
-        if (!lock.tryLock(5000)) {
-            return false;
-        }
+    for (
+        let attempt = 0;
+        attempt < 2 && !acquired;
+        attempt++
+    ) {
+        acquired = lock.tryLock(5000);
+    }
+
+    if (!acquired) {
+
+        Logger.log(
+            "tryBeginWhatsAppMessageProcessing: could not acquire lock " +
+            "for messageId=" + messageId + " after retries; proceeding " +
+            "without the atomic guard rather than dropping the message."
+        );
+
+        return true;
+    }
+
+    try {
 
         if (isWhatsAppMessageProcessed(messageId)) {
             return false;
@@ -17435,7 +17540,24 @@ function getWhatsAppSession(phone) {
                     : parseInt(
                         data[i][10],
                         10
-                    ) || 0
+                    ) || 0,
+
+            apptPage:
+                data[i][11] === "" ||
+                data[i][11] === undefined ||
+                data[i][11] === null
+                    ? 0
+                    : parseInt(
+                        data[i][11],
+                        10
+                    ) || 0,
+
+            doctorMenuTier:
+                data[i][12] === "" ||
+                data[i][12] === undefined ||
+                data[i][12] === null
+                    ? ""
+                    : String(data[i][12]).trim()
         };
     }
 
@@ -17511,6 +17633,8 @@ function saveWhatsAppSession(
     ensureWhatsAppSessionLanguageColumn(sheet);
     ensureWhatsAppSessionPatientNameColumn(sheet);
     ensureWhatsAppSessionSlotPageColumn(sheet);
+    ensureWhatsAppSessionAppointmentPageColumn(sheet);
+    ensureWhatsAppSessionDoctorMenuTierColumn(sheet);
 
     const existing =
         getWhatsAppSession(phone);
@@ -17525,11 +17649,11 @@ function saveWhatsAppSession(
 
         const current =
             sheet
-                .getRange(row, 1, 1, 11)
+                .getRange(row, 1, 1, 13)
                 .getValues()[0];
 
         sheet
-            .getRange(row, 1, 1, 11)
+            .getRange(row, 1, 1, 13)
             .setValues([[
                 phone,
 
@@ -17575,7 +17699,21 @@ function saveWhatsAppSession(
                         current[10] === null
                             ? 0
                             : current[10]
-                    )
+                    ),
+
+                updates.apptPage !== undefined
+                    ? updates.apptPage
+                    : (
+                        current[11] === "" ||
+                        current[11] === undefined ||
+                        current[11] === null
+                            ? 0
+                            : current[11]
+                    ),
+
+                updates.doctorMenuTier !== undefined
+                    ? updates.doctorMenuTier
+                    : current[12]
             ]]);
 
     } else {
@@ -17593,7 +17731,13 @@ function saveWhatsAppSession(
             updates.patientName || "",
             updates.slotPage !== undefined
                 ? updates.slotPage
-                : 0
+                : 0,
+            updates.apptPage !== undefined
+                ? updates.apptPage
+                : 0,
+            updates.doctorMenuTier !== undefined
+                ? updates.doctorMenuTier
+                : ""
         ]);
     }
 }
@@ -17760,6 +17904,55 @@ function ensureDoctorSpecializationColumn(sheet) {
 }
 
 
+function generateUniqueAppointmentId(appointmentSheet) {
+
+    const data =
+        appointmentSheet.getDataRange().getValues();
+
+    const existingIds = {};
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const id =
+            String(data[i][0] || "").trim();
+
+        if (id) {
+            existingIds[id] = true;
+        }
+    }
+
+    const maxAttempts = 5;
+
+    for (
+        let attempt = 0;
+        attempt < maxAttempts;
+        attempt++
+    ) {
+
+        const candidate =
+            "A" +
+            Utilities.getUuid()
+                .replace(/-/g, "")
+                .substring(0, 8)
+                .toUpperCase();
+
+        if (!existingIds[candidate]) {
+            return candidate;
+        }
+    }
+
+    throw new Error(
+        "Unable to generate a unique appointment ID after " +
+        maxAttempts +
+        " attempts."
+    );
+}
+
+
 function ensureWhatsAppSessionsSheet() {
 
     const ss =
@@ -17784,11 +17977,33 @@ function ensureWhatsAppSessionsSheet() {
             "Updated At",
             "Language",
             "Patient Name",
-            "Slot Page"
+            "Slot Page",
+            "Appointment Page",
+            "Doctor Menu Tier"
         ]);
     }
 
     return sheet;
+}
+
+
+function ensureWhatsAppSessionAppointmentPageColumn(sheet) {
+
+    if (!sheet.getRange(1, 12).getValue()) {
+        sheet
+            .getRange(1, 12)
+            .setValue("Appointment Page");
+    }
+}
+
+
+function ensureWhatsAppSessionDoctorMenuTierColumn(sheet) {
+
+    if (!sheet.getRange(1, 13).getValue()) {
+        sheet
+            .getRange(1, 13)
+            .setValue("Doctor Menu Tier");
+    }
 }
 
 
