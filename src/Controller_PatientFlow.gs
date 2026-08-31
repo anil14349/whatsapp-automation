@@ -922,6 +922,12 @@ if (
                     ? result.message
                     : "Unable to cancel the appointment.";
 
+            const chosen =
+                findConfirmedAppointmentForPhone(
+                    senderPhone,
+                    session.appointmentId
+                );
+
             sendCancelConfirmMenuReply(
                 ss,
                 senderPhone,
