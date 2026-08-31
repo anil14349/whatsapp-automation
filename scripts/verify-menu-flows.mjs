@@ -55,7 +55,7 @@ mustInclude(
 );
 mustInclude(
     "src/View_Menus.gs",
-    /appendAppointmentListNavRows[\s\S]*?nav_main_menu[\s\S]*?Doctor Portal/,
+    /appendWhatsAppHomeNavRow[\s\S]*?nav_main_menu[\s\S]*?Doctor Portal/,
     "appointment lists use home nav only"
 );
 mustInclude(

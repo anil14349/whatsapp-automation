@@ -75,6 +75,17 @@ function buildInteractiveListSpec(
 
 
 
+// Convention for any menu with more real options than fit in 3 buttons:
+// show the 2 most important options directly, and use the 3rd button as
+// a "More" pivot (id "menu_more"/"menu_more_<tier>") into a follow-up
+// screen holding the rest — never silently drop an option. See
+// getPatientMainMenuSpec/getPatientMainMoreMenuSpec and
+// getDoctorMainMenuSpec/getDoctorMainMenuMoreSpec (tiers 1-3) for the
+// reference implementation. Only the final tier, with 2 or fewer options
+// left, should skip "More" and use its free 3rd slot for the persistent
+// nav button instead (see getDoctorMainMenuMoreSpec's tier-4 branch).
+// If a menu legitimately needs more than 10 total options, switch to
+// buildInteractiveListSpec instead (10-row cap) — see getLanguageMenuSpec.
 function buildInteractiveButtonSpec(buttons) {
 
     if (
@@ -300,6 +311,10 @@ function getDoctorMainMenuMoreSpec(tier) {
             {
                 id: "doctor_status",
                 title: "Mark Visit Status"
+            },
+            {
+                id: "nav_main_menu",
+                title: "Doctor Portal"
             }
         ]);
 
@@ -400,6 +415,11 @@ function getDoctorSelectionMenuSpec() {
         }
     );
 
+    appendWhatsAppHomeNavRow(
+        rows,
+        "patient"
+    );
+
     const interactive =
         buildInteractiveListSpec(
             rows,
@@ -416,7 +436,8 @@ function getDoctorSelectionMenuSpec() {
 
 function getSlotSelectionMenuSpec(
     slots,
-    page
+    page,
+    mode
 ) {
 
     const safeSlots =
@@ -478,6 +499,13 @@ function getSlotSelectionMenuSpec(
             description: "Next page"
         });
     }
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        mode === "doctor"
+            ? "doctor"
+            : "patient"
+    );
 
     let fallbackText = "";
 
@@ -543,6 +571,13 @@ function getSlotSelectionMenuSpec(
 
 
 
+// Row budget is 10 (WhatsApp's interactive-list cap). Every page reserves
+// 1 row for the persistent "Main Menu"/"Back" nav row, on top of whatever
+// is reserved for ◀/▶ pagination rows:
+//   single page:        content ≤ 9   (+ 1 nav                = 10)
+//   first page (>1 pg): content = 7   (+ 1 next  + 1 nav       = 9, ≤10)
+//   middle page:        content = 6   (+ 1 prev + 1 next + nav = 9, ≤10)
+//   last page:          content ≤ 8   (+ 1 prev + 1 nav        ≤ 10)
 function computeSlotSelectionPageBounds(
     total,
     page
@@ -563,26 +598,26 @@ function computeSlotSelectionPageBounds(
 
         return {
             start: 0,
-            end: 9,
+            end: 7,
             hasPrev: false,
-            hasNext: total > 9,
+            hasNext: total > 7,
             page: 0
         };
     }
 
     const start =
-        9 + (page - 1) * 8;
+        7 + (page - 1) * 6;
 
     const remaining =
         total - start;
 
     const hasNext =
-        remaining > 9;
+        remaining > 8;
 
     const slotCount =
         hasNext
-            ? 8
-            : Math.min(remaining, 9);
+            ? 6
+            : Math.min(remaining, 8);
 
     return {
         start: start,
@@ -705,7 +740,7 @@ function resolveSlotSelectionPage(session) {
 
 
 
-function getYesNoConfirmSpec() {
+function getYesNoConfirmSpec(mode) {
 
     const fallbackText =
         "1️⃣ Yes, cancel it\n" +
@@ -720,6 +755,13 @@ function getYesNoConfirmSpec() {
             {
                 id: "confirm_no_back",
                 title: "No, go back"
+            },
+            {
+                id: "nav_main_menu",
+                title:
+                    mode === "doctor"
+                        ? "Doctor Portal"
+                        : "Main Menu"
             }
         ]);
 
@@ -784,6 +826,10 @@ function getDoctorStatusActionSpec() {
             {
                 id: "status_no_show",
                 title: "No-Show"
+            },
+            {
+                id: "nav_main_menu",
+                title: "Doctor Portal"
             }
         ]);
 
@@ -810,6 +856,10 @@ function getConfirmCancelSpec() {
             {
                 id: "confirm_cancel",
                 title: "Cancel"
+            },
+            {
+                id: "nav_main_menu",
+                title: "Doctor Portal"
             }
         ]);
 
@@ -821,7 +871,7 @@ function getConfirmCancelSpec() {
 
 
 
-function appendAppointmentListNavRows(
+function appendWhatsAppHomeNavRow(
     rows,
     listMode
 ) {
@@ -883,18 +933,7 @@ function getAppointmentListMenuSpec(
             pageInfo.end
         );
 
-    let fallbackText = "";
-
-    if (pageInfo.totalPages > 1) {
-        fallbackText +=
-            "Page " +
-            (pageInfo.page + 1) +
-            " of " +
-            pageInfo.totalPages +
-            "\n\n";
-    }
-
-    fallbackText +=
+    let fallbackText =
         listMode === "doctor"
             ? listed
                 .map(
@@ -953,11 +992,6 @@ function getAppointmentListMenuSpec(
     if (pageInfo.hasNext) {
         fallbackText += "\n▶ More appointments";
     }
-
-    fallbackText +=
-        listMode === "doctor"
-            ? "\n0️⃣ Doctor Portal"
-            : "\n0️⃣ Main Menu";
 
     const rows =
         listed.map(
@@ -1023,7 +1057,7 @@ function getAppointmentListMenuSpec(
         });
     }
 
-    appendAppointmentListNavRows(
+    appendWhatsAppHomeNavRow(
         rows,
         listMode
     );
@@ -1104,6 +1138,11 @@ function getDoctorWeekdayMenuSpec(doctorId) {
 
     fallbackText +=
         "\nSelect a day to manage.";
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "doctor"
+    );
 
     return {
         fallbackText: fallbackText,
@@ -1210,6 +1249,11 @@ function getDoctorSessionRemoveListSpec(sessions) {
             }
         );
 
+    appendWhatsAppHomeNavRow(
+        rows,
+        "doctor"
+    );
+
     return {
         fallbackText: fallbackText.trim(),
         interactive:
@@ -1227,26 +1271,33 @@ function getDoctorLeavesMenuSpec() {
     const fallbackText =
         formatDoctorLeavesMenu();
 
+    const rows = [
+        {
+            id: "1",
+            title: "Add single-day leave"
+        },
+        {
+            id: "2",
+            title: "View upcoming leaves"
+        },
+        {
+            id: "3",
+            title: "Cancel a leave"
+        },
+        {
+            id: "4",
+            title: "Add leave range"
+        }
+    ];
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "doctor"
+    );
+
     const interactive =
         buildInteractiveListSpec(
-            [
-                {
-                    id: "1",
-                    title: "Add single-day leave"
-                },
-                {
-                    id: "2",
-                    title: "View upcoming leaves"
-                },
-                {
-                    id: "3",
-                    title: "Cancel a leave"
-                },
-                {
-                    id: "4",
-                    title: "Add leave range"
-                }
-            ],
+            rows,
             "Manage leaves"
         );
 
@@ -1271,7 +1322,7 @@ function getDoctorLeaveListMenuSpec(leaves) {
     }
 
     const limit =
-        Math.min(leaves.length, 10);
+        Math.min(leaves.length, 9);
 
     const listed =
         leaves.slice(0, limit);
@@ -1305,6 +1356,11 @@ function getDoctorLeaveListMenuSpec(leaves) {
                 };
             }
         );
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "doctor"
+    );
 
     return {
         fallbackText: fallbackText.trim(),

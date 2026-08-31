@@ -51,7 +51,8 @@ if (
 
     } else if (
         normalizedMessage === "menu_more" ||
-        normalizedMessage === "more"
+        normalizedMessage === "more" ||
+        normalizedMessage === "3"
     ) {
 
         showDoctorMenuMoreTier(
@@ -663,7 +664,7 @@ if (
                     buildDoctorCancelConfirmMessage(
                         chosen
                     ),
-                    getYesNoConfirmSpec()
+                    getYesNoConfirmSpec("doctor")
                 );
             }
         }
@@ -750,7 +751,7 @@ if (
                 ss,
                 senderPhone,
                 "❌ " + errorMessage,
-                getYesNoConfirmSpec()
+                getYesNoConfirmSpec("doctor")
             );
         }
 
@@ -769,7 +770,7 @@ if (
             ss,
             senderPhone,
             "❌ Invalid option.",
-            getYesNoConfirmSpec()
+            getYesNoConfirmSpec("doctor")
         );
     }
 

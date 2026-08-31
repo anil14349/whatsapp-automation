@@ -147,7 +147,11 @@ if (
     session.state !== "DOCTOR_MENU" &&
     session.state !== "LANGUAGE_SELECT" &&
     session.state !== "LANGUAGE_CHANGE" &&
-    normalizedMessage === "0"
+    (
+        normalizedMessage === "0" ||
+        normalizedMessage === "nav_main_menu" ||
+        normalizedMessage === "main_menu"
+    )
 ) {
 
     if (session.role === "DOCTOR") {
@@ -169,13 +173,35 @@ if (
     return true;
 }
 
+// States whose numbered list content can legitimately reach a 9th item
+// (doctor selection, leave-cancel list, session-remove list) reserve the
+// literal digit "9" for that content instead of treating it as "back" —
+// same reasoning as the DOCTOR_MENU_MORE tier-4 carve-out below. The
+// "nav_back"/"back" aliases (typed word, or a tapped nav button) are
+// never ambiguous with numbered content, so they always still work.
 if (
     session &&
     session.state !== "MAIN_MENU" &&
     session.state !== "DOCTOR_MENU" &&
     session.state !== "LANGUAGE_SELECT" &&
     session.state !== "LANGUAGE_CHANGE" &&
-    normalizedMessage === "9"
+    (
+        normalizedMessage === "9" ||
+        normalizedMessage === "nav_back" ||
+        normalizedMessage === "back"
+    ) &&
+    !(
+        session.state === "DOCTOR_MENU_MORE" &&
+        Number(session.doctorMenuTier) === 4
+    ) &&
+    !(
+        normalizedMessage === "9" &&
+        (
+            session.state === "BOOK_DOCTOR" ||
+            session.state === "DOCTOR_LEAVE_CANCEL_PICK" ||
+            session.state === "DOCTOR_AVAIL_REMOVE"
+        )
+    )
 ) {
 
     if (session.role === "DOCTOR") {

@@ -267,7 +267,8 @@ if (
     session.state === "MAIN_MENU" &&
     (
         normalizedMessage === "menu_more" ||
-        normalizedMessage === "more"
+        normalizedMessage === "more" ||
+        normalizedMessage === "3"
     )
 ) {
 
@@ -289,16 +290,13 @@ if (
 
 
 // ======================================================
-// MAIN MENU / MORE → CANCEL APPOINTMENT
+// MORE → CANCEL APPOINTMENT
 // ======================================================
 
 if (
     normalizedMessage === "3" &&
     session &&
-    (
-        session.state === "MAIN_MENU" ||
-        session.state === "PATIENT_MAIN_MORE"
-    )
+    session.state === "PATIENT_MAIN_MORE"
 ) {
 
     beginWhatsAppCancelFlow(

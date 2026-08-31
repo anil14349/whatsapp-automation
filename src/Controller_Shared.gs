@@ -333,6 +333,80 @@ function handleWhatsAppMyAppointmentsState(
 
 
 
+function classifyWhatsAppAppointmentListChoice(
+    normalizedMessage,
+    appointmentsLength
+) {
+
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    if (
+        choice === "nav_main_menu" ||
+        choice === "main_menu" ||
+        normalizedMessage === "0"
+    ) {
+        return { type: "main_menu" };
+    }
+
+    if (
+        choice === "nav_back" ||
+        choice === "back"
+    ) {
+        return { type: "back" };
+    }
+
+    if (
+        choice === "appt_prev" ||
+        choice === "prev"
+    ) {
+        return { type: "prev" };
+    }
+
+    if (
+        choice === "appt_next" ||
+        choice === "next"
+    ) {
+        return { type: "next" };
+    }
+
+    let selection = NaN;
+
+    if (choice.indexOf("appt_") === 0) {
+
+        selection =
+            parseInt(
+                choice.substring(5),
+                10
+            );
+
+    } else {
+
+        selection =
+            parseInt(
+                choice,
+                10
+            );
+    }
+
+    if (
+        isNaN(selection) ||
+        selection < 1 ||
+        selection > appointmentsLength
+    ) {
+        return { type: "invalid" };
+    }
+
+    return {
+        type: "selection",
+        index: selection - 1
+    };
+}
+
+
+
 function handleDoctorWhatsAppAppointmentListSelection(
     ss,
     phone,
@@ -352,40 +426,6 @@ function handleDoctorWhatsAppAppointmentListSelection(
         return;
     }
 
-    const choice =
-        String(normalizedMessage || "")
-            .trim()
-            .toLowerCase();
-
-    if (
-        choice === "nav_main_menu" ||
-        choice === "main_menu" ||
-        normalizedMessage === "0"
-    ) {
-
-        returnDoctorToMenu(
-            ss,
-            phone,
-            doctorId
-        );
-
-        return;
-    }
-
-    if (
-        choice === "nav_back" ||
-        choice === "back"
-    ) {
-
-        goBackInDoctorWhatsAppFlow(
-            ss,
-            phone,
-            session
-        );
-
-        return;
-    }
-
     const appointments =
         typeof opts.getAppointments === "function"
             ? opts.getAppointments()
@@ -402,10 +442,35 @@ function handleDoctorWhatsAppAppointmentListSelection(
             currentPage
         );
 
-    if (
-        choice === "appt_prev" ||
-        choice === "prev"
-    ) {
+    const decision =
+        classifyWhatsAppAppointmentListChoice(
+            normalizedMessage,
+            appointments.length
+        );
+
+    if (decision.type === "main_menu") {
+
+        returnDoctorToMenu(
+            ss,
+            phone,
+            doctorId
+        );
+
+        return;
+    }
+
+    if (decision.type === "back") {
+
+        goBackInDoctorWhatsAppFlow(
+            ss,
+            phone,
+            session
+        );
+
+        return;
+    }
+
+    if (decision.type === "prev") {
 
         if (!pageInfo.hasPrev) {
 
@@ -440,10 +505,7 @@ function handleDoctorWhatsAppAppointmentListSelection(
         return;
     }
 
-    if (
-        choice === "appt_next" ||
-        choice === "next"
-    ) {
+    if (decision.type === "next") {
 
         if (!pageInfo.hasNext) {
 
@@ -478,32 +540,7 @@ function handleDoctorWhatsAppAppointmentListSelection(
         return;
     }
 
-    let selection = NaN;
-
-    if (
-        choice.indexOf("appt_") === 0
-    ) {
-
-        selection =
-            parseInt(
-                choice.substring(5),
-                10
-            );
-
-    } else {
-
-        selection =
-            parseInt(
-                choice,
-                10
-            );
-    }
-
-    if (
-        isNaN(selection) ||
-        selection < 1 ||
-        selection > appointments.length
-    ) {
+    if (decision.type !== "selection") {
 
         sendDoctorAppointmentListMenuReply(
             ss,
@@ -522,7 +559,7 @@ function handleDoctorWhatsAppAppointmentListSelection(
     });
 
     opts.onChosen(
-        appointments[selection - 1]
+        appointments[decision.index]
     );
 }
 
@@ -1039,16 +1076,32 @@ function handleWhatsAppAppointmentListSelection(
 
     const opts = options || {};
 
-    const choice =
-        String(normalizedMessage || "")
-            .trim()
-            .toLowerCase();
+    const appointments =
+        typeof opts.getAppointments === "function"
+            ? opts.getAppointments()
+            : getConfirmedAppointmentsForPhone(phone);
 
-    if (
-        choice === "nav_main_menu" ||
-        choice === "main_menu" ||
-        normalizedMessage === "0"
-    ) {
+    const currentPage =
+        session
+            ? Number(session.apptPage) || 0
+            : 0;
+
+    const pageInfo =
+        getSlotSelectionPageInfo(
+            appointments.length,
+            currentPage
+        );
+
+    const listScreen =
+        opts.listScreen || "";
+
+    const decision =
+        classifyWhatsAppAppointmentListChoice(
+            normalizedMessage,
+            appointments.length
+        );
+
+    if (decision.type === "main_menu") {
 
         saveWhatsAppSession(phone, {
             role: "PATIENT",
@@ -1069,10 +1122,7 @@ function handleWhatsAppAppointmentListSelection(
         return;
     }
 
-    if (
-        choice === "nav_back" ||
-        choice === "back"
-    ) {
+    if (decision.type === "back") {
 
         goBackInWhatsAppFlow(
             ss,
@@ -1083,29 +1133,7 @@ function handleWhatsAppAppointmentListSelection(
         return;
     }
 
-    const appointments =
-        typeof opts.getAppointments === "function"
-            ? opts.getAppointments()
-            : getConfirmedAppointmentsForPhone(phone);
-
-    const currentPage =
-        session
-            ? Number(session.apptPage) || 0
-            : 0;
-
-    const pageInfo =
-        getSlotSelectionPageInfo(
-            appointments.length,
-            currentPage
-        );
-
-    const listScreen =
-        opts.listScreen || "";
-
-    if (
-        choice === "appt_prev" ||
-        choice === "prev"
-    ) {
+    if (decision.type === "prev") {
 
         if (!pageInfo.hasPrev) {
 
@@ -1139,10 +1167,7 @@ function handleWhatsAppAppointmentListSelection(
         return;
     }
 
-    if (
-        choice === "appt_next" ||
-        choice === "next"
-    ) {
+    if (decision.type === "next") {
 
         if (!pageInfo.hasNext) {
 
@@ -1176,32 +1201,7 @@ function handleWhatsAppAppointmentListSelection(
         return;
     }
 
-    let selection = NaN;
-
-    if (
-        choice.indexOf("appt_") === 0
-    ) {
-
-        selection =
-            parseInt(
-                choice.substring(5),
-                10
-            );
-
-    } else {
-
-        selection =
-            parseInt(
-                choice,
-                10
-            );
-    }
-
-    if (
-        isNaN(selection) ||
-        selection < 1 ||
-        selection > appointments.length
-    ) {
+    if (decision.type !== "selection") {
 
         sendPatientAppointmentListMenuReply(
             ss,
@@ -1220,7 +1220,7 @@ function handleWhatsAppAppointmentListSelection(
     });
 
     opts.onChosen(
-        appointments[selection - 1]
+        appointments[decision.index]
     );
 }
 

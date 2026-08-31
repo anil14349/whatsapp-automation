@@ -164,24 +164,27 @@ function sendWhatsAppMenuReply(
                 session
             );
 
-        let localizedBody =
-            localizeWhatsAppReply(
-                language,
-                String(bodyText || "")
-            );
+        const rawBody =
+            String(bodyText || "");
 
         const willSendInteractive =
             interactiveMenusEnabled() &&
             menuSpec &&
             menuSpec.interactive;
 
-        if (!willSendInteractive) {
-            localizedBody =
-                addWhatsAppNavigationOptions(
+        const rawBodyWithNavigation =
+            willSendInteractive
+                ? rawBody
+                : addWhatsAppNavigationOptions(
                     session,
-                    localizedBody
+                    rawBody
                 );
-        }
+
+        let localizedBody =
+            localizeWhatsAppReply(
+                language,
+                rawBodyWithNavigation
+            );
 
         const inboundMessageId =
             getWhatsAppInboundMessageId();
@@ -201,8 +204,6 @@ function sendWhatsAppMenuReply(
         }
 
         let sendResult = null;
-        let outboundLog =
-            localizedBody;
 
         if (
             interactiveMenusEnabled() &&
@@ -223,12 +224,6 @@ function sendWhatsAppMenuReply(
                         )
                     );
 
-                outboundLog =
-                    "[interactive:" +
-                    menuSpec.interactive.type +
-                    "] " +
-                    localizedBody;
-
             } catch (interactiveError) {
 
                 Logger.log(
@@ -243,10 +238,15 @@ function sendWhatsAppMenuReply(
         if (!sendResult) {
 
             const fallbackBody =
-                addWhatsAppNavigationOptions(
-                    session,
-                    localizedBody
-                );
+                willSendInteractive
+                    ? localizeWhatsAppReply(
+                        language,
+                        addWhatsAppNavigationOptions(
+                            session,
+                            rawBody
+                        )
+                    )
+                    : localizedBody;
 
             const localizedFallback =
                 menuSpec &&
@@ -269,8 +269,6 @@ function sendWhatsAppMenuReply(
                     phone,
                     fallbackText
                 );
-
-            outboundLog = fallbackText;
         }
 
         if (
@@ -283,27 +281,17 @@ function sendWhatsAppMenuReply(
             );
         }
 
-        appendWhatsAppDebugLog(
-            ss,
-            {
-                direction: "OUTBOUND",
-                phone: phone,
-                status: "SUCCESS",
-                response: outboundLog
-            }
-        );
-
         return sendResult;
 
     } catch (error) {
 
-        appendWhatsAppDebugLog(
+        appendWhatsAppLogEntry(
             ss,
             {
                 direction: "OUTBOUND",
                 phone: phone,
                 status: "ERROR",
-                response: error.message
+                message: error.message
             }
         );
 
@@ -711,10 +699,17 @@ function sendSlotSelectionMenuReply(
 ) {
 
     const opts = options || {};
+
+    const session =
+        getWhatsAppSession(phone);
+
     const menuSpec =
         getSlotSelectionMenuSpec(
             slots,
-            page || 0
+            page || 0,
+            session && session.role === "DOCTOR"
+                ? "doctor"
+                : "patient"
         );
 
     let body =
@@ -855,30 +850,17 @@ function sendWhatsAppReply(
             );
         }
 
-
-        appendWhatsAppDebugLog(
-            ss,
-            {
-                direction: "OUTBOUND",
-                phone: phone,
-                status: "SUCCESS",
-                response: JSON.stringify(
-                    sendResult
-                )
-            }
-        );
-
         return sendResult;
 
     } catch (error) {
 
-        appendWhatsAppDebugLog(
+        appendWhatsAppLogEntry(
             ss,
             {
                 direction: "OUTBOUND",
                 phone: phone,
                 status: "ERROR",
-                response: error.message
+                message: error.message
             }
         );
 
