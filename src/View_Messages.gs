@@ -56,31 +56,6 @@ function formatAvailableSlotsForWhatsApp(slots) {
 
 
 
-function buildAppointmentPickerPrompt(
-    title,
-    selectLine,
-    appointments
-) {
-
-    return (
-        title +
-        "\n\n" +
-        selectLine +
-        "\n\n0️⃣ Main Menu"
-    );
-}
-
-
-
-function buildInvalidSlotSelectionReply(slots) {
-
-    return (
-        "❌ Invalid time selection.\n\n" +
-        "Please choose one of the available slots."
-    );
-}
-
-
 
 function buildAppointmentDetailMessage(appt) {
 
@@ -396,26 +371,6 @@ function formatDoctorPatientAppointmentsListForWhatsApp(
 
 
 
-function buildDoctorPatientAppointmentPickerPrompt(
-    title,
-    selectLine,
-    appointments
-) {
-
-    return (
-        title +
-        "\n\n" +
-        selectLine +
-        "\n\n" +
-        formatDoctorPatientAppointmentsListForWhatsApp(
-            appointments
-        ) +
-        "0️⃣ Doctor Portal"
-    );
-}
-
-
-
 function buildDoctorCancelConfirmMessage(chosen) {
 
     return (
@@ -579,13 +534,6 @@ function buildSlotSelectionIntro(
 function buildLanguageSelectionIntro() {
 
     return "🌐 Choose your language.";
-}
-
-
-
-function buildLanguageSelectionMessage() {
-
-    return buildLanguageSelectionIntro();
 }
 
 
@@ -1359,129 +1307,6 @@ function localizeInteractiveMenu(
     return copy;
 }
 
-
-
-function buildMainMenuMessage(prefix) {
-
-    return (
-        prefix +
-        "\n\n" +
-        "Please choose an option:\n\n" +
-        "1️⃣ Book Appointment\n" +
-        "2️⃣ My Appointments\n" +
-        "3️⃣ Cancel Appointment\n" +
-        "4️⃣ Reschedule Appointment\n" +
-        "5️⃣ Change Language"
-    );
-}
-
-
-function buildDoctorMenu(doctorName) {
-    return "👨‍⚕️ Doctor Portal" +
-        (doctorName ? " — " + doctorName : "") +
-        "\n\n1️⃣ Today's Schedule\n" +
-        "2️⃣ Next Appointment\n" +
-        "3️⃣ This Week's Schedule\n" +
-        "4️⃣ Schedule for a Date\n" +
-        "5️⃣ Manage Availability\n" +
-        "6️⃣ Manage Leaves\n" +
-        "7️⃣ My Patients\n" +
-        "8️⃣ Cancel Patient Appointment\n" +
-        "9️⃣ Reschedule Patient Appointment\n" +
-        "🔟 Mark Visit Status (Completed / No-Show)";
-}
-
-
-function formatDoctorAvailabilityMenu(doctorId) {
-
-    const availability =
-        getDoctorWeeklyAvailability(
-            doctorId
-        );
-
-    let text =
-        "📅 Manage Availability\n\n";
-
-    DOCTOR_WEEKDAYS.forEach(
-        function (day, index) {
-
-            const sessions =
-                availability[day];
-
-            let summary =
-                "Not set";
-
-            if (sessions.length > 0) {
-                summary =
-                    sessions.length +
-                    " session(s) (" +
-                    sessions.map(function (session) {
-                        return (
-                            session.start +
-                            " - " +
-                            session.end
-                        );
-                    }).join(", ") +
-                    ")";
-            }
-
-            text +=
-                (index + 1) +
-                ". " +
-                day +
-                ": " +
-                summary +
-                "\n";
-        }
-    );
-
-    text +=
-        "\nReply with day number (1-7) to manage that day.";
-
-    return text;
-}
-
-
-function formatDoctorDayAvailabilityMenu(
-    doctorId,
-    dayName
-) {
-
-    const sessions =
-        getDoctorDayAvailabilitySessions(
-            doctorId,
-            dayName
-        );
-
-    let text =
-        "📅 " +
-        dayName +
-        " Availability\n\n";
-
-    if (sessions.length === 0) {
-        text += "No sessions set.\n\n";
-    } else {
-        sessions.forEach(
-            function (session, index) {
-                text +=
-                    (index + 1) +
-                    ". " +
-                    session.start +
-                    " - " +
-                    session.end +
-                    "\n";
-            }
-        );
-        text += "\n";
-    }
-
-    text +=
-        "1️⃣ Add session\n" +
-        "2️⃣ Remove session\n" +
-        "3️⃣ Clear entire day";
-
-    return text;
-}
 
 
 function formatDoctorLeavesMenu() {

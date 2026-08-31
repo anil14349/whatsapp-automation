@@ -608,18 +608,6 @@ function testDoctorPortalHelpers() {
         );
     }
 
-    const doctorMenu =
-        buildDoctorMenu("Dr Test");
-
-    if (
-        doctorMenu.indexOf("Mark Visit Status") === -1 ||
-        doctorMenu.indexOf("Cancel Patient Appointment") === -1
-    ) {
-        throw new Error(
-            "buildDoctorMenu missing expected options"
-        );
-    }
-
     const doctorSpec =
         getDoctorMainMenuSpec();
 
@@ -642,44 +630,6 @@ function testDoctorPortalHelpers() {
 function testWhatsAppFlowHelpers() {
 
     requireDebugMode("testWhatsAppFlowHelpers");
-
-    const prompt =
-        buildAppointmentPickerPrompt(
-            "Test Title",
-            "Pick one:",
-            [
-                {
-                    doctorId: "D001",
-                    date: "2026-08-20",
-                    time: "10:00 AM",
-                    appointmentId: "APT-1"
-                }
-            ]
-        );
-
-    if (
-        prompt.indexOf("Test Title") === -1 ||
-        prompt.indexOf("0️⃣ Main Menu") === -1
-    ) {
-        throw new Error(
-            "buildAppointmentPickerPrompt missing expected text"
-        );
-    }
-
-    const invalidSlots =
-        buildInvalidSlotSelectionReply([
-            "10:00 AM",
-            "10:30 AM"
-        ]);
-
-    if (
-        invalidSlots.indexOf("Invalid time selection") === -1 ||
-        invalidSlots.indexOf("1️⃣ 10:00 AM") !== -1
-    ) {
-        throw new Error(
-            "buildInvalidSlotSelectionReply should not duplicate slot list"
-        );
-    }
 
     if (
         whatsAppNavigationShowsBack({
@@ -1339,21 +1289,6 @@ function testDoctorCancelReschedule() {
         );
     }
 
-    const picker =
-        buildDoctorPatientAppointmentPickerPrompt(
-            "Title",
-            "Pick one:",
-            []
-        );
-
-    if (
-        picker.indexOf("Doctor Portal") === -1
-    ) {
-        throw new Error(
-            "buildDoctorPatientAppointmentPickerPrompt failed"
-        );
-    }
-
     Logger.log(
         "Doctor cancel/reschedule smoke tests passed"
     );
@@ -1429,17 +1364,6 @@ function testAppointmentStatus() {
     ) {
         throw new Error(
             "getDoctorStatusActionSpec invalid"
-        );
-    }
-
-    const menu =
-        buildDoctorMenu("Dr Test");
-
-    if (
-        menu.indexOf("Mark Visit Status") === -1
-    ) {
-        throw new Error(
-            "buildDoctorMenu missing status option"
         );
     }
 
