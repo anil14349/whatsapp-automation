@@ -30,7 +30,9 @@ function ensureWhatsAppSessionsSheet() {
             "Updated At",
             "Language",
             "Patient Name",
-            "Slot Page"
+            "Slot Page",
+            "Appointment Page",
+            "Doctor Menu Tier"
         ]);
     }
 
@@ -163,7 +165,24 @@ function getWhatsAppSession(phone) {
                     : parseInt(
                         data[i][10],
                         10
-                    ) || 0
+                    ) || 0,
+
+            apptPage:
+                data[i][11] === "" ||
+                data[i][11] === undefined ||
+                data[i][11] === null
+                    ? 0
+                    : parseInt(
+                        data[i][11],
+                        10
+                    ) || 0,
+
+            doctorMenuTier:
+                data[i][12] === "" ||
+                data[i][12] === undefined ||
+                data[i][12] === null
+                    ? ""
+                    : String(data[i][12]).trim()
         };
     }
 
@@ -204,6 +223,34 @@ function ensureWhatsAppSessionSlotPageColumn(sheet) {
 
 
 
+// Appointment-list pagination (apptPage) and the doctor "More" submenu
+// tier (doctorMenuTier) used to be read throughout Controller_Shared.gs/
+// Controller_DoctorFlow.gs as if persisted here, but this sheet never
+// actually had columns for them — every saveWhatsAppSession({apptPage/
+// doctorMenuTier: ...}) call silently dropped the value, so pagination
+// and "More" tier navigation reset on every single incoming message.
+function ensureWhatsAppSessionAppointmentPageColumn(sheet) {
+
+    if (!sheet.getRange(1, 12).getValue()) {
+        sheet
+            .getRange(1, 12)
+            .setValue("Appointment Page");
+    }
+}
+
+
+
+function ensureWhatsAppSessionDoctorMenuTierColumn(sheet) {
+
+    if (!sheet.getRange(1, 13).getValue()) {
+        sheet
+            .getRange(1, 13)
+            .setValue("Doctor Menu Tier");
+    }
+}
+
+
+
 function saveWhatsAppSession(
     phone,
     updates
@@ -215,6 +262,8 @@ function saveWhatsAppSession(
     ensureWhatsAppSessionLanguageColumn(sheet);
     ensureWhatsAppSessionPatientNameColumn(sheet);
     ensureWhatsAppSessionSlotPageColumn(sheet);
+    ensureWhatsAppSessionAppointmentPageColumn(sheet);
+    ensureWhatsAppSessionDoctorMenuTierColumn(sheet);
 
     const existing =
         getWhatsAppSession(phone);
@@ -229,11 +278,11 @@ function saveWhatsAppSession(
 
         const current =
             sheet
-                .getRange(row, 1, 1, 11)
+                .getRange(row, 1, 1, 13)
                 .getValues()[0];
 
         sheet
-            .getRange(row, 1, 1, 11)
+            .getRange(row, 1, 1, 13)
             .setValues([[
                 phone,
 
@@ -279,7 +328,21 @@ function saveWhatsAppSession(
                         current[10] === null
                             ? 0
                             : current[10]
-                    )
+                    ),
+
+                updates.apptPage !== undefined
+                    ? updates.apptPage
+                    : (
+                        current[11] === "" ||
+                        current[11] === undefined ||
+                        current[11] === null
+                            ? 0
+                            : current[11]
+                    ),
+
+                updates.doctorMenuTier !== undefined
+                    ? updates.doctorMenuTier
+                    : current[12]
             ]]);
 
     } else {
@@ -297,7 +360,13 @@ function saveWhatsAppSession(
             updates.patientName || "",
             updates.slotPage !== undefined
                 ? updates.slotPage
-                : 0
+                : 0,
+            updates.apptPage !== undefined
+                ? updates.apptPage
+                : 0,
+            updates.doctorMenuTier !== undefined
+                ? updates.doctorMenuTier
+                : ""
         ]);
     }
 }
