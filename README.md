@@ -147,8 +147,8 @@ Typed numbers still work everywhere as a backup (including global slot numbers a
 
 - Configurable from **`Settings`** sheet (`ENABLE_APPOINTMENT_REMINDERS`, `REMINDER_HOURS_BEFORE`, `REMINDER_WINDOW_MINUTES`)
 - Reminders are sent to **patients** only (not doctors)
-- Hourly trigger via `installAppointmentReminderTrigger()`; manual run via `sendAppointmentReminders()`
-- Dedup via auto-created **`Reminder_Log`** sheet
+- Every-30-minutes trigger via `installAppointmentReminderTrigger()`; manual run via `sendAppointmentReminders()`
+- Dedup via `REMINDER` rows in the consolidated **`WhatsApp_Log`** sheet
 
 ### Doctor cancel / reschedule for patients
 
@@ -339,7 +339,7 @@ After the first inbound message, a **`Settings`** sheet is created. Adjust as ne
 | `ENABLE_DEBUG_LOG` | `TRUE` | Log outbound sends to `WhatsApp_Debug` |
 | `ENABLE_APPOINTMENT_REMINDERS` | `TRUE` | Send WhatsApp reminders before appointments |
 | `REMINDER_HOURS_BEFORE` | `24` | Comma-separated hours before appt (e.g. `24,2`) |
-| `REMINDER_WINDOW_MINUTES` | `45` | Send window for hourly trigger |
+| `REMINDER_WINDOW_MINUTES` | `45` | Send window for the every-30-minutes trigger |
 | `ENABLE_INTERACTIVE_MENUS` | `TRUE` | Tap-to-select list/button menus (see [Interactive WhatsApp menus](#interactive-whatsapp-menus)) |
 | `AUTO_COMPLETE_PAST_APPOINTMENTS` | `FALSE` | Auto-mark past confirmed appointments Completed |
 | `AUTO_COMPLETE_HOURS_AFTER` | `4` | Hours after appointment start before auto-complete |
@@ -353,7 +353,7 @@ Optional scheduled jobs (run once in Apps Script editor):
 
 ```javascript
 installDailyLogCleanupTrigger()       // log cleanup at 3 AM daily
-installAppointmentReminderTrigger()   // check reminders every hour
+installAppointmentReminderTrigger()   // check reminders every 30 minutes
 installAutoCompletePastAppointmentsTrigger() // auto-complete at 11 PM daily (if enabled)
 sendAppointmentReminders()            // manual reminder run (also used by trigger)
 autoCompletePastAppointments()        // manual auto-complete run

@@ -482,16 +482,23 @@ function installAppointmentReminderTrigger() {
             }
         });
 
+    // Apps Script doesn't guarantee exact trigger timing (documented
+    // multi-minute variance for load balancing), and the eligibility
+    // window (REMINDER_WINDOW_MINUTES, default 45) is narrower than an
+    // hour — an hourly cadence left almost no margin for two consecutive
+    // runs to land more than an hour apart and skip a window entirely.
+    // 30-minute cadence keeps comfortable overlap with the 45-minute
+    // window even accounting for that jitter.
     ScriptApp.newTrigger(
         "sendAppointmentReminders"
     )
         .timeBased()
-        .everyHours(1)
+        .everyMinutes(30)
         .create();
 
     return {
         success: true,
         message:
-            "Hourly appointment reminder trigger installed."
+            "Appointment reminder trigger installed (every 30 minutes)."
     };
 }

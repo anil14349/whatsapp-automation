@@ -20,7 +20,7 @@ Script project — every function would be declared twice and the project would 
 | `Config.gs` | Constants (`TIMEZONE`, `APPOINTMENT_STATUS`, etc.), `Settings` sheet read/ensure/cache, debug-mode flags |
 | `Util_Common.gs` | Phone normalization/matching, date/time parsing & formatting helpers used everywhere |
 | `Logging.gs` | Single `WhatsApp_Log` sheet creation, log settings, retention cleanup |
-| `Model_Reminders.gs` | Appointment reminder scheduling, dedup log, hourly trigger |
+| `Model_Reminders.gs` | Appointment reminder scheduling, dedup log, every-30-minutes trigger |
 | `Model_AppointmentStatus.gs` | Completed / No-Show status workflow, auto-complete trigger |
 | `Model_AfterHours.gs` | Clinic-hours parsing, after-hours gate, closed-message auto-reply |
 | `Model_Doctors.gs` | Doctor records, weekly availability, leave management, schedule views (today/date/week/next) |
@@ -174,7 +174,7 @@ Adjust after the first inbound message creates the sheet:
 | `ENABLE_DEBUG_LOG` | `TRUE` | Log outbound send errors to `WhatsApp_Log` (fatal webhook errors and the reminder dedup ledger always write regardless of this setting — they're not routine diagnostics) |
 | `ENABLE_APPOINTMENT_REMINDERS` | `TRUE` | Send WhatsApp reminders before appointments |
 | `REMINDER_HOURS_BEFORE` | `24` | Comma-separated hours before appointment (e.g. `24,2`) |
-| `REMINDER_WINDOW_MINUTES` | `45` | Send window for the hourly trigger |
+| `REMINDER_WINDOW_MINUTES` | `45` | Send window for the every-30-minutes trigger |
 | `ENABLE_INTERACTIVE_MENUS` | `TRUE` | Tap-to-select list/button menus instead of typed numbers (see root README — slot pagination, Meta 10-row limit) |
 | `AUTO_COMPLETE_PAST_APPOINTMENTS` | `FALSE` | Auto-mark past confirmed appointments Completed |
 | `AUTO_COMPLETE_HOURS_AFTER` | `4` | Hours after appointment start before auto-complete |
