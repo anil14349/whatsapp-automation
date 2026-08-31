@@ -192,7 +192,7 @@ Adjust after the first inbound message creates the sheet:
 
 1. Open the clinic Google Sheet → **Extensions → Apps Script**.
 2. Remove any default `Code.gs` file.
-3. For each of the 20 files listed above: click **`+` → Script**, name it exactly the
+3. For each of the 21 files listed above: click **`+` → Script**, name it exactly the
    filename minus `.gs` (the editor appends `.gs` automatically), then paste in that file's
    contents from this folder.
 4. *(Optional, recommended for staging)* Also add
@@ -209,8 +209,7 @@ Adjust after the first inbound message creates the sheet:
     patient's number to confirm both flows work.
 
 See the [repo root README](../README.md) for the full end-to-end deployment walkthrough,
-the manual WhatsApp test checklist, UI docs (`ABC_Clinic_WhatsApp_UI_README.md`,
-`ABC_Clinic_WhatsApp_UI_Cleanup_README.md`), and the single-file
+the manual WhatsApp test checklist, and the single-file
 (`ABC_Clinic_WhatsApp_Complete.gs`) alternative — this document only covers what's
 specific to the `src/` split.
 

@@ -2,8 +2,6 @@
 
 Google Apps Script project for ABC Clinic appointment booking over WhatsApp, backed by Google Sheets and Google Calendar.
 
-**Active branch:** `refactor/whatsapp-v2`
-
 ---
 
 ## Apps Script files
@@ -19,13 +17,13 @@ There are two equivalent ways to source the production code — pick **one**, do
 
 ### Option B — `src/` split (recommended)
 
-The same code, reorganized into 20 smaller files by responsibility (Model/View/Controller-style). Apps Script merges every bound `.gs` file into one shared global scope regardless of file name or count, so this is behaviorally identical to Option A — just easier to navigate. Bind **every file in `src/`** (all 20) plus, optionally, `ABC_Clinic_Tests.gs`:
+The same code, reorganized into 21 smaller files by responsibility (Model/View/Controller-style). Apps Script merges every bound `.gs` file into one shared global scope regardless of file name or count, so this is behaviorally identical to Option A — just easier to navigate. Bind **every file in `src/`** (all 21) plus, optionally, `ABC_Clinic_Tests.gs`:
 
 | File | Purpose |
 |------|---------|
 | `src/Config.gs` | Constants, Settings sheet, debug/log-mode flags |
 | `src/Util_Common.gs` | Phone/date/time parsing & formatting helpers |
-| `src/Logging.gs` | `WhatsApp_Log` / `WhatsApp_Debug` sheets, retention cleanup |
+| `src/Logging.gs` | Single `WhatsApp_Log` sheet (inbound/errors/reminder ledger), retention cleanup |
 | `src/Model_Reminders.gs` | Appointment reminder scheduling & sending |
 | `src/Model_AppointmentStatus.gs` | Completed/No-Show status workflow, auto-complete |
 | `src/Model_AfterHours.gs` | Clinic-hours gate & after-hours auto-reply |
@@ -34,6 +32,7 @@ The same code, reorganized into 20 smaller files by responsibility (Model/View/C
 | `src/Model_Patients.gs` | Patients registry (find/upsert/sync) |
 | `src/Model_Appointments.gs` | Book/cancel/reschedule, appointment lookups |
 | `src/Model_Session.gs` | `WhatsApp_Sessions` sheet read/write |
+| `src/Setup.gs` | `initializeWhatsAppBotSheets()` — one-time creation of every required sheet |
 | `src/Api.gs` | `api()` HTTP-style dispatcher for external callers |
 | `src/Webhook.gs` | `doGet`/`doPost` entry points, inbound idempotency |
 | `src/View_Menus.gs` | Interactive list/button menu specs |
@@ -44,7 +43,7 @@ The same code, reorganized into 20 smaller files by responsibility (Model/View/C
 | `src/Controller_PatientFlow.gs` | Patient conversation state machine |
 | `src/WhatsApp_Send.gs` | Low-level WhatsApp Cloud API senders |
 
-Every function/variable name is still globally unique across all files (Apps Script requirement) — verified by parsing all files concatenated together with no duplicate-declaration errors, and confirming the same 256 top-level functions/constants exist in both Option A and Option B with none missing, duplicated, or added.
+Every function/variable name is still globally unique across all files (Apps Script requirement) — kept in sync automatically by `scripts/sync-monolith-from-src.js` (`node scripts/sync-monolith-from-src.js --check` reports drift between Option A and Option B without writing).
 
 Don't bind both options at once — that would double-declare every function.
 
@@ -110,18 +109,19 @@ When a doctor cancels or reschedules, the **patient is notified** via WhatsApp a
 - **Navigation:** users can still type `0` (main menu / doctor portal) and `9` (back one step)
 - Toggle via **`Settings`** → `ENABLE_INTERACTIVE_MENUS` (`TRUE` / `FALSE`, default `TRUE`)
 - Falls back to **numbered text** only when menus are disabled, the Meta API fails, or a list cannot be built
-- **UI copy:** short contextual message bodies (no duplicated numbered menus in interactive text) — see [`ABC_Clinic_WhatsApp_UI_Cleanup_README.md`](ABC_Clinic_WhatsApp_UI_Cleanup_README.md)
+- **UI copy:** short contextual message bodies (no duplicated numbered menus in interactive text) — *text explains, interactive controls act*
 
 #### Meta limits & pagination
 
-WhatsApp allows **at most 10 rows** per list menu and **3 reply buttons** per message.
+WhatsApp allows **at most 10 rows** per list menu and **3 reply buttons** per message. Every list menu (time slots, appointment pickers, doctor selection, doctor leave/session lists) reserves one of those 10 rows for a persistent **Main Menu / Doctor Portal** nav row, so real content is capped at 9 items per screen.
 
 | Flow | Behavior when > limit |
 |------|------------------------|
-| **Time slots** | **Paginated** — tap **More times** / **Earlier times** (page tracked in `WhatsApp_Sessions` → **Slot Page** column, auto-created) |
-| **Doctor portal** | Exactly 10 list rows (one per option) |
+| **Time slots** | **Paginated** — tap **More times** / **Earlier times** (page tracked in `WhatsApp_Sessions` → **Appointment Page**/**Slot Page** columns, auto-created) |
+| **Appointment pickers** (my appointments/cancel/reschedule, doctor-side too) | **Paginated** the same way as time slots |
+| **Doctor portal** | 3-button screens, tiered behind a **More** button (options 1–10 spread across 4 tiers) |
 | **Language** | 6 languages in one list (under limit) |
-| **Appointment pickers** (cancel/reschedule) | First 10 shown as list; if a patient has **>10** upcoming appointments, falls back to numbered text for the full list |
+| **Doctor selection / session-remove lists** | Up to 9 shown as a tappable list; beyond that, falls back to numbered text for the full list (no pagination) |
 
 Typed numbers still work everywhere as a backup (including global slot numbers across pages).
 
@@ -207,27 +207,26 @@ Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/`
 ### Step 1 — Prepare the spreadsheet
 
 1. Create or open the clinic Google Sheet (this becomes the data store).
-2. Add a **`Doctors`** sheet with header row:
+2. After binding the Apps Script project (Step 2 below), run **`initializeWhatsAppBotSheets()`** once from the Apps Script editor — it creates every required sheet with its header row (`Settings`, `WhatsApp_Log`, `Patients`, `WhatsApp_Sessions`, `Doctors`, `Availability`, `Appointments`, `Doctor_Leaves`) if it doesn't already exist. Safe to re-run any time. See `src/README.md` for details.
+3. Fill in the **`Doctors`** sheet, one row per doctor:
 
-   | Doctor ID | Doctor Name | Clinic | Calendar ID | WhatsApp | AppointmentDuration |
-   |-----------|-------------|--------|-------------|----------|---------------------|
+   | Doctor ID | Doctor Name | Clinic | Calendar ID | WhatsApp | AppointmentDuration | Active | Specialization |
+   |-----------|-------------|--------|-------------|----------|----------------------|--------|-----------------|
 
    - **Calendar ID** — from Google Calendar → Settings → Integrate calendar → Calendar ID
    - **WhatsApp** — doctor’s mobile number (with country code, e.g. `919876543210`)
    - **AppointmentDuration** — slot length in minutes (e.g. `30`)
+   - **Active** — `YES` to allow this doctor to log into the Doctor Portal via WhatsApp
+   - **Specialization** — optional, shown to patients when picking a doctor to book with
 
-3. Add an **`Availability`** sheet (or let doctors fill it via WhatsApp option 5 later):
+4. Fill in an **`Availability`** sheet (or let doctors fill it via WhatsApp Doctor Portal → option 5 later):
 
    | Doctor ID | Day | Start | End |
    |-----------|-----|-------|-----|
 
    Example: `D001`, `Monday`, `09:00 AM`, `01:00 PM`
 
-4. Add an **`Appointments`** sheet if you don’t have one:
-
-   | Appointment ID | Date | Time | Doctor ID | Patient Name | Phone | Status | Calendar Event ID | Patient ID |
-
-5. Other sheets (`Patients`, `Doctor_Leaves`, `WhatsApp_Sessions`, `WhatsApp_Log`, `WhatsApp_Debug`, `Settings`, `Reminder_Log`) are **auto-created** on first use — you do not need to create them manually. On upgrade, `WhatsApp_Sessions` may gain new columns (e.g. **Language**, **Patient Name**, **Slot Page**) automatically when a session is saved.
+5. `Appointments` fills itself in as bookings come through `bookAppointment()` — no data to pre-populate. `Patients`, `WhatsApp_Sessions`, `WhatsApp_Log`, and `Settings` fill themselves in as the bot runs. On upgrade, `WhatsApp_Sessions` may gain new columns (e.g. **Slot Page**, **Appointment Page**, **Doctor Menu Tier**) automatically the next time a session is saved.
 
 ---
 
@@ -237,7 +236,7 @@ Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/`
 2. Remove any old/default `Code.gs` content if present (or delete the file).
 3. Add the production code — pick one:
    - **Single file:** add **`ABC_Clinic_WhatsApp_Complete.gs`**, copying the full file from this repo into a script file with that name.
-   - **Split (`src/`):** add all 20 files from `src/` as separate script files, each with the same name (minus `.gs`, which the editor appends automatically).
+   - **Split (`src/`):** add all 21 files from `src/` as separate script files, each with the same name (minus `.gs`, which the editor appends automatically).
 4. *(Optional, recommended for staging)* Add **`ABC_Clinic_Tests.gs`** for in-editor smoke tests.
 5. **Save** the project (Ctrl+S). Give the project a clear name, e.g. `ABC Clinic WhatsApp`.
 
@@ -336,7 +335,7 @@ After the first inbound message, a **`Settings`** sheet is created. Adjust as ne
 | `LOG_MAX_ROWS` | `5000` | Row cap after age cleanup |
 | `LOG_MESSAGE_MAX_CHARS` | `500` | Truncate long log text |
 | `ENABLE_INBOUND_LOG` | `TRUE` | Log to `WhatsApp_Log` |
-| `ENABLE_DEBUG_LOG` | `TRUE` | Log outbound sends to `WhatsApp_Debug` |
+| `ENABLE_DEBUG_LOG` | `TRUE` | Log outbound send errors to `WhatsApp_Log` (fatal webhook errors and the reminder dedup ledger always write regardless of this setting) |
 | `ENABLE_APPOINTMENT_REMINDERS` | `TRUE` | Send WhatsApp reminders before appointments |
 | `REMINDER_HOURS_BEFORE` | `24` | Comma-separated hours before appt (e.g. `24,2`) |
 | `REMINDER_WINDOW_MINUTES` | `45` | Send window for the every-30-minutes trigger |
@@ -403,7 +402,7 @@ Review failures — some legacy tests touch live sheets/calendar; run on a copy 
 | Patient | Mid-booking outside hours | Flow continues until complete |
 | Doctor | Send `Hi` outside hours | Doctor Portal still works |
 
-Confirm **`WhatsApp_Log`** receives inbound rows and **`WhatsApp_Debug`** logs outbound replies.
+Confirm **`WhatsApp_Log`** receives `INBOUND` rows for each message (and `OUTBOUND`/`WEBHOOK` rows if anything errors).
 
 ---
 
@@ -496,9 +495,7 @@ Local Node unit tests (`tests/run-unit-tests.mjs`) are **not included yet** — 
 ```
 ABC_Clinic_WhatsApp_Complete.gs   ← production, Option A: single file
 ABC_Clinic_Tests.gs               ← tests (optional bind, either option)
-ABC_Clinic_WhatsApp_UI_README.md  ← interactive UI plan + implementation status
-ABC_Clinic_WhatsApp_UI_Cleanup_README.md  ← completed UI copy cleanup reference
-src/                               ← production, Option B: split into 20 files (see above)
+src/                               ← production, Option B: split into 21 files (see above)
   Config.gs
   Util_Common.gs
   Logging.gs
@@ -510,6 +507,7 @@ src/                               ← production, Option B: split into 20 files
   Model_Patients.gs
   Model_Appointments.gs
   Model_Session.gs
+  Setup.gs
   Api.gs
   Webhook.gs
   View_Menus.gs
@@ -519,11 +517,14 @@ src/                               ← production, Option B: split into 20 files
   Controller_DoctorFlow.gs
   Controller_PatientFlow.gs
   WhatsApp_Send.gs
+  README.md                        ← src/-specific setup notes (sheet schemas, Settings keys)
 landing/                           ← marketing website (Vercel / Replit)
 marketing/                         ← brochure, one-pager, offboarding docs
 scripts/
   sync-monolith-from-src.js        ← copy src/ function bodies into ABC_Clinic_WhatsApp_Complete.gs
-README.md
+  verify-menu-flows.mjs            ← static checks for interactive menu wiring
+  verify-flow-coverage.mjs         ← static checks that every session state is reachable
+README.md                          ← this file
 ```
 
-Option A and Option B are kept in sync with `node scripts/sync-monolith-from-src.js` after editing `src/` — the script copies all **20** `src/*.gs` files into the monolith (function bodies only). Use `--check` for a dry-run. Run it before deploying the monolith. If you only use one layout, you can ignore the script.
+Option A and Option B are kept in sync with `node scripts/sync-monolith-from-src.js` after editing `src/` — the script copies all **21** `src/*.gs` files into the monolith (function bodies only; top-level comments and consts are not copied — see the script's own header comment). Use `--check` for a dry-run. Run it before deploying the monolith. If you only use one layout, you can ignore the script.
