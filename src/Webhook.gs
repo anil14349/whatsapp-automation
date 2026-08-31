@@ -495,6 +495,17 @@ function isWhatsAppMessageProcessing(messageId) {
 }
 
 
+// A missed lock here must never be treated the same as a genuine
+// duplicate — Apps Script web apps always respond 200 OK at the HTTP
+// level (there's no way to return a non-2xx status to make Meta retry
+// the delivery), so silently returning false on lock contention would
+// permanently drop a brand-new message with zero reply and zero retry.
+// Retries the lock a couple of times first (contention is usually
+// transient); if it still can't be acquired, proceeds WITHOUT the
+// atomic guard rather than dropping the message — the two duplicate
+// checks below still catch genuine retries in the common case, so this
+// only risks a rare double-process (an extra reply) instead of a
+// guaranteed lost one.
 function tryBeginWhatsAppMessageProcessing(messageId) {
 
     if (!messageId) {
@@ -512,11 +523,28 @@ function tryBeginWhatsAppMessageProcessing(messageId) {
     const lock =
         LockService.getScriptLock();
 
-    try {
+    let acquired = false;
 
-        if (!lock.tryLock(5000)) {
-            return false;
-        }
+    for (
+        let attempt = 0;
+        attempt < 2 && !acquired;
+        attempt++
+    ) {
+        acquired = lock.tryLock(5000);
+    }
+
+    if (!acquired) {
+
+        Logger.log(
+            "tryBeginWhatsAppMessageProcessing: could not acquire lock " +
+            "for messageId=" + messageId + " after retries; proceeding " +
+            "without the atomic guard rather than dropping the message."
+        );
+
+        return true;
+    }
+
+    try {
 
         if (isWhatsAppMessageProcessed(messageId)) {
             return false;
