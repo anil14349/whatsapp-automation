@@ -6,19 +6,43 @@
 
 
 
-function getWhatsAppSession(phone) {
+function ensureWhatsAppSessionsSheet() {
 
     const ss =
         SpreadsheetApp.getActiveSpreadsheet();
 
-    const sheet =
+    let sheet =
         ss.getSheetByName("WhatsApp_Sessions");
 
     if (!sheet) {
-        throw new Error(
-            "WhatsApp_Sessions sheet not found."
-        );
+
+        sheet =
+            ss.insertSheet("WhatsApp_Sessions");
+
+        sheet.appendRow([
+            "Phone",
+            "Role",
+            "State",
+            "Doctor ID",
+            "Date",
+            "Time",
+            "Appointment ID",
+            "Updated At",
+            "Language",
+            "Patient Name",
+            "Slot Page"
+        ]);
     }
+
+    return sheet;
+}
+
+
+
+function getWhatsAppSession(phone) {
+
+    const sheet =
+        ensureWhatsAppSessionsSheet();
 
     const range =
         sheet.getDataRange();
@@ -185,19 +209,8 @@ function saveWhatsAppSession(
     updates
 ) {
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
     const sheet =
-        ss.getSheetByName(
-            "WhatsApp_Sessions"
-        );
-
-    if (!sheet) {
-        throw new Error(
-            "WhatsApp_Sessions sheet not found."
-        );
-    }
+        ensureWhatsAppSessionsSheet();
 
     ensureWhatsAppSessionLanguageColumn(sheet);
     ensureWhatsAppSessionPatientNameColumn(sheet);
@@ -299,13 +312,8 @@ function clearWhatsAppSession(phone) {
         return;
     }
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
     const sheet =
-        ss.getSheetByName(
-            "WhatsApp_Sessions"
-        );
+        ensureWhatsAppSessionsSheet();
 
     sheet
         .getRange(

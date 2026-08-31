@@ -357,23 +357,8 @@ function addDoctorAvailabilitySession(
 
     try {
 
-        const ss =
-            SpreadsheetApp.getActiveSpreadsheet();
-
-        let sheet =
-            ss.getSheetByName("Availability");
-
-        if (!sheet) {
-            sheet =
-                ss.insertSheet("Availability");
-
-            sheet.appendRow([
-                "Doctor ID",
-                "Day",
-                "Start",
-                "End"
-            ]);
-        }
+        const sheet =
+            ensureAvailabilitySheet();
 
         sheet.appendRow([
             String(doctorId).trim(),
@@ -675,23 +660,8 @@ function addDoctorLeave(
             };
         }
 
-        const ss =
-            SpreadsheetApp.getActiveSpreadsheet();
-
-        let sheet =
-            ss.getSheetByName("Doctor_Leaves");
-
-        if (!sheet) {
-            sheet =
-                ss.insertSheet("Doctor_Leaves");
-
-            sheet.appendRow([
-                "Doctor ID",
-                "Date",
-                "Reason",
-                "Active"
-            ]);
-        }
+        const sheet =
+            ensureDoctorLeavesSheet();
 
         sheet.appendRow([
             String(doctorId).trim(),

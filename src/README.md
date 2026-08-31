@@ -2,7 +2,7 @@
 
 This is the multi-file version of the ABC Clinic WhatsApp bot: the same code as
 [`ABC_Clinic_WhatsApp_Complete.gs`](../ABC_Clinic_WhatsApp_Complete.gs), reorganized into
-20 files by responsibility (Model / View / Controller style) instead of one ~15,700-line file.
+21 files by responsibility (Model / View / Controller style) instead of one ~15,700-line file.
 
 **Apps Script merges every bound `.gs` file into one shared global scope** — file names,
 file count, and file order don't affect behavior at all. This split is purely for humans
@@ -19,7 +19,7 @@ Script project — every function would be declared twice and the project would 
 |------|-----------------|
 | `Config.gs` | Constants (`TIMEZONE`, `APPOINTMENT_STATUS`, etc.), `Settings` sheet read/ensure/cache, debug-mode flags |
 | `Util_Common.gs` | Phone normalization/matching, date/time parsing & formatting helpers used everywhere |
-| `Logging.gs` | `WhatsApp_Log` / `WhatsApp_Debug` sheet creation, log settings, retention cleanup |
+| `Logging.gs` | Single `WhatsApp_Log` sheet creation, log settings, retention cleanup |
 | `Model_Reminders.gs` | Appointment reminder scheduling, dedup log, hourly trigger |
 | `Model_AppointmentStatus.gs` | Completed / No-Show status workflow, auto-complete trigger |
 | `Model_AfterHours.gs` | Clinic-hours parsing, after-hours gate, closed-message auto-reply |
@@ -28,6 +28,7 @@ Script project — every function would be declared twice and the project would 
 | `Model_Patients.gs` | `Patients` registry — find/upsert/sync, name & language resolution |
 | `Model_Appointments.gs` | `bookAppointment` / `cancelAppointment` / `rescheduleAppointment`, appointment lookups |
 | `Model_Session.gs` | `WhatsApp_Sessions` sheet read/write (conversation state persistence) |
+| `Setup.gs` | `initializeWhatsAppBotSheets()` — one-time idempotent creation of every required sheet with its header row |
 | `Api.gs` | `api()` — HTTP-style dispatcher for external callers (dashboards, etc.) |
 | `Webhook.gs` | `doGet` / `doPost` webhook entry points, token verification, inbound idempotency |
 | `View_Menus.gs` | Interactive WhatsApp list/button menu spec builders |
@@ -38,9 +39,9 @@ Script project — every function would be declared twice and the project would 
 | `Controller_PatientFlow.gs` | Patient conversation state machine (`handleWhatsAppPatientMessage`) |
 | `WhatsApp_Send.gs` | Low-level WhatsApp Cloud API senders (text, interactive, template) |
 
-All 256 top-level functions/constants from the original single file exist across these 20
-files exactly once — verified by parsing every file individually and all files concatenated
-together, with no missing, duplicated, or extra declarations.
+Every top-level function/constant from the original single file exists across these 21
+files exactly once — kept in sync automatically by `scripts/sync-monolith-from-src.js`
+(`node scripts/sync-monolith-from-src.js --check` reports drift without writing).
 
 ---
 
@@ -75,17 +76,27 @@ This bot is a **container-bound** Apps Script project — it must run attached t
 Google Sheet (`SpreadsheetApp.getActiveSpreadsheet()` is used throughout) that acts as the
 data store.
 
-### Sheets you create manually
+### First-time setup: run `initializeWhatsAppBotSheets()`
+
+After binding this project to a new Google Sheet, run `initializeWhatsAppBotSheets()` once
+from the Apps Script editor (select it in the function dropdown → Run) **before** the first
+webhook call arrives. It creates every sheet the bot needs, with the correct header row, if
+it doesn't already exist — safe to re-run any time (it no-ops on sheets that already exist).
+This is the same logic each sheet's own "ensure" function uses on first real use (see
+`Setup.gs`), so skipping this step just means the first sheet gets created lazily on demand
+instead of all at once — except you still need to fill in **actual data** for the sheets
+below before booking will work.
 
 **`Doctors`** — one row per doctor:
 
-| Doctor ID | Doctor Name | Clinic | Calendar ID | WhatsApp | AppointmentDuration |
-|-----------|-------------|--------|-------------|----------|---------------------|
+| Doctor ID | Doctor Name | Clinic | Calendar ID | WhatsApp | AppointmentDuration | Active |
+|-----------|-------------|--------|-------------|----------|----------------------|--------|
 
 - **Doctor ID** — any short unique string, e.g. `D001`
 - **Calendar ID** — from Google Calendar → Settings → Integrate calendar → Calendar ID
 - **WhatsApp** — doctor's mobile number with country code, e.g. `919876543210`
 - **AppointmentDuration** — slot length in minutes, e.g. `30`
+- **Active** — `YES` to allow this doctor to log into the Doctor Portal via WhatsApp
 
 **`Availability`** — weekly recurring hours per doctor (or let doctors fill this via WhatsApp
 Doctor Portal → option 5 instead of pre-populating it):
@@ -96,8 +107,7 @@ Doctor Portal → option 5 instead of pre-populating it):
 Example row: `D001`, `Monday`, `09:00 AM`, `01:00 PM`. Add multiple rows for multiple
 sessions per day (e.g. morning + evening).
 
-**`Appointments`** — create if you don't already have one (it will otherwise error, since
-unlike the other sheets this one isn't auto-created):
+**`Appointments`** — one row per booking, appended automatically by `bookAppointment()`:
 
 | Appointment ID | Date | Time | Doctor ID | Patient Name | Phone | Status | Calendar Event ID | Patient ID |
 |----------------|------|------|-----------|---------------|-------|--------|--------------------|------------|
@@ -111,16 +121,16 @@ Use `TRUE` in **Active** for leave rows that should block booking on that date.
 
 ### Sheets that auto-create themselves on first use
 
-You do **not** need to create these — the code creates them the first time they're needed:
+You do **not** need to create these — `initializeWhatsAppBotSheets()` creates them upfront,
+or the code creates them lazily the first time they're needed:
 
 | Sheet | Created by | Purpose |
 |-------|-----------|---------|
 | `Patients` | `Model_Patients.gs` | Patient registry (phone, name, language, visit history) |
 | `WhatsApp_Sessions` | `Model_Session.gs` | Per-phone-number conversation state |
-| `WhatsApp_Log` | `Logging.gs` | Inbound message log |
-| `WhatsApp_Debug` | `Logging.gs` | Outbound send log |
+| `WhatsApp_Log` | `Logging.gs` | Single consolidated log — inbound messages, send/webhook errors (successful sends are not logged), and the reminder dedup ledger. Rows are distinguished by a `Direction` column (`INBOUND` / `OUTBOUND` / `WEBHOOK` / `REMINDER`); `Appointment ID`/`Hours Before` are only populated for `REMINDER` rows |
 | `Settings` | `Config.gs` | Log retention & feature toggles (see below) |
-| `Reminder_Log` | `Model_Reminders.gs` | Dedup log so reminders aren't sent twice |
+| `Doctors` / `Availability` / `Appointments` / `Doctor_Leaves` | `Setup.gs` | Header row only — see above for the data you still need to enter |
 
 ---
 
@@ -156,8 +166,8 @@ Adjust after the first inbound message creates the sheet:
 | `LOG_RETENTION` | `month` | `week`, `month`, `quarter`, `halfyear`, `year`, or `none` |
 | `LOG_MAX_ROWS` | `5000` | Row cap after age-based cleanup |
 | `LOG_MESSAGE_MAX_CHARS` | `500` | Truncate long log text |
-| `ENABLE_INBOUND_LOG` | `TRUE` | Log to `WhatsApp_Log` |
-| `ENABLE_DEBUG_LOG` | `TRUE` | Log outbound sends to `WhatsApp_Debug` |
+| `ENABLE_INBOUND_LOG` | `TRUE` | Log inbound messages to `WhatsApp_Log` |
+| `ENABLE_DEBUG_LOG` | `TRUE` | Log outbound send errors to `WhatsApp_Log` (fatal webhook errors and the reminder dedup ledger always write regardless of this setting — they're not routine diagnostics) |
 | `ENABLE_APPOINTMENT_REMINDERS` | `TRUE` | Send WhatsApp reminders before appointments |
 | `REMINDER_HOURS_BEFORE` | `24` | Comma-separated hours before appointment (e.g. `24,2`) |
 | `REMINDER_WINDOW_MINUTES` | `45` | Send window for the hourly trigger |
