@@ -337,6 +337,17 @@ function buildInteractiveListSpec(
 }
 
 
+// Convention for any menu with more real options than fit in 3 buttons:
+// show the 2 most important options directly, and use the 3rd button as
+// a "More" pivot (id "menu_more"/"menu_more_<tier>") into a follow-up
+// screen holding the rest — never silently drop an option. See
+// getPatientMainMenuSpec/getPatientMainMoreMenuSpec and
+// getDoctorMainMenuSpec/getDoctorMainMenuMoreSpec (tiers 1-3) for the
+// reference implementation. Only the final tier, with 2 or fewer options
+// left, should skip "More" and use its free 3rd slot for the persistent
+// nav button instead (see getDoctorMainMenuMoreSpec's tier-4 branch).
+// If a menu legitimately needs more than 10 total options, switch to
+// buildInteractiveListSpec instead (10-row cap) — see getLanguageMenuSpec.
 function buildInteractiveButtonSpec(buttons) {
 
     if (
@@ -510,6 +521,11 @@ function getDoctorSelectionMenuSpec() {
         }
     );
 
+    appendWhatsAppHomeNavRow(
+        rows,
+        "patient"
+    );
+
     const interactive =
         buildInteractiveListSpec(
             rows,
@@ -575,7 +591,8 @@ function getSlotSelectionPageInfo(
 
 function getSlotSelectionMenuSpec(
     slots,
-    page
+    page,
+    mode
 ) {
 
     const safeSlots =
@@ -637,6 +654,13 @@ function getSlotSelectionMenuSpec(
             description: "Next page"
         });
     }
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        mode === "doctor"
+            ? "doctor"
+            : "patient"
+    );
 
     let fallbackText = "";
 
@@ -700,7 +724,7 @@ function getSlotSelectionMenuSpec(
     };
 }
 
-function getYesNoConfirmSpec() {
+function getYesNoConfirmSpec(mode) {
 
     const fallbackText =
         "1️⃣ Yes, cancel it\n" +
@@ -715,6 +739,13 @@ function getYesNoConfirmSpec() {
             {
                 id: "confirm_no_back",
                 title: "No, go back"
+            },
+            {
+                id: "nav_main_menu",
+                title:
+                    mode === "doctor"
+                        ? "Doctor Portal"
+                        : "Main Menu"
             }
         ]);
 
@@ -1336,108 +1367,18 @@ function ensureWhatsAppLogSheet(ss) {
 
         sheet.appendRow([
             "Timestamp",
+            "Direction",
             "Phone",
             "Name",
-            "Type",
+            "Status",
             "Message",
+            "Appointment ID",
+            "Hours Before",
             "Phone Number ID"
         ]);
     }
 
     return sheet;
-}
-
-
-function ensureWhatsAppDebugSheet(ss) {
-
-    let sheet =
-        ss.getSheetByName("WhatsApp_Debug");
-
-    if (!sheet) {
-
-        sheet =
-            ss.insertSheet("WhatsApp_Debug");
-
-        sheet.appendRow([
-            "Timestamp",
-            "Direction",
-            "Phone",
-            "Status",
-            "Response"
-        ]);
-    }
-
-    return sheet;
-}
-
-
-function appendInboundWhatsAppLog(
-    ss,
-    entry
-) {
-
-    const settings =
-        getLogSettings();
-
-    if (!settings.enableInboundLog) {
-        return;
-    }
-
-    const sheet =
-        ensureWhatsAppLogSheet(ss);
-
-    sheet.appendRow([
-        new Date(),
-        entry.phone,
-        truncateLogText(
-            entry.name,
-            100
-        ),
-        entry.type,
-        truncateLogText(
-            entry.message,
-            settings.messageMaxChars
-        ),
-        entry.phoneNumberId || ""
-    ]);
-
-    cleanupLogSheet(
-        sheet,
-        settings
-    );
-}
-
-
-function appendWhatsAppDebugLog(
-    ss,
-    entry
-) {
-
-    const settings =
-        getLogSettings();
-
-    if (!settings.enableDebugLog) {
-        return;
-    }
-
-    const sheet =
-        ensureWhatsAppDebugSheet(ss);
-
-    sheet.appendRow([
-        new Date(),
-        entry.direction || "OUTBOUND",
-        entry.phone || "",
-        entry.status || "",
-        truncateLogText(
-            entry.response,
-            settings.messageMaxChars
-        )
-    ]);
-
-    cleanupLogSheet(
-        sheet,
-        settings
-    );
 }
 
 
@@ -1456,27 +1397,21 @@ function cleanupAllWhatsAppLogs() {
         sheets: {}
     };
 
-    [
-        "WhatsApp_Log",
-        "WhatsApp_Debug"
-    ].forEach(function (name) {
+    const sheet =
+        ss.getSheetByName("WhatsApp_Log");
 
-        const sheet =
-            ss.getSheetByName(name);
-
-        results.sheets[name] =
-            sheet
-                ? cleanupLogSheet(
-                    sheet,
-                    settings
-                )
-                : {
-                    deletedByAge: 0,
-                    deletedByCap: 0,
-                    retentionKey:
-                        settings.retentionKey
-                };
-    });
+    results.sheets["WhatsApp_Log"] =
+        sheet
+            ? cleanupLogSheet(
+                sheet,
+                settings
+            )
+            : {
+                deletedByAge: 0,
+                deletedByCap: 0,
+                retentionKey:
+                    settings.retentionKey
+            };
 
     Logger.log(
         "cleanupAllWhatsAppLogs: " +
@@ -1590,39 +1525,16 @@ function getReminderSettings() {
 }
 
 
-function ensureReminderLogSheet() {
-
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
-    let sheet =
-        ss.getSheetByName("Reminder_Log");
-
-    if (!sheet) {
-
-        sheet =
-            ss.insertSheet("Reminder_Log");
-
-        sheet.appendRow([
-            "Sent At",
-            "Appointment ID",
-            "Hours Before",
-            "Phone",
-            "Status"
-        ]);
-    }
-
-    return sheet;
-}
-
-
 function hasReminderBeenSent(
     appointmentId,
     hoursBefore
 ) {
 
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
     const sheet =
-        ensureReminderLogSheet();
+        ensureWhatsAppLogSheet(ss);
 
     const data =
         sheet.getDataRange().getValues();
@@ -1640,9 +1552,10 @@ function hasReminderBeenSent(
     ) {
 
         if (
-            String(data[i][1] || "").trim() ===
+            data[i][1] === "REMINDER" &&
+            String(data[i][6] || "").trim() ===
             targetId &&
-            Number(data[i][2]) === targetHours &&
+            Number(data[i][7]) === targetHours &&
             String(data[i][4] || "")
                 .trim()
                 .toUpperCase() ===
@@ -1663,15 +1576,22 @@ function markReminderSent(
     status
 ) {
 
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
     const sheet =
-        ensureReminderLogSheet();
+        ensureWhatsAppLogSheet(ss);
 
     sheet.appendRow([
         new Date(),
+        "REMINDER",
+        phone,
+        "",
+        status,
+        "",
         appointmentId,
         hoursBefore,
-        phone,
-        status
+        ""
     ]);
 }
 
@@ -1883,15 +1803,9 @@ function sendOneAppointmentReminder(
             message
         );
 
-    appendWhatsAppDebugLog(
-        ss,
-        {
-            direction: "REMINDER",
-            phone: recipient,
-            status: "SUCCESS",
-            response: message
-        }
-    );
+    // No separate diagnostic log entry here — markReminderSent (called by
+    // the caller right after this returns) already records this outcome
+    // in the shared WhatsApp_Log sheet as the REMINDER ledger row.
 
     return sendResult;
 }
@@ -3695,23 +3609,8 @@ function addDoctorAvailabilitySession(
 
     try {
 
-        const ss =
-            SpreadsheetApp.getActiveSpreadsheet();
-
-        let sheet =
-            ss.getSheetByName("Availability");
-
-        if (!sheet) {
-            sheet =
-                ss.insertSheet("Availability");
-
-            sheet.appendRow([
-                "Doctor ID",
-                "Day",
-                "Start",
-                "End"
-            ]);
-        }
+        const sheet =
+            ensureAvailabilitySheet();
 
         sheet.appendRow([
             String(doctorId).trim(),
@@ -4008,23 +3907,8 @@ function addDoctorLeave(
             };
         }
 
-        const ss =
-            SpreadsheetApp.getActiveSpreadsheet();
-
-        let sheet =
-            ss.getSheetByName("Doctor_Leaves");
-
-        if (!sheet) {
-            sheet =
-                ss.insertSheet("Doctor_Leaves");
-
-            sheet.appendRow([
-                "Doctor ID",
-                "Date",
-                "Reason",
-                "Active"
-            ]);
-        }
+        const sheet =
+            ensureDoctorLeavesSheet();
 
         sheet.appendRow([
             String(doctorId).trim(),
@@ -8336,30 +8220,6 @@ function formatAvailableSlotsForWhatsApp(slots) {
 }
 
 
-function buildAppointmentPickerPrompt(
-    title,
-    selectLine,
-    appointments
-) {
-
-    return (
-        title +
-        "\n\n" +
-        selectLine +
-        "\n\n0️⃣ Main Menu"
-    );
-}
-
-
-function buildInvalidSlotSelectionReply(slots) {
-
-    return (
-        "❌ Invalid time selection.\n\n" +
-        "Please choose one of the available slots."
-    );
-}
-
-
 function buildCancelConfirmMessage(chosen) {
 
     const doctorName =
@@ -8635,25 +8495,6 @@ function formatDoctorPatientAppointmentsListForWhatsApp(
 }
 
 
-function buildDoctorPatientAppointmentPickerPrompt(
-    title,
-    selectLine,
-    appointments
-) {
-
-    return (
-        title +
-        "\n\n" +
-        selectLine +
-        "\n\n" +
-        formatDoctorPatientAppointmentsListForWhatsApp(
-            appointments
-        ) +
-        "0️⃣ Doctor Portal"
-    );
-}
-
-
 function buildDoctorCancelConfirmMessage(chosen) {
 
     return (
@@ -8794,40 +8635,6 @@ function handleDoctorWhatsAppAppointmentListSelection(
         return;
     }
 
-    const choice =
-        String(normalizedMessage || "")
-            .trim()
-            .toLowerCase();
-
-    if (
-        choice === "nav_main_menu" ||
-        choice === "main_menu" ||
-        normalizedMessage === "0"
-    ) {
-
-        returnDoctorToMenu(
-            ss,
-            phone,
-            doctorId
-        );
-
-        return;
-    }
-
-    if (
-        choice === "nav_back" ||
-        choice === "back"
-    ) {
-
-        goBackInDoctorWhatsAppFlow(
-            ss,
-            phone,
-            session
-        );
-
-        return;
-    }
-
     const appointments =
         typeof opts.getAppointments === "function"
             ? opts.getAppointments()
@@ -8844,10 +8651,35 @@ function handleDoctorWhatsAppAppointmentListSelection(
             currentPage
         );
 
-    if (
-        choice === "appt_prev" ||
-        choice === "prev"
-    ) {
+    const decision =
+        classifyWhatsAppAppointmentListChoice(
+            normalizedMessage,
+            appointments.length
+        );
+
+    if (decision.type === "main_menu") {
+
+        returnDoctorToMenu(
+            ss,
+            phone,
+            doctorId
+        );
+
+        return;
+    }
+
+    if (decision.type === "back") {
+
+        goBackInDoctorWhatsAppFlow(
+            ss,
+            phone,
+            session
+        );
+
+        return;
+    }
+
+    if (decision.type === "prev") {
 
         if (!pageInfo.hasPrev) {
 
@@ -8882,10 +8714,7 @@ function handleDoctorWhatsAppAppointmentListSelection(
         return;
     }
 
-    if (
-        choice === "appt_next" ||
-        choice === "next"
-    ) {
+    if (decision.type === "next") {
 
         if (!pageInfo.hasNext) {
 
@@ -8920,32 +8749,7 @@ function handleDoctorWhatsAppAppointmentListSelection(
         return;
     }
 
-    let selection = NaN;
-
-    if (
-        choice.indexOf("appt_") === 0
-    ) {
-
-        selection =
-            parseInt(
-                choice.substring(5),
-                10
-            );
-
-    } else {
-
-        selection =
-            parseInt(
-                choice,
-                10
-            );
-    }
-
-    if (
-        isNaN(selection) ||
-        selection < 1 ||
-        selection > appointments.length
-    ) {
+    if (decision.type !== "selection") {
 
         sendDoctorAppointmentListMenuReply(
             ss,
@@ -8964,7 +8768,7 @@ function handleDoctorWhatsAppAppointmentListSelection(
     });
 
     opts.onChosen(
-        appointments[selection - 1]
+        appointments[decision.index]
     );
 }
 
@@ -9090,6 +8894,10 @@ function getDoctorStatusActionSpec() {
             {
                 id: "status_no_show",
                 title: "No-Show"
+            },
+            {
+                id: "nav_main_menu",
+                title: "Doctor Portal"
             }
         ]);
 
@@ -9335,6 +9143,13 @@ function buildDoctorRescheduleDateIntro(doctorId) {
 }
 
 
+// Row budget is 10 (WhatsApp's interactive-list cap). Every page reserves
+// 1 row for the persistent "Main Menu"/"Back" nav row, on top of whatever
+// is reserved for ◀/▶ pagination rows:
+//   single page:        content ≤ 9   (+ 1 nav                = 10)
+//   first page (>1 pg): content = 7   (+ 1 next  + 1 nav       = 9, ≤10)
+//   middle page:        content = 6   (+ 1 prev + 1 next + nav = 9, ≤10)
+//   last page:          content ≤ 8   (+ 1 prev + 1 nav        ≤ 10)
 function computeSlotSelectionPageBounds(
     total,
     page
@@ -9355,26 +9170,26 @@ function computeSlotSelectionPageBounds(
 
         return {
             start: 0,
-            end: 9,
+            end: 7,
             hasPrev: false,
-            hasNext: total > 9,
+            hasNext: total > 7,
             page: 0
         };
     }
 
     const start =
-        9 + (page - 1) * 8;
+        7 + (page - 1) * 6;
 
     const remaining =
         total - start;
 
     const hasNext =
-        remaining > 9;
+        remaining > 8;
 
     const slotCount =
         hasNext
-            ? 8
-            : Math.min(remaining, 9);
+            ? 6
+            : Math.min(remaining, 8);
 
     return {
         start: start,
@@ -9538,6 +9353,10 @@ function getConfirmCancelSpec() {
             {
                 id: "confirm_cancel",
                 title: "Cancel"
+            },
+            {
+                id: "nav_main_menu",
+                title: "Doctor Portal"
             }
         ]);
 
@@ -9584,18 +9403,7 @@ function getAppointmentListMenuSpec(
             pageInfo.end
         );
 
-    let fallbackText = "";
-
-    if (pageInfo.totalPages > 1) {
-        fallbackText +=
-            "Page " +
-            (pageInfo.page + 1) +
-            " of " +
-            pageInfo.totalPages +
-            "\n\n";
-    }
-
-    fallbackText +=
+    let fallbackText =
         listMode === "doctor"
             ? listed
                 .map(
@@ -9654,11 +9462,6 @@ function getAppointmentListMenuSpec(
     if (pageInfo.hasNext) {
         fallbackText += "\n▶ More appointments";
     }
-
-    fallbackText +=
-        listMode === "doctor"
-            ? "\n0️⃣ Doctor Portal"
-            : "\n0️⃣ Main Menu";
 
     const rows =
         listed.map(
@@ -9724,7 +9527,7 @@ function getAppointmentListMenuSpec(
         });
     }
 
-    appendAppointmentListNavRows(
+    appendWhatsAppHomeNavRow(
         rows,
         listMode
     );
@@ -9804,6 +9607,11 @@ function getDoctorWeekdayMenuSpec(doctorId) {
 
     fallbackText +=
         "\nSelect a day to manage.";
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "doctor"
+    );
 
     return {
         fallbackText: fallbackText,
@@ -9907,6 +9715,11 @@ function getDoctorSessionRemoveListSpec(sessions) {
             }
         );
 
+    appendWhatsAppHomeNavRow(
+        rows,
+        "doctor"
+    );
+
     return {
         fallbackText: fallbackText.trim(),
         interactive:
@@ -9923,26 +9736,33 @@ function getDoctorLeavesMenuSpec() {
     const fallbackText =
         formatDoctorLeavesMenu();
 
+    const rows = [
+        {
+            id: "1",
+            title: "Add single-day leave"
+        },
+        {
+            id: "2",
+            title: "View upcoming leaves"
+        },
+        {
+            id: "3",
+            title: "Cancel a leave"
+        },
+        {
+            id: "4",
+            title: "Add leave range"
+        }
+    ];
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "doctor"
+    );
+
     const interactive =
         buildInteractiveListSpec(
-            [
-                {
-                    id: "1",
-                    title: "Add single-day leave"
-                },
-                {
-                    id: "2",
-                    title: "View upcoming leaves"
-                },
-                {
-                    id: "3",
-                    title: "Cancel a leave"
-                },
-                {
-                    id: "4",
-                    title: "Add leave range"
-                }
-            ],
+            rows,
             "Manage leaves"
         );
 
@@ -9966,7 +9786,7 @@ function getDoctorLeaveListMenuSpec(leaves) {
     }
 
     const limit =
-        Math.min(leaves.length, 10);
+        Math.min(leaves.length, 9);
 
     const listed =
         leaves.slice(0, limit);
@@ -10000,6 +9820,11 @@ function getDoctorLeaveListMenuSpec(leaves) {
                 };
             }
         );
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "doctor"
+    );
 
     return {
         fallbackText: fallbackText.trim(),
@@ -10432,16 +10257,32 @@ function handleWhatsAppAppointmentListSelection(
 
     const opts = options || {};
 
-    const choice =
-        String(normalizedMessage || "")
-            .trim()
-            .toLowerCase();
+    const appointments =
+        typeof opts.getAppointments === "function"
+            ? opts.getAppointments()
+            : getConfirmedAppointmentsForPhone(phone);
 
-    if (
-        choice === "nav_main_menu" ||
-        choice === "main_menu" ||
-        normalizedMessage === "0"
-    ) {
+    const currentPage =
+        session
+            ? Number(session.apptPage) || 0
+            : 0;
+
+    const pageInfo =
+        getSlotSelectionPageInfo(
+            appointments.length,
+            currentPage
+        );
+
+    const listScreen =
+        opts.listScreen || "";
+
+    const decision =
+        classifyWhatsAppAppointmentListChoice(
+            normalizedMessage,
+            appointments.length
+        );
+
+    if (decision.type === "main_menu") {
 
         saveWhatsAppSession(phone, {
             role: "PATIENT",
@@ -10462,10 +10303,7 @@ function handleWhatsAppAppointmentListSelection(
         return;
     }
 
-    if (
-        choice === "nav_back" ||
-        choice === "back"
-    ) {
+    if (decision.type === "back") {
 
         goBackInWhatsAppFlow(
             ss,
@@ -10476,29 +10314,7 @@ function handleWhatsAppAppointmentListSelection(
         return;
     }
 
-    const appointments =
-        typeof opts.getAppointments === "function"
-            ? opts.getAppointments()
-            : getConfirmedAppointmentsForPhone(phone);
-
-    const currentPage =
-        session
-            ? Number(session.apptPage) || 0
-            : 0;
-
-    const pageInfo =
-        getSlotSelectionPageInfo(
-            appointments.length,
-            currentPage
-        );
-
-    const listScreen =
-        opts.listScreen || "";
-
-    if (
-        choice === "appt_prev" ||
-        choice === "prev"
-    ) {
+    if (decision.type === "prev") {
 
         if (!pageInfo.hasPrev) {
 
@@ -10532,10 +10348,7 @@ function handleWhatsAppAppointmentListSelection(
         return;
     }
 
-    if (
-        choice === "appt_next" ||
-        choice === "next"
-    ) {
+    if (decision.type === "next") {
 
         if (!pageInfo.hasNext) {
 
@@ -10569,32 +10382,7 @@ function handleWhatsAppAppointmentListSelection(
         return;
     }
 
-    let selection = NaN;
-
-    if (
-        choice.indexOf("appt_") === 0
-    ) {
-
-        selection =
-            parseInt(
-                choice.substring(5),
-                10
-            );
-
-    } else {
-
-        selection =
-            parseInt(
-                choice,
-                10
-            );
-    }
-
-    if (
-        isNaN(selection) ||
-        selection < 1 ||
-        selection > appointments.length
-    ) {
+    if (decision.type !== "selection") {
 
         sendPatientAppointmentListMenuReply(
             ss,
@@ -10613,7 +10401,7 @@ function handleWhatsAppAppointmentListSelection(
     });
 
     opts.onChosen(
-        appointments[selection - 1]
+        appointments[decision.index]
     );
 }
 
@@ -10757,12 +10545,6 @@ function handleWhatsAppRescheduleSelectState(
             }
         }
     );
-}
-
-
-function buildLanguageSelectionMessage() {
-
-    return buildLanguageSelectionIntro();
 }
 
 
@@ -11427,20 +11209,6 @@ function localizeWhatsAppReply(language, message) {
 }
 
 
-function buildMainMenuMessage(prefix) {
-
-    return (
-        prefix +
-        "\n\n" +
-        "Please choose an option:\n\n" +
-        "1️⃣ Book Appointment\n" +
-        "2️⃣ My Appointments\n" +
-        "3️⃣ Cancel Appointment\n" +
-        "4️⃣ Reschedule Appointment\n" +
-        "5️⃣ Change Language"
-    );
-}
-
 function maskPhone(phone) {
     const digits = String(phone || "").replace(/\D/g, "");
     if (!digits) return "";
@@ -11489,111 +11257,6 @@ function findDoctorByWhatsAppPhone(phone) {
         }
     }
     return null;
-}
-
-function buildDoctorMenu(doctorName) {
-    return "👨‍⚕️ Doctor Portal" +
-        (doctorName ? " — " + doctorName : "") +
-        "\n\n1️⃣ Today's Schedule\n" +
-        "2️⃣ Next Appointment\n" +
-        "3️⃣ This Week's Schedule\n" +
-        "4️⃣ Schedule for a Date\n" +
-        "5️⃣ Manage Availability\n" +
-        "6️⃣ Manage Leaves\n" +
-        "7️⃣ My Patients\n" +
-        "8️⃣ Cancel Patient Appointment\n" +
-        "9️⃣ Reschedule Patient Appointment\n" +
-        "🔟 Mark Visit Status (Completed / No-Show)";
-}
-
-function formatDoctorAvailabilityMenu(doctorId) {
-
-    const availability =
-        getDoctorWeeklyAvailability(
-            doctorId
-        );
-
-    let text =
-        "📅 Manage Availability\n\n";
-
-    DOCTOR_WEEKDAYS.forEach(
-        function (day, index) {
-
-            const sessions =
-                availability[day];
-
-            let summary =
-                "Not set";
-
-            if (sessions.length > 0) {
-                summary =
-                    sessions.length +
-                    " session(s) (" +
-                    sessions.map(function (session) {
-                        return (
-                            session.start +
-                            " - " +
-                            session.end
-                        );
-                    }).join(", ") +
-                    ")";
-            }
-
-            text +=
-                (index + 1) +
-                ". " +
-                day +
-                ": " +
-                summary +
-                "\n";
-        }
-    );
-
-    text +=
-        "\nReply with day number (1-7) to manage that day.";
-
-    return text;
-}
-
-function formatDoctorDayAvailabilityMenu(
-    doctorId,
-    dayName
-) {
-
-    const sessions =
-        getDoctorDayAvailabilitySessions(
-            doctorId,
-            dayName
-        );
-
-    let text =
-        "📅 " +
-        dayName +
-        " Availability\n\n";
-
-    if (sessions.length === 0) {
-        text += "No sessions set.\n\n";
-    } else {
-        sessions.forEach(
-            function (session, index) {
-                text +=
-                    (index + 1) +
-                    ". " +
-                    session.start +
-                    " - " +
-                    session.end +
-                    "\n";
-            }
-        );
-        text += "\n";
-    }
-
-    text +=
-        "1️⃣ Add session\n" +
-        "2️⃣ Remove session\n" +
-        "3️⃣ Clear entire day";
-
-    return text;
 }
 
 function formatDoctorLeavesMenu() {
@@ -12991,7 +12654,11 @@ if (
     session.state !== "DOCTOR_MENU" &&
     session.state !== "LANGUAGE_SELECT" &&
     session.state !== "LANGUAGE_CHANGE" &&
-    normalizedMessage === "0"
+    (
+        normalizedMessage === "0" ||
+        normalizedMessage === "nav_main_menu" ||
+        normalizedMessage === "main_menu"
+    )
 ) {
 
     if (session.role === "DOCTOR") {
@@ -13013,13 +12680,35 @@ if (
     return true;
 }
 
+// States whose numbered list content can legitimately reach a 9th item
+// (doctor selection, leave-cancel list, session-remove list) reserve the
+// literal digit "9" for that content instead of treating it as "back" —
+// same reasoning as the DOCTOR_MENU_MORE tier-4 carve-out below. The
+// "nav_back"/"back" aliases (typed word, or a tapped nav button) are
+// never ambiguous with numbered content, so they always still work.
 if (
     session &&
     session.state !== "MAIN_MENU" &&
     session.state !== "DOCTOR_MENU" &&
     session.state !== "LANGUAGE_SELECT" &&
     session.state !== "LANGUAGE_CHANGE" &&
-    normalizedMessage === "9"
+    (
+        normalizedMessage === "9" ||
+        normalizedMessage === "nav_back" ||
+        normalizedMessage === "back"
+    ) &&
+    !(
+        session.state === "DOCTOR_MENU_MORE" &&
+        Number(session.doctorMenuTier) === 4
+    ) &&
+    !(
+        normalizedMessage === "9" &&
+        (
+            session.state === "BOOK_DOCTOR" ||
+            session.state === "DOCTOR_LEAVE_CANCEL_PICK" ||
+            session.state === "DOCTOR_AVAIL_REMOVE"
+        )
+    )
 ) {
 
     if (session.role === "DOCTOR") {
@@ -13094,7 +12783,8 @@ if (
 
     } else if (
         normalizedMessage === "menu_more" ||
-        normalizedMessage === "more"
+        normalizedMessage === "more" ||
+        normalizedMessage === "3"
     ) {
 
         showDoctorMenuMoreTier(
@@ -13706,7 +13396,7 @@ if (
                     buildDoctorCancelConfirmMessage(
                         chosen
                     ),
-                    getYesNoConfirmSpec()
+                    getYesNoConfirmSpec("doctor")
                 );
             }
         }
@@ -13793,7 +13483,7 @@ if (
                 ss,
                 senderPhone,
                 "❌ " + errorMessage,
-                getYesNoConfirmSpec()
+                getYesNoConfirmSpec("doctor")
             );
         }
 
@@ -13812,7 +13502,7 @@ if (
             ss,
             senderPhone,
             "❌ Invalid option.",
-            getYesNoConfirmSpec()
+            getYesNoConfirmSpec("doctor")
         );
     }
 
@@ -15262,7 +14952,8 @@ if (
     session.state === "MAIN_MENU" &&
     (
         normalizedMessage === "menu_more" ||
-        normalizedMessage === "more"
+        normalizedMessage === "more" ||
+        normalizedMessage === "3"
     )
 ) {
 
@@ -15284,16 +14975,13 @@ if (
 
 
 // ======================================================
-// MAIN MENU / MORE → CANCEL APPOINTMENT
+// MORE → CANCEL APPOINTMENT
 // ======================================================
 
 if (
     normalizedMessage === "3" &&
     session &&
-    (
-        session.state === "MAIN_MENU" ||
-        session.state === "PATIENT_MAIN_MORE"
-    )
+    session.state === "PATIENT_MAIN_MORE"
 ) {
 
     beginWhatsAppCancelFlow(
@@ -16431,12 +16119,13 @@ function doPost(e) {
                 ? value.metadata.phone_number_id
                 : "";
 
-        appendInboundWhatsAppLog(
+        appendWhatsAppLogEntry(
             ss,
             {
+                direction: "INBOUND",
                 phone: senderPhone,
                 name: senderName,
-                type: messageType,
+                status: messageType,
                 message: messageText,
                 phoneNumberId: phoneNumberId
             }
@@ -16502,36 +16191,17 @@ function doPost(e) {
                 SpreadsheetApp
                     .getActiveSpreadsheet();
 
-            let debugSheet =
-                ss.getSheetByName(
-                    "WhatsApp_Debug"
-                );
-
-            if (!debugSheet) {
-
-                debugSheet =
-                    ss.insertSheet(
-                        "WhatsApp_Debug"
-                    );
-
-                debugSheet.appendRow([
-                    "Timestamp",
-                    "Direction",
-                    "Phone",
-                    "Status",
-                    "Response"
-                ]);
-            }
-
-            debugSheet.appendRow([
-                new Date(),
-                "WEBHOOK",
-                "",
-                "ERROR",
-                error.message +
-                "\n" +
-                error.stack
-            ]);
+            appendWhatsAppLogEntry(
+                ss,
+                {
+                    direction: "WEBHOOK",
+                    status: "ERROR",
+                    message:
+                        error.message +
+                        "\n" +
+                        error.stack
+                }
+            );
 
         } catch (debugError) {
 
@@ -16889,24 +16559,27 @@ function sendWhatsAppMenuReply(
                 session
             );
 
-        let localizedBody =
-            localizeWhatsAppReply(
-                language,
-                String(bodyText || "")
-            );
+        const rawBody =
+            String(bodyText || "");
 
         const willSendInteractive =
             interactiveMenusEnabled() &&
             menuSpec &&
             menuSpec.interactive;
 
-        if (!willSendInteractive) {
-            localizedBody =
-                addWhatsAppNavigationOptions(
+        const rawBodyWithNavigation =
+            willSendInteractive
+                ? rawBody
+                : addWhatsAppNavigationOptions(
                     session,
-                    localizedBody
+                    rawBody
                 );
-        }
+
+        let localizedBody =
+            localizeWhatsAppReply(
+                language,
+                rawBodyWithNavigation
+            );
 
         const inboundMessageId =
             getWhatsAppInboundMessageId();
@@ -16926,8 +16599,6 @@ function sendWhatsAppMenuReply(
         }
 
         let sendResult = null;
-        let outboundLog =
-            localizedBody;
 
         if (
             interactiveMenusEnabled() &&
@@ -16948,12 +16619,6 @@ function sendWhatsAppMenuReply(
                         )
                     );
 
-                outboundLog =
-                    "[interactive:" +
-                    menuSpec.interactive.type +
-                    "] " +
-                    localizedBody;
-
             } catch (interactiveError) {
 
                 Logger.log(
@@ -16968,10 +16633,15 @@ function sendWhatsAppMenuReply(
         if (!sendResult) {
 
             const fallbackBody =
-                addWhatsAppNavigationOptions(
-                    session,
-                    localizedBody
-                );
+                willSendInteractive
+                    ? localizeWhatsAppReply(
+                        language,
+                        addWhatsAppNavigationOptions(
+                            session,
+                            rawBody
+                        )
+                    )
+                    : localizedBody;
 
             const localizedFallback =
                 menuSpec &&
@@ -16994,8 +16664,6 @@ function sendWhatsAppMenuReply(
                     phone,
                     fallbackText
                 );
-
-            outboundLog = fallbackText;
         }
 
         if (
@@ -17008,27 +16676,17 @@ function sendWhatsAppMenuReply(
             );
         }
 
-        appendWhatsAppDebugLog(
-            ss,
-            {
-                direction: "OUTBOUND",
-                phone: phone,
-                status: "SUCCESS",
-                response: outboundLog
-            }
-        );
-
         return sendResult;
 
     } catch (error) {
 
-        appendWhatsAppDebugLog(
+        appendWhatsAppLogEntry(
             ss,
             {
                 direction: "OUTBOUND",
                 phone: phone,
                 status: "ERROR",
-                response: error.message
+                message: error.message
             }
         );
 
@@ -17352,10 +17010,17 @@ function sendSlotSelectionMenuReply(
 ) {
 
     const opts = options || {};
+
+    const session =
+        getWhatsAppSession(phone);
+
     const menuSpec =
         getSlotSelectionMenuSpec(
             slots,
-            page || 0
+            page || 0,
+            session && session.role === "DOCTOR"
+                ? "doctor"
+                : "patient"
         );
 
     let body =
@@ -17455,30 +17120,17 @@ function sendWhatsAppReply(
             );
         }
 
-
-        appendWhatsAppDebugLog(
-            ss,
-            {
-                direction: "OUTBOUND",
-                phone: phone,
-                status: "SUCCESS",
-                response: JSON.stringify(
-                    sendResult
-                )
-            }
-        );
-
         return sendResult;
 
     } catch (error) {
 
-        appendWhatsAppDebugLog(
+        appendWhatsAppLogEntry(
             ss,
             {
                 direction: "OUTBOUND",
                 phone: phone,
                 status: "ERROR",
-                response: error.message
+                message: error.message
             }
         );
 
@@ -17620,17 +17272,8 @@ function sendWhatsAppTemplate(to) {
 
 function getWhatsAppSession(phone) {
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
     const sheet =
-        ss.getSheetByName("WhatsApp_Sessions");
-
-    if (!sheet) {
-        throw new Error(
-            "WhatsApp_Sessions sheet not found."
-        );
-    }
+        ensureWhatsAppSessionsSheet();
 
     const range =
         sheet.getDataRange();
@@ -17821,19 +17464,8 @@ function saveWhatsAppSession(
     updates
 ) {
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
     const sheet =
-        ss.getSheetByName(
-            "WhatsApp_Sessions"
-        );
-
-    if (!sheet) {
-        throw new Error(
-            "WhatsApp_Sessions sheet not found."
-        );
-    }
+        ensureWhatsAppSessionsSheet();
 
     ensureWhatsAppSessionLanguageColumn(sheet);
     ensureWhatsAppSessionPatientNameColumn(sheet);
@@ -17934,13 +17566,8 @@ function clearWhatsAppSession(phone) {
         return;
     }
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
     const sheet =
-        ss.getSheetByName(
-            "WhatsApp_Sessions"
-        );
+        ensureWhatsAppSessionsSheet();
 
     sheet
         .getRange(
@@ -18015,6 +17642,271 @@ function findDoctorByName(doctorName) {
 // ============================================================
 // Auto-inserted by scripts/sync-monolith-from-src.js
 // ============================================================
+
+
+function appendWhatsAppLogEntry(
+    ss,
+    entry
+) {
+
+    const settings =
+        getLogSettings();
+
+    if (
+        entry.direction === "INBOUND" &&
+        !settings.enableInboundLog
+    ) {
+        return;
+    }
+
+    if (
+        entry.direction !== "INBOUND" &&
+        entry.direction !== "WEBHOOK" &&
+        !settings.enableDebugLog
+    ) {
+        return;
+    }
+
+    const sheet =
+        ensureWhatsAppLogSheet(ss);
+
+    sheet.appendRow([
+        new Date(),
+        entry.direction || "",
+        entry.phone || "",
+        truncateLogText(
+            entry.name,
+            100
+        ),
+        entry.status || "",
+        truncateLogText(
+            entry.message,
+            settings.messageMaxChars
+        ),
+        "",
+        "",
+        entry.phoneNumberId || ""
+    ]);
+
+    cleanupLogSheet(
+        sheet,
+        settings
+    );
+}
+
+
+function ensureWhatsAppSessionsSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName("WhatsApp_Sessions");
+
+    if (!sheet) {
+
+        sheet =
+            ss.insertSheet("WhatsApp_Sessions");
+
+        sheet.appendRow([
+            "Phone",
+            "Role",
+            "State",
+            "Doctor ID",
+            "Date",
+            "Time",
+            "Appointment ID",
+            "Updated At",
+            "Language",
+            "Patient Name",
+            "Slot Page"
+        ]);
+    }
+
+    return sheet;
+}
+
+
+function ensureDoctorsSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName("Doctors");
+
+    if (!sheet) {
+
+        sheet =
+            ss.insertSheet("Doctors");
+
+        sheet.appendRow([
+            "Doctor ID",
+            "Doctor Name",
+            "Clinic",
+            "Calendar ID",
+            "WhatsApp",
+            "AppointmentDuration",
+            "Active"
+        ]);
+    }
+
+    return sheet;
+}
+
+
+function ensureAvailabilitySheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName("Availability");
+
+    if (!sheet) {
+
+        sheet =
+            ss.insertSheet("Availability");
+
+        sheet.appendRow([
+            "Doctor ID",
+            "Day",
+            "Start",
+            "End"
+        ]);
+    }
+
+    return sheet;
+}
+
+
+function ensureAppointmentsSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+
+        sheet =
+            ss.insertSheet("Appointments");
+
+        sheet.appendRow([
+            "Appointment ID",
+            "Date",
+            "Time",
+            "Doctor ID",
+            "Patient Name",
+            "Phone",
+            "Status",
+            "Calendar Event ID",
+            "Patient ID"
+        ]);
+    }
+
+    return sheet;
+}
+
+
+function ensureDoctorLeavesSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName("Doctor_Leaves");
+
+    if (!sheet) {
+
+        sheet =
+            ss.insertSheet("Doctor_Leaves");
+
+        sheet.appendRow([
+            "Doctor ID",
+            "Date",
+            "Reason",
+            "Active"
+        ]);
+    }
+
+    return sheet;
+}
+
+
+function initializeWhatsAppBotSheets() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const results = [];
+
+    function ensure(label, ensureFn) {
+
+        const existedBefore =
+            !!ss.getSheetByName(label);
+
+        ensureFn();
+
+        results.push({
+            sheet: label,
+            created: !existedBefore
+        });
+    }
+
+    ensure(
+        "Settings",
+        ensureSettingsSheet
+    );
+
+    ensure(
+        "WhatsApp_Log",
+        function () {
+            ensureWhatsAppLogSheet(ss);
+        }
+    );
+
+    ensure(
+        "Patients",
+        ensurePatientsSheet
+    );
+
+    ensure(
+        "WhatsApp_Sessions",
+        ensureWhatsAppSessionsSheet
+    );
+
+    ensure(
+        "Doctors",
+        ensureDoctorsSheet
+    );
+
+    ensure(
+        "Availability",
+        ensureAvailabilitySheet
+    );
+
+    ensure(
+        "Appointments",
+        ensureAppointmentsSheet
+    );
+
+    ensure(
+        "Doctor_Leaves",
+        ensureDoctorLeavesSheet
+    );
+
+    Logger.log(
+        "initializeWhatsAppBotSheets: " +
+        JSON.stringify(results)
+    );
+
+    return {
+        success: true,
+        sheets: results
+    };
+}
 
 
 function getPatientMainMoreMenuSpec() {
@@ -18152,6 +18044,10 @@ function getDoctorMainMenuMoreSpec(tier) {
             {
                 id: "doctor_status",
                 title: "Mark Visit Status"
+            },
+            {
+                id: "nav_main_menu",
+                title: "Doctor Portal"
             }
         ]);
 
@@ -18162,7 +18058,7 @@ function getDoctorMainMenuMoreSpec(tier) {
 }
 
 
-function appendAppointmentListNavRows(
+function appendWhatsAppHomeNavRow(
     rows,
     listMode
 ) {
@@ -18589,6 +18485,79 @@ function handleWhatsAppMyAppointmentsState(
             }
         }
     );
+}
+
+
+function classifyWhatsAppAppointmentListChoice(
+    normalizedMessage,
+    appointmentsLength
+) {
+
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    if (
+        choice === "nav_main_menu" ||
+        choice === "main_menu" ||
+        normalizedMessage === "0"
+    ) {
+        return { type: "main_menu" };
+    }
+
+    if (
+        choice === "nav_back" ||
+        choice === "back"
+    ) {
+        return { type: "back" };
+    }
+
+    if (
+        choice === "appt_prev" ||
+        choice === "prev"
+    ) {
+        return { type: "prev" };
+    }
+
+    if (
+        choice === "appt_next" ||
+        choice === "next"
+    ) {
+        return { type: "next" };
+    }
+
+    let selection = NaN;
+
+    if (choice.indexOf("appt_") === 0) {
+
+        selection =
+            parseInt(
+                choice.substring(5),
+                10
+            );
+
+    } else {
+
+        selection =
+            parseInt(
+                choice,
+                10
+            );
+    }
+
+    if (
+        isNaN(selection) ||
+        selection < 1 ||
+        selection > appointmentsLength
+    ) {
+        return { type: "invalid" };
+    }
+
+    return {
+        type: "selection",
+        index: selection - 1
+    };
 }
 
 
