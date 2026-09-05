@@ -531,7 +531,14 @@ function getDoctorSelectionMenuSpec() {
                         .join(" — ");
 
                 return {
-                    id: String(index + 1),
+                    // Use the real Doctor ID in the WhatsApp list so every
+                    // doctor maps directly to the correct Doctors-sheet row.
+                    // encodeURIComponent keeps spaces/special characters safe.
+                    id:
+                        "doctor_select_" +
+                        encodeURIComponent(
+                            String(doctor.doctorId)
+                        ),
                     title: doctor.doctorName,
                     description: description
                 };
@@ -1811,7 +1818,7 @@ function sendOneAppointmentReminder(
 
     const doctorName =
         doctor &&
-            doctor.doctorName
+        doctor.doctorName
             ? doctor.doctorName
             : String(
                 appointment.doctorId || ""
@@ -2877,7 +2884,7 @@ function buildAfterHoursMessage(
 
     const message =
         "🕐 " +
-        "ABC Clinic is currently closed.\n\n" +
+        getClinicName() + " is currently closed.\n\n" +
         "Our hours: " +
         hoursLine +
         "\n\n" +
@@ -4938,9 +4945,9 @@ function registerPatientForBooking(
 
         lang =
             existing &&
-                ["EN", "TE", "HI", "KA", "TA", "ML"].indexOf(
-                    existing.language
-                ) !== -1
+            ["EN", "TE", "HI", "KA", "TA", "ML"].indexOf(
+                existing.language
+            ) !== -1
                 ? existing.language
                 : "EN";
     }
@@ -5946,538 +5953,538 @@ function rescheduleAppointment(
 
     try {
 
-        // ----------------------------------------------------------
-        // Variables
-        // ----------------------------------------------------------
+    // ----------------------------------------------------------
+    // Variables
+    // ----------------------------------------------------------
 
-        let appointmentRow = -1;
-        let appointmentIndex = -1;
+    let appointmentRow = -1;
+    let appointmentIndex = -1;
 
-        let doctorId = "";
-        let patientName = "";
-        let storedPatientPhone = "";
-        let calendarEventId = "";
-        let status = "";
+    let doctorId = "";
+    let patientName = "";
+    let storedPatientPhone = "";
+    let calendarEventId = "";
+    let status = "";
 
-        // ----------------------------------------------------------
-        // Find appointment
-        // ----------------------------------------------------------
+    // ----------------------------------------------------------
+    // Find appointment
+    // ----------------------------------------------------------
 
-        for (
-            let i = 1;
-            i < appointmentData.length;
-            i++
+    for (
+        let i = 1;
+        i < appointmentData.length;
+        i++
+    ) {
+
+        if (
+            String(appointmentData[i][0]) ===
+            String(appointmentId)
         ) {
 
-            if (
-                String(appointmentData[i][0]) ===
-                String(appointmentId)
-            ) {
+            appointmentRow =
+                i + 1;
+            appointmentIndex = i;
 
-                appointmentRow =
-                    i + 1;
-                appointmentIndex = i;
+            doctorId =
+                appointmentData[i][3];
 
-                doctorId =
-                    appointmentData[i][3];
+            patientName =
+                appointmentData[i][4];
 
-                patientName =
-                    appointmentData[i][4];
+            storedPatientPhone =
+                String(appointmentData[i][5]);
 
-                storedPatientPhone =
-                    String(appointmentData[i][5]);
+            status =
+                String(appointmentData[i][6]);
 
-                status =
-                    String(appointmentData[i][6]);
+            calendarEventId =
+                appointmentData[i][7];
 
-                calendarEventId =
-                    appointmentData[i][7];
+            break;
+        }
+    }
 
-                break;
+    // ----------------------------------------------------------
+    // Appointment not found
+    // ----------------------------------------------------------
+
+    if (
+        appointmentRow === -1
+    ) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Appointment ID not found."
+        };
+    }
+
+    // ----------------------------------------------------------
+    // SECURITY CHECK
+    // ----------------------------------------------------------
+
+    const authorizedDoctorId =
+        String(
+            opts.authorizedDoctorId || ""
+        ).trim();
+
+    if (authorizedDoctorId) {
+
+        if (
+            String(doctorId || "").trim() !==
+            authorizedDoctorId
+        ) {
+
+            return {
+
+                success: false,
+
+                message:
+                    "Appointment does not belong to this doctor."
+            };
+        }
+
+    } else if (
+        !phonesMatch(
+            storedPatientPhone,
+            patientPhoneInput
+        )
+    ) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Appointment does not belong to this phone number."
+        };
+    }
+
+    // ----------------------------------------------------------
+    // Check status
+    // ----------------------------------------------------------
+
+    const normalizedStatus =
+        normalizeAppointmentStatus(status);
+
+    if (
+        normalizedStatus ===
+        APPOINTMENT_STATUS.CANCELLED
+    ) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Cancelled appointments cannot be rescheduled."
+        };
+    }
+
+    if (
+        normalizedStatus ===
+        APPOINTMENT_STATUS.COMPLETED ||
+        normalizedStatus ===
+        APPOINTMENT_STATUS.NO_SHOW
+    ) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Appointments marked as " +
+                normalizedStatus +
+                " cannot be rescheduled."
+        };
+    }
+
+    // ----------------------------------------------------------
+    // Find doctor
+    // ----------------------------------------------------------
+
+    const doctor =
+        getDoctorRecord(doctorId);
+
+    if (
+        !doctor ||
+        !doctor.calendarId
+    ) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Doctor calendar not found."
+        };
+    }
+
+    const doctorName = doctor.doctorName;
+    const clinicName = doctor.clinicName;
+    const calendarId = doctor.calendarId;
+
+    const calendar =
+        CalendarApp.getCalendarById(
+            calendarId
+        );
+
+    if (!calendar) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Google Calendar not found."
+        };
+    }
+
+    // ----------------------------------------------------------
+    // Create new date/time
+    // ----------------------------------------------------------
+
+    if (
+        !isValidISODate(
+            newDateString
+        )
+    ) {
+
+        return {
+            success: false,
+            message:
+                "Invalid new appointment date."
+        };
+    }
+
+    const newTime24 =
+        convert12HourTo24Hour(
+            newTimeString
+        );
+
+    if (!newTime24) {
+
+        return {
+            success: false,
+            message:
+                "Invalid new appointment time."
+        };
+    }
+
+    const newStartTime =
+        new Date(
+            `${newDateString}T${newTime24}:00+05:30`
+        );
+
+    if (
+        isNaN(
+            newStartTime.getTime()
+        )
+    ) {
+
+        return {
+            success: false,
+            message:
+                "Invalid new date or time."
+        };
+    }
+
+    const appointmentDuration =
+        getDoctorAppointmentDuration(
+            doctorId
+        );
+
+    const newEndTime =
+        new Date(
+            newStartTime.getTime() +
+            appointmentDuration * 60000
+        );
+
+    let oldEvent = null;
+    let newEvent = null;
+
+    const originalSnapshot =
+        captureAppointmentSheetSnapshot(
+            appointmentData[appointmentIndex]
+        );
+
+    const originalStartTime =
+        parseAppointmentSheetDateTime(
+            originalSnapshot.date,
+            originalSnapshot.time
+        );
+
+    const originalFormattedTime =
+        originalStartTime
+            ? Utilities.formatDate(
+                originalStartTime,
+                TIMEZONE,
+                "hh:mm a"
+            )
+            : "";
+
+    // ----------------------------------------------------------
+    // Validate against working hours
+    // ----------------------------------------------------------
+
+    const availableSlots =
+        getAvailableSlots(
+            doctorId,
+            newDateString
+        );
+
+    const formattedRequestedTime =
+        Utilities.formatDate(
+            newStartTime,
+            TIMEZONE,
+            "hh:mm a"
+        );
+
+    // Check if trying to reschedule to same date/time
+    const normalizedOriginalDate =
+        normalizeAppointmentDate(
+            originalSnapshot.date
+        );
+
+    const isSameDateAndTime =
+        !!originalStartTime &&
+        newDateString === normalizedOriginalDate &&
+        formattedRequestedTime ===
+            originalFormattedTime;
+
+    if (
+        !availableSlots.includes(formattedRequestedTime) &&
+        !isSameDateAndTime
+    ) {
+
+        return {
+            success: false,
+            message:
+                "The selected time is not available."
+        };
+    }
+
+    try {
+
+        if (
+            hasActiveAppointmentOnDate(
+                patientPhoneInput,
+                newDateString,
+                appointmentId
+            )
+        ) {
+
+            return {
+                success: false,
+                message:
+                    "You already have an active appointment on this date."
+            };
+        }
+
+        // ----------------------------------------------------------
+        // Check new slot
+        // ----------------------------------------------------------
+
+        const existingEvents =
+            calendar.getEvents(
+                newStartTime,
+                newEndTime
+            );
+
+        const conflictingEvents =
+            existingEvents.filter(
+                event =>
+                    event.getId() !==
+                    calendarEventId
+            );
+
+        if (
+            conflictingEvents.length > 0
+        ) {
+
+            return {
+
+                success: false,
+
+                message:
+                    "The new appointment slot is already booked."
+            };
+        }
+
+        oldEvent =
+            findCalendarEventForAppointment(
+                calendar,
+                appointmentId,
+                calendarEventId,
+                appointmentData[appointmentIndex][1],
+                appointmentData[appointmentIndex][2]
+            );
+
+        // ----------------------------------------------------------
+        // Create new Calendar event first
+        // ----------------------------------------------------------
+
+        newEvent =
+            calendar.createEvent(
+                `Appointment - ${patientName}`,
+                newStartTime,
+                newEndTime,
+                {
+
+                    description:
+                        `Appointment ID: ${appointmentId}\n` +
+                        `Doctor: ${doctorName}\n` +
+                        `Patient: ${patientName}`,
+
+                    location:
+                        clinicName
+                }
+            );
+
+        // ----------------------------------------------------------
+        // Update Sheet
+        // ----------------------------------------------------------
+
+        writeAppointmentSheetSchedule(
+            appointmentSheet,
+            appointmentRow,
+            newStartTime,
+            "Confirmed",
+            newEvent.getId()
+        );
+
+        // ----------------------------------------------------------
+        // Delete old event only after the sheet has been updated.
+        // ----------------------------------------------------------
+
+        if (oldEvent) {
+            oldEvent.deleteEvent();
+        }
+
+    } catch (error) {
+
+        if (newEvent) {
+            try {
+                newEvent.deleteEvent();
+            } catch (deleteError) {
+                console.error(
+                    "Failed to roll back newly created reschedule event.",
+                    deleteError
+                );
             }
         }
 
-        // ----------------------------------------------------------
-        // Appointment not found
-        // ----------------------------------------------------------
-
-        if (
-            appointmentRow === -1
-        ) {
-
-            return {
-
-                success: false,
-
-                message:
-                    "Appointment ID not found."
-            };
+        if (appointmentRow > 0) {
+            restoreAppointmentSheetSchedule(
+                appointmentSheet,
+                appointmentRow,
+                originalSnapshot
+            );
         }
 
-        // ----------------------------------------------------------
-        // SECURITY CHECK
-        // ----------------------------------------------------------
+        if (
+            oldEvent &&
+            oldEvent.getId() &&
+            !calendarEventExists(
+                calendar,
+                oldEvent.getId()
+            )
+        ) {
+            try {
+                const oldStartTime =
+                    parseAppointmentSheetDateTime(
+                        originalSnapshot.date,
+                        originalSnapshot.time
+                    );
 
-        const authorizedDoctorId =
-            String(
-                opts.authorizedDoctorId || ""
-            ).trim();
+                if (oldStartTime) {
+                    const oldEndTime =
+                        new Date(
+                            oldStartTime.getTime() +
+                            appointmentDuration *
+                            60000
+                        );
 
-        if (authorizedDoctorId) {
+                    const restoredOldEvent =
+                        calendar.createEvent(
+                            `Appointment - ${patientName}`,
+                            oldStartTime,
+                            oldEndTime,
+                            {
+                                description:
+                                    `Appointment ID: ${appointmentId}\n` +
+                                    `Doctor: ${doctorName}\n` +
+                                    `Patient: ${patientName}`,
 
-            if (
-                String(doctorId || "").trim() !==
-                authorizedDoctorId
-            ) {
+                                location: clinicName
+                            }
+                        );
 
-                return {
-
-                    success: false,
-
-                    message:
-                        "Appointment does not belong to this doctor."
-                };
+                    appointmentSheet
+                        .getRange(
+                            appointmentRow,
+                            8
+                        )
+                        .setValue(
+                            restoredOldEvent.getId()
+                        );
+                }
+            } catch (restoreError) {
+                console.error(
+                    "Failed to restore original event during reschedule rollback.",
+                    restoreError
+                );
             }
-
-        } else if (
-            !phonesMatch(
-                storedPatientPhone,
-                patientPhoneInput
-            )
-        ) {
-
-            return {
-
-                success: false,
-
-                message:
-                    "Appointment does not belong to this phone number."
-            };
         }
 
-        // ----------------------------------------------------------
-        // Check status
-        // ----------------------------------------------------------
+        console.error(
+            "Reschedule failed; original appointment was restored.",
+            error
+        );
 
-        const normalizedStatus =
-            normalizeAppointmentStatus(status);
+        return {
+            success: false,
+            message:
+                "Unable to complete reschedule. The original appointment was restored."
+        };
+    }
 
-        if (
-            normalizedStatus ===
-            APPOINTMENT_STATUS.CANCELLED
-        ) {
+    // ----------------------------------------------------------
+    // Return result
+    // ----------------------------------------------------------
 
-            return {
+    return {
 
-                success: false,
+        success: true,
 
-                message:
-                    "Cancelled appointments cannot be rescheduled."
-            };
-        }
+        appointmentId:
+            appointmentId,
 
-        if (
-            normalizedStatus ===
-            APPOINTMENT_STATUS.COMPLETED ||
-            normalizedStatus ===
-            APPOINTMENT_STATUS.NO_SHOW
-        ) {
+        doctor:
+            doctorName,
 
-            return {
+        patient:
+            patientName,
 
-                success: false,
+        date:
+            Utilities.formatDate(
+                newStartTime,
+                TIMEZONE,
+                "dd-MMM-yyyy"
+            ),
 
-                message:
-                    "Appointments marked as " +
-                    normalizedStatus +
-                    " cannot be rescheduled."
-            };
-        }
-
-        // ----------------------------------------------------------
-        // Find doctor
-        // ----------------------------------------------------------
-
-        const doctor =
-            getDoctorRecord(doctorId);
-
-        if (
-            !doctor ||
-            !doctor.calendarId
-        ) {
-
-            return {
-
-                success: false,
-
-                message:
-                    "Doctor calendar not found."
-            };
-        }
-
-        const doctorName = doctor.doctorName;
-        const clinicName = doctor.clinicName;
-        const calendarId = doctor.calendarId;
-
-        const calendar =
-            CalendarApp.getCalendarById(
-                calendarId
-            );
-
-        if (!calendar) {
-
-            return {
-
-                success: false,
-
-                message:
-                    "Google Calendar not found."
-            };
-        }
-
-        // ----------------------------------------------------------
-        // Create new date/time
-        // ----------------------------------------------------------
-
-        if (
-            !isValidISODate(
-                newDateString
-            )
-        ) {
-
-            return {
-                success: false,
-                message:
-                    "Invalid new appointment date."
-            };
-        }
-
-        const newTime24 =
-            convert12HourTo24Hour(
-                newTimeString
-            );
-
-        if (!newTime24) {
-
-            return {
-                success: false,
-                message:
-                    "Invalid new appointment time."
-            };
-        }
-
-        const newStartTime =
-            new Date(
-                `${newDateString}T${newTime24}:00+05:30`
-            );
-
-        if (
-            isNaN(
-                newStartTime.getTime()
-            )
-        ) {
-
-            return {
-                success: false,
-                message:
-                    "Invalid new date or time."
-            };
-        }
-
-        const appointmentDuration =
-            getDoctorAppointmentDuration(
-                doctorId
-            );
-
-        const newEndTime =
-            new Date(
-                newStartTime.getTime() +
-                appointmentDuration * 60000
-            );
-
-        let oldEvent = null;
-        let newEvent = null;
-
-        const originalSnapshot =
-            captureAppointmentSheetSnapshot(
-                appointmentData[appointmentIndex]
-            );
-
-        const originalStartTime =
-            parseAppointmentSheetDateTime(
-                originalSnapshot.date,
-                originalSnapshot.time
-            );
-
-        const originalFormattedTime =
-            originalStartTime
-                ? Utilities.formatDate(
-                    originalStartTime,
-                    TIMEZONE,
-                    "hh:mm a"
-                )
-                : "";
-
-        // ----------------------------------------------------------
-        // Validate against working hours
-        // ----------------------------------------------------------
-
-        const availableSlots =
-            getAvailableSlots(
-                doctorId,
-                newDateString
-            );
-
-        const formattedRequestedTime =
+        time:
             Utilities.formatDate(
                 newStartTime,
                 TIMEZONE,
                 "hh:mm a"
-            );
+            ),
 
-        // Check if trying to reschedule to same date/time
-        const normalizedOriginalDate =
-            normalizeAppointmentDate(
-                originalSnapshot.date
-            );
-
-        const isSameDateAndTime =
-            !!originalStartTime &&
-            newDateString === normalizedOriginalDate &&
-            formattedRequestedTime ===
-            originalFormattedTime;
-
-        if (
-            !availableSlots.includes(formattedRequestedTime) &&
-            !isSameDateAndTime
-        ) {
-
-            return {
-                success: false,
-                message:
-                    "The selected time is not available."
-            };
-        }
-
-        try {
-
-            if (
-                hasActiveAppointmentOnDate(
-                    patientPhoneInput,
-                    newDateString,
-                    appointmentId
-                )
-            ) {
-
-                return {
-                    success: false,
-                    message:
-                        "You already have an active appointment on this date."
-                };
-            }
-
-            // ----------------------------------------------------------
-            // Check new slot
-            // ----------------------------------------------------------
-
-            const existingEvents =
-                calendar.getEvents(
-                    newStartTime,
-                    newEndTime
-                );
-
-            const conflictingEvents =
-                existingEvents.filter(
-                    event =>
-                        event.getId() !==
-                        calendarEventId
-                );
-
-            if (
-                conflictingEvents.length > 0
-            ) {
-
-                return {
-
-                    success: false,
-
-                    message:
-                        "The new appointment slot is already booked."
-                };
-            }
-
-            oldEvent =
-                findCalendarEventForAppointment(
-                    calendar,
-                    appointmentId,
-                    calendarEventId,
-                    appointmentData[appointmentIndex][1],
-                    appointmentData[appointmentIndex][2]
-                );
-
-            // ----------------------------------------------------------
-            // Create new Calendar event first
-            // ----------------------------------------------------------
-
-            newEvent =
-                calendar.createEvent(
-                    `Appointment - ${patientName}`,
-                    newStartTime,
-                    newEndTime,
-                    {
-
-                        description:
-                            `Appointment ID: ${appointmentId}\n` +
-                            `Doctor: ${doctorName}\n` +
-                            `Patient: ${patientName}`,
-
-                        location:
-                            clinicName
-                    }
-                );
-
-            // ----------------------------------------------------------
-            // Update Sheet
-            // ----------------------------------------------------------
-
-            writeAppointmentSheetSchedule(
-                appointmentSheet,
-                appointmentRow,
-                newStartTime,
-                "Confirmed",
-                newEvent.getId()
-            );
-
-            // ----------------------------------------------------------
-            // Delete old event only after the sheet has been updated.
-            // ----------------------------------------------------------
-
-            if (oldEvent) {
-                oldEvent.deleteEvent();
-            }
-
-        } catch (error) {
-
-            if (newEvent) {
-                try {
-                    newEvent.deleteEvent();
-                } catch (deleteError) {
-                    console.error(
-                        "Failed to roll back newly created reschedule event.",
-                        deleteError
-                    );
-                }
-            }
-
-            if (appointmentRow > 0) {
-                restoreAppointmentSheetSchedule(
-                    appointmentSheet,
-                    appointmentRow,
-                    originalSnapshot
-                );
-            }
-
-            if (
-                oldEvent &&
-                oldEvent.getId() &&
-                !calendarEventExists(
-                    calendar,
-                    oldEvent.getId()
-                )
-            ) {
-                try {
-                    const oldStartTime =
-                        parseAppointmentSheetDateTime(
-                            originalSnapshot.date,
-                            originalSnapshot.time
-                        );
-
-                    if (oldStartTime) {
-                        const oldEndTime =
-                            new Date(
-                                oldStartTime.getTime() +
-                                appointmentDuration *
-                                60000
-                            );
-
-                        const restoredOldEvent =
-                            calendar.createEvent(
-                                `Appointment - ${patientName}`,
-                                oldStartTime,
-                                oldEndTime,
-                                {
-                                    description:
-                                        `Appointment ID: ${appointmentId}\n` +
-                                        `Doctor: ${doctorName}\n` +
-                                        `Patient: ${patientName}`,
-
-                                    location: clinicName
-                                }
-                            );
-
-                        appointmentSheet
-                            .getRange(
-                                appointmentRow,
-                                8
-                            )
-                            .setValue(
-                                restoredOldEvent.getId()
-                            );
-                    }
-                } catch (restoreError) {
-                    console.error(
-                        "Failed to restore original event during reschedule rollback.",
-                        restoreError
-                    );
-                }
-            }
-
-            console.error(
-                "Reschedule failed; original appointment was restored.",
-                error
-            );
-
-            return {
-                success: false,
-                message:
-                    "Unable to complete reschedule. The original appointment was restored."
-            };
-        }
-
-        // ----------------------------------------------------------
-        // Return result
-        // ----------------------------------------------------------
-
-        return {
-
-            success: true,
-
-            appointmentId:
-                appointmentId,
-
-            doctor:
-                doctorName,
-
-            patient:
-                patientName,
-
-            date:
-                Utilities.formatDate(
-                    newStartTime,
-                    TIMEZONE,
-                    "dd-MMM-yyyy"
-                ),
-
-            time:
-                Utilities.formatDate(
-                    newStartTime,
-                    TIMEZONE,
-                    "hh:mm a"
-                ),
-
-            message:
-                "Appointment rescheduled successfully."
-        };
+        message:
+            "Appointment rescheduled successfully."
+    };
 
     } finally {
 
@@ -6578,7 +6585,9 @@ function getDoctorRecord(doctorId) {
                 whatsApp:
                     String(data[i][4] || "").trim(),
                 appointmentDuration:
-                    Number(data[i][5]) || 30
+                    Number(data[i][5]) || 30,
+                specialization:
+                    String(data[i][7] || "").trim()
             };
         }
     }
@@ -8057,8 +8066,8 @@ function verifyWhatsAppWebhookRequest(e, rawBody) {
 
     const token =
         e &&
-            e.parameter &&
-            e.parameter.token
+        e.parameter &&
+        e.parameter.token
             ? String(e.parameter.token)
             : "";
 
@@ -8199,10 +8208,15 @@ function getConfirmedAppointmentsForPhone(phone) {
     const appointments =
         getMyAppointments(phone);
 
+    // For the patient's Cancel / Reschedule menus, show every
+    // active appointment. Only cancelled, completed, and no-show
+    // appointments should be hidden. This prevents valid appointments
+    // from disappearing when their status is blank or uses another
+    // active label.
     const confirmed =
         appointments.filter(
             function (appt) {
-                return isConfirmedAppointmentStatus(
+                return !isInactiveAppointmentStatus(
                     appt.status
                 );
             }
@@ -8584,7 +8598,7 @@ function buildDoctorRescheduleSlotConfirmMessage(
 
     const patientLine =
         session &&
-            session.patientName
+        session.patientName
             ? "👤 Patient: " +
             session.patientName +
             "\n"
@@ -8625,7 +8639,7 @@ function notifyPatientOfDoctorCancellation(
 
         sendWhatsAppText(
             recipient,
-            "ABC Clinic: Your appointment on " +
+            getClinicName() + " : Your appointment on " +
             appointment.date +
             " at " +
             appointment.time +
@@ -8661,7 +8675,7 @@ function notifyPatientOfDoctorReschedule(
 
         sendWhatsAppText(
             recipient,
-            "ABC Clinic: Your appointment has been rescheduled by the clinic.\n\n" +
+            getClinicName() + ": Your appointment has been rescheduled by the clinic.\n\n" +
             "📅 " +
             result.date +
             "\n" +
@@ -8692,7 +8706,7 @@ function handleDoctorWhatsAppAppointmentListSelection(
     const opts = options || {};
     const doctorId =
         session &&
-            session.doctorId
+        session.doctorId
             ? session.doctorId
             : "";
 
@@ -9165,7 +9179,7 @@ function buildBookingDateSelectionIntro(session) {
 
     const doctorName =
         session &&
-            session.doctorId
+        session.doctorId
             ? findDoctorById(session.doctorId)
             : "";
 
@@ -9186,7 +9200,7 @@ function buildRescheduleDateSelectionIntro(session) {
 
     const doctorName =
         session &&
-            session.doctorId
+        session.doctorId
             ? findDoctorById(session.doctorId)
             : "Doctor";
 
@@ -10085,8 +10099,8 @@ function handleWhatsAppSlotSelection(
             ss,
             phone,
             opts.expiredMessage ||
-            "❌ Your booking session has expired.\n\n" +
-            "Please send Hi to start again."
+                "❌ Your booking session has expired.\n\n" +
+                "Please send Hi to start again."
         );
 
         return;
@@ -10104,8 +10118,8 @@ function handleWhatsAppSlotSelection(
             ss,
             phone,
             opts.invalidDateMessage ||
-            "❌ The selected date is invalid.\n\n" +
-            "Please send Hi to start again."
+                "❌ The selected date is invalid.\n\n" +
+                "Please send Hi to start again."
         );
 
         return;
@@ -10639,7 +10653,7 @@ function localizeWhatsAppReply(language, message) {
 
     const translations = {
         TE: {
-            "Welcome to ABC Clinic!": "ABC క్లినిక్‌కు స్వాగతం!",
+            "Welcome to ABC Clinic!": "{{CLINIC_NAME}} కు స్వాగతం!",
             "Please choose an option:": "దయచేసి ఒక ఎంపికను ఎంచుకోండి:",
             "Book Appointment": "అపాయింట్‌మెంట్ బుక్ చేయండి",
             "My Appointments": "నా అపాయింట్‌మెంట్‌లు",
@@ -10692,7 +10706,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "ఈ తేదీకి అందుబాటులో సమయాలు లేవు: ",
             "Your booking session has expired.": "మీ బుకింగ్ సెషన్ గడువు ముగిసింది.",
             "Your reschedule session has expired.": "మీ సమయం మార్పు సెషన్ గడువు ముగిసింది.",
-            "Thank you for choosing ABC Clinic.": "ABC క్లినిక్‌ను ఎంచుకున్నందుకు ధన్యవాదాలు.",
+            "Thank you for choosing ABC Clinic.": "{{CLINIC_NAME}} ను ఎంచుకున్నందుకు ధన్యవాదాలు.",
             "Please send Hi to start again.": "మళ్లీ ప్రారంభించడానికి Hi పంపండి.",
             "Sorry, I didn't understand that.": "క్షమించండి, నాకు అర్థం కాలేదు.",
             "Language changed successfully.": "భాష విజయవంతంగా మార్చబడింది.",
@@ -10708,7 +10722,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "రిమైండర్: ",
             " before your appointment.": " మీ అపాయింట్‌మెంట్‌కు ముందు.",
             "Reply Hi to reschedule or cancel.": "మార్చడానికి లేదా రద్దు చేయడానికి Hi పంపండి.",
-            "ABC Clinic is currently closed.": "ABC క్లినిక్ ప్రస్తుతం మూసివేయబడింది.",
+            "ABC Clinic is currently closed.": "{{CLINIC_NAME}} ప్రస్తుతం మూసివేయబడింది.",
             "Our hours:": "మా సమయాలు:",
             "Please message us during clinic hours to book or manage appointments.": "అపాయింట్‌మెంట్‌లు బుక్ చేయడానికి లేదా నిర్వహించడానికి క్లినిక్ సమయంలో మాకు సందేశం పంపండి.",
             "Reply Hi during open hours to get started.": "ప్రారంభించడానికి తెరిచి ఉన్న సమయంలో Hi పంపండి.",
@@ -10764,7 +10778,7 @@ function localizeWhatsAppReply(language, message) {
             "More options": "మరిన్ని ఎంపికలు"
         },
         HI: {
-            "Welcome to ABC Clinic!": "एबीसी क्लिनिक में आपका स्वागत है!",
+            "Welcome to ABC Clinic!": "{{CLINIC_NAME}} में आपका स्वागत है!",
             "Please choose an option:": "कृपया एक विकल्प चुनें:",
             "Book Appointment": "अपॉइंटमेंट बुक करें",
             "My Appointments": "मेरे अपॉइंटमेंट",
@@ -10817,7 +10831,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "इस तारीख के लिए कोई समय उपलब्ध नहीं है: ",
             "Your booking session has expired.": "आपका बुकिंग सत्र समाप्त हो गया है।",
             "Your reschedule session has expired.": "आपका समय परिवर्तन सत्र समाप्त हो गया है।",
-            "Thank you for choosing ABC Clinic.": "एबीसी क्लिनिक चुनने के लिए धन्यवाद।",
+            "Thank you for choosing ABC Clinic.": "{{CLINIC_NAME}} चुनने के लिए धन्यवाद।",
             "Please send Hi to start again.": "फिर से शुरू करने के लिए Hi भेजें।",
             "Sorry, I didn't understand that.": "क्षमा करें, मैं समझ नहीं पाया।",
             "Language changed successfully.": "भाषा सफलतापूर्वक बदल दी गई है।",
@@ -10833,7 +10847,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "रिमाइंडर: ",
             " before your appointment.": " आपके अपॉइंटमेंट से पहले।",
             "Reply Hi to reschedule or cancel.": "बदलने या रद्द करने के लिए Hi भेजें।",
-            "ABC Clinic is currently closed.": "एबीसी क्लिनिक अभी बंद है।",
+            "ABC Clinic is currently closed.": "{{CLINIC_NAME}} अभी बंद है।",
             "Our hours:": "हमारे समय:",
             "Please message us during clinic hours to book or manage appointments.": "अपॉइंटमेंट बुक या प्रबंधित करने के लिए कृपया क्लिनिक के समय में संदेश भेजें।",
             "Reply Hi during open hours to get started.": "शुरू करने के लिए खुले समय में Hi भेजें।",
@@ -10894,7 +10908,7 @@ function localizeWhatsAppReply(language, message) {
         // verify against real clinic usage before relying on them in
         // production, especially for time/date-sensitive phrases.
         KA: {
-            "Welcome to ABC Clinic!": "ABC ಕ್ಲಿನಿಕ್‌ಗೆ ಸ್ವಾಗತ!",
+            "Welcome to ABC Clinic!": "{{CLINIC_NAME}} ಗೆ ಸ್ವಾಗತ!",
             "Please choose an option:": "ದಯವಿಟ್ಟು ಒಂದು ಆಯ್ಕೆಯನ್ನು ಆರಿಸಿ:",
             "Book Appointment": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಬುಕ್ ಮಾಡಿ",
             "My Appointments": "ನನ್ನ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗಳು",
@@ -10947,7 +10961,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "ಇದಕ್ಕೆ ಯಾವುದೇ ಸಮಯಗಳು ಉಳಿದಿಲ್ಲ ",
             "Your booking session has expired.": "ನಿಮ್ಮ ಬುಕಿಂಗ್ ಅವಧಿ ಮುಕ್ತಾಯಗೊಂಡಿದೆ.",
             "Your reschedule session has expired.": "ನಿಮ್ಮ ಮರುಹೊಂದಿಕೆ ಅವಧಿ ಮುಕ್ತಾಯಗೊಂಡಿದೆ.",
-            "Thank you for choosing ABC Clinic.": "ABC ಕ್ಲಿನಿಕ್ ಆಯ್ಕೆ ಮಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು.",
+            "Thank you for choosing ABC Clinic.": "{{CLINIC_NAME}} ಆಯ್ಕೆ ಮಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು.",
             "Please send Hi to start again.": "ಮತ್ತೆ ಪ್ರಾರಂಭಿಸಲು ದಯವಿಟ್ಟು Hi ಕಳುಹಿಸಿ.",
             "Sorry, I didn't understand that.": "ಕ್ಷಮಿಸಿ, ನನಗೆ ಅರ್ಥವಾಗಲಿಲ್ಲ.",
             "Language changed successfully.": "ಭಾಷೆ ಯಶಸ್ವಿಯಾಗಿ ಬದಲಾಯಿಸಲಾಗಿದೆ.",
@@ -10963,7 +10977,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "ಜ್ಞಾಪನೆ: ",
             " before your appointment.": " ನಿಮ್ಮ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗೆ ಮೊದಲು.",
             "Reply Hi to reschedule or cancel.": "ಮರುಹೊಂದಿಸಲು ಅಥವಾ ರದ್ದುಗೊಳಿಸಲು Hi ಎಂದು ಉತ್ತರಿಸಿ.",
-            "ABC Clinic is currently closed.": "ABC ಕ್ಲಿನಿಕ್ ಪ್ರಸ್ತುತ ಮುಚ್ಚಿದೆ.",
+            "ABC Clinic is currently closed.": "{{CLINIC_NAME}} ಪ್ರಸ್ತುತ ಮುಚ್ಚಿದೆ.",
             "Our hours:": "ನಮ್ಮ ಸಮಯ:",
             "Please message us during clinic hours to book or manage appointments.": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಬುಕ್ ಮಾಡಲು ಅಥವಾ ನಿರ್ವಹಿಸಲು ದಯವಿಟ್ಟು ಕ್ಲಿನಿಕ್ ಸಮಯದಲ್ಲಿ ನಮಗೆ ಸಂದೇಶ ಕಳುಹಿಸಿ.",
             "Reply Hi during open hours to get started.": "ಪ್ರಾರಂಭಿಸಲು ತೆರೆದಿರುವ ಸಮಯದಲ್ಲಿ Hi ಎಂದು ಉತ್ತರಿಸಿ.",
@@ -11020,7 +11034,7 @@ function localizeWhatsAppReply(language, message) {
         },
 
         TA: {
-            "Welcome to ABC Clinic!": "ABC கிளினிக்கிற்கு வரவேற்கிறோம்!",
+            "Welcome to ABC Clinic!": "{{CLINIC_NAME}}க்கு வரவேற்கிறோம்!",
             "Please choose an option:": "தயவுசெய்து ஒரு விருப்பத்தைத் தேர்ந்தெடுக்கவும்:",
             "Book Appointment": "அப்பாயின்ட்மென்ட் பதிவு செய்யவும்",
             "My Appointments": "எனது அப்பாயின்ட்மென்ட்கள்",
@@ -11073,7 +11087,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "இதற்கு நேரங்கள் எதுவும் மீதமில்லை ",
             "Your booking session has expired.": "உங்கள் பதிவு அமர்வு காலாவதியானது.",
             "Your reschedule session has expired.": "உங்கள் மாற்றியமைப்பு அமர்வு காலாவதியானது.",
-            "Thank you for choosing ABC Clinic.": "ABC கிளினிக்கைத் தேர்ந்தெடுத்ததற்கு நன்றி.",
+            "Thank you for choosing ABC Clinic.": "{{CLINIC_NAME}}-ஐத் தேர்ந்தெடுத்ததற்கு நன்றி.",
             "Please send Hi to start again.": "மீண்டும் தொடங்க தயவுசெய்து Hi அனுப்பவும்.",
             "Sorry, I didn't understand that.": "மன்னிக்கவும், எனக்கு அது புரியவில்லை.",
             "Language changed successfully.": "மொழி வெற்றிகரமாக மாற்றப்பட்டது.",
@@ -11089,7 +11103,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "நினைவூட்டல்: ",
             " before your appointment.": " உங்கள் அப்பாயின்ட்மென்டுக்கு முன்.",
             "Reply Hi to reschedule or cancel.": "மாற்றியமைக்க அல்லது ரத்து செய்ய Hi என பதிலளிக்கவும்.",
-            "ABC Clinic is currently closed.": "ABC கிளினிக் தற்போது மூடப்பட்டுள்ளது.",
+            "ABC Clinic is currently closed.": "{{CLINIC_NAME}} தற்போது மூடப்பட்டுள்ளது.",
             "Our hours:": "எங்கள் நேரம்:",
             "Please message us during clinic hours to book or manage appointments.": "அப்பாயின்ட்மென்ட் பதிவு செய்ய அல்லது நிர்வகிக்க கிளினிக் நேரத்தில் எங்களுக்கு செய்தி அனுப்பவும்.",
             "Reply Hi during open hours to get started.": "தொடங்க திறந்திருக்கும் நேரத்தில் Hi என பதிலளிக்கவும்.",
@@ -11146,7 +11160,7 @@ function localizeWhatsAppReply(language, message) {
         },
 
         ML: {
-            "Welcome to ABC Clinic!": "ABC ക്ലിനിക്കിലേക്ക് സ്വാഗതം!",
+            "Welcome to ABC Clinic!": "{{CLINIC_NAME}} ലേക്ക് സ്വാഗതം!",
             "Please choose an option:": "ദയവായി ഒരു ഓപ്ഷൻ തിരഞ്ഞെടുക്കുക:",
             "Book Appointment": "അപ്പോയിന്റ്മെന്റ് ബുക്ക് ചെയ്യുക",
             "My Appointments": "എന്റെ അപ്പോയിന്റ്മെന്റുകൾ",
@@ -11199,7 +11213,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "ഇതിനായി സമയങ്ങളൊന്നും ബാക്കിയില്ല ",
             "Your booking session has expired.": "നിങ്ങളുടെ ബുക്കിംഗ് സെഷൻ കാലഹരണപ്പെട്ടു.",
             "Your reschedule session has expired.": "നിങ്ങളുടെ പുനഃക്രമീകരണ സെഷൻ കാലഹരണപ്പെട്ടു.",
-            "Thank you for choosing ABC Clinic.": "ABC ക്ലിനിക്ക് തിരഞ്ഞെടുത്തതിന് നന്ദി.",
+            "Thank you for choosing ABC Clinic.": "{{CLINIC_NAME}} തിരഞ്ഞെടുത്തതിന് നന്ദി.",
             "Please send Hi to start again.": "വീണ്ടും തുടങ്ങാൻ ദയവായി Hi അയയ്ക്കുക.",
             "Sorry, I didn't understand that.": "ക്ഷമിക്കണം, എനിക്ക് അത് മനസ്സിലായില്ല.",
             "Language changed successfully.": "ഭാഷ വിജയകരമായി മാറ്റി.",
@@ -11215,7 +11229,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "ഓർമ്മപ്പെടുത്തൽ: ",
             " before your appointment.": " നിങ്ങളുടെ അപ്പോയിന്റ്മെന്റിന് മുമ്പ്.",
             "Reply Hi to reschedule or cancel.": "പുനഃക്രമീകരിക്കാനോ റദ്ദാക്കാനോ Hi എന്ന് മറുപടി നൽകുക.",
-            "ABC Clinic is currently closed.": "ABC ക്ലിനിക്ക് നിലവിൽ അടച്ചിരിക്കുന്നു.",
+            "ABC Clinic is currently closed.": "{{CLINIC_NAME}} നിലവിൽ അടച്ചിരിക്കുന്നു.",
             "Our hours:": "ഞങ്ങളുടെ സമയം:",
             "Please message us during clinic hours to book or manage appointments.": "അപ്പോയിന്റ്മെന്റ് ബുക്ക് ചെയ്യാനോ കൈകാര്യം ചെയ്യാനോ ക്ലിനിക് സമയത്ത് ഞങ്ങൾക്ക് സന്ദേശം അയയ്ക്കുക.",
             "Reply Hi during open hours to get started.": "തുടങ്ങാൻ തുറന്നിരിക്കുന്ന സമയത്ത് Hi എന്ന് മറുപടി നൽകുക.",
@@ -11284,6 +11298,12 @@ function localizeWhatsAppReply(language, message) {
                 .split(englishText)
                 .join(dictionary[englishText]);
         });
+
+    // Always use the original clinic name configured in Settings,
+    // regardless of the patient's selected language.
+    localizedMessage = localizedMessage
+        .split("{{CLINIC_NAME}}")
+        .join(getClinicName());
 
     return localizedMessage;
 }
@@ -11762,10 +11782,10 @@ function handleWhatsAppDateMenuInput(
         );
 
         sendCustomDateEntryMenuReply(
-            ss,
-            phone,
-            buildCustomDateEntryPrompt(isReschedule)
-        );
+    ss,
+    phone,
+    buildCustomDateEntryPrompt(isReschedule)
+);
 
         return;
     }
@@ -11793,14 +11813,14 @@ function handleWhatsAppCustomDateInput(
 
     if (!validation.valid) {
 
-        sendCustomDateEntryMenuReply(
-            ss,
-            phone,
-            validation.message
-        );
+    sendCustomDateEntryMenuReply(
+        ss,
+        phone,
+        validation.message
+    );
 
-        return;
-    }
+    return;
+}
 
     whatsAppShowSlotsForDate(
         ss,
@@ -12024,6 +12044,10 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             returnToMainMenu(ss, phone);
             return;
 
+        case "MY_APPOINTMENT_ACTION":
+            returnToMainMenu(ss, phone);
+            return;
+
         case "BOOK_DATE":
             saveWhatsAppSession(phone, {
                 state: "BOOK_DOCTOR",
@@ -12036,16 +12060,16 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             return;
 
         case "BOOK_DATE_CUSTOM":
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    ...session,
-                    state: "BOOK_DATE",
-                    date: "",
-                    time: "",
-                    slotPage: 0
-                }
-            );
+        saveWhatsAppSession(
+    senderPhone,
+    {
+        ...session,
+        state: "BOOK_DATE",
+        date: "",
+        time: "",
+        slotPage: 0
+    }
+);
             showBookingDateSelection(ss, phone, session);
             return;
 
@@ -12589,46 +12613,46 @@ function whatsAppShowSlotsForDate(
         );
 
     if (
-        !slots ||
-        slots.length === 0
-    ) {
+    !slots ||
+    slots.length === 0
+) {
 
-        const fallbackText =
-            "1️⃣ Choose Another Date\n" +
-            "0️⃣ Main Menu\n" +
-            "9️⃣ Back";
+    const fallbackText =
+        "1️⃣ Choose Another Date\n" +
+        "0️⃣ Main Menu\n" +
+        "9️⃣ Back";
 
-        const interactive =
-            buildInteractiveButtonSpec([
-                {
-                    id: "date_retry",
-                    title: "Choose Another Date"
-                },
-                {
-                    id: "nav_main_menu",
-                    title: "Main Menu"
-                },
-                {
-                    id: "nav_back",
-                    title: "Back"
-                }
-            ]);
-
-        sendWhatsAppMenuReply(
-            ss,
-            senderPhone,
-            "❌ Sorry, there are no available slots on \n" +
-            selectedDate +
-            ".\n\n" +
-            "Please choose another date.",
+    const interactive =
+        buildInteractiveButtonSpec([
             {
-                fallbackText: fallbackText,
-                interactive: interactive
+                id: "date_retry",
+                title: "Choose Another Date"
+            },
+            {
+                id: "nav_main_menu",
+                title: "Main Menu"
+            },
+            {
+                id: "nav_back",
+                title: "Back"
             }
-        );
+        ]);
 
-        return false;
-    }
+    sendWhatsAppMenuReply(
+        ss,
+        senderPhone,
+        "❌ Sorry, there are no available slots on " +
+        selectedDate +
+        ".\n\n" +
+        "Please choose another date.",
+        {
+            fallbackText: fallbackText,
+            interactive: interactive
+        }
+    );
+
+    return false;
+}
 
     saveWhatsAppSession(
         senderPhone,
@@ -12669,132 +12693,132 @@ function handleWhatsAppGreeting(
     normalizedMessage
 ) {
 
-    // HI / HELLO / HEY
-    // ======================================================
+// HI / HELLO / HEY
+// ======================================================
 
-    if (
-        normalizedMessage === "hi" ||
-        normalizedMessage === "hello" ||
-        normalizedMessage === "hey" ||
-        normalizedMessage === "హాయ్" ||
-        normalizedMessage === "హలో" ||
-        normalizedMessage === "नमस्ते" ||
-        normalizedMessage === "हेलो"
-    ) {
+if (
+    normalizedMessage === "hi" ||
+    normalizedMessage === "hello" ||
+    normalizedMessage === "hey" ||
+    normalizedMessage === "హాయ్" ||
+    normalizedMessage === "హలో" ||
+    normalizedMessage === "नमस्ते" ||
+    normalizedMessage === "हेलो"
+) {
 
-        const doctor =
-            findDoctorByWhatsAppPhone(senderPhone);
+    const doctor =
+        findDoctorByWhatsAppPhone(senderPhone);
 
-        if (doctor) {
+    if (doctor) {
 
-            returnDoctorToMenu(
+        returnDoctorToMenu(
+            ss,
+            senderPhone,
+            doctor.doctorId
+        );
+
+    } else {
+
+        let savedLanguage =
+            session &&
+            String(session.language || "")
+                .trim()
+                .toUpperCase();
+
+        if (
+            ["EN", "TE", "HI", "KA", "TA", "ML"].indexOf(
+                savedLanguage
+            ) === -1
+        ) {
+
+            const patient =
+                findPatientByPhone(
+                    senderPhone
+                );
+
+            if (
+                patient &&
+                ["EN", "TE", "HI", "KA", "TA", "ML"].indexOf(
+                    patient.language
+                ) !== -1
+            ) {
+                savedLanguage =
+                    patient.language;
+            }
+        }
+
+        const hasSavedLanguage =
+            ["EN", "TE", "HI", "KA", "TA", "ML"].indexOf(
+                savedLanguage
+            ) !== -1;
+
+        // Logo is optional (only sent once HOSPITAL_LOGO_MEDIA_ID is set
+        // in the Settings sheet — see uploadWhatsAppMediaFromDriveFile in
+        // Setup.gs). When it does send, skip repeating the welcome line
+        // in the text that follows.
+        const logoSent =
+            sendHospitalLogoGreeting(
+                senderPhone
+            );
+
+        if (hasSavedLanguage) {
+
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    role: "PATIENT",
+                    state: "MAIN_MENU",
+                    language: savedLanguage,
+                    doctorId: "",
+                    date: "",
+                    time: "",
+                    appointmentId: ""
+                }
+            );
+
+            sendPatientMainMenuReply(
                 ss,
                 senderPhone,
-                doctor.doctorId
+                logoSent
+                    ? ""
+                    : "👋 Welcome to " +
+                    getClinicName() +
+                    "!"
             );
 
         } else {
 
-            let savedLanguage =
-                session &&
-                String(session.language || "")
-                    .trim()
-                    .toUpperCase();
-
-            if (
-                ["EN", "TE", "HI", "KA", "TA", "ML"].indexOf(
-                    savedLanguage
-                ) === -1
-            ) {
-
-                const patient =
-                    findPatientByPhone(
-                        senderPhone
-                    );
-
-                if (
-                    patient &&
-                    ["EN", "TE", "HI", "KA", "TA", "ML"].indexOf(
-                        patient.language
-                    ) !== -1
-                ) {
-                    savedLanguage =
-                        patient.language;
+            // First-time users choose their preferred language.
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    role: "PATIENT",
+                    language: "",
+                    state: "LANGUAGE_SELECT",
+                    doctorId: "",
+                    date: "",
+                    time: "",
+                    appointmentId: ""
                 }
-            }
+            );
 
-            const hasSavedLanguage =
-                ["EN", "TE", "HI", "KA", "TA", "ML"].indexOf(
-                    savedLanguage
-                ) !== -1;
-
-            // Logo is optional (only sent once HOSPITAL_LOGO_MEDIA_ID is set
-            // in the Settings sheet — see uploadWhatsAppMediaFromDriveFile in
-            // Setup.gs). When it does send, skip repeating the welcome line
-            // in the text that follows.
-            const logoSent =
-                sendHospitalLogoGreeting(
-                    senderPhone
-                );
-
-            if (hasSavedLanguage) {
-
-                saveWhatsAppSession(
-                    senderPhone,
-                    {
-                        role: "PATIENT",
-                        state: "MAIN_MENU",
-                        language: savedLanguage,
-                        doctorId: "",
-                        date: "",
-                        time: "",
-                        appointmentId: ""
-                    }
-                );
-
-                sendPatientMainMenuReply(
-                    ss,
-                    senderPhone,
-                    logoSent
-                        ? ""
-                        : "👋 Welcome to " +
-                        getClinicName() +
-                        "!"
-                );
-
-            } else {
-
-                // First-time users choose their preferred language.
-                saveWhatsAppSession(
-                    senderPhone,
-                    {
-                        role: "PATIENT",
-                        language: "",
-                        state: "LANGUAGE_SELECT",
-                        doctorId: "",
-                        date: "",
-                        time: "",
-                        appointmentId: ""
-                    }
-                );
-
-                sendLanguageMenuReply(
-                    ss,
-                    senderPhone,
-                    logoSent
-                        ? ""
-                        : "👋 Welcome to " +
-                        getClinicName() +
-                        "!"
-                );
-            }
+            sendLanguageMenuReply(
+                ss,
+                senderPhone,
+                logoSent
+                    ? ""
+                    : "👋 Welcome to " +
+                    getClinicName() +
+                    "!"
+            );
         }
-
-        return true;
     }
 
+    return true;
+}
 
-    // ======================================================
+
+// ======================================================
 
     return false;
 }
@@ -12806,103 +12830,32 @@ function handleWhatsAppUniversalNavigation(
     normalizedMessage
 ) {
 
-    // ======================================================
-    // NO-SLOTS: CHOOSE ANOTHER DATE
-    // ======================================================
+// ======================================================
+// NO-SLOTS: CHOOSE ANOTHER DATE
+// ======================================================
+if (
+    session &&
+    normalizedMessage === "date_retry"
+) {
+
+    // PATIENT BOOKING
     if (
-        session &&
-        normalizedMessage === "date_retry"
+        session.state === "BOOK_DATE" ||
+        session.state === "BOOK_DATE_CUSTOM" ||
+        session.state === "BOOK_TIME" ||
+        session.state === "BOOK_NAME" ||
+        session.state === "BOOK_CONFIRM"
     ) {
 
-        // PATIENT BOOKING
-        if (
-            session.state === "BOOK_DATE" ||
-            session.state === "BOOK_DATE_CUSTOM" ||
-            session.state === "BOOK_TIME" ||
-            session.state === "BOOK_NAME" ||
-            session.state === "BOOK_CONFIRM"
-        ) {
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                state: "BOOK_DATE",
+                date: "",
+                time: ""
+            }
+        );
 
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    state: "BOOK_DATE",
-                    date: "",
-                    time: ""
-                }
-            );
-
-            showBookingDateSelection(
-                ss,
-                senderPhone,
-                getWhatsAppSession(senderPhone)
-            );
-
-            return true;
-        }
-
-
-        // PATIENT RESCHEDULE
-        if (
-            session.state === "RESCHEDULE_DATE" ||
-            session.state === "RESCHEDULE_DATE_CUSTOM" ||
-            session.state === "RESCHEDULE_TIME" ||
-            session.state === "RESCHEDULE_CONFIRM"
-        ) {
-
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    state: "RESCHEDULE_DATE",
-                    date: "",
-                    time: ""
-                }
-            );
-
-            showRescheduleDateSelection(
-                ss,
-                senderPhone,
-                getWhatsAppSession(senderPhone)
-            );
-
-            return true;
-        }
-
-
-        // DOCTOR RESCHEDULE
-        if (
-            session.state === "DOCTOR_RESCHEDULE_DATE" ||
-            session.state === "DOCTOR_RESCHEDULE_DATE_CUSTOM" ||
-            session.state === "DOCTOR_RESCHEDULE_TIME" ||
-            session.state === "DOCTOR_RESCHEDULE_CONFIRM"
-        ) {
-
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    role: "DOCTOR",
-                    state: "DOCTOR_RESCHEDULE_DATE",
-                    doctorId: session.doctorId,
-                    appointmentId: session.appointmentId,
-                    patientName: session.patientName,
-                    date: "",
-                    time: ""
-                }
-            );
-
-            sendDateMenuReply(
-                ss,
-                senderPhone,
-                buildDoctorRescheduleDateIntro(
-                    session.doctorId
-                )
-            );
-
-            return true;
-        }
-
-
-        // SAFE FALLBACK
         showBookingDateSelection(
             ss,
             senderPhone,
@@ -12912,108 +12865,179 @@ function handleWhatsAppUniversalNavigation(
         return true;
     }
 
-    // UNIVERSAL NAVIGATION
-    // ======================================================
 
+    // PATIENT RESCHEDULE
     if (
-        session &&
-        session.state !== "MAIN_MENU" &&
-        session.state !== "DOCTOR_MENU" &&
-        session.state !== "LANGUAGE_SELECT" &&
-        session.state !== "LANGUAGE_CHANGE" &&
-        (
-            normalizedMessage === "0" ||
-            normalizedMessage === "nav_main_menu" ||
-            normalizedMessage === "main_menu"
-        )
+        session.state === "RESCHEDULE_DATE" ||
+        session.state === "RESCHEDULE_DATE_CUSTOM" ||
+        session.state === "RESCHEDULE_TIME" ||
+        session.state === "RESCHEDULE_CONFIRM"
     ) {
 
-        if (session.role === "DOCTOR") {
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                state: "RESCHEDULE_DATE",
+                date: "",
+                time: ""
+            }
+        );
 
-            returnDoctorToMenu(
-                ss,
-                senderPhone,
-                resolveDoctorIdFromSession(
-                    senderPhone,
-                    session
-                )
-            );
-
-        } else {
-
-            returnToMainMenu(ss, senderPhone);
-        }
-
-        return true;
-    }
-
-    // States whose numbered list content can legitimately reach a 9th item
-    // reserve the literal digit "9" for that content instead of treating it
-    // as "back" — same reasoning as the DOCTOR_MENU_MORE tier-4 carve-out
-    // below. This includes every "flat" list state (see
-    // whatsAppNavigationShowsBack, which already treats this exact set of
-    // states as not having a meaningful "back" step) plus the doctor
-    // leave/session-remove pickers, which use the same numbered-list
-    // pattern. The "nav_back"/"back" aliases (typed word, or a tapped nav
-    // button) are never ambiguous with numbered content, so they always
-    // still work everywhere.
-    const WHATSAPP_NINTH_ITEM_LIST_STATES = [
-        "BOOK_DOCTOR",
-        "MY_APPOINTMENTS",
-        "CANCEL_SELECT",
-        "RESCHEDULE_SELECT",
-        "DOCTOR_CANCEL_SELECT",
-        "DOCTOR_RESCHEDULE_SELECT",
-        "DOCTOR_STATUS_SELECT",
-        "DOCTOR_LEAVE_CANCEL_PICK",
-        "DOCTOR_AVAIL_REMOVE"
-    ];
-
-    if (
-        session &&
-        session.state !== "MAIN_MENU" &&
-        session.state !== "DOCTOR_MENU" &&
-        session.state !== "LANGUAGE_SELECT" &&
-        session.state !== "LANGUAGE_CHANGE" &&
-        (
-            normalizedMessage === "9" ||
-            normalizedMessage === "nav_back" ||
-            normalizedMessage === "back"
-        ) &&
-        !(
-            session.state === "DOCTOR_MENU_MORE" &&
-            Number(session.doctorMenuTier) === 4
-        ) &&
-        !(
-            normalizedMessage === "9" &&
-            WHATSAPP_NINTH_ITEM_LIST_STATES.indexOf(
-                session.state
-            ) !== -1
-        )
-    ) {
-
-        if (session.role === "DOCTOR") {
-
-            goBackInDoctorWhatsAppFlow(
-                ss,
-                senderPhone,
-                session
-            );
-
-        } else {
-
-            goBackInWhatsAppFlow(
-                ss,
-                senderPhone,
-                session
-            );
-        }
+        showRescheduleDateSelection(
+            ss,
+            senderPhone,
+            getWhatsAppSession(senderPhone)
+        );
 
         return true;
     }
 
 
-    // ======================================================
+    // DOCTOR RESCHEDULE
+    if (
+        session.state === "DOCTOR_RESCHEDULE_DATE" ||
+        session.state === "DOCTOR_RESCHEDULE_DATE_CUSTOM" ||
+        session.state === "DOCTOR_RESCHEDULE_TIME" ||
+        session.state === "DOCTOR_RESCHEDULE_CONFIRM"
+    ) {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "DOCTOR",
+                state: "DOCTOR_RESCHEDULE_DATE",
+                doctorId: session.doctorId,
+                appointmentId: session.appointmentId,
+                patientName: session.patientName,
+                date: "",
+                time: ""
+            }
+        );
+
+        sendDateMenuReply(
+            ss,
+            senderPhone,
+            buildDoctorRescheduleDateIntro(
+                session.doctorId
+            )
+        );
+
+        return true;
+    }
+
+
+    // SAFE FALLBACK
+    showBookingDateSelection(
+        ss,
+        senderPhone,
+        getWhatsAppSession(senderPhone)
+    );
+
+    return true;
+}
+
+// UNIVERSAL NAVIGATION
+// ======================================================
+
+if (
+    session &&
+    session.state !== "MAIN_MENU" &&
+    session.state !== "DOCTOR_MENU" &&
+    session.state !== "LANGUAGE_SELECT" &&
+    session.state !== "LANGUAGE_CHANGE" &&
+    (
+        normalizedMessage === "0" ||
+        normalizedMessage === "nav_main_menu" ||
+        normalizedMessage === "main_menu"
+    )
+) {
+
+    if (session.role === "DOCTOR") {
+
+        returnDoctorToMenu(
+            ss,
+            senderPhone,
+            resolveDoctorIdFromSession(
+                senderPhone,
+                session
+            )
+        );
+
+    } else {
+
+        returnToMainMenu(ss, senderPhone);
+    }
+
+    return true;
+}
+
+// States whose numbered list content can legitimately reach a 9th item
+// reserve the literal digit "9" for that content instead of treating it
+// as "back" — same reasoning as the DOCTOR_MENU_MORE tier-4 carve-out
+// below. This includes every "flat" list state (see
+// whatsAppNavigationShowsBack, which already treats this exact set of
+// states as not having a meaningful "back" step) plus the doctor
+// leave/session-remove pickers, which use the same numbered-list
+// pattern. The "nav_back"/"back" aliases (typed word, or a tapped nav
+// button) are never ambiguous with numbered content, so they always
+// still work everywhere.
+const WHATSAPP_NINTH_ITEM_LIST_STATES = [
+    "BOOK_DOCTOR",
+    "MY_APPOINTMENTS",
+    "CANCEL_SELECT",
+    "RESCHEDULE_SELECT",
+    "DOCTOR_CANCEL_SELECT",
+    "DOCTOR_RESCHEDULE_SELECT",
+    "DOCTOR_STATUS_SELECT",
+    "DOCTOR_LEAVE_CANCEL_PICK",
+    "DOCTOR_AVAIL_REMOVE"
+];
+
+if (
+    session &&
+    session.state !== "MAIN_MENU" &&
+    session.state !== "DOCTOR_MENU" &&
+    session.state !== "LANGUAGE_SELECT" &&
+    session.state !== "LANGUAGE_CHANGE" &&
+    (
+        normalizedMessage === "9" ||
+        normalizedMessage === "nav_back" ||
+        normalizedMessage === "back"
+    ) &&
+    !(
+        session.state === "DOCTOR_MENU_MORE" &&
+        Number(session.doctorMenuTier) === 4
+    ) &&
+    !(
+        normalizedMessage === "9" &&
+        WHATSAPP_NINTH_ITEM_LIST_STATES.indexOf(
+            session.state
+        ) !== -1
+    )
+) {
+
+    if (session.role === "DOCTOR") {
+
+        goBackInDoctorWhatsAppFlow(
+            ss,
+            senderPhone,
+            session
+        );
+
+    } else {
+
+        goBackInWhatsAppFlow(
+            ss,
+            senderPhone,
+            session
+        );
+    }
+
+    return true;
+}
+
+
+// ======================================================
 
     return false;
 }
@@ -13034,244 +13058,284 @@ function handleWhatsAppDoctorMessage(
         return false;
     }
 
-    // DOCTOR MENU
-    // ======================================================
+// DOCTOR MENU
+// ======================================================
 
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_MENU"
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_MENU"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    if (!doctorId) {
+
+        return true;
+
+    } else if (normalizedMessage === "0") {
+
+        returnDoctorToMenu(
+            ss,
+            senderPhone,
+            doctorId
+        );
+
+    } else if (
+        normalizedMessage === "menu_more" ||
+        normalizedMessage === "more" ||
+        normalizedMessage === "3"
     ) {
 
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
+        showDoctorMenuMoreTier(
+            ss,
+            senderPhone,
+            doctorId,
+            1,
+            ""
+        );
 
-        if (!doctorId) {
+    } else if (
+        handleDoctorPortalMenuChoice(
+            ss,
+            senderPhone,
+            doctorId,
+            normalizedMessage
+        )
+    ) {
 
-            return true;
+        // handled
 
-        } else if (normalizedMessage === "0") {
+    } else {
 
-            returnDoctorToMenu(
-                ss,
-                senderPhone,
-                doctorId
-            );
+        returnDoctorToMenu(
+            ss,
+            senderPhone,
+            doctorId,
+            "❌ Invalid option."
+        );
+    }
 
-        } else if (
-            normalizedMessage === "menu_more" ||
-            normalizedMessage === "more" ||
-            normalizedMessage === "3"
-        ) {
+    return true;
+}
 
-            showDoctorMenuMoreTier(
-                ss,
-                senderPhone,
-                doctorId,
-                1,
-                ""
-            );
 
-        } else if (
-            handleDoctorPortalMenuChoice(
-                ss,
-                senderPhone,
-                doctorId,
-                normalizedMessage
-            )
-        ) {
+// ======================================================
+// DOCTOR MENU → MORE (button sub-menu tiers)
+// ======================================================
 
-            // handled
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_MENU_MORE"
+) {
 
-        } else {
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
 
-            returnDoctorToMenu(
-                ss,
-                senderPhone,
-                doctorId,
-                "❌ Invalid option."
-            );
-        }
-
+    if (!doctorId) {
         return true;
     }
 
-
-    // ======================================================
-    // DOCTOR MENU → MORE (button sub-menu tiers)
-    // ======================================================
+    const tier =
+        Number(session.doctorMenuTier) || 1;
 
     if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_MENU_MORE"
+        normalizedMessage === "menu_more_2" &&
+        tier === 1
     ) {
 
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
+        showDoctorMenuMoreTier(
+            ss,
+            senderPhone,
+            doctorId,
+            2,
+            ""
+        );
 
-        if (!doctorId) {
-            return true;
-        }
+    } else if (
+        normalizedMessage === "menu_more_3" &&
+        tier === 2
+    ) {
 
-        const tier =
-            Number(session.doctorMenuTier) || 1;
+        showDoctorMenuMoreTier(
+            ss,
+            senderPhone,
+            doctorId,
+            3,
+            ""
+        );
 
-        if (
-            normalizedMessage === "menu_more_2" &&
-            tier === 1
-        ) {
+    } else if (
+        normalizedMessage === "menu_more_4" &&
+        tier === 3
+    ) {
 
-            showDoctorMenuMoreTier(
-                ss,
-                senderPhone,
-                doctorId,
-                2,
-                ""
-            );
+        showDoctorMenuMoreTier(
+            ss,
+            senderPhone,
+            doctorId,
+            4,
+            ""
+        );
 
-        } else if (
-            normalizedMessage === "menu_more_3" &&
-            tier === 2
-        ) {
+    } else if (
+        isDoctorMenuChoiceAllowedForTier(
+            normalizedMessage,
+            tier
+        ) &&
+        handleDoctorPortalMenuChoice(
+            ss,
+            senderPhone,
+            doctorId,
+            normalizedMessage
+        )
+    ) {
 
-            showDoctorMenuMoreTier(
-                ss,
-                senderPhone,
-                doctorId,
-                3,
-                ""
-            );
+        // handled
 
-        } else if (
-            normalizedMessage === "menu_more_4" &&
-            tier === 3
-        ) {
+    } else {
 
-            showDoctorMenuMoreTier(
-                ss,
-                senderPhone,
-                doctorId,
-                4,
-                ""
-            );
+        sendDoctorMainMenuMoreReply(
+            ss,
+            senderPhone,
+            doctorId,
+            tier,
+            "❌ Invalid option."
+        );
+    }
 
-        } else if (
-            isDoctorMenuChoiceAllowedForTier(
-                normalizedMessage,
-                tier
-            ) &&
-            handleDoctorPortalMenuChoice(
-                ss,
-                senderPhone,
-                doctorId,
-                normalizedMessage
-            )
-        ) {
+    return true;
+}
 
-            // handled
 
-        } else {
+// ======================================================
+// DOCTOR — MANAGE AVAILABILITY
+// ======================================================
 
-            sendDoctorMainMenuMoreReply(
-                ss,
-                senderPhone,
-                doctorId,
-                tier,
-                "❌ Invalid option."
-            );
-        }
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_AVAIL_MENU"
+) {
 
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    if (!doctorId) {
         return true;
     }
 
+    const dayName =
+        doctorWeekdayIndexToName(
+            normalizedMessage
+        );
 
-    // ======================================================
-    // DOCTOR — MANAGE AVAILABILITY
-    // ======================================================
+    if (dayName) {
+
+        showDoctorDayAvailabilityMenu(
+            ss,
+            senderPhone,
+            doctorId,
+            dayName
+        );
+
+    } else {
+
+        sendDoctorWeekdayMenuReply(
+            ss,
+            senderPhone,
+            doctorId,
+            "❌ Invalid day."
+        );
+    }
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_AVAIL_DAY_MENU"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const dayName =
+        session.date;
 
     if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_AVAIL_MENU"
+        !doctorId ||
+        !dayName
     ) {
+        return true;
+    }
 
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
+    if (normalizedMessage === "1") {
 
-        if (!doctorId) {
-            return true;
-        }
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "DOCTOR",
+                state: "DOCTOR_AVAIL_START",
+                doctorId: doctorId,
+                date: dayName,
+                time: "",
+                appointmentId: ""
+            }
+        );
 
-        const dayName =
-            doctorWeekdayIndexToName(
-                normalizedMessage
-            );
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "🕐 Enter start time for " +
+            dayName +
+            " (Example: 10:00 AM):"
+        );
 
-        if (dayName) {
+    } else if (normalizedMessage === "2") {
 
-            showDoctorDayAvailabilityMenu(
-                ss,
-                senderPhone,
+        const sessions =
+            getDoctorDayAvailabilitySessions(
                 doctorId,
                 dayName
             );
 
-        } else {
+        if (sessions.length === 0) {
 
-            sendDoctorWeekdayMenuReply(
+            returnToDoctorDayAvailability(
                 ss,
                 senderPhone,
                 doctorId,
-                "❌ Invalid day."
-            );
-        }
-
-        return true;
-    }
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_AVAIL_DAY_MENU"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
+                dayName,
+                "❌ No sessions to remove."
             );
 
-        const dayName =
-            session.date;
-
-        if (
-            !doctorId ||
-            !dayName
-        ) {
-            return true;
-        }
-
-        if (normalizedMessage === "1") {
+        } else {
 
             saveWhatsAppSession(
                 senderPhone,
                 {
                     role: "DOCTOR",
-                    state: "DOCTOR_AVAIL_START",
+                    state: "DOCTOR_AVAIL_REMOVE",
                     doctorId: doctorId,
                     date: dayName,
                     time: "",
@@ -13279,129 +13343,20 @@ function handleWhatsAppDoctorMessage(
                 }
             );
 
-            sendWhatsAppReply(
-                ss,
-                senderPhone,
-                "🕐 Enter start time for " +
-                dayName +
-                " (Example: 10:00 AM):"
-            );
-
-        } else if (normalizedMessage === "2") {
-
-            const sessions =
-                getDoctorDayAvailabilitySessions(
-                    doctorId,
-                    dayName
-                );
-
-            if (sessions.length === 0) {
-
-                returnToDoctorDayAvailability(
-                    ss,
-                    senderPhone,
-                    doctorId,
-                    dayName,
-                    "❌ No sessions to remove."
-                );
-
-            } else {
-
-                saveWhatsAppSession(
-                    senderPhone,
-                    {
-                        role: "DOCTOR",
-                        state: "DOCTOR_AVAIL_REMOVE",
-                        doctorId: doctorId,
-                        date: dayName,
-                        time: "",
-                        appointmentId: ""
-                    }
-                );
-
-                sendDoctorSessionRemoveMenuReply(
-                    ss,
-                    senderPhone,
-                    doctorId,
-                    dayName
-                );
-            }
-
-        } else if (normalizedMessage === "3") {
-
-            const result =
-                clearDoctorDayAvailability(
-                    doctorId,
-                    dayName
-                );
-
-            returnToDoctorDayAvailability(
+            sendDoctorSessionRemoveMenuReply(
                 ss,
                 senderPhone,
                 doctorId,
-                dayName,
-                (result.success ? "✅ " : "❌ ") +
-                result.message
-            );
-
-        } else {
-
-            returnToDoctorDayAvailability(
-                ss,
-                senderPhone,
-                doctorId,
-                dayName,
-                "❌ Invalid option."
+                dayName
             );
         }
 
-        return true;
-    }
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_AVAIL_REMOVE"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        const dayName =
-            session.date;
-
-        if (
-            !doctorId ||
-            !dayName
-        ) {
-            return true;
-        }
-
-        const pick =
-            Number(normalizedMessage);
-
-        if (!Number.isInteger(pick) || pick < 1) {
-
-            returnToDoctorDayAvailability(
-                ss,
-                senderPhone,
-                doctorId,
-                dayName,
-                "❌ Invalid selection."
-            );
-
-            return true;
-        }
+    } else if (normalizedMessage === "3") {
 
         const result =
-            removeDoctorAvailabilitySession(
+            clearDoctorDayAvailability(
                 doctorId,
-                dayName,
-                pick
+                dayName
             );
 
         returnToDoctorDayAvailability(
@@ -13413,131 +13368,277 @@ function handleWhatsAppDoctorMessage(
             result.message
         );
 
+    } else {
+
+        returnToDoctorDayAvailability(
+            ss,
+            senderPhone,
+            doctorId,
+            dayName,
+            "❌ Invalid option."
+        );
+    }
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_AVAIL_REMOVE"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const dayName =
+        session.date;
+
+    if (
+        !doctorId ||
+        !dayName
+    ) {
         return true;
     }
 
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_AVAIL_START"
-    ) {
+    const pick =
+        Number(normalizedMessage);
 
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
+    if (!Number.isInteger(pick) || pick < 1) {
 
-        const dayName =
-            session.date;
-
-        if (
-            !doctorId ||
-            !dayName
-        ) {
-            return true;
-        }
-
-        const startTime =
-            normalizeAvailabilityTimeInput(
-                messageText.trim()
-            );
-
-        if (!startTime) {
-
-            sendWhatsAppReply(
-                ss,
-                senderPhone,
-                "❌ Invalid time format.\n\n" +
-                "Example: 10:00 AM"
-            );
-
-            return true;
-        }
-
-        saveWhatsAppSession(
+        returnToDoctorDayAvailability(
+            ss,
             senderPhone,
-            {
-                role: "DOCTOR",
-                state: "DOCTOR_AVAIL_END",
-                doctorId: doctorId,
-                date: dayName,
-                time: startTime,
-                appointmentId: ""
-            }
+            doctorId,
+            dayName,
+            "❌ Invalid selection."
         );
+
+        return true;
+    }
+
+    const result =
+        removeDoctorAvailabilitySession(
+            doctorId,
+            dayName,
+            pick
+        );
+
+    returnToDoctorDayAvailability(
+        ss,
+        senderPhone,
+        doctorId,
+        dayName,
+        (result.success ? "✅ " : "❌ ") +
+        result.message
+    );
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_AVAIL_START"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const dayName =
+        session.date;
+
+    if (
+        !doctorId ||
+        !dayName
+    ) {
+        return true;
+    }
+
+    const startTime =
+        normalizeAvailabilityTimeInput(
+            messageText.trim()
+        );
+
+    if (!startTime) {
 
         sendWhatsAppReply(
             ss,
             senderPhone,
-            "🕐 Enter end time for " +
-            dayName +
-            " (Example: 2:00 PM):"
+            "❌ Invalid time format.\n\n" +
+            "Example: 10:00 AM"
         );
 
         return true;
     }
 
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_AVAIL_END"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        const dayName =
-            session.date;
-
-        const startTime =
-            session.time;
-
-        if (
-            !doctorId ||
-            !dayName ||
-            !startTime
-        ) {
-            return true;
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "DOCTOR",
+            state: "DOCTOR_AVAIL_END",
+            doctorId: doctorId,
+            date: dayName,
+            time: startTime,
+            appointmentId: ""
         }
+    );
 
-        const endTime =
-            normalizeAvailabilityTimeInput(
-                messageText.trim()
-            );
+    sendWhatsAppReply(
+        ss,
+        senderPhone,
+        "🕐 Enter end time for " +
+        dayName +
+        " (Example: 2:00 PM):"
+    );
 
-        if (!endTime) {
+    return true;
+}
 
-            sendWhatsAppReply(
-                ss,
-                senderPhone,
-                "❌ Invalid time format.\n\n" +
-                "Example: 2:00 PM"
-            );
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_AVAIL_END"
+) {
 
-            return true;
-        }
-
-        saveWhatsAppSession(
+    const doctorId =
+        requireDoctorId(
+            ss,
             senderPhone,
-            {
-                role: "DOCTOR",
-                state: "DOCTOR_AVAIL_CONFIRM",
-                doctorId: doctorId,
-                date: dayName,
-                time: startTime,
-                appointmentId: endTime
-            }
+            session
         );
+
+    const dayName =
+        session.date;
+
+    const startTime =
+        session.time;
+
+    if (
+        !doctorId ||
+        !dayName ||
+        !startTime
+    ) {
+        return true;
+    }
+
+    const endTime =
+        normalizeAvailabilityTimeInput(
+            messageText.trim()
+        );
+
+    if (!endTime) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "❌ Invalid time format.\n\n" +
+            "Example: 2:00 PM"
+        );
+
+        return true;
+    }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "DOCTOR",
+            state: "DOCTOR_AVAIL_CONFIRM",
+            doctorId: doctorId,
+            date: dayName,
+            time: startTime,
+            appointmentId: endTime
+        }
+    );
+
+    sendWhatsAppMenuReply(
+        ss,
+        senderPhone,
+        buildDoctorAvailabilitySessionConfirmMessage(
+            dayName,
+            startTime,
+            endTime
+        ),
+        getConfirmCancelSpec()
+    );
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_AVAIL_CONFIRM"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const dayName =
+        session.date;
+
+    const startTime =
+        session.time;
+
+    const endTime =
+        session.appointmentId;
+
+    if (
+        !doctorId ||
+        !dayName ||
+        !startTime ||
+        !endTime
+    ) {
+        return true;
+    }
+
+    if (isSimpleConfirmYesChoice(normalizedMessage)) {
+
+        const result =
+            addDoctorAvailabilitySession(
+                doctorId,
+                dayName,
+                startTime,
+                endTime
+            );
+
+        returnToDoctorDayAvailability(
+            ss,
+            senderPhone,
+            doctorId,
+            dayName,
+            (result.success ? "✅ " : "❌ ") +
+            result.message
+        );
+
+    } else if (isSimpleConfirmCancelChoice(normalizedMessage)) {
+
+        returnToDoctorDayAvailability(
+            ss,
+            senderPhone,
+            doctorId,
+            dayName,
+            "❌ Session not saved."
+        );
+
+    } else {
 
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
+            "❌ Invalid option.\n\n" +
             buildDoctorAvailabilitySessionConfirmMessage(
                 dayName,
                 startTime,
@@ -13545,367 +13646,113 @@ function handleWhatsAppDoctorMessage(
             ),
             getConfirmCancelSpec()
         );
-
-        return true;
     }
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_AVAIL_CONFIRM"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        const dayName =
-            session.date;
-
-        const startTime =
-            session.time;
-
-        const endTime =
-            session.appointmentId;
-
-        if (
-            !doctorId ||
-            !dayName ||
-            !startTime ||
-            !endTime
-        ) {
-            return true;
-        }
-
-        if (isSimpleConfirmYesChoice(normalizedMessage)) {
-
-            const result =
-                addDoctorAvailabilitySession(
-                    doctorId,
-                    dayName,
-                    startTime,
-                    endTime
-                );
-
-            returnToDoctorDayAvailability(
-                ss,
-                senderPhone,
-                doctorId,
-                dayName,
-                (result.success ? "✅ " : "❌ ") +
-                result.message
-            );
-
-        } else if (isSimpleConfirmCancelChoice(normalizedMessage)) {
-
-            returnToDoctorDayAvailability(
-                ss,
-                senderPhone,
-                doctorId,
-                dayName,
-                "❌ Session not saved."
-            );
-
-        } else {
-
-            sendWhatsAppMenuReply(
-                ss,
-                senderPhone,
-                "❌ Invalid option.\n\n" +
-                buildDoctorAvailabilitySessionConfirmMessage(
-                    dayName,
-                    startTime,
-                    endTime
-                ),
-                getConfirmCancelSpec()
-            );
-        }
-        return true;
-    }
+    return true;
+}
 
 
-    // ======================================================
-    // DOCTOR — CANCEL / RESCHEDULE PATIENT APPOINTMENTS
-    // ======================================================
+// ======================================================
+// DOCTOR — CANCEL / RESCHEDULE PATIENT APPOINTMENTS
+// ======================================================
 
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_CANCEL_SELECT"
-    ) {
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_CANCEL_SELECT"
+) {
 
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        if (!doctorId) {
-            return true;
-        }
-
-        handleDoctorWhatsAppAppointmentListSelection(
+    const doctorId =
+        requireDoctorId(
             ss,
             senderPhone,
-            session,
-            normalizedMessage,
-            {
-                selectLine:
-                    "Select the appointment to cancel:",
-                onChosen: function (chosen) {
-
-                    saveWhatsAppSession(
-                        senderPhone,
-                        {
-                            role: "DOCTOR",
-                            state: "DOCTOR_CANCEL_CONFIRM",
-                            doctorId: doctorId,
-                            appointmentId:
-                                chosen.appointmentId,
-                            patientName:
-                                chosen.patientName
-                        }
-                    );
-
-                    sendWhatsAppMenuReply(
-                        ss,
-                        senderPhone,
-                        buildDoctorCancelConfirmMessage(
-                            chosen
-                        ),
-                        getYesNoConfirmSpec("doctor")
-                    );
-                }
-            }
+            session
         );
 
+    if (!doctorId) {
         return true;
     }
 
+    handleDoctorWhatsAppAppointmentListSelection(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage,
+        {
+            selectLine:
+                "Select the appointment to cancel:",
+            onChosen: function (chosen) {
 
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_CANCEL_CONFIRM"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        if (!doctorId) {
-            return true;
-        }
-
-        if (isYesCancelConfirmChoice(normalizedMessage)) {
-
-            const appointments =
-                getDoctorConfirmedAppointments(
-                    doctorId
-                );
-
-            let chosen = null;
-
-            appointments.forEach(
-                function (appt) {
-
-                    if (
-                        appt.appointmentId ===
-                        session.appointmentId
-                    ) {
-                        chosen = appt;
-                    }
-                }
-            );
-
-            const result =
-                cancelAppointment(
-                    session.appointmentId,
-                    "",
-                    {
-                        authorizedDoctorId:
-                            doctorId
-                    }
-                );
-
-            if (
-                result &&
-                result.success
-            ) {
-
-                if (chosen) {
-                    notifyPatientOfDoctorCancellation(
-                        chosen
-                    );
-                }
-
-                returnDoctorToMenu(
-                    ss,
+                saveWhatsAppSession(
                     senderPhone,
-                    doctorId,
-                    "✅ " + result.message
+                    {
+                        role: "DOCTOR",
+                        state: "DOCTOR_CANCEL_CONFIRM",
+                        doctorId: doctorId,
+                        appointmentId:
+                            chosen.appointmentId,
+                        patientName:
+                            chosen.patientName
+                    }
                 );
-
-            } else {
-
-                const errorMessage =
-                    result && result.message
-                        ? result.message
-                        : "Unable to cancel the appointment.";
 
                 sendWhatsAppMenuReply(
                     ss,
                     senderPhone,
-                    "❌ " + errorMessage,
+                    buildDoctorCancelConfirmMessage(
+                        chosen
+                    ),
                     getYesNoConfirmSpec("doctor")
                 );
             }
-
-        } else if (isNoGoBackConfirmChoice(normalizedMessage)) {
-
-            returnDoctorToMenu(
-                ss,
-                senderPhone,
-                doctorId,
-                "👍 Okay, appointment was not cancelled."
-            );
-
-        } else {
-
-            sendWhatsAppMenuReply(
-                ss,
-                senderPhone,
-                "❌ Invalid option.",
-                getYesNoConfirmSpec("doctor")
-            );
         }
+    );
 
+    return true;
+}
+
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_CANCEL_CONFIRM"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    if (!doctorId) {
         return true;
     }
 
+    if (isYesCancelConfirmChoice(normalizedMessage)) {
 
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_STATUS_SELECT"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
+        const appointments =
+            getDoctorConfirmedAppointments(
+                doctorId
             );
 
-        if (!doctorId) {
-            return true;
-        }
+        let chosen = null;
 
-        handleDoctorWhatsAppAppointmentListSelection(
-            ss,
-            senderPhone,
-            session,
-            normalizedMessage,
-            {
-                selectLine:
-                    "Select the appointment to update:",
-                getAppointments: function () {
-                    return getDoctorStatusEligibleAppointments(
-                        doctorId
-                    );
-                },
-                onChosen: function (chosen) {
+        appointments.forEach(
+            function (appt) {
 
-                    saveWhatsAppSession(
-                        senderPhone,
-                        {
-                            role: "DOCTOR",
-                            state: "DOCTOR_STATUS_ACTION",
-                            doctorId: doctorId,
-                            appointmentId:
-                                chosen.appointmentId,
-                            patientName:
-                                chosen.patientName,
-                            date: chosen.date,
-                            time: chosen.time
-                        }
-                    );
-
-                    sendWhatsAppMenuReply(
-                        ss,
-                        senderPhone,
-                        buildDoctorStatusActionMessage(
-                            chosen
-                        ),
-                        getDoctorStatusActionSpec()
-                    );
+                if (
+                    appt.appointmentId ===
+                    session.appointmentId
+                ) {
+                    chosen = appt;
                 }
             }
         );
 
-        return true;
-    }
-
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_STATUS_ACTION"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        if (!doctorId) {
-            return true;
-        }
-
-        if (normalizedMessage === "0") {
-
-            returnDoctorToMenu(
-                ss,
-                senderPhone,
-                doctorId
-            );
-
-            return true;
-        }
-
-        let targetStatus = "";
-
-        if (isStatusCompletedChoice(normalizedMessage)) {
-            targetStatus =
-                APPOINTMENT_STATUS.COMPLETED;
-        } else if (isStatusNoShowChoice(normalizedMessage)) {
-            targetStatus =
-                APPOINTMENT_STATUS.NO_SHOW;
-        } else {
-
-            sendWhatsAppMenuReply(
-                ss,
-                senderPhone,
-                "❌ Invalid option.",
-                getDoctorStatusActionSpec()
-            );
-
-            return true;
-        }
-
         const result =
-            updateAppointmentStatus(
+            cancelAppointment(
                 session.appointmentId,
-                targetStatus,
+                "",
                 {
                     authorizedDoctorId:
                         doctorId
@@ -13916,6 +13763,12 @@ function handleWhatsAppDoctorMessage(
             result &&
             result.success
         ) {
+
+            if (chosen) {
+                notifyPatientOfDoctorCancellation(
+                    chosen
+                );
+            }
 
             returnDoctorToMenu(
                 ss,
@@ -13929,466 +13782,494 @@ function handleWhatsAppDoctorMessage(
             const errorMessage =
                 result && result.message
                     ? result.message
-                    : "Unable to update appointment status.";
+                    : "Unable to cancel the appointment.";
 
             sendWhatsAppMenuReply(
                 ss,
                 senderPhone,
                 "❌ " + errorMessage,
-                getDoctorStatusActionSpec()
+                getYesNoConfirmSpec("doctor")
             );
         }
 
-        return true;
-    }
+    } else if (isNoGoBackConfirmChoice(normalizedMessage)) {
 
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_RESCHEDULE_SELECT"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        if (!doctorId) {
-            return true;
-        }
-
-        handleDoctorWhatsAppAppointmentListSelection(
+        returnDoctorToMenu(
             ss,
             senderPhone,
-            session,
-            normalizedMessage,
-            {
-                selectLine:
-                    "Select the appointment to reschedule:",
-                onChosen: function (chosen) {
-
-                    beginDoctorRescheduleDateSelection(
-                        ss,
-                        senderPhone,
-                        doctorId,
-                        chosen
-                    );
-                }
-            }
+            doctorId,
+            "👍 Okay, appointment was not cancelled."
         );
 
-        return true;
-    }
+    } else {
 
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_RESCHEDULE_DATE"
-    ) {
-
-        handleWhatsAppDateMenuInput(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            session.doctorId,
-            normalizedMessage,
-            "DOCTOR_RESCHEDULE_TIME",
-            "DOCTOR_RESCHEDULE_DATE_CUSTOM",
-            true
+            "❌ Invalid option.",
+            getYesNoConfirmSpec("doctor")
         );
-
-        return true;
     }
 
+    return true;
+}
 
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_RESCHEDULE_DATE_CUSTOM"
-    ) {
 
-        handleWhatsAppCustomDateInput(
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_STATUS_SELECT"
+) {
+
+    const doctorId =
+        requireDoctorId(
             ss,
             senderPhone,
-            session.doctorId,
-            messageText,
-            "DOCTOR_RESCHEDULE_TIME"
+            session
         );
 
+    if (!doctorId) {
         return true;
     }
 
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_RESCHEDULE_TIME"
-    ) {
-
-        handleDoctorWhatsAppRescheduleTimeState(
-            ss,
-            senderPhone,
-            session,
-            normalizedMessage
-        );
-
-        return true;
-    }
-
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_RESCHEDULE_CONFIRM"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        if (!doctorId) {
-            return true;
-        }
-
-        if (
-            normalizedMessage === "1" ||
-            normalizedMessage === "confirm_yes"
-        ) {
-
-            if (
-                !session.appointmentId ||
-                !session.date ||
-                !session.time
-            ) {
-
-                returnDoctorToMenu(
-                    ss,
-                    senderPhone,
-                    doctorId,
-                    "❌ Doctor session expired.\n\n" +
-                    "Please send Hi to open the Doctor Portal again."
-                );
-
-                return true;
-            }
-
-            const appointments =
-                getDoctorConfirmedAppointments(
+    handleDoctorWhatsAppAppointmentListSelection(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage,
+        {
+            selectLine:
+                "Select the appointment to update:",
+            getAppointments: function () {
+                return getDoctorStatusEligibleAppointments(
                     doctorId
                 );
-
-            let chosen = null;
-
-            appointments.forEach(
-                function (appt) {
-
-                    if (
-                        appt.appointmentId ===
-                        session.appointmentId
-                    ) {
-                        chosen = appt;
-                    }
-                }
-            );
-
-            const result =
-                rescheduleAppointment(
-                    session.appointmentId,
-                    "",
-                    session.date,
-                    session.time,
-                    {
-                        authorizedDoctorId:
-                            doctorId
-                    }
-                );
-
-            if (
-                result &&
-                result.success
-            ) {
-
-                if (chosen) {
-                    notifyPatientOfDoctorReschedule(
-                        chosen,
-                        result
-                    );
-                }
-
-                returnDoctorToMenu(
-                    ss,
-                    senderPhone,
-                    doctorId,
-                    "✅ Appointment rescheduled!\n\n" +
-                    "👤 Patient: " +
-                    (
-                        session.patientName ||
-                        chosen &&
-                        chosen.patientName ||
-                        ""
-                    ) +
-                    "\n" +
-                    "📅 " +
-                    result.date +
-                    "\n" +
-                    "🕐 " +
-                    result.time
-                );
-
-            } else {
-
-                const errorMessage =
-                    result && result.message
-                        ? result.message
-                        : "Unable to reschedule the appointment.";
-
-                sendWhatsAppMenuReply(
-                    ss,
-                    senderPhone,
-                    "❌ " + errorMessage,
-                    getRescheduleConfirmSpec()
-                );
-            }
-
-        } else if (
-            normalizedMessage === "2" ||
-            normalizedMessage === "confirm_other_time"
-        ) {
-
-            if (
-                !session.doctorId ||
-                !session.date
-            ) {
-
-                returnDoctorToMenu(
-                    ss,
-                    senderPhone,
-                    doctorId,
-                    "❌ Doctor session expired.\n\n" +
-                    "Please send Hi to open the Doctor Portal again."
-                );
-
-                return true;
-            }
-
-            whatsAppShowSlotsForDate(
-                ss,
-                senderPhone,
-                session.doctorId,
-                session.date,
-                "DOCTOR_RESCHEDULE_TIME"
-            );
-
-        } else if (
-            normalizedMessage === "3" ||
-            normalizedMessage === "confirm_cancel"
-        ) {
-
-            returnDoctorToMenu(
-                ss,
-                senderPhone,
-                doctorId,
-                "❌ Reschedule cancelled."
-            );
-
-        } else {
-
-            sendWhatsAppMenuReply(
-                ss,
-                senderPhone,
-                "❌ Invalid option.\n\n" +
-                buildDoctorRescheduleSlotConfirmMessage(
-                    session,
-                    session.date,
-                    session.time
-                ),
-                getRescheduleConfirmSpec()
-            );
-        }
-
-        return true;
-    }
-
-
-    // ======================================================
-    // DOCTOR — MANAGE LEAVES
-    // ======================================================
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_LEAVE_MENU"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        if (!doctorId) {
-            return true;
-        }
-
-        if (normalizedMessage === "1") {
-
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    role: "DOCTOR",
-                    state: "DOCTOR_LEAVE_DATE",
-                    doctorId: doctorId,
-                    date: "",
-                    time: "",
-                    appointmentId: ""
-                }
-            );
-
-            sendWhatsAppReply(
-                ss,
-                senderPhone,
-                "📅 Enter leave date (YYYY-MM-DD):\n\n" +
-                "Example:\n2026-08-25"
-            );
-
-        } else if (normalizedMessage === "2") {
-
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    role: "DOCTOR",
-                    state: "DOCTOR_LEAVE_LIST",
-                    doctorId: doctorId,
-                    date: "",
-                    time: "",
-                    appointmentId: ""
-                }
-            );
-
-            returnDoctorToMenu(
-                ss,
-                senderPhone,
-                doctorId,
-                formatDoctorUpcomingLeaves(
-                    doctorId
-                )
-            );
-
-        } else if (normalizedMessage === "3") {
-
-            const leaves =
-                getDoctorUpcomingLeaves(
-                    doctorId
-                );
-
-            if (leaves.length === 0) {
-
-                returnDoctorToMenu(
-                    ss,
-                    senderPhone,
-                    doctorId,
-                    "No upcoming leaves to cancel."
-                );
-
-            } else {
+            },
+            onChosen: function (chosen) {
 
                 saveWhatsAppSession(
                     senderPhone,
                     {
                         role: "DOCTOR",
-                        state: "DOCTOR_LEAVE_CANCEL_PICK",
+                        state: "DOCTOR_STATUS_ACTION",
                         doctorId: doctorId,
-                        date: "",
-                        time: "",
-                        appointmentId: ""
+                        appointmentId:
+                            chosen.appointmentId,
+                        patientName:
+                            chosen.patientName,
+                        date: chosen.date,
+                        time: chosen.time
                     }
                 );
 
-                sendDoctorLeaveCancelListMenuReply(
+                sendWhatsAppMenuReply(
                     ss,
                     senderPhone,
-                    doctorId
+                    buildDoctorStatusActionMessage(
+                        chosen
+                    ),
+                    getDoctorStatusActionSpec()
                 );
             }
-
-        } else if (normalizedMessage === "4") {
-
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    role: "DOCTOR",
-                    state: "DOCTOR_LEAVE_RANGE_START",
-                    doctorId: doctorId,
-                    date: "",
-                    time: "",
-                    appointmentId: ""
-                }
-            );
-
-            sendWhatsAppReply(
-                ss,
-                senderPhone,
-                "📅 Enter range start date (YYYY-MM-DD):"
-            );
-
-        } else {
-
-            sendDoctorLeavesMenuReply(
-                ss,
-                senderPhone,
-                "❌ Invalid option."
-            );
         }
+    );
+
+    return true;
+}
+
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_STATUS_ACTION"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    if (!doctorId) {
+        return true;
+    }
+
+    if (normalizedMessage === "0") {
+
+        returnDoctorToMenu(
+            ss,
+            senderPhone,
+            doctorId
+        );
 
         return true;
     }
 
+    let targetStatus = "";
+
+    if (isStatusCompletedChoice(normalizedMessage)) {
+        targetStatus =
+            APPOINTMENT_STATUS.COMPLETED;
+    } else if (isStatusNoShowChoice(normalizedMessage)) {
+        targetStatus =
+            APPOINTMENT_STATUS.NO_SHOW;
+    } else {
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            "❌ Invalid option.",
+            getDoctorStatusActionSpec()
+        );
+
+        return true;
+    }
+
+    const result =
+        updateAppointmentStatus(
+            session.appointmentId,
+            targetStatus,
+            {
+                authorizedDoctorId:
+                    doctorId
+            }
+        );
+
     if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_LEAVE_DATE"
+        result &&
+        result.success
     ) {
 
-        const doctorId =
-            requireDoctorId(
+        returnDoctorToMenu(
+            ss,
+            senderPhone,
+            doctorId,
+            "✅ " + result.message
+        );
+
+    } else {
+
+        const errorMessage =
+            result && result.message
+                ? result.message
+                : "Unable to update appointment status.";
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            "❌ " + errorMessage,
+            getDoctorStatusActionSpec()
+        );
+    }
+
+    return true;
+}
+
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_RESCHEDULE_SELECT"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    if (!doctorId) {
+        return true;
+    }
+
+    handleDoctorWhatsAppAppointmentListSelection(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage,
+        {
+            selectLine:
+                "Select the appointment to reschedule:",
+            onChosen: function (chosen) {
+
+                beginDoctorRescheduleDateSelection(
+                    ss,
+                    senderPhone,
+                    doctorId,
+                    chosen
+                );
+            }
+        }
+    );
+
+    return true;
+}
+
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_RESCHEDULE_DATE"
+) {
+
+    handleWhatsAppDateMenuInput(
+        ss,
+        senderPhone,
+        session.doctorId,
+        normalizedMessage,
+        "DOCTOR_RESCHEDULE_TIME",
+        "DOCTOR_RESCHEDULE_DATE_CUSTOM",
+        true
+    );
+
+    return true;
+}
+
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_RESCHEDULE_DATE_CUSTOM"
+) {
+
+    handleWhatsAppCustomDateInput(
+        ss,
+        senderPhone,
+        session.doctorId,
+        messageText,
+        "DOCTOR_RESCHEDULE_TIME"
+    );
+
+    return true;
+}
+
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_RESCHEDULE_TIME"
+) {
+
+    handleDoctorWhatsAppRescheduleTimeState(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage
+    );
+
+    return true;
+}
+
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_RESCHEDULE_CONFIRM"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    if (!doctorId) {
+        return true;
+    }
+
+    if (
+        normalizedMessage === "1" ||
+        normalizedMessage === "confirm_yes"
+    ) {
+
+        if (
+            !session.appointmentId ||
+            !session.date ||
+            !session.time
+        ) {
+
+            returnDoctorToMenu(
                 ss,
                 senderPhone,
-                session
+                doctorId,
+                "❌ Doctor session expired.\n\n" +
+                "Please send Hi to open the Doctor Portal again."
             );
 
-        const leaveDate =
-            messageText.trim();
-
-        if (!doctorId) {
             return true;
         }
 
-        if (!isValidISODate(leaveDate)) {
+        const appointments =
+            getDoctorConfirmedAppointments(
+                doctorId
+            );
 
-            sendWhatsAppReply(
+        let chosen = null;
+
+        appointments.forEach(
+            function (appt) {
+
+                if (
+                    appt.appointmentId ===
+                    session.appointmentId
+                ) {
+                    chosen = appt;
+                }
+            }
+        );
+
+        const result =
+            rescheduleAppointment(
+                session.appointmentId,
+                "",
+                session.date,
+                session.time,
+                {
+                    authorizedDoctorId:
+                        doctorId
+                }
+            );
+
+        if (
+            result &&
+            result.success
+        ) {
+
+            if (chosen) {
+                notifyPatientOfDoctorReschedule(
+                    chosen,
+                    result
+                );
+            }
+
+            returnDoctorToMenu(
                 ss,
                 senderPhone,
-                "❌ Invalid date.\n\n" +
-                "Use YYYY-MM-DD format."
+                doctorId,
+                "✅ Appointment rescheduled!\n\n" +
+                "👤 Patient: " +
+                (
+                    session.patientName ||
+                    chosen &&
+                    chosen.patientName ||
+                    ""
+                ) +
+                "\n" +
+                "📅 " +
+                result.date +
+                "\n" +
+                "🕐 " +
+                result.time
+            );
+
+        } else {
+
+            const errorMessage =
+                result && result.message
+                    ? result.message
+                    : "Unable to reschedule the appointment.";
+
+            sendWhatsAppMenuReply(
+                ss,
+                senderPhone,
+                "❌ " + errorMessage,
+                getRescheduleConfirmSpec()
+            );
+        }
+
+    } else if (
+        normalizedMessage === "2" ||
+        normalizedMessage === "confirm_other_time"
+    ) {
+
+        if (
+            !session.doctorId ||
+            !session.date
+        ) {
+
+            returnDoctorToMenu(
+                ss,
+                senderPhone,
+                doctorId,
+                "❌ Doctor session expired.\n\n" +
+                "Please send Hi to open the Doctor Portal again."
             );
 
             return true;
         }
+
+        whatsAppShowSlotsForDate(
+            ss,
+            senderPhone,
+            session.doctorId,
+            session.date,
+            "DOCTOR_RESCHEDULE_TIME"
+        );
+
+    } else if (
+        normalizedMessage === "3" ||
+        normalizedMessage === "confirm_cancel"
+    ) {
+
+        returnDoctorToMenu(
+            ss,
+            senderPhone,
+            doctorId,
+            "❌ Reschedule cancelled."
+        );
+
+    } else {
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            "❌ Invalid option.\n\n" +
+            buildDoctorRescheduleSlotConfirmMessage(
+                session,
+                session.date,
+                session.time
+            ),
+            getRescheduleConfirmSpec()
+        );
+    }
+
+    return true;
+}
+
+
+// ======================================================
+// DOCTOR — MANAGE LEAVES
+// ======================================================
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_LEAVE_MENU"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    if (!doctorId) {
+        return true;
+    }
+
+    if (normalizedMessage === "1") {
 
         saveWhatsAppSession(
             senderPhone,
             {
                 role: "DOCTOR",
-                state: "DOCTOR_LEAVE_REASON",
+                state: "DOCTOR_LEAVE_DATE",
                 doctorId: doctorId,
-                date: leaveDate,
+                date: "",
                 time: "",
                 appointmentId: ""
             }
@@ -14397,180 +14278,242 @@ function handleWhatsAppDoctorMessage(
         sendWhatsAppReply(
             ss,
             senderPhone,
-            "📝 Enter reason for leave (optional).\n\n" +
-            "Reply with text or send - to skip."
+            "📅 Enter leave date (YYYY-MM-DD):\n\n" +
+            "Example:\n2026-08-25"
         );
 
-        return true;
-    }
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_LEAVE_REASON"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        const leaveDate =
-            session.date;
-
-        if (
-            !doctorId ||
-            !leaveDate
-        ) {
-            return true;
-        }
-
-        const reason =
-            normalizedMessage === "-"
-                ? ""
-                : messageText.trim();
+    } else if (normalizedMessage === "2") {
 
         saveWhatsAppSession(
             senderPhone,
             {
                 role: "DOCTOR",
-                state: "DOCTOR_LEAVE_CONFIRM",
+                state: "DOCTOR_LEAVE_LIST",
                 doctorId: doctorId,
-                date: leaveDate,
-                time: reason,
+                date: "",
+                time: "",
                 appointmentId: ""
             }
         );
 
-        sendWhatsAppMenuReply(
+        returnDoctorToMenu(
             ss,
             senderPhone,
-            buildDoctorLeaveConfirmMessage(
-                leaveDate,
-                reason
-            ),
-            getConfirmCancelSpec()
+            doctorId,
+            formatDoctorUpcomingLeaves(
+                doctorId
+            )
         );
 
-        return true;
-    }
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_LEAVE_CONFIRM"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        const leaveDate =
-            session.date;
-
-        const reason =
-            session.time;
-
-        if (
-            !doctorId ||
-            !leaveDate
-        ) {
-            return true;
-        }
-
-        if (isSimpleConfirmYesChoice(normalizedMessage)) {
-
-            const result =
-                addDoctorLeave(
-                    doctorId,
-                    leaveDate,
-                    reason
-                );
-
-            returnDoctorToMenu(
-                ss,
-                senderPhone,
-                doctorId,
-                (result.success ? "✅ " : "❌ ") +
-                result.message
-            );
-
-        } else if (isSimpleConfirmCancelChoice(normalizedMessage)) {
-
-            returnDoctorToMenu(
-                ss,
-                senderPhone,
-                doctorId,
-                "❌ Leave not saved."
-            );
-
-        } else {
-
-            sendWhatsAppMenuReply(
-                ss,
-                senderPhone,
-                "❌ Invalid option.\n\n" +
-                buildDoctorLeaveConfirmMessage(
-                    leaveDate,
-                    reason
-                ),
-                getConfirmCancelSpec()
-            );
-        }
-
-        return true;
-    }
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_LEAVE_CANCEL_PICK"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        if (!doctorId) {
-            return true;
-        }
+    } else if (normalizedMessage === "3") {
 
         const leaves =
             getDoctorUpcomingLeaves(
                 doctorId
             );
 
-        const pick =
-            Number(normalizedMessage);
+        if (leaves.length === 0) {
 
-        if (
-            !Number.isInteger(pick) ||
-            pick < 1 ||
-            pick > leaves.length
-        ) {
+            returnDoctorToMenu(
+                ss,
+                senderPhone,
+                doctorId,
+                "No upcoming leaves to cancel."
+            );
+
+        } else {
+
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    role: "DOCTOR",
+                    state: "DOCTOR_LEAVE_CANCEL_PICK",
+                    doctorId: doctorId,
+                    date: "",
+                    time: "",
+                    appointmentId: ""
+                }
+            );
 
             sendDoctorLeaveCancelListMenuReply(
                 ss,
                 senderPhone,
-                doctorId,
-                "❌ Invalid selection."
+                doctorId
             );
-
-            return true;
         }
 
+    } else if (normalizedMessage === "4") {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "DOCTOR",
+                state: "DOCTOR_LEAVE_RANGE_START",
+                doctorId: doctorId,
+                date: "",
+                time: "",
+                appointmentId: ""
+            }
+        );
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "📅 Enter range start date (YYYY-MM-DD):"
+        );
+
+    } else {
+
+        sendDoctorLeavesMenuReply(
+            ss,
+            senderPhone,
+            "❌ Invalid option."
+        );
+    }
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_LEAVE_DATE"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const leaveDate =
+        messageText.trim();
+
+    if (!doctorId) {
+        return true;
+    }
+
+    if (!isValidISODate(leaveDate)) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "❌ Invalid date.\n\n" +
+            "Use YYYY-MM-DD format."
+        );
+
+        return true;
+    }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "DOCTOR",
+            state: "DOCTOR_LEAVE_REASON",
+            doctorId: doctorId,
+            date: leaveDate,
+            time: "",
+            appointmentId: ""
+        }
+    );
+
+    sendWhatsAppReply(
+        ss,
+        senderPhone,
+        "📝 Enter reason for leave (optional).\n\n" +
+        "Reply with text or send - to skip."
+    );
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_LEAVE_REASON"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const leaveDate =
+        session.date;
+
+    if (
+        !doctorId ||
+        !leaveDate
+    ) {
+        return true;
+    }
+
+    const reason =
+        normalizedMessage === "-"
+            ? ""
+            : messageText.trim();
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "DOCTOR",
+            state: "DOCTOR_LEAVE_CONFIRM",
+            doctorId: doctorId,
+            date: leaveDate,
+            time: reason,
+            appointmentId: ""
+        }
+    );
+
+    sendWhatsAppMenuReply(
+        ss,
+        senderPhone,
+        buildDoctorLeaveConfirmMessage(
+            leaveDate,
+            reason
+        ),
+        getConfirmCancelSpec()
+    );
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_LEAVE_CONFIRM"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const leaveDate =
+        session.date;
+
+    const reason =
+        session.time;
+
+    if (
+        !doctorId ||
+        !leaveDate
+    ) {
+        return true;
+    }
+
+    if (isSimpleConfirmYesChoice(normalizedMessage)) {
+
         const result =
-            deactivateDoctorLeave(
+            addDoctorLeave(
                 doctorId,
-                leaves[pick - 1].date
+                leaveDate,
+                reason
             );
 
         returnDoctorToMenu(
@@ -14581,180 +14524,335 @@ function handleWhatsAppDoctorMessage(
             result.message
         );
 
-        return true;
-    }
+    } else if (isSimpleConfirmCancelChoice(normalizedMessage)) {
 
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_LEAVE_RANGE_START"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        const startDate =
-            messageText.trim();
-
-        if (!doctorId) {
-            return true;
-        }
-
-        if (!isValidISODate(startDate)) {
-
-            sendWhatsAppReply(
-                ss,
-                senderPhone,
-                "❌ Invalid date.\n\n" +
-                "Use YYYY-MM-DD format."
-            );
-
-            return true;
-        }
-
-        saveWhatsAppSession(
-            senderPhone,
-            {
-                role: "DOCTOR",
-                state: "DOCTOR_LEAVE_RANGE_END",
-                doctorId: doctorId,
-                date: startDate,
-                time: "",
-                appointmentId: ""
-            }
-        );
-
-        sendWhatsAppReply(
+        returnDoctorToMenu(
             ss,
             senderPhone,
-            "📅 Enter range end date (YYYY-MM-DD):"
+            doctorId,
+            "❌ Leave not saved."
         );
 
-        return true;
-    }
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_LEAVE_RANGE_END"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        const startDate =
-            session.date;
-
-        const endDate =
-            messageText.trim();
-
-        if (
-            !doctorId ||
-            !startDate
-        ) {
-            return true;
-        }
-
-        if (!isValidISODate(endDate)) {
-
-            sendWhatsAppReply(
-                ss,
-                senderPhone,
-                "❌ Invalid date.\n\n" +
-                "Use YYYY-MM-DD format."
-            );
-
-            return true;
-        }
-
-        if (endDate < startDate) {
-
-            sendWhatsAppReply(
-                ss,
-                senderPhone,
-                "❌ End date must be on or after start date."
-            );
-
-            return true;
-        }
-
-        saveWhatsAppSession(
-            senderPhone,
-            {
-                role: "DOCTOR",
-                state: "DOCTOR_LEAVE_RANGE_REASON",
-                doctorId: doctorId,
-                date: startDate,
-                time: endDate,
-                appointmentId: ""
-            }
-        );
-
-        sendWhatsAppReply(
-            ss,
-            senderPhone,
-            "📝 Enter reason for leave range (optional).\n\n" +
-            "Reply with text or send - to skip."
-        );
-
-        return true;
-    }
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_LEAVE_RANGE_REASON"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        const startDate =
-            session.date;
-
-        const endDate =
-            session.time;
-
-        if (
-            !doctorId ||
-            !startDate ||
-            !endDate
-        ) {
-            return true;
-        }
-
-        const reason =
-            normalizedMessage === "-"
-                ? ""
-                : messageText.trim();
-
-        saveWhatsAppSession(
-            senderPhone,
-            {
-                role: "DOCTOR",
-                state: "DOCTOR_LEAVE_RANGE_CONFIRM",
-                doctorId: doctorId,
-                date: startDate,
-                time: endDate,
-                appointmentId: reason
-            }
-        );
+    } else {
 
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
+            "❌ Invalid option.\n\n" +
+            buildDoctorLeaveConfirmMessage(
+                leaveDate,
+                reason
+            ),
+            getConfirmCancelSpec()
+        );
+    }
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_LEAVE_CANCEL_PICK"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    if (!doctorId) {
+        return true;
+    }
+
+    const leaves =
+        getDoctorUpcomingLeaves(
+            doctorId
+        );
+
+    const pick =
+        Number(normalizedMessage);
+
+    if (
+        !Number.isInteger(pick) ||
+        pick < 1 ||
+        pick > leaves.length
+    ) {
+
+        sendDoctorLeaveCancelListMenuReply(
+            ss,
+            senderPhone,
+            doctorId,
+            "❌ Invalid selection."
+        );
+
+        return true;
+    }
+
+    const result =
+        deactivateDoctorLeave(
+            doctorId,
+            leaves[pick - 1].date
+        );
+
+    returnDoctorToMenu(
+        ss,
+        senderPhone,
+        doctorId,
+        (result.success ? "✅ " : "❌ ") +
+        result.message
+    );
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_LEAVE_RANGE_START"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const startDate =
+        messageText.trim();
+
+    if (!doctorId) {
+        return true;
+    }
+
+    if (!isValidISODate(startDate)) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "❌ Invalid date.\n\n" +
+            "Use YYYY-MM-DD format."
+        );
+
+        return true;
+    }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "DOCTOR",
+            state: "DOCTOR_LEAVE_RANGE_END",
+            doctorId: doctorId,
+            date: startDate,
+            time: "",
+            appointmentId: ""
+        }
+    );
+
+    sendWhatsAppReply(
+        ss,
+        senderPhone,
+        "📅 Enter range end date (YYYY-MM-DD):"
+    );
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_LEAVE_RANGE_END"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const startDate =
+        session.date;
+
+    const endDate =
+        messageText.trim();
+
+    if (
+        !doctorId ||
+        !startDate
+    ) {
+        return true;
+    }
+
+    if (!isValidISODate(endDate)) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "❌ Invalid date.\n\n" +
+            "Use YYYY-MM-DD format."
+        );
+
+        return true;
+    }
+
+    if (endDate < startDate) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "❌ End date must be on or after start date."
+        );
+
+        return true;
+    }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "DOCTOR",
+            state: "DOCTOR_LEAVE_RANGE_REASON",
+            doctorId: doctorId,
+            date: startDate,
+            time: endDate,
+            appointmentId: ""
+        }
+    );
+
+    sendWhatsAppReply(
+        ss,
+        senderPhone,
+        "📝 Enter reason for leave range (optional).\n\n" +
+        "Reply with text or send - to skip."
+    );
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_LEAVE_RANGE_REASON"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const startDate =
+        session.date;
+
+    const endDate =
+        session.time;
+
+    if (
+        !doctorId ||
+        !startDate ||
+        !endDate
+    ) {
+        return true;
+    }
+
+    const reason =
+        normalizedMessage === "-"
+            ? ""
+            : messageText.trim();
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "DOCTOR",
+            state: "DOCTOR_LEAVE_RANGE_CONFIRM",
+            doctorId: doctorId,
+            date: startDate,
+            time: endDate,
+            appointmentId: reason
+        }
+    );
+
+    sendWhatsAppMenuReply(
+        ss,
+        senderPhone,
+        buildDoctorLeaveRangeConfirmMessage(
+            startDate,
+            endDate,
+            reason
+        ),
+        getConfirmCancelSpec()
+    );
+
+    return true;
+}
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_LEAVE_RANGE_CONFIRM"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const startDate =
+        session.date;
+
+    const endDate =
+        session.time;
+
+    const reason =
+        session.appointmentId;
+
+    if (
+        !doctorId ||
+        !startDate ||
+        !endDate
+    ) {
+        return true;
+    }
+
+    if (isSimpleConfirmYesChoice(normalizedMessage)) {
+
+        const result =
+            addDoctorLeaveRange(
+                doctorId,
+                startDate,
+                endDate,
+                reason
+            );
+
+        returnDoctorToMenu(
+            ss,
+            senderPhone,
+            doctorId,
+            (result.success ? "✅ " : "❌ ") +
+            result.message
+        );
+
+    } else if (isSimpleConfirmCancelChoice(normalizedMessage)) {
+
+        returnDoctorToMenu(
+            ss,
+            senderPhone,
+            doctorId,
+            "❌ Leave range not saved."
+        );
+
+    } else {
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            "❌ Invalid option.\n\n" +
             buildDoctorLeaveRangeConfirmMessage(
                 startDate,
                 endDate,
@@ -14762,230 +14860,156 @@ function handleWhatsAppDoctorMessage(
             ),
             getConfirmCancelSpec()
         );
-
-        return true;
     }
-
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_LEAVE_RANGE_CONFIRM"
-    ) {
-
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        const startDate =
-            session.date;
-
-        const endDate =
-            session.time;
-
-        const reason =
-            session.appointmentId;
-
-        if (
-            !doctorId ||
-            !startDate ||
-            !endDate
-        ) {
-            return true;
-        }
-
-        if (isSimpleConfirmYesChoice(normalizedMessage)) {
-
-            const result =
-                addDoctorLeaveRange(
-                    doctorId,
-                    startDate,
-                    endDate,
-                    reason
-                );
-
-            returnDoctorToMenu(
-                ss,
-                senderPhone,
-                doctorId,
-                (result.success ? "✅ " : "❌ ") +
-                result.message
-            );
-
-        } else if (isSimpleConfirmCancelChoice(normalizedMessage)) {
-
-            returnDoctorToMenu(
-                ss,
-                senderPhone,
-                doctorId,
-                "❌ Leave range not saved."
-            );
-
-        } else {
-
-            sendWhatsAppMenuReply(
-                ss,
-                senderPhone,
-                "❌ Invalid option.\n\n" +
-                buildDoctorLeaveRangeConfirmMessage(
-                    startDate,
-                    endDate,
-                    reason
-                ),
-                getConfirmCancelSpec()
-            );
-        }
-        return true;
-    }
+    return true;
+}
 
 
-    // ======================================================
-    // DOCTOR DATE
-    // ======================================================
+// ======================================================
+// DOCTOR DATE
+// ======================================================
 
-    if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_DATE"
-    ) {
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_DATE"
+) {
 
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
-
-        if (!doctorId) {
-
-            return true;
-        }
-
-        const selectedDate =
-            getISODateFromMenuChoice(
-                normalizedMessage
-            );
-
-        if (selectedDate) {
-
-            showDoctorScheduleForDateAndReturn(
-                ss,
-                senderPhone,
-                doctorId,
-                selectedDate
-            );
-
-            return true;
-        }
-
-        if (
-            normalizedMessage === "3" ||
-            normalizedMessage === "date_custom"
-        ) {
-
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    role: "DOCTOR",
-                    state: "DOCTOR_DATE_CUSTOM",
-                    doctorId: doctorId,
-                    date: "",
-                    time: "",
-                    appointmentId: ""
-                }
-            );
-
-            sendWhatsAppMenuReply(
-                ss,
-                senderPhone,
-                buildDoctorScheduleDateEntryPrompt(),
-                {
-                    fallbackText:
-                        buildDoctorScheduleDateEntryPrompt() +
-                        "\n\n" +
-                        "0️⃣ Main Menu\n" +
-                        "9️⃣ Back",
-
-                    interactive:
-                        buildInteractiveButtonSpec([
-                            {
-                                id: "nav_main_menu",
-                                title: "Main Menu"
-                            },
-                            {
-                                id: "nav_back",
-                                title: "Back"
-                            }
-                        ])
-                }
-            );
-
-            return true;
-        }
-
-        sendDateMenuReply(
+    const doctorId =
+        requireDoctorId(
             ss,
             senderPhone,
-            "❌ Invalid option.\n\nChoose a date to view."
+            session
+        );
+
+    if (!doctorId) {
+
+        return true;
+    }
+
+    const selectedDate =
+        getISODateFromMenuChoice(
+            normalizedMessage
+        );
+
+    if (selectedDate) {
+
+        showDoctorScheduleForDateAndReturn(
+            ss,
+            senderPhone,
+            doctorId,
+            selectedDate
         );
 
         return true;
     }
 
-
-    // ======================================================
-    // DOCTOR DATE CUSTOM (manually typed date)
-    // ======================================================
-
     if (
-        session &&
-        session.role === "DOCTOR" &&
-        session.state === "DOCTOR_DATE_CUSTOM"
+        normalizedMessage === "3" ||
+        normalizedMessage === "date_custom"
     ) {
 
-        const doctorId =
-            requireDoctorId(
-                ss,
-                senderPhone,
-                session
-            );
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "DOCTOR",
+                state: "DOCTOR_DATE_CUSTOM",
+                doctorId: doctorId,
+                date: "",
+                time: "",
+                appointmentId: ""
+            }
+        );
 
-        const typedDate =
-            messageText.trim();
+        sendWhatsAppMenuReply(
+    ss,
+    senderPhone,
+    buildDoctorScheduleDateEntryPrompt(),
+    {
+        fallbackText:
+            buildDoctorScheduleDateEntryPrompt() +
+            "\n\n" +
+            "0️⃣ Main Menu\n" +
+            "9️⃣ Back",
 
-        if (!doctorId) {
+        interactive:
+            buildInteractiveButtonSpec([
+                {
+                    id: "nav_main_menu",
+                    title: "Main Menu"
+                },
+                {
+                    id: "nav_back",
+                    title: "Back"
+                }
+            ])
+    }
+);
 
-            return true;
-
-        }
-
-        const dateCheck =
-            validateScheduleViewISODate(typedDate);
-
-        if (!dateCheck.valid) {
-
-            sendCustomDateEntryMenuReply(
-                ss,
-                senderPhone,
-                dateCheck.message
-            );
-
-        } else {
-
-            showDoctorScheduleForDateAndReturn(
-                ss,
-                senderPhone,
-                doctorId,
-                dateCheck.date
-            );
-        }
         return true;
     }
 
+    sendDateMenuReply(
+        ss,
+        senderPhone,
+        "❌ Invalid option.\n\nChoose a date to view."
+    );
 
-    // ======================================================
+    return true;
+}
+
+
+// ======================================================
+// DOCTOR DATE CUSTOM (manually typed date)
+// ======================================================
+
+if (
+    session &&
+    session.role === "DOCTOR" &&
+    session.state === "DOCTOR_DATE_CUSTOM"
+) {
+
+    const doctorId =
+        requireDoctorId(
+            ss,
+            senderPhone,
+            session
+        );
+
+    const typedDate =
+        messageText.trim();
+
+    if (!doctorId) {
+
+        return true;
+
+    }
+
+    const dateCheck =
+        validateScheduleViewISODate(typedDate);
+
+    if (!dateCheck.valid) {
+
+    sendCustomDateEntryMenuReply(
+        ss,
+        senderPhone,
+        dateCheck.message
+    );
+
+    } else {
+
+        showDoctorScheduleForDateAndReturn(
+            ss,
+            senderPhone,
+            doctorId,
+            dateCheck.date
+        );
+    }
+    return true;
+}
+
+
+// ======================================================
 
     return false;
 }
@@ -14999,32 +15023,127 @@ function handleWhatsAppPatientMessage(
     session
 ) {
 
-    // LANGUAGE SELECTION
-    // ======================================================
+// LANGUAGE SELECTION
+// ======================================================
 
-    if (
-        session &&
-        session.state === "LANGUAGE_SELECT"
-    ) {
+if (
+    session &&
+    session.state === "LANGUAGE_SELECT"
+) {
 
-        const languageByChoice = {
-            "1": "EN",
-            "2": "TE",
-            "3": "HI",
-            "4": "KA",
-            "5": "TA",
-            "6": "ML"
-        };
+    const languageByChoice = {
+        "1": "EN",
+        "2": "TE",
+        "3": "HI",
+        "4": "KA",
+        "5": "TA",
+        "6": "ML"
+    };
 
-        const language =
-            languageByChoice[normalizedMessage];
+    const language =
+        languageByChoice[normalizedMessage];
 
-        if (!language) {
+    if (!language) {
 
-            sendLanguageMenuReply(
+        sendLanguageMenuReply(
+            ss,
+            senderPhone,
+            "❌ Invalid option."
+        );
+
+    } else {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                language: language,
+                state: "MAIN_MENU",
+                doctorId: "",
+                date: "",
+                time: "",
+                appointmentId: ""
+            }
+        );
+
+        syncPatientLanguagePreference(
+            senderPhone,
+            language
+        );
+
+        sendPatientMainMenuReply(
+            ss,
+            senderPhone,
+            "👋 Welcome to " + getClinicName()
+        );
+    }
+    return true;
+}
+
+
+// ======================================================
+// LANGUAGE CHANGE
+// ======================================================
+
+if (
+    session &&
+    session.state === "LANGUAGE_CHANGE"
+) {
+
+    const languageByChoice = {
+        "1": "EN",
+        "2": "TE",
+        "3": "HI",
+        "4": "KA",
+        "5": "TA",
+        "6": "ML"
+    };
+
+    const language =
+        languageByChoice[normalizedMessage];
+
+    if (!language) {
+
+        sendLanguageMenuReply(
+            ss,
+            senderPhone,
+            "❌ Invalid option."
+        );
+
+    } else {
+
+        const currentSession =
+            session || {};
+
+        if (
+            currentSession.role ===
+            "DOCTOR"
+        ) {
+
+            const doctorId =
+                resolveDoctorIdFromSession(
+                    senderPhone,
+                    currentSession
+                );
+
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    role: "DOCTOR",
+                    language: language,
+                    state: "DOCTOR_MENU",
+                    doctorId: doctorId,
+                    date: "",
+                    time: "",
+                    appointmentId: ""
+                }
+            );
+
+            returnDoctorToMenu(
                 ss,
                 senderPhone,
-                "❌ Invalid option."
+                doctorId,
+                "✅ Language changed successfully."
             );
 
         } else {
@@ -15050,124 +15169,78 @@ function handleWhatsAppPatientMessage(
             sendPatientMainMenuReply(
                 ss,
                 senderPhone,
-                "👋 Welcome to ABC Clinic!"
+                "✅ Language changed successfully."
             );
         }
-        return true;
     }
+    return true;
+}
 
 
-    // ======================================================
-    // LANGUAGE CHANGE
-    // ======================================================
+// ======================================================
+// MAIN MENU → BOOK APPOINTMENT
+// ======================================================
 
-    if (
-        session &&
-        session.state === "LANGUAGE_CHANGE"
-    ) {
+if (
+    normalizedMessage === "1" &&
+    session &&
+    session.state === "MAIN_MENU"
+) {
 
-        const languageByChoice = {
-            "1": "EN",
-            "2": "TE",
-            "3": "HI",
-            "4": "KA",
-            "5": "TA",
-            "6": "ML"
-        };
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "BOOK_DOCTOR"
+        }
+    );
 
-        const language =
-            languageByChoice[normalizedMessage];
+    sendDoctorSelectionReply(
+        ss,
+        senderPhone
+    );
 
-        if (!language) {
+    return true;
+}
 
-            sendLanguageMenuReply(
-                ss,
-                senderPhone,
-                "❌ Invalid option."
-            );
 
-        } else {
+// ======================================================
+// MAIN MENU → MY APPOINTMENTS
+// ======================================================
 
-            const currentSession =
-                session || {};
+if (
+    normalizedMessage === "2" &&
+    session &&
+    session.state === "MAIN_MENU"
+) {
 
-            if (
-                currentSession.role ===
-                "DOCTOR"
-            ) {
-
-                const doctorId =
-                    resolveDoctorIdFromSession(
-                        senderPhone,
-                        currentSession
-                    );
-
-                saveWhatsAppSession(
-                    senderPhone,
-                    {
-                        role: "DOCTOR",
-                        language: language,
-                        state: "DOCTOR_MENU",
-                        doctorId: doctorId,
-                        date: "",
-                        time: "",
-                        appointmentId: ""
-                    }
-                );
-
-                returnDoctorToMenu(
-                    ss,
-                    senderPhone,
-                    doctorId,
-                    "✅ Language changed successfully."
-                );
-
-            } else {
-
-                saveWhatsAppSession(
-                    senderPhone,
-                    {
-                        role: "PATIENT",
-                        language: language,
-                        state: "MAIN_MENU",
-                        doctorId: "",
-                        date: "",
-                        time: "",
-                        appointmentId: ""
-                    }
-                );
-
-                syncPatientLanguagePreference(
-                    senderPhone,
-                    language
-                );
-
-                sendPatientMainMenuReply(
-                    ss,
-                    senderPhone,
-                    "✅ Language changed successfully."
+    const appointments =
+        getMyAppointments(
+            senderPhone
+        ).filter(
+            function (appt) {
+                return isConfirmedAppointmentStatus(
+                    appt.status
                 );
             }
-        }
-        return true;
-    }
-
-
-    // ======================================================
-    // MAIN MENU → BOOK APPOINTMENT
-    // ======================================================
+        );
 
     if (
-        normalizedMessage === "1" &&
-        session &&
-        session.state === "MAIN_MENU"
+        !appointments ||
+        appointments.length === 0
     ) {
 
+        // No appointments: take the patient directly into the
+        // normal booking flow so they can choose any available doctor.
         saveWhatsAppSession(
             senderPhone,
             {
                 role: "PATIENT",
-                state: "BOOK_DOCTOR"
+                state: "BOOK_DOCTOR",
+                doctorId: "",
+                date: "",
+                time: "",
+                appointmentId: ""
             }
         );
 
@@ -15179,324 +15252,409 @@ function handleWhatsAppPatientMessage(
         return true;
     }
 
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "MY_APPOINTMENTS",
+            apptPage: 0
+        }
+    );
 
-    // ======================================================
-    // MAIN MENU → MY APPOINTMENTS
-    // ======================================================
+    sendPatientAppointmentListMenuReply(
+        ss,
+        senderPhone,
+        "my_appointments",
+        appointments
+    );
 
+    return true;
+}
+
+
+// ======================================================
+// MAIN MENU → MORE (button sub-menu)
+// ======================================================
+
+if (
+    session &&
+    session.state === "MAIN_MENU" &&
+    (
+        normalizedMessage === "menu_more" ||
+        normalizedMessage === "more" ||
+        normalizedMessage === "3"
+    )
+) {
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "PATIENT_MAIN_MORE"
+        }
+    );
+
+    sendPatientMainMoreMenuReply(
+        ss,
+        senderPhone
+    );
+
+    return true;
+}
+
+
+// ======================================================
+// MORE → CANCEL APPOINTMENT
+// ======================================================
+
+if (
+    normalizedMessage === "3" &&
+    session &&
+    session.state === "PATIENT_MAIN_MORE"
+) {
+
+    beginWhatsAppCancelFlow(
+        ss,
+        senderPhone
+    );
+    return true;
+}
+
+
+// ======================================================
+// MAIN MENU / MORE → RESCHEDULE APPOINTMENT
+// ======================================================
+
+if (
+    normalizedMessage === "4" &&
+    session &&
+    (
+        session.state === "MAIN_MENU" ||
+        session.state === "PATIENT_MAIN_MORE"
+    )
+) {
+
+    beginWhatsAppRescheduleFlow(
+        ss,
+        senderPhone
+    );
+    return true;
+}
+
+
+// ======================================================
+// MAIN MENU / MORE → CHANGE LANGUAGE
+// ======================================================
+
+if (
+    normalizedMessage === "5" &&
+    session &&
+    (
+        session.state === "MAIN_MENU" ||
+        session.state === "PATIENT_MAIN_MORE"
+    )
+) {
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "LANGUAGE_CHANGE"
+        }
+    );
+
+    sendLanguageMenuReply(
+        ss,
+        senderPhone
+    );
+    return true;
+}
+
+
+// ======================================================
+// MAIN MORE → UNRECOGNIZED OPTION
+// ======================================================
+
+if (
+    session &&
+    session.state === "PATIENT_MAIN_MORE"
+) {
+
+    sendPatientMainMoreMenuReply(
+        ss,
+        senderPhone,
+        "❌ Invalid option."
+    );
+    return true;
+}
+
+
+// ======================================================
+// MAIN MENU → UNRECOGNIZED OPTION
+// ======================================================
+
+if (
+    session &&
+    session.state === "MAIN_MENU"
+) {
+
+    sendPatientMainMenuReply(
+        ss,
+        senderPhone,
+        "❌ Invalid option."
+    );
+    return true;
+}
+
+
+// ======================================================
+// BOOK_DOCTOR STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "BOOK_DOCTOR"
+) {
+
+    const selection =
+        String(messageText || "").trim();
+
+    const doctors =
+        getDoctors();
+
+    let doctor = null;
+
+    // Interactive WhatsApp doctor selection uses the actual Doctor ID.
     if (
-        normalizedMessage === "2" &&
-        session &&
-        session.state === "MAIN_MENU"
+        selection.indexOf("doctor_select_") === 0
     ) {
-
-        const appointments =
-            getMyAppointments(
-                senderPhone
-            ).filter(
-                function (appt) {
-                    return isConfirmedAppointmentStatus(
-                        appt.status
-                    );
-                }
+        const encodedDoctorId =
+            selection.substring(
+                "doctor_select_".length
             );
 
-        if (
-            !appointments ||
-            appointments.length === 0
-        ) {
+        let selectedDoctorId = "";
 
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    role: "PATIENT",
-                    state: "MAIN_MENU"
-                }
-            );
-
-            sendPatientMainMenuReply(
-                ss,
-                senderPhone,
-                "📋 You have no upcoming appointments."
-            );
-
-            return true;
+        try {
+            selectedDoctorId =
+                decodeURIComponent(
+                    encodedDoctorId
+                );
+        } catch (decodeError) {
+            selectedDoctorId =
+                encodedDoctorId;
         }
 
-        saveWhatsAppSession(
-            senderPhone,
-            {
-                role: "PATIENT",
-                state: "MY_APPOINTMENTS",
-                apptPage: 0
-            }
-        );
+        doctor =
+            doctors.find(
+                function (item) {
+                    return String(
+                        item.doctorId
+                    ).trim() === String(
+                        selectedDoctorId
+                    ).trim();
+                }
+            ) || null;
 
-        sendPatientAppointmentListMenuReply(
-            ss,
-            senderPhone,
-            "my_appointments",
-            appointments
-        );
-
-        return true;
-    }
-
-
-    // ======================================================
-    // MAIN MENU → MORE (button sub-menu)
-    // ======================================================
-
-    if (
-        session &&
-        session.state === "MAIN_MENU" &&
-        (
-            normalizedMessage === "menu_more" ||
-            normalizedMessage === "more" ||
-            normalizedMessage === "3"
-        )
-    ) {
-
-        saveWhatsAppSession(
-            senderPhone,
-            {
-                role: "PATIENT",
-                state: "PATIENT_MAIN_MORE"
-            }
-        );
-
-        sendPatientMainMoreMenuReply(
-            ss,
-            senderPhone
-        );
-
-        return true;
-    }
-
-
-    // ======================================================
-    // MORE → CANCEL APPOINTMENT
-    // ======================================================
-
-    if (
-        normalizedMessage === "3" &&
-        session &&
-        session.state === "PATIENT_MAIN_MORE"
-    ) {
-
-        beginWhatsAppCancelFlow(
-            ss,
-            senderPhone
-        );
-        return true;
-    }
-
-
-    // ======================================================
-    // MAIN MENU / MORE → RESCHEDULE APPOINTMENT
-    // ======================================================
-
-    if (
-        normalizedMessage === "4" &&
-        session &&
-        (
-            session.state === "MAIN_MENU" ||
-            session.state === "PATIENT_MAIN_MORE"
-        )
-    ) {
-
-        beginWhatsAppRescheduleFlow(
-            ss,
-            senderPhone
-        );
-        return true;
-    }
-
-
-    // ======================================================
-    // MAIN MENU / MORE → CHANGE LANGUAGE
-    // ======================================================
-
-    if (
-        normalizedMessage === "5" &&
-        session &&
-        (
-            session.state === "MAIN_MENU" ||
-            session.state === "PATIENT_MAIN_MORE"
-        )
-    ) {
-
-        saveWhatsAppSession(
-            senderPhone,
-            {
-                role: "PATIENT",
-                state: "LANGUAGE_CHANGE"
-            }
-        );
-
-        sendLanguageMenuReply(
-            ss,
-            senderPhone
-        );
-        return true;
-    }
-
-
-    // ======================================================
-    // MAIN MORE → UNRECOGNIZED OPTION
-    // ======================================================
-
-    if (
-        session &&
-        session.state === "PATIENT_MAIN_MORE"
-    ) {
-
-        sendPatientMainMoreMenuReply(
-            ss,
-            senderPhone,
-            "❌ Invalid option."
-        );
-        return true;
-    }
-
-
-    // ======================================================
-    // MAIN MENU → UNRECOGNIZED OPTION
-    // ======================================================
-
-    if (
-        session &&
-        session.state === "MAIN_MENU"
-    ) {
-
-        sendPatientMainMenuReply(
-            ss,
-            senderPhone,
-            "❌ Invalid option."
-        );
-        return true;
-    }
-
-
-    // ======================================================
-    // BOOK_DOCTOR STATE
-    // ======================================================
-
-    if (
-        session &&
-        session.state === "BOOK_DOCTOR"
-    ) {
-
+    } else {
+        // Keep typed-number fallback working for users who type 1, 2, 3...
         const doctorNumber =
-            Number(messageText.trim());
+            Number(selection);
 
-        const doctors =
-            getDoctors();
-
-        const doctor =
+        doctor =
             Number.isInteger(doctorNumber) &&
-                doctorNumber >= 1 &&
-                doctorNumber <= doctors.length
+            doctorNumber >= 1 &&
+            doctorNumber <= doctors.length
                 ? doctors[doctorNumber - 1]
                 : null;
-
-
-        // ======================================================
-        // DOCTOR NOT FOUND
-        // ======================================================
-
-        if (!doctor) {
-
-            sendWhatsAppMenuReply(
-                ss,
-                senderPhone,
-                buildDoctorSelectionBody(
-                    "❌ Please choose a valid doctor."
-                ),
-                getDoctorSelectionMenuSpec()
-            );
-
-        }
-
-
-        // ======================================================
-        // DOCTOR FOUND
-        // ======================================================
-
-        else {
-
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    role: "PATIENT",
-                    state: "BOOK_DATE",
-                    doctorId:
-                        doctor.doctorId
-                }
-            );
-
-
-            sendDateMenuReply(
-                ss,
-                senderPhone,
-                "👨‍⚕️ " +
-                doctor.doctorName +
-                "\n\nChoose an appointment date."
-            );
-        }
-
-        return true;
     }
 
+
     // ======================================================
-    // BOOK_DATE STATE
+    // DOCTOR NOT FOUND
     // ======================================================
 
-    if (
-        session &&
-        session.state === "BOOK_DATE"
-    ) {
+    if (!doctor) {
 
-        handleWhatsAppDateMenuInput(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            session.doctorId,
-            normalizedMessage,
-            "BOOK_TIME",
-            "BOOK_DATE_CUSTOM",
-            false
+            buildDoctorSelectionBody(
+                "❌ Please choose a valid doctor."
+            ),
+            getDoctorSelectionMenuSpec()
         );
-        return true;
+
     }
 
 
     // ======================================================
-    // BOOK_DATE_CUSTOM STATE (manually typed date)
+    // DOCTOR FOUND
     // ======================================================
 
-    if (
-        session &&
-        session.state === "BOOK_DATE_CUSTOM"
-    ) {
+    else {
 
-        handleWhatsAppCustomDateInput(
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "BOOK_DATE",
+                doctorId:
+                    doctor.doctorId
+            }
+        );
+
+
+        sendDateMenuReply(
             ss,
             senderPhone,
-            session.doctorId,
-            messageText,
-            "BOOK_TIME"
+            "👨‍⚕️ " +
+            doctor.doctorName +
+            "\n\nChoose an appointment date."
         );
+    }
+
+    return true;
+}
+
+// ======================================================
+// BOOK_DATE STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "BOOK_DATE"
+) {
+
+    handleWhatsAppDateMenuInput(
+        ss,
+        senderPhone,
+        session.doctorId,
+        normalizedMessage,
+        "BOOK_TIME",
+        "BOOK_DATE_CUSTOM",
+        false
+    );
+    return true;
+}
+
+
+// ======================================================
+// BOOK_DATE_CUSTOM STATE (manually typed date)
+// ======================================================
+
+if (
+    session &&
+    session.state === "BOOK_DATE_CUSTOM"
+) {
+
+    handleWhatsAppCustomDateInput(
+        ss,
+        senderPhone,
+        session.doctorId,
+        messageText,
+        "BOOK_TIME"
+    );
+    return true;
+}
+
+
+// ======================================================
+// BOOK_NAME STATE (first-time patient name)
+// ======================================================
+
+if (
+    session &&
+    session.state === "BOOK_NAME"
+) {
+
+    if (
+        !session.doctorId ||
+        !session.date ||
+        !session.time
+    ) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "❌ Your booking session has expired.\n\n" +
+            "Please send Hi to start again."
+        );
+
         return true;
     }
 
+    const enteredName =
+        messageText.trim();
 
-    // ======================================================
-    // BOOK_NAME STATE (first-time patient name)
-    // ======================================================
+    if (!isValidPatientName(enteredName)) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            buildInvalidPatientNameReply()
+        );
+
+        return true;
+    }
+
+    const language =
+        session.language || "EN";
+
+    const registration =
+        upsertPatient(
+            senderPhone,
+            enteredName,
+            language,
+            { updateLastVisit: false }
+        );
+
+    if (!registration.success) {
+
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "❌ " +
+            (registration.message ||
+                "Unable to save your name.")
+        );
+
+        return true;
+    }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            state: "BOOK_CONFIRM",
+            patientName: enteredName
+        }
+    );
+
+    sendWhatsAppMenuReply(
+        ss,
+        senderPhone,
+        buildBookingConfirmationMessage(
+            session,
+            enteredName
+        ),
+        getBookingConfirmSpec()
+    );
+    return true;
+}
+
+
+// ======================================================
+// BOOK_CONFIRM STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "BOOK_CONFIRM"
+) {
 
     if (
-        session &&
-        session.state === "BOOK_NAME"
+        normalizedMessage === "1" ||
+        normalizedMessage === "confirm_yes"
     ) {
 
         if (
@@ -15504,6 +15662,10 @@ function handleWhatsAppPatientMessage(
             !session.date ||
             !session.time
         ) {
+
+            clearWhatsAppSession(
+                senderPhone
+            );
 
             sendWhatsAppReply(
                 ss,
@@ -15515,39 +15677,198 @@ function handleWhatsAppPatientMessage(
             return true;
         }
 
-        const enteredName =
-            messageText.trim();
+        const patientName =
+            resolvePatientNameForBooking(
+                senderPhone,
+                session,
+                senderName
+            );
 
-        if (!isValidPatientName(enteredName)) {
+        const bookingResult =
+            bookAppointment(
+                session.doctorId,
+                session.date,
+                session.time,
+                patientName,
+                senderPhone,
+                session.language ||
+                    resolvePatientLanguage(
+                        senderPhone,
+                        session
+                    )
+            );
+
+        if (
+            bookingResult &&
+            bookingResult.success
+        ) {
+
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    role: "PATIENT",
+                    state: "MAIN_MENU",
+                    doctorId: "",
+                    date: "",
+                    time: "",
+                    appointmentId:
+                        bookingResult.appointmentId
+                }
+            );
+
+            const reply =
+                "✅ Appointment confirmed!\n\n" +
+                "👨‍⚕️ " +
+                bookingResult.doctor +
+                "\n" +
+                "📅 " +
+                bookingResult.date +
+                "\n" +
+                "🕐 " +
+                bookingResult.time +
+                "\n\n" +
+                "Thank you for choosing " +
+                getClinicName() +
+                ".";
 
             sendWhatsAppReply(
                 ss,
                 senderPhone,
-                buildInvalidPatientNameReply()
+                reply
+            );
+
+            // Send a shareable appointment receipt card after the
+            // booking confirmation. The recipient can use WhatsApp's
+            // native Forward action to share it with the patient.
+            try {
+                sendAppointmentReceiptCard(
+                    senderPhone,
+                    {
+                        appointmentId:
+                            bookingResult.appointmentId,
+                        patientName: patientName,
+                        doctorId:
+                            session.doctorId,
+                        doctor:
+                            bookingResult.doctor,
+                        date:
+                            bookingResult.date,
+                        time:
+                            bookingResult.time
+                    }
+                );
+            } catch (receiptError) {
+                Logger.log(
+                    "Appointment receipt failed; booking remains successful: " +
+                    receiptError.message
+                );
+            }
+
+        } else {
+
+            const errorMessage =
+                bookingResult &&
+                bookingResult.message
+                    ? bookingResult.message
+                    : "Unable to book the appointment.";
+
+            if (
+    errorMessage ===
+    "You already have an active appointment on this date."
+) {
+
+    const fallbackText =
+        "1️⃣ Choose Another Date\n" +
+        "0️⃣ Main Menu\n" +
+        "9️⃣ Back";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            {
+                id: "date_retry",
+                title: "Choose Another Date"
+            },
+            {
+                id: "nav_main_menu",
+                title: "Main Menu"
+            },
+            {
+                id: "nav_back",
+                title: "Back"
+            }
+        ]);
+
+    sendWhatsAppMenuReply(
+        ss,
+        senderPhone,
+        "❌ You already have an active appointment on this date." +
+        "\n\n" +
+        "Please choose another date.",
+        {
+            fallbackText: fallbackText,
+            interactive: interactive
+        }
+    );
+
+} else {
+
+    sendWhatsAppReply(
+        ss,
+        senderPhone,
+        "❌ " +
+        errorMessage +
+        "\n\n" +
+        "Please choose another time or send Hi to start again."
+    );
+}
+        }
+
+    } else if (
+        normalizedMessage === "2" ||
+        normalizedMessage === "confirm_other_time"
+    ) {
+
+        if (
+            !session.doctorId ||
+            !session.date
+        ) {
+
+            clearWhatsAppSession(
+                senderPhone
+            );
+
+            sendWhatsAppReply(
+                ss,
+                senderPhone,
+                "❌ Your booking session has expired.\n\n" +
+                "Please send Hi to start again."
             );
 
             return true;
         }
 
-        const language =
-            session.language || "EN";
-
-        const registration =
-            upsertPatient(
-                senderPhone,
-                enteredName,
-                language,
-                { updateLastVisit: false }
+        const slots =
+            getAvailableSlots(
+                session.doctorId,
+                session.date
             );
 
-        if (!registration.success) {
+        if (
+            !slots ||
+            slots.length === 0
+        ) {
+
+            clearWhatsAppSession(
+                senderPhone
+            );
 
             sendWhatsAppReply(
                 ss,
                 senderPhone,
-                "❌ " +
-                (registration.message ||
-                    "Unable to save your name.")
+                "❌ No available slots remain for " +
+                session.date +
+                ".\n\n" +
+                "Please send Hi to start again."
             );
 
             return true;
@@ -15556,250 +15877,167 @@ function handleWhatsAppPatientMessage(
         saveWhatsAppSession(
             senderPhone,
             {
-                state: "BOOK_CONFIRM",
-                patientName: enteredName
+                state: "BOOK_TIME",
+                time: "",
+                slotPage: 0
             }
         );
+
+        sendSlotSelectionMenuReply(
+            ss,
+            senderPhone,
+            "",
+            slots,
+            0,
+            {
+                isoDate: session.date,
+                isReschedule: false
+            }
+        );
+
+    } else if (
+        normalizedMessage === "3" ||
+        normalizedMessage === "confirm_cancel"
+    ) {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "MAIN_MENU",
+                doctorId: "",
+                date: "",
+                time: "",
+                appointmentId: ""
+            }
+        );
+
+        sendPatientMainMenuReply(
+            ss,
+            senderPhone,
+            "❌ Appointment booking cancelled."
+        );
+
+    } else {
+
+        const patientName =
+            resolvePatientNameForBooking(
+                senderPhone,
+                session,
+                senderName
+            );
 
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
+            "❌ Invalid option.\n\n" +
             buildBookingConfirmationMessage(
                 session,
-                enteredName
+                patientName
             ),
             getBookingConfirmSpec()
         );
-        return true;
     }
+    return true;
+}
 
 
-    // ======================================================
-    // BOOK_CONFIRM STATE
-    // ======================================================
+// ======================================================
+// BOOK_TIME STATE
+// ======================================================
 
-    if (
-        session &&
-        session.state === "BOOK_CONFIRM"
-    ) {
+if (
+    session &&
+    session.state === "BOOK_TIME"
+) {
+
+    handleWhatsAppBookTimeState(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage
+    );
+    return true;
+}
+
+
+// ======================================================
+// MY APPOINTMENTS STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "MY_APPOINTMENTS"
+) {
+
+    handleWhatsAppMyAppointmentsState(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage
+    );
+    return true;
+}
+
+
+// ======================================================
+// MY APPOINTMENT ACTION STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "MY_APPOINTMENT_ACTION"
+) {
+
+    handleWhatsAppMyAppointmentActionState(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage
+    );
+    return true;
+}
+
+
+// ======================================================
+// CANCEL_SELECT STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "CANCEL_SELECT"
+) {
+
+    handleWhatsAppCancelSelectState(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage
+    );
+    return true;
+}
+
+
+// ======================================================
+// CANCEL_CONFIRM STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "CANCEL_CONFIRM"
+) {
+
+    if (isYesCancelConfirmChoice(normalizedMessage)) {
+
+        const result =
+            cancelAppointment(
+                session.appointmentId,
+                senderPhone
+            );
 
         if (
-            normalizedMessage === "1" ||
-            normalizedMessage === "confirm_yes"
-        ) {
-
-            if (
-                !session.doctorId ||
-                !session.date ||
-                !session.time
-            ) {
-
-                clearWhatsAppSession(
-                    senderPhone
-                );
-
-                sendWhatsAppReply(
-                    ss,
-                    senderPhone,
-                    "❌ Your booking session has expired.\n\n" +
-                    "Please send Hi to start again."
-                );
-
-                return true;
-            }
-
-            const patientName =
-                resolvePatientNameForBooking(
-                    senderPhone,
-                    session,
-                    senderName
-                );
-
-            const bookingResult =
-                bookAppointment(
-                    session.doctorId,
-                    session.date,
-                    session.time,
-                    patientName,
-                    senderPhone,
-                    session.language ||
-                    resolvePatientLanguage(
-                        senderPhone,
-                        session
-                    )
-                );
-
-            if (
-                bookingResult &&
-                bookingResult.success
-            ) {
-
-                saveWhatsAppSession(
-                    senderPhone,
-                    {
-                        role: "PATIENT",
-                        state: "MAIN_MENU",
-                        doctorId: "",
-                        date: "",
-                        time: "",
-                        appointmentId:
-                            bookingResult.appointmentId
-                    }
-                );
-
-                const reply =
-                    "✅ Appointment confirmed!\n\n" +
-                    "👨‍⚕️ " +
-                    bookingResult.doctor +
-                    "\n" +
-                    "📅 " +
-                    bookingResult.date +
-                    "\n" +
-                    "🕐 " +
-                    bookingResult.time +
-                    "\n\n" +
-                    "Thank you for choosing ABC Clinic.";
-
-                sendWhatsAppReply(
-                    ss,
-                    senderPhone,
-                    reply
-                );
-
-            } else {
-
-                const errorMessage =
-                    bookingResult &&
-                        bookingResult.message
-                        ? bookingResult.message
-                        : "Unable to book the appointment.";
-
-                if (
-                    errorMessage ===
-                    "You already have an active appointment on this date."
-                ) {
-
-                    const fallbackText =
-                        "1️⃣ Choose Another Date\n" +
-                        "0️⃣ Main Menu\n" +
-                        "9️⃣ Back";
-
-                    const interactive =
-                        buildInteractiveButtonSpec([
-                            {
-                                id: "date_retry",
-                                title: "Choose Another Date"
-                            },
-                            {
-                                id: "nav_main_menu",
-                                title: "Main Menu"
-                            },
-                            {
-                                id: "nav_back",
-                                title: "Back"
-                            }
-                        ]);
-
-                    sendWhatsAppMenuReply(
-                        ss,
-                        senderPhone,
-                        "❌ You already have an active appointment on this date." +
-                        "\n\n" +
-                        "Please choose another date.",
-                        {
-                            fallbackText: fallbackText,
-                            interactive: interactive
-                        }
-                    );
-
-                } else {
-
-                    sendWhatsAppReply(
-                        ss,
-                        senderPhone,
-                        "❌ " +
-                        errorMessage +
-                        "\n\n" +
-                        "Please choose another time or send Hi to start again."
-                    );
-                }
-            }
-
-        } else if (
-            normalizedMessage === "2" ||
-            normalizedMessage === "confirm_other_time"
-        ) {
-
-            if (
-                !session.doctorId ||
-                !session.date
-            ) {
-
-                clearWhatsAppSession(
-                    senderPhone
-                );
-
-                sendWhatsAppReply(
-                    ss,
-                    senderPhone,
-                    "❌ Your booking session has expired.\n\n" +
-                    "Please send Hi to start again."
-                );
-
-                return true;
-            }
-
-            const slots =
-                getAvailableSlots(
-                    session.doctorId,
-                    session.date
-                );
-
-            if (
-                !slots ||
-                slots.length === 0
-            ) {
-
-                clearWhatsAppSession(
-                    senderPhone
-                );
-
-                sendWhatsAppReply(
-                    ss,
-                    senderPhone,
-                    "❌ No available slots remain for " +
-                    session.date +
-                    ".\n\n" +
-                    "Please send Hi to start again."
-                );
-
-                return true;
-            }
-
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    state: "BOOK_TIME",
-                    time: "",
-                    slotPage: 0
-                }
-            );
-
-            sendSlotSelectionMenuReply(
-                ss,
-                senderPhone,
-                "",
-                slots,
-                0,
-                {
-                    isoDate: session.date,
-                    isReschedule: false
-                }
-            );
-
-        } else if (
-            normalizedMessage === "3" ||
-            normalizedMessage === "confirm_cancel"
+            result &&
+            result.success
         ) {
 
             saveWhatsAppSession(
@@ -15817,172 +16055,15 @@ function handleWhatsAppPatientMessage(
             sendPatientMainMenuReply(
                 ss,
                 senderPhone,
-                "❌ Appointment booking cancelled."
+                "✅ " + result.message
             );
 
         } else {
 
-            const patientName =
-                resolvePatientNameForBooking(
-                    senderPhone,
-                    session,
-                    senderName
-                );
-
-            sendWhatsAppMenuReply(
-                ss,
-                senderPhone,
-                "❌ Invalid option.\n\n" +
-                buildBookingConfirmationMessage(
-                    session,
-                    patientName
-                ),
-                getBookingConfirmSpec()
-            );
-        }
-        return true;
-    }
-
-
-    // ======================================================
-    // BOOK_TIME STATE
-    // ======================================================
-
-    if (
-        session &&
-        session.state === "BOOK_TIME"
-    ) {
-
-        handleWhatsAppBookTimeState(
-            ss,
-            senderPhone,
-            session,
-            normalizedMessage
-        );
-        return true;
-    }
-
-
-    // ======================================================
-    // MY APPOINTMENTS STATE
-    // ======================================================
-
-    if (
-        session &&
-        session.state === "MY_APPOINTMENTS"
-    ) {
-
-        handleWhatsAppMyAppointmentsState(
-            ss,
-            senderPhone,
-            session,
-            normalizedMessage
-        );
-        return true;
-    }
-
-
-    // ======================================================
-    // CANCEL_SELECT STATE
-    // ======================================================
-
-    if (
-        session &&
-        session.state === "CANCEL_SELECT"
-    ) {
-
-        handleWhatsAppCancelSelectState(
-            ss,
-            senderPhone,
-            session,
-            normalizedMessage
-        );
-        return true;
-    }
-
-
-    // ======================================================
-    // CANCEL_CONFIRM STATE
-    // ======================================================
-
-    if (
-        session &&
-        session.state === "CANCEL_CONFIRM"
-    ) {
-
-        if (isYesCancelConfirmChoice(normalizedMessage)) {
-
-            const result =
-                cancelAppointment(
-                    session.appointmentId,
-                    senderPhone
-                );
-
-            if (
-                result &&
-                result.success
-            ) {
-
-                saveWhatsAppSession(
-                    senderPhone,
-                    {
-                        role: "PATIENT",
-                        state: "MAIN_MENU",
-                        doctorId: "",
-                        date: "",
-                        time: "",
-                        appointmentId: ""
-                    }
-                );
-
-                sendPatientMainMenuReply(
-                    ss,
-                    senderPhone,
-                    "✅ " + result.message
-                );
-
-            } else {
-
-                const errorMessage =
-                    result && result.message
-                        ? result.message
-                        : "Unable to cancel the appointment.";
-
-                const chosen =
-                    findConfirmedAppointmentForPhone(
-                        senderPhone,
-                        session.appointmentId
-                    );
-
-                sendCancelConfirmMenuReply(
-                    ss,
-                    senderPhone,
-                    chosen,
-                    "❌ " + errorMessage
-                );
-            }
-
-        } else if (isNoGoBackConfirmChoice(normalizedMessage)) {
-
-            saveWhatsAppSession(
-                senderPhone,
-                {
-                    role: "PATIENT",
-                    state: "MAIN_MENU",
-                    doctorId: "",
-                    date: "",
-                    time: "",
-                    appointmentId: ""
-                }
-            );
-
-            sendPatientMainMenuReply(
-                ss,
-                senderPhone,
-                "👍 Okay, appointment was not cancelled."
-            );
-
-        } else {
+            const errorMessage =
+                result && result.message
+                    ? result.message
+                    : "Unable to cancel the appointment.";
 
             const chosen =
                 findConfirmedAppointmentForPhone(
@@ -15994,222 +16075,174 @@ function handleWhatsAppPatientMessage(
                 ss,
                 senderPhone,
                 chosen,
-                "❌ Invalid option."
+                "❌ " + errorMessage
             );
         }
-        return true;
-    }
 
+    } else if (isNoGoBackConfirmChoice(normalizedMessage)) {
 
-    // ======================================================
-    // RESCHEDULE_SELECT STATE
-    // ======================================================
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "MAIN_MENU",
+                doctorId: "",
+                date: "",
+                time: "",
+                appointmentId: ""
+            }
+        );
 
-    if (
-        session &&
-        session.state === "RESCHEDULE_SELECT"
-    ) {
-
-        handleWhatsAppRescheduleSelectState(
+        sendPatientMainMenuReply(
             ss,
             senderPhone,
-            session,
-            normalizedMessage
+            "👍 Okay, appointment was not cancelled."
         );
-        return true;
-    }
 
+    } else {
 
-    // ======================================================
-    // RESCHEDULE_DATE STATE
-    // ======================================================
+        const chosen =
+            findConfirmedAppointmentForPhone(
+                senderPhone,
+                session.appointmentId
+            );
 
-    if (
-        session &&
-        session.state === "RESCHEDULE_DATE"
-    ) {
-
-        handleWhatsAppDateMenuInput(
+        sendCancelConfirmMenuReply(
             ss,
             senderPhone,
-            session.doctorId,
-            normalizedMessage,
-            "RESCHEDULE_TIME",
-            "RESCHEDULE_DATE_CUSTOM",
-            true
+            chosen,
+            "❌ Invalid option."
         );
-        return true;
     }
+    return true;
+}
 
 
-    // ======================================================
-    // RESCHEDULE_DATE_CUSTOM STATE (manually typed date)
-    // ======================================================
+// ======================================================
+// RESCHEDULE_SELECT STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "RESCHEDULE_SELECT"
+) {
+
+    handleWhatsAppRescheduleSelectState(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage
+    );
+    return true;
+}
+
+
+// ======================================================
+// RESCHEDULE_DATE STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "RESCHEDULE_DATE"
+) {
+
+    handleWhatsAppDateMenuInput(
+        ss,
+        senderPhone,
+        session.doctorId,
+        normalizedMessage,
+        "RESCHEDULE_TIME",
+        "RESCHEDULE_DATE_CUSTOM",
+        true
+    );
+    return true;
+}
+
+
+// ======================================================
+// RESCHEDULE_DATE_CUSTOM STATE (manually typed date)
+// ======================================================
+
+if (
+    session &&
+    session.state === "RESCHEDULE_DATE_CUSTOM"
+) {
+
+    handleWhatsAppCustomDateInput(
+        ss,
+        senderPhone,
+        session.doctorId,
+        messageText,
+        "RESCHEDULE_TIME"
+    );
+    return true;
+}
+
+
+// ======================================================
+// RESCHEDULE_TIME STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "RESCHEDULE_TIME"
+) {
+
+    handleWhatsAppRescheduleTimeState(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage
+    );
+    return true;
+}
+
+
+// ======================================================
+// RESCHEDULE_CONFIRM STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "RESCHEDULE_CONFIRM"
+) {
 
     if (
-        session &&
-        session.state === "RESCHEDULE_DATE_CUSTOM"
-    ) {
-
-        handleWhatsAppCustomDateInput(
-            ss,
-            senderPhone,
-            session.doctorId,
-            messageText,
-            "RESCHEDULE_TIME"
-        );
-        return true;
-    }
-
-
-    // ======================================================
-    // RESCHEDULE_TIME STATE
-    // ======================================================
-
-    if (
-        session &&
-        session.state === "RESCHEDULE_TIME"
-    ) {
-
-        handleWhatsAppRescheduleTimeState(
-            ss,
-            senderPhone,
-            session,
-            normalizedMessage
-        );
-        return true;
-    }
-
-
-    // ======================================================
-    // RESCHEDULE_CONFIRM STATE
-    // ======================================================
-
-    if (
-        session &&
-        session.state === "RESCHEDULE_CONFIRM"
+        normalizedMessage === "1" ||
+        normalizedMessage === "confirm_yes"
     ) {
 
         if (
-            normalizedMessage === "1" ||
-            normalizedMessage === "confirm_yes"
+            !session.appointmentId ||
+            !session.date ||
+            !session.time
         ) {
 
-            if (
-                !session.appointmentId ||
-                !session.date ||
-                !session.time
-            ) {
-
-                clearWhatsAppSession(
-                    senderPhone
-                );
-
-                sendWhatsAppReply(
-                    ss,
-                    senderPhone,
-                    "❌ Your reschedule session has expired.\n\n" +
-                    "Please send Hi to start again."
-                );
-
-                return true;
-            }
-
-            const result =
-                rescheduleAppointment(
-                    session.appointmentId,
-                    senderPhone,
-                    session.date,
-                    session.time
-                );
-
-            if (
-                result &&
-                result.success
-            ) {
-
-                saveWhatsAppSession(
-                    senderPhone,
-                    {
-                        role: "PATIENT",
-                        state: "MAIN_MENU",
-                        doctorId: "",
-                        date: "",
-                        time: "",
-                        appointmentId:
-                            result.appointmentId
-                    }
-                );
-
-                const reply =
-                    "✅ Appointment rescheduled!\n\n" +
-                    "👨‍⚕️ " +
-                    result.doctor +
-                    "\n" +
-                    "📅 " +
-                    result.date +
-                    "\n" +
-                    "🕐 " +
-                    result.time +
-                    "\n\n" +
-                    "Thank you for choosing ABC Clinic.";
-
-                sendWhatsAppReply(
-                    ss,
-                    senderPhone,
-                    reply
-                );
-
-            } else {
-
-                const errorMessage =
-                    result && result.message
-                        ? result.message
-                        : "Unable to reschedule the appointment.";
-
-                sendRescheduleConfirmMenuReply(
-                    ss,
-                    senderPhone,
-                    session,
-                    "❌ " + errorMessage
-                );
-            }
-
-        } else if (
-            normalizedMessage === "2" ||
-            normalizedMessage === "confirm_other_time"
-        ) {
-
-            if (
-                !session.doctorId ||
-                !session.date
-            ) {
-
-                clearWhatsAppSession(
-                    senderPhone
-                );
-
-                sendWhatsAppReply(
-                    ss,
-                    senderPhone,
-                    "❌ Your reschedule session has expired.\n\n" +
-                    "Please send Hi to start again."
-                );
-
-                return true;
-            }
-
-            whatsAppShowSlotsForDate(
-                ss,
-                senderPhone,
-                session.doctorId,
-                session.date,
-                "RESCHEDULE_TIME"
+            clearWhatsAppSession(
+                senderPhone
             );
 
-        } else if (
-            normalizedMessage === "3" ||
-            normalizedMessage === "confirm_cancel"
+            sendWhatsAppReply(
+                ss,
+                senderPhone,
+                "❌ Your reschedule session has expired.\n\n" +
+                "Please send Hi to start again."
+            );
+
+            return true;
+        }
+
+        const result =
+            rescheduleAppointment(
+                session.appointmentId,
+                senderPhone,
+                session.date,
+                session.time
+            );
+
+        if (
+            result &&
+            result.success
         ) {
 
             saveWhatsAppSession(
@@ -16220,30 +16253,116 @@ function handleWhatsAppPatientMessage(
                     doctorId: "",
                     date: "",
                     time: "",
-                    appointmentId: ""
+                    appointmentId:
+                        result.appointmentId
                 }
             );
 
-            sendPatientMainMenuReply(
+            const reply =
+                "✅ Appointment rescheduled!\n\n" +
+                "👨‍⚕️ " +
+                result.doctor +
+                "\n" +
+                "📅 " +
+                result.date +
+                "\n" +
+                "🕐 " +
+                result.time +
+                "\n\n" +
+                "Thank you for choosing " +
+                getClinicName() +
+                ".";
+
+            sendWhatsAppReply(
                 ss,
                 senderPhone,
-                "❌ Reschedule cancelled."
+                reply
             );
 
         } else {
+
+            const errorMessage =
+                result && result.message
+                    ? result.message
+                    : "Unable to reschedule the appointment.";
 
             sendRescheduleConfirmMenuReply(
                 ss,
                 senderPhone,
                 session,
-                "❌ Invalid option."
+                "❌ " + errorMessage
             );
         }
-        return true;
+
+    } else if (
+        normalizedMessage === "2" ||
+        normalizedMessage === "confirm_other_time"
+    ) {
+
+        if (
+            !session.doctorId ||
+            !session.date
+        ) {
+
+            clearWhatsAppSession(
+                senderPhone
+            );
+
+            sendWhatsAppReply(
+                ss,
+                senderPhone,
+                "❌ Your reschedule session has expired.\n\n" +
+                "Please send Hi to start again."
+            );
+
+            return true;
+        }
+
+        whatsAppShowSlotsForDate(
+            ss,
+            senderPhone,
+            session.doctorId,
+            session.date,
+            "RESCHEDULE_TIME"
+        );
+
+    } else if (
+        normalizedMessage === "3" ||
+        normalizedMessage === "confirm_cancel"
+    ) {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "MAIN_MENU",
+                doctorId: "",
+                date: "",
+                time: "",
+                appointmentId: ""
+            }
+        );
+
+        sendPatientMainMenuReply(
+            ss,
+            senderPhone,
+            "❌ Reschedule cancelled."
+        );
+
+    } else {
+
+        sendRescheduleConfirmMenuReply(
+            ss,
+            senderPhone,
+            session,
+            "❌ Invalid option."
+        );
     }
+    return true;
+}
 
 
-    // ======================================================
+// ======================================================
 
     return false;
 }
@@ -16321,37 +16440,37 @@ function processWhatsAppTextMessage(
         return;
     }
 
-    // FALLBACK - unrecognized message / no active session
-    // ======================================================
+// FALLBACK - unrecognized message / no active session
+// ======================================================
 
-    if (
-        session &&
-        session.role === "DOCTOR"
-    ) {
+if (
+    session &&
+    session.role === "DOCTOR"
+) {
 
-        const doctorId =
-            resolveDoctorIdFromSession(
-                senderPhone,
-                session
-            );
-
-        returnDoctorToMenu(
-            ss,
+    const doctorId =
+        resolveDoctorIdFromSession(
             senderPhone,
-            doctorId,
-            "🤔 Sorry, I didn't understand that."
+            session
         );
-    }
 
-    else {
+    returnDoctorToMenu(
+        ss,
+        senderPhone,
+        doctorId,
+        "🤔 Sorry, I didn't understand that."
+    );
+}
 
-        sendWhatsAppReply(
-            ss,
-            senderPhone,
-            "🤔 Sorry, I didn't understand that.\n\n" +
-            "Please send Hi to start."
-        );
-    }
+else {
+
+    sendWhatsAppReply(
+        ss,
+        senderPhone,
+        "🤔 Sorry, I didn't understand that.\n\n" +
+        "Please send Hi to start."
+    );
+}
 
 
 
@@ -16392,11 +16511,11 @@ function doPost(e) {
 
         const value =
             body &&
-                body.entry &&
-                body.entry[0] &&
-                body.entry[0].changes &&
-                body.entry[0].changes[0] &&
-                body.entry[0].changes[0].value
+            body.entry &&
+            body.entry[0] &&
+            body.entry[0].changes &&
+            body.entry[0].changes[0] &&
+            body.entry[0].changes[0].value
                 ? body.entry[0].changes[0].value
                 : null;
 
@@ -17009,7 +17128,7 @@ function sendWhatsAppMenuReply(
 
             const localizedFallback =
                 menuSpec &&
-                    menuSpec.fallbackText
+                menuSpec.fallbackText
                     ? localizeWhatsAppReply(
                         language,
                         menuSpec.fallbackText
@@ -17763,8 +17882,8 @@ function getWhatsAppSession(phone) {
 
             slotPage:
                 data[i][10] === "" ||
-                    data[i][10] === undefined ||
-                    data[i][10] === null
+                data[i][10] === undefined ||
+                data[i][10] === null
                     ? 0
                     : parseInt(
                         data[i][10],
@@ -17773,8 +17892,8 @@ function getWhatsAppSession(phone) {
 
             apptPage:
                 data[i][11] === "" ||
-                    data[i][11] === undefined ||
-                    data[i][11] === null
+                data[i][11] === undefined ||
+                data[i][11] === null
                     ? 0
                     : parseInt(
                         data[i][11],
@@ -17783,8 +17902,8 @@ function getWhatsAppSession(phone) {
 
             doctorMenuTier:
                 data[i][12] === "" ||
-                    data[i][12] === undefined ||
-                    data[i][12] === null
+                data[i][12] === undefined ||
+                data[i][12] === null
                     ? ""
                     : String(data[i][12]).trim()
         };
@@ -17924,8 +18043,8 @@ function saveWhatsAppSession(
                     ? updates.slotPage
                     : (
                         current[10] === "" ||
-                            current[10] === undefined ||
-                            current[10] === null
+                        current[10] === undefined ||
+                        current[10] === null
                             ? 0
                             : current[10]
                     ),
@@ -17934,8 +18053,8 @@ function saveWhatsAppSession(
                     ? updates.apptPage
                     : (
                         current[11] === "" ||
-                            current[11] === undefined ||
-                            current[11] === null
+                        current[11] === undefined ||
+                        current[11] === null
                             ? 0
                             : current[11]
                     ),
@@ -18064,11 +18183,11 @@ function getClinicName() {
         String(
             getSetting(
                 "CLINIC_NAME",
-                "ABC Clinic"
+                ""
             ) || ""
         ).trim();
 
-    return name || "ABC Clinic";
+    return name || "";
 }
 
 
@@ -18698,8 +18817,40 @@ function buildAppointmentDetailMessage(appt) {
             appt.date
         ) +
         "\n" +
-        "🕐 " + appt.time
+        "🕐 " + appt.time +
+        "\n\n" +
+        "What would you like to do with this appointment?"
     );
+}
+
+
+function getMyAppointmentActionSpec() {
+
+    const fallbackText =
+        "1️⃣ Cancel Appointment\n" +
+        "2️⃣ Reschedule\n" +
+        "3️⃣ Main Menu";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            {
+                id: "appointment_action_cancel",
+                title: "Cancel Appointment"
+            },
+            {
+                id: "appointment_action_reschedule",
+                title: "Reschedule"
+            },
+            {
+                id: "nav_main_menu",
+                title: "Main Menu"
+            }
+        ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
 }
 
 
@@ -19075,23 +19226,135 @@ function handleWhatsAppMyAppointmentsState(
 
                 saveWhatsAppSession(phone, {
                     role: "PATIENT",
-                    state: "MAIN_MENU",
-                    doctorId: "",
-                    date: "",
-                    time: "",
-                    appointmentId: "",
+                    state: "MY_APPOINTMENT_ACTION",
+                    doctorId: chosen.doctorId || "",
+                    date: chosen.date || "",
+                    time: chosen.time || "",
+                    appointmentId:
+                        chosen.appointmentId || "",
                     apptPage: 0
                 });
 
-                sendPatientMainMenuReply(
+                sendWhatsAppMenuReply(
                     ss,
                     phone,
                     buildAppointmentDetailMessage(
                         chosen
-                    )
+                    ),
+                    getMyAppointmentActionSpec()
                 );
             }
         }
+    );
+}
+
+
+function handleWhatsAppMyAppointmentActionState(
+    ss,
+    phone,
+    session,
+    normalizedMessage
+) {
+
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    if (
+        choice === "nav_main_menu" ||
+        choice === "main_menu" ||
+        choice === "3"
+    ) {
+        returnToMainMenu(ss, phone);
+        return;
+    }
+
+    if (
+        choice === "appointment_action_cancel" ||
+        choice === "1"
+    ) {
+
+        saveWhatsAppSession(phone, {
+            role: "PATIENT",
+            state: "CANCEL_CONFIRM",
+            appointmentId:
+                session.appointmentId || ""
+        });
+
+        const chosen =
+            findConfirmedAppointmentForPhone(
+                phone,
+                session.appointmentId
+            );
+
+        if (!chosen) {
+            saveWhatsAppSession(phone, {
+                role: "PATIENT",
+                state: "MAIN_MENU",
+                appointmentId: ""
+            });
+
+            sendPatientMainMenuReply(
+                ss,
+                phone,
+                "❌ That appointment is no longer active."
+            );
+            return;
+        }
+
+        sendCancelConfirmMenuReply(
+            ss,
+            phone,
+            chosen
+        );
+        return;
+    }
+
+    if (
+        choice === "appointment_action_reschedule" ||
+        choice === "2"
+    ) {
+
+        const chosen =
+            findConfirmedAppointmentForPhone(
+                phone,
+                session.appointmentId
+            );
+
+        if (!chosen) {
+            saveWhatsAppSession(phone, {
+                role: "PATIENT",
+                state: "MAIN_MENU",
+                appointmentId: ""
+            });
+
+            sendPatientMainMenuReply(
+                ss,
+                phone,
+                "❌ That appointment is no longer active."
+            );
+            return;
+        }
+
+        beginRescheduleDateSelection(
+            ss,
+            phone,
+            chosen
+        );
+        return;
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        "❌ Invalid option.\n\n" +
+            buildAppointmentDetailMessage({
+                doctorId: session.doctorId,
+                date: session.date,
+                time: session.time
+            }),
+        getMyAppointmentActionSpec()
     );
 }
 
@@ -19583,6 +19846,492 @@ function sendRescheduleConfirmMenuReply(
             ),
         getRescheduleConfirmSpec()
     );
+}
+
+
+
+// ============================================================
+// SHAREABLE APPOINTMENT RECEIPT CARD
+// ============================================================
+// Creates a temporary Google Slides card, exports the first slide
+// as a PNG, uploads that PNG to WhatsApp, sends it to the patient,
+// and then moves the temporary Slides file to Trash.
+//
+// The logo is read from the same Drive file currently used for the
+// hospital-logo greeting. Default ID can be overridden with the
+// Settings key APPOINTMENT_RECEIPT_LOGO_DRIVE_FILE_ID.
+
+function sendAppointmentReceiptCard(to, appointment) {
+
+    const card =
+        createAppointmentReceiptCardBlob(
+            appointment
+        );
+
+    const mediaId =
+        uploadWhatsAppImageBlob(card.blob);
+
+    sendWhatsAppImageMessage(
+        to,
+        mediaId,
+        "🎫 Appointment confirmation — please forward this card to the patient if you booked on their behalf."
+    );
+
+    return mediaId;
+}
+
+
+function createAppointmentReceiptCardBlob(appointment) {
+
+    if (!appointment || !appointment.appointmentId) {
+        throw new Error(
+            "Appointment data is incomplete for receipt generation."
+        );
+    }
+
+    let presentation = null;
+
+    try {
+
+        presentation =
+            SlidesApp.create(
+                getClinicName() + " Appointment Receipt"
+            );
+
+        const slide =
+            presentation
+                .getSlides()[0];
+
+        // Use a clean white canvas.
+        slide
+            .getBackground()
+            .setSolidFill("#FFFFFF");
+
+        const pageWidth =
+            presentation
+                .getPageWidth();
+
+        const pageHeight =
+            presentation
+                .getPageHeight();
+
+        // ------------------------------------------------------
+        // Top clinic/header area
+        // ------------------------------------------------------
+
+        const header =
+            slide.insertShape(
+                SlidesApp.ShapeType.RECTANGLE,
+                0,
+                0,
+                pageWidth,
+                105
+            );
+
+        header
+            .getFill()
+            .setSolidFill("#0B6E4F");
+
+        header
+            .getLine()
+            .setTransparent();
+
+        // ------------------------------------------------------
+        // Hospital logo
+        // ------------------------------------------------------
+
+        const logoFileId =
+            String(
+                getSetting(
+                    "APPOINTMENT_RECEIPT_LOGO_DRIVE_FILE_ID",
+                    "1m5eZGBd_xSeXlVTjjpJBgMvlDYIqhWmx"
+                ) || ""
+            ).trim();
+
+        if (logoFileId) {
+            try {
+                const logoFile =
+                    DriveApp.getFileById(
+                        logoFileId
+                    );
+
+                const logo =
+                    slide.insertImage(
+                        logoFile.getBlob()
+                    );
+
+                logo
+                    .setLeft(22)
+                    .setTop(17)
+                    .setHeight(70);
+            } catch (logoError) {
+                Logger.log(
+                    "Receipt logo could not be inserted: " +
+                    logoError.message
+                );
+            }
+        }
+
+        const clinicName =
+            getClinicName();
+
+        const clinicText =
+            slide.insertTextBox(
+                String(clinicName || ""),
+                105,
+                22,
+                pageWidth - 130,
+                32
+            );
+
+        clinicText
+            .getText()
+            .getTextStyle()
+            .setFontSize(22)
+            .setBold(true)
+            .setForegroundColor("#FFFFFF");
+
+        const statusText =
+            slide.insertTextBox(
+                "APPOINTMENT CONFIRMED",
+                105,
+                56,
+                pageWidth - 130,
+                25
+            );
+
+        statusText
+            .getText()
+            .getTextStyle()
+            .setFontSize(11)
+            .setBold(true)
+            .setForegroundColor("#FFFFFF");
+
+        // ------------------------------------------------------
+        // Appointment details
+        // ------------------------------------------------------
+
+        const doctorRecord =
+            appointment.doctorId
+                ? getDoctorRecord(
+                    appointment.doctorId
+                )
+                : null;
+
+        const specialization =
+            doctorRecord &&
+            doctorRecord.specialization
+                ? doctorRecord.specialization
+                : "";
+
+        const doctorName =
+            String(
+                appointment.doctor ||
+                (doctorRecord &&
+                    doctorRecord.doctorName) ||
+                "Doctor"
+            );
+
+        const details = [
+            ["PATIENT", appointment.patientName || ""],
+            ["DOCTOR", doctorName],
+            ["SPECIALIZATION", specialization || ""],
+            ["DATE", formatReceiptDate(appointment.date)],
+            ["TIME", appointment.time || ""],
+            ["APPOINTMENT ID", appointment.appointmentId],
+            ["CLINIC", (doctorRecord && doctorRecord.clinicName) || clinicName || ""]
+        ];
+
+        let top = 125;
+
+        details.forEach(function(row) {
+
+            const label =
+                slide.insertTextBox(
+                    row[0],
+                    35,
+                    top,
+                    135,
+                    22
+                );
+
+            label
+                .getText()
+                .getTextStyle()
+                .setFontSize(9)
+                .setBold(true)
+                .setForegroundColor("#777777");
+
+            const value =
+                slide.insertTextBox(
+                    String(row[1] || ""),
+                    175,
+                    top - 2,
+                    pageWidth - 210,
+                    25
+                );
+
+            value
+                .getText()
+                .getTextStyle()
+                .setFontSize(13)
+                .setBold(row[0] === "APPOINTMENT ID")
+                .setForegroundColor("#222222");
+
+            top += 43;
+        });
+
+        // ------------------------------------------------------
+        // Footer / sharing instruction
+        // ------------------------------------------------------
+
+        const footerTop =
+            pageHeight - 70;
+
+        const footerLine =
+            slide.insertShape(
+                SlidesApp.ShapeType.RECTANGLE,
+                0,
+                footerTop,
+                pageWidth,
+                1
+            );
+
+        footerLine
+            .getFill()
+            .setSolidFill("#DDDDDD");
+
+        footerLine
+            .getLine()
+            .setTransparent();
+
+        const footer =
+            slide.insertTextBox(
+                "Please show this confirmation at reception.\nYou can forward this card to the patient.",
+                35,
+                footerTop + 10,
+                pageWidth - 70,
+                45
+            );
+
+        footer
+            .getText()
+            .getTextStyle()
+            .setFontSize(9)
+            .setForegroundColor("#666666");
+
+        presentation
+            .saveAndClose();
+
+        // ------------------------------------------------------
+        // Export slide as PNG using Google Slides API.
+        // This avoids any third-party image-generation service.
+        // ------------------------------------------------------
+
+        const presentationId =
+            presentation.getId();
+
+        const pageObjectId =
+            slide.getObjectId();
+
+        const thumbnailUrl =
+            "https://slides.googleapis.com/v1/presentations/" +
+            encodeURIComponent(presentationId) +
+            "/pages/" +
+            encodeURIComponent(pageObjectId) +
+            "/thumbnail" +
+            "?thumbnailProperties.mimeType=PNG" +
+            "&thumbnailProperties.thumbnailSize=LARGE";
+
+        const response =
+            UrlFetchApp.fetch(
+                thumbnailUrl,
+                {
+                    method: "get",
+                    headers: {
+                        Authorization:
+                            "Bearer " +
+                            ScriptApp.getOAuthToken()
+                    },
+                    muteHttpExceptions: true
+                }
+            );
+
+        const code =
+            response.getResponseCode();
+
+        if (code < 200 || code >= 300) {
+            throw new Error(
+                "Google Slides thumbnail export failed (" +
+                code + "): " +
+                response.getContentText()
+            );
+        }
+
+        const thumbnailInfo =
+            JSON.parse(
+                response.getContentText()
+            );
+
+        if (!thumbnailInfo.contentUrl) {
+            throw new Error(
+                "Google Slides did not return a thumbnail URL."
+            );
+        }
+
+        const imageResponse =
+            UrlFetchApp.fetch(
+                thumbnailInfo.contentUrl,
+                {
+                    method: "get",
+                    muteHttpExceptions: true
+                }
+            );
+
+        if (
+            imageResponse.getResponseCode() < 200 ||
+            imageResponse.getResponseCode() >= 300
+        ) {
+            throw new Error(
+                "Unable to download receipt PNG."
+            );
+        }
+
+        const blob =
+            imageResponse
+                .getBlob()
+                .setName(
+                    "appointment-" +
+                    appointment.appointmentId +
+                    ".png"
+                );
+
+        return {
+            blob: blob,
+            presentationId: presentationId
+        };
+
+    } finally {
+
+        if (presentation) {
+            try {
+                DriveApp
+                    .getFileById(
+                        presentation.getId()
+                    )
+                    .setTrashed(true);
+            } catch (trashError) {
+                Logger.log(
+                    "Could not trash temporary receipt presentation: " +
+                    trashError.message
+                );
+            }
+        }
+    }
+}
+
+
+function uploadWhatsAppImageBlob(blob) {
+
+    if (!blob) {
+        throw new Error(
+            "Receipt image blob is missing."
+        );
+    }
+
+    const properties =
+        PropertiesService.getScriptProperties();
+
+    const accessToken =
+        properties.getProperty(
+            "WHATSAPP_ACCESS_TOKEN"
+        );
+
+    const phoneNumberId =
+        properties.getProperty(
+            "WHATSAPP_PHONE_NUMBER_ID"
+        );
+
+    if (!accessToken) {
+        throw new Error(
+            "WHATSAPP_ACCESS_TOKEN is missing."
+        );
+    }
+
+    if (!phoneNumberId) {
+        throw new Error(
+            "WHATSAPP_PHONE_NUMBER_ID is missing."
+        );
+    }
+
+    const url =
+        "https://graph.facebook.com/v26.0/" +
+        phoneNumberId +
+        "/media";
+
+    const response =
+        UrlFetchApp.fetch(
+            url,
+            {
+                method: "post",
+                headers: {
+                    Authorization:
+                        "Bearer " + accessToken
+                },
+                payload: {
+                    messaging_product: "whatsapp",
+                    type: "image/png",
+                    file: blob
+                },
+                muteHttpExceptions: true
+            }
+        );
+
+    const code =
+        response.getResponseCode();
+
+    const body =
+        response.getContentText();
+
+    if (code < 200 || code >= 300) {
+        throw new Error(
+            "WhatsApp receipt upload failed (" +
+            code + "): " +
+            body
+        );
+    }
+
+    const parsed =
+        JSON.parse(body);
+
+    if (!parsed.id) {
+        throw new Error(
+            "WhatsApp receipt upload returned no media ID."
+        );
+    }
+
+    return String(parsed.id);
+}
+
+
+function formatReceiptDate(isoDate) {
+
+    const value =
+        String(isoDate || "").trim();
+
+    if (!value) {
+        return "";
+    }
+
+    try {
+        return Utilities.formatDate(
+            new Date(value + "T00:00:00+05:30"),
+            TIMEZONE,
+            "EEEE, dd MMMM yyyy"
+        );
+    } catch (error) {
+        return value;
+    }
 }
 
 
