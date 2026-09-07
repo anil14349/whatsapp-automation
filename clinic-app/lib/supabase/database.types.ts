@@ -6,6 +6,14 @@
  *   npm run db:start && npm run db:types
  * That command OVERWRITES this file — safe to run any time the schema
  * changes, since it's generated output, not hand-maintained logic.
+ *
+ * Every table needs a `Relationships: []` array (foreign-key metadata
+ * used for typed embedded selects, e.g. `.select("*, doctors(*)")` — we
+ * don't use that yet, so all empty) and the schema needs `Views`/
+ * `Functions` present, or @supabase/postgrest-js's `GenericSchema`
+ * constraint isn't satisfied and every query resolves to `never`
+ * instead of the real row type. Found the hard way via `npm run
+ * typecheck` failing across lib/doctors.ts and lib/settings.ts.
  */
 
 export type Json =
@@ -55,6 +63,7 @@ export interface Database {
           name: string;
         };
         Update: Partial<Database["public"]["Tables"]["doctors"]["Row"]>;
+        Relationships: [];
       };
       doctor_availability: {
         Row: {
@@ -76,6 +85,15 @@ export interface Database {
         Update: Partial<
           Database["public"]["Tables"]["doctor_availability"]["Row"]
         >;
+        Relationships: [
+          {
+            foreignKeyName: "doctor_availability_doctor_id_fkey";
+            columns: ["doctor_id"];
+            isOneToOne: false;
+            referencedRelation: "doctors";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       doctor_leaves: {
         Row: {
@@ -91,6 +109,15 @@ export interface Database {
           leave_date: string;
         };
         Update: Partial<Database["public"]["Tables"]["doctor_leaves"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "doctor_leaves_doctor_id_fkey";
+            columns: ["doctor_id"];
+            isOneToOne: false;
+            referencedRelation: "doctors";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       patients: {
         Row: {
@@ -110,6 +137,7 @@ export interface Database {
           phone: string;
         };
         Update: Partial<Database["public"]["Tables"]["patients"]["Row"]>;
+        Relationships: [];
       };
       appointments: {
         Row: {
@@ -135,6 +163,22 @@ export interface Database {
           appointment_time: string;
         };
         Update: Partial<Database["public"]["Tables"]["appointments"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "appointments_doctor_id_fkey";
+            columns: ["doctor_id"];
+            isOneToOne: false;
+            referencedRelation: "doctors";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "appointments_patient_id_fkey";
+            columns: ["patient_id"];
+            isOneToOne: false;
+            referencedRelation: "patients";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       whatsapp_sessions: {
         Row: {
@@ -160,6 +204,22 @@ export interface Database {
           phone: string;
         };
         Update: Partial<Database["public"]["Tables"]["whatsapp_sessions"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_sessions_doctor_id_fkey";
+            columns: ["doctor_id"];
+            isOneToOne: false;
+            referencedRelation: "doctors";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "whatsapp_sessions_appointment_id_fkey";
+            columns: ["appointment_id"];
+            isOneToOne: false;
+            referencedRelation: "appointments";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       home_collection_requests: {
         Row: {
@@ -188,6 +248,7 @@ export interface Database {
         Update: Partial<
           Database["public"]["Tables"]["home_collection_requests"]["Row"]
         >;
+        Relationships: [];
       };
       message_log: {
         Row: {
@@ -206,6 +267,15 @@ export interface Database {
           direction: string;
         };
         Update: Partial<Database["public"]["Tables"]["message_log"]["Row"]>;
+        Relationships: [
+          {
+            foreignKeyName: "message_log_appointment_id_fkey";
+            columns: ["appointment_id"];
+            isOneToOne: false;
+            referencedRelation: "appointments";
+            referencedColumns: ["id"];
+          }
+        ];
       };
       settings: {
         Row: {
@@ -218,6 +288,7 @@ export interface Database {
           value: string;
         };
         Update: Partial<Database["public"]["Tables"]["settings"]["Row"]>;
+        Relationships: [];
       };
       admin_users: {
         Row: {
@@ -234,7 +305,12 @@ export interface Database {
           password_hash: string;
         };
         Update: Partial<Database["public"]["Tables"]["admin_users"]["Row"]>;
+        Relationships: [];
       };
     };
+    Views: Record<string, never>;
+    Functions: Record<string, never>;
+    Enums: Record<string, never>;
+    CompositeTypes: Record<string, never>;
   };
 }

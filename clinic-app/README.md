@@ -5,9 +5,16 @@ bot + Google Sheets/Calendar) into a Next.js + Postgres (Supabase) app with a
 receptionist/admin web UI. See the root [README](../README.md) and this
 branch's history for the architecture decisions behind this rewrite.
 
-**Status**: in progress, built in stages. This stage: project scaffold +
-complete database schema. Business logic, the WhatsApp webhook, and the
-admin UI land in subsequent commits.
+**Status**: in progress, built in stages.
+
+- ✅ Stage 1: project scaffold + complete database schema
+- ✅ Stage 2: core business logic (this stage) — settings, doctors,
+  availability, leaves, patients, the slot-availability engine, and
+  book/cancel/reschedule appointment logic, all as tested TypeScript
+  modules
+- ⏳ Stage 3: the WhatsApp webhook + patient/doctor conversation state
+  machines (not started)
+- ⏳ Stage 4: the receptionist/admin web UI (not started)
 
 ---
 
@@ -89,6 +96,52 @@ revisiting periodically (`npm audit`) as patched versions land upstream.
    npm run lint
    npm run build
    ```
+
+---
+
+## Core business logic (stage 2)
+
+| Module | Was (Apps Script) | Notes |
+|---|---|---|
+| `lib/settings.ts` | `getSetting`/`ensureSettingsSheet` (Config.gs) | No caching layer needed — a single indexed Postgres SELECT replaces what used to require scanning/caching an entire Sheet |
+| `lib/doctors.ts` | Model_Doctors.gs (CRUD portions) | The four near-duplicate "schedule view" functions (today/date/week/next) aren't ported 1:1 — real SQL makes them one function with a date filter |
+| `lib/patients.ts` | Model_Patients.gs | `upsertPatient` no longer needs `LockService` — `INSERT ... ON CONFLICT` is atomic by construction |
+| `lib/scheduling/dates.ts` | Date/time helpers scattered across Util_Common.gs/Model_Calendar.gs | Timezone-safe by construction (see the `combineDateAndTime`/`isoDateToWeekday` doc comments for the specific bug class this avoids) |
+| `lib/scheduling/availability.ts` | `getAvailableSlots`'s slot-math (Model_Calendar.gs) | Pure function, no I/O — fully unit-tested (18 tests) |
+| `lib/scheduling/slots.ts` | `getAvailableSlots`'s I/O (Model_Calendar.gs) | Wraps the pure function with real Supabase + Calendar reads |
+| `lib/calendar/` | `CalendarApp.*` calls throughout | Abstracted behind a `CalendarPort` interface — `google.ts` is the real Google Calendar implementation (untested here, no live credentials), `fake.ts` is an in-memory test double |
+| `lib/appointments.ts` | `bookAppointment`/`cancelAppointment`/`rescheduleAppointment` (Model_Appointments.gs) | See below — the double-booking guarantee moved from application code to the database itself |
+
+### Booking integrity: constraints, not just application checks
+
+The Apps Script version prevented double-booking with `LockService` (a
+mutex) plus a "scan for conflicts" check before writing — best-effort,
+not a guarantee. This rewrite adds two **partial unique indexes**
+instead (`supabase/migrations/0003…`, `0004…`):
+
+- One doctor can never have two `Confirmed` appointments at the same
+  date+time.
+- One patient can never have two `Confirmed` appointments on the same
+  date (across all doctors) — this is also what makes reschedule "safe"
+  without needing the Apps Script version's `excludedAppointmentId`
+  special-casing, since a reschedule is an `UPDATE` of the same row.
+
+Application code still does the same checks *first*, for a friendly
+error message — but if a race ever slips through, the database itself
+refuses the write rather than silently double-booking.
+
+### What's tested vs. what isn't (yet)
+
+This environment has no live Supabase/Docker or Google Calendar
+credentials to test against (see Stage 1 notes above). Everything with
+real branching logic and no required I/O is unit-tested (settings
+parsing, date/time math, the slot-availability engine, time-string
+normalization, appointment-ownership authorization). The functions that
+orchestrate real Supabase + Calendar calls (`bookAppointment`,
+`cancelAppointment`, `rescheduleAppointment`, and everything in
+`lib/doctors.ts`/`lib/patients.ts`) are typechecked but **not yet
+exercised against a live database** — that's the first thing to verify
+once `npm run db:start` is available to you locally.
 
 ---
 
