@@ -1994,7 +1994,8 @@ function returnToMainMenu(ss, phone, prefix) {
             doctorId: "",
             date: "",
             time: "",
-            appointmentId: ""
+            appointmentId: "",
+            location: ""
         }
     );
 
@@ -2294,6 +2295,49 @@ function goBackInWhatsAppFlow(ss, phone, session) {
 
         case "MY_APPOINTMENT_ACTION":
             returnToMainMenu(ss, phone);
+            return;
+
+        case "HOME_COLLECTION_LOCATION":
+            saveWhatsAppSession(phone, {
+                state: "PATIENT_MAIN_MORE",
+                location: ""
+            });
+            sendPatientMainMoreMenuReply(
+                ss,
+                phone,
+                ""
+            );
+            return;
+
+        case "HOME_COLLECTION_DATE":
+            saveWhatsAppSession(phone, {
+                state: "HOME_COLLECTION_LOCATION",
+                location: ""
+            });
+            sendCustomDateEntryMenuReply(
+                ss,
+                phone,
+                "🩸 Home Sample Collection\n\n" +
+                "Please share your location (tap 📎 Attach → Location in WhatsApp) " +
+                "so we can confirm you're within " +
+                getHomeCollectionRadiusKm() +
+                " km of " +
+                getClinicName() +
+                "."
+            );
+            return;
+
+        case "HOME_COLLECTION_DATE_CUSTOM":
+        case "HOME_COLLECTION_TIME":
+            saveWhatsAppSession(phone, {
+                state: "HOME_COLLECTION_DATE"
+            });
+            sendDateMenuReply(
+                ss,
+                phone,
+                "Choose a preferred date:",
+                "patient"
+            );
             return;
 
         case "BOOK_DATE":

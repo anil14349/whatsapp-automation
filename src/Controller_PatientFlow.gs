@@ -11,8 +11,23 @@ function handleWhatsAppPatientMessage(
     senderName,
     messageText,
     normalizedMessage,
-    session
+    session,
+    location
 ) {
+
+    if (
+        handleWhatsAppHomeCollectionMessage(
+            ss,
+            senderPhone,
+            senderName,
+            messageText,
+            normalizedMessage,
+            session,
+            location
+        )
+    ) {
+        return true;
+    }
 
 // LANGUAGE SELECTION
 // ======================================================
@@ -360,6 +375,24 @@ if (
     );
 
     sendLanguageMenuReply(
+        ss,
+        senderPhone
+    );
+    return true;
+}
+
+
+// ======================================================
+// MORE → HOME SAMPLE COLLECTION
+// ======================================================
+
+if (
+    normalizedMessage === "6" &&
+    session &&
+    session.state === "PATIENT_MAIN_MORE"
+) {
+
+    beginWhatsAppHomeCollectionFlow(
         ss,
         senderPhone
     );
