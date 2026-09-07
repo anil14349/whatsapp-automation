@@ -203,7 +203,7 @@ function notifyPatientOfDoctorCancellation(
 
         sendWhatsAppText(
             recipient,
-            "ABC Clinic: Your appointment on " +
+            getClinicName() + ": Your appointment on " +
             appointment.date +
             " at " +
             appointment.time +
@@ -240,7 +240,7 @@ function notifyPatientOfDoctorReschedule(
 
         sendWhatsAppText(
             recipient,
-            "ABC Clinic: Your appointment has been rescheduled by the clinic.\n\n" +
+            getClinicName() + ": Your appointment has been rescheduled by the clinic.\n\n" +
             "📅 " +
             result.date +
             "\n" +
@@ -311,23 +311,136 @@ function handleWhatsAppMyAppointmentsState(
 
                 saveWhatsAppSession(phone, {
                     role: "PATIENT",
-                    state: "MAIN_MENU",
-                    doctorId: "",
-                    date: "",
-                    time: "",
-                    appointmentId: "",
+                    state: "MY_APPOINTMENT_ACTION",
+                    doctorId: chosen.doctorId || "",
+                    date: chosen.date || "",
+                    time: chosen.time || "",
+                    appointmentId:
+                        chosen.appointmentId || "",
                     apptPage: 0
                 });
 
-                sendPatientMainMenuReply(
+                sendWhatsAppMenuReply(
                     ss,
                     phone,
                     buildAppointmentDetailMessage(
                         chosen
-                    )
+                    ),
+                    getMyAppointmentActionSpec()
                 );
             }
         }
+    );
+}
+
+
+
+function handleWhatsAppMyAppointmentActionState(
+    ss,
+    phone,
+    session,
+    normalizedMessage
+) {
+
+    const choice =
+        String(normalizedMessage || "")
+            .trim()
+            .toLowerCase();
+
+    if (
+        choice === "nav_main_menu" ||
+        choice === "main_menu" ||
+        choice === "3"
+    ) {
+        returnToMainMenu(ss, phone);
+        return;
+    }
+
+    if (
+        choice === "appointment_action_cancel" ||
+        choice === "1"
+    ) {
+
+        saveWhatsAppSession(phone, {
+            role: "PATIENT",
+            state: "CANCEL_CONFIRM",
+            appointmentId:
+                session.appointmentId || ""
+        });
+
+        const chosen =
+            findConfirmedAppointmentForPhone(
+                phone,
+                session.appointmentId
+            );
+
+        if (!chosen) {
+            saveWhatsAppSession(phone, {
+                role: "PATIENT",
+                state: "MAIN_MENU",
+                appointmentId: ""
+            });
+
+            sendPatientMainMenuReply(
+                ss,
+                phone,
+                "❌ That appointment is no longer active."
+            );
+            return;
+        }
+
+        sendCancelConfirmMenuReply(
+            ss,
+            phone,
+            chosen
+        );
+        return;
+    }
+
+    if (
+        choice === "appointment_action_reschedule" ||
+        choice === "2"
+    ) {
+
+        const chosen =
+            findConfirmedAppointmentForPhone(
+                phone,
+                session.appointmentId
+            );
+
+        if (!chosen) {
+            saveWhatsAppSession(phone, {
+                role: "PATIENT",
+                state: "MAIN_MENU",
+                appointmentId: ""
+            });
+
+            sendPatientMainMenuReply(
+                ss,
+                phone,
+                "❌ That appointment is no longer active."
+            );
+            return;
+        }
+
+        beginRescheduleDateSelection(
+            ss,
+            phone,
+            chosen
+        );
+        return;
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        "❌ Invalid option.\n\n" +
+            buildAppointmentDetailMessage({
+                doctorId: session.doctorId,
+                date: session.date,
+                time: session.time
+            }),
+        getMyAppointmentActionSpec()
     );
 }
 
@@ -1504,6 +1617,7 @@ function whatsAppNavigationShowsBack(session) {
     const patientFlatHome = [
         "BOOK_DOCTOR",
         "MY_APPOINTMENTS",
+        "MY_APPOINTMENT_ACTION",
         "CANCEL_SELECT",
         "RESCHEDULE_SELECT"
     ];
@@ -1694,7 +1808,7 @@ function handleWhatsAppDateMenuInput(
             { state: customDateState }
         );
 
-        sendWhatsAppReply(
+        sendCustomDateEntryMenuReply(
             ss,
             phone,
             buildCustomDateEntryPrompt(isReschedule)
@@ -1727,7 +1841,7 @@ function handleWhatsAppCustomDateInput(
 
     if (!validation.valid) {
 
-        sendWhatsAppReply(
+        sendCustomDateEntryMenuReply(
             ss,
             phone,
             validation.message
@@ -2174,6 +2288,10 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             returnToMainMenu(ss, phone);
             return;
 
+        case "MY_APPOINTMENT_ACTION":
+            returnToMainMenu(ss, phone);
+            return;
+
         case "BOOK_DATE":
             saveWhatsAppSession(phone, {
                 state: "BOOK_DOCTOR",
@@ -2187,11 +2305,16 @@ function goBackInWhatsAppFlow(ss, phone, session) {
 
         case "BOOK_DATE_CUSTOM":
         case "BOOK_TIME":
-            saveWhatsAppSession(phone, {
-                state: "BOOK_DATE",
-                date: "",
-                time: ""
-            });
+            saveWhatsAppSession(
+                phone,
+                {
+                    ...session,
+                    state: "BOOK_DATE",
+                    date: "",
+                    time: "",
+                    slotPage: 0
+                }
+            );
             showBookingDateSelection(ss, phone, session);
             return;
 
@@ -2699,13 +2822,38 @@ function whatsAppShowSlotsForDate(
         slots.length === 0
     ) {
 
-        sendWhatsAppReply(
+        const fallbackText =
+            "1️⃣ Choose Another Date\n" +
+            "0️⃣ Main Menu\n" +
+            "9️⃣ Back";
+
+        const interactive =
+            buildInteractiveButtonSpec([
+                {
+                    id: "date_retry",
+                    title: "Choose Another Date"
+                },
+                {
+                    id: "nav_main_menu",
+                    title: "Main Menu"
+                },
+                {
+                    id: "nav_back",
+                    title: "Back"
+                }
+            ]);
+
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
             "❌ Sorry, there are no available slots on " +
             selectedDate +
             ".\n\n" +
-            "Please choose another date."
+            "Please choose another date.",
+            {
+                fallbackText: fallbackText,
+                interactive: interactive
+            }
         );
 
         return false;

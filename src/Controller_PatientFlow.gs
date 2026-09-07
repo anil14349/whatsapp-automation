@@ -65,7 +65,7 @@ if (
         sendPatientMainMenuReply(
             ss,
             senderPhone,
-            "👋 Welcome to ABC Clinic!"
+            "👋 Welcome to {{CLINIC_NAME}}!"
         );
     }
     return true;
@@ -210,7 +210,10 @@ if (
             senderPhone
         ).filter(
             function (appt) {
-                return isConfirmedAppointmentStatus(
+                // Same fix as getConfirmedAppointmentsForPhone: only
+                // hide truly inactive appointments, so one with a
+                // blank or non-standard status doesn't disappear here.
+                return !isInactiveAppointmentStatus(
                     appt.status
                 );
             }
@@ -221,18 +224,23 @@ if (
         appointments.length === 0
     ) {
 
+        // No appointments: take the patient directly into the
+        // normal booking flow so they can choose any available doctor.
         saveWhatsAppSession(
             senderPhone,
             {
                 role: "PATIENT",
-                state: "MAIN_MENU"
+                state: "BOOK_DOCTOR",
+                doctorId: "",
+                date: "",
+                time: "",
+                appointmentId: ""
             }
         );
 
-        sendPatientMainMenuReply(
+        sendDoctorSelectionReply(
             ss,
-            senderPhone,
-            "📋 You have no upcoming appointments."
+            senderPhone
         );
 
         return true;
@@ -402,18 +410,58 @@ if (
     session.state === "BOOK_DOCTOR"
 ) {
 
-    const doctorNumber =
-        Number(messageText.trim());
+    const selection =
+        String(messageText || "").trim();
 
     const doctors =
         getDoctors();
 
-    const doctor =
-        Number.isInteger(doctorNumber) &&
-        doctorNumber >= 1 &&
-        doctorNumber <= doctors.length
-            ? doctors[doctorNumber - 1]
-            : null;
+    let doctor = null;
+
+    // Interactive WhatsApp doctor selection uses the actual Doctor ID.
+    if (
+        selection.indexOf("doctor_select_") === 0
+    ) {
+        const encodedDoctorId =
+            selection.substring(
+                "doctor_select_".length
+            );
+
+        let selectedDoctorId = "";
+
+        try {
+            selectedDoctorId =
+                decodeURIComponent(
+                    encodedDoctorId
+                );
+        } catch (decodeError) {
+            selectedDoctorId =
+                encodedDoctorId;
+        }
+
+        doctor =
+            doctors.find(
+                function (item) {
+                    return String(
+                        item.doctorId
+                    ).trim() === String(
+                        selectedDoctorId
+                    ).trim();
+                }
+            ) || null;
+
+    } else {
+        // Keep typed-number fallback working for users who type 1, 2, 3...
+        const doctorNumber =
+            Number(selection);
+
+        doctor =
+            Number.isInteger(doctorNumber) &&
+            doctorNumber >= 1 &&
+            doctorNumber <= doctors.length
+                ? doctors[doctorNumber - 1]
+                : null;
+    }
 
 
     // ======================================================
@@ -673,13 +721,40 @@ if (
                 "🕐 " +
                 bookingResult.time +
                 "\n\n" +
-                "Thank you for choosing ABC Clinic.";
+                "Thank you for choosing {{CLINIC_NAME}}.";
 
             sendWhatsAppReply(
                 ss,
                 senderPhone,
                 reply
             );
+
+            // Send a shareable appointment receipt card after the
+            // booking confirmation. The recipient can use WhatsApp's
+            // native Forward action to share it with the patient.
+            try {
+                sendAppointmentReceiptCard(
+                    senderPhone,
+                    {
+                        appointmentId:
+                            bookingResult.appointmentId,
+                        patientName: patientName,
+                        doctorId:
+                            session.doctorId,
+                        doctor:
+                            bookingResult.doctor,
+                        date:
+                            bookingResult.date,
+                        time:
+                            bookingResult.time
+                    }
+                );
+            } catch (receiptError) {
+                Logger.log(
+                    "Appointment receipt failed; booking remains successful: " +
+                    receiptError.message
+                );
+            }
 
         } else {
 
@@ -689,14 +764,55 @@ if (
                     ? bookingResult.message
                     : "Unable to book the appointment.";
 
-            sendWhatsAppReply(
-                ss,
-                senderPhone,
-                "❌ " +
-                errorMessage +
-                "\n\n" +
-                "Please choose another time or send Hi to start again."
-            );
+            if (
+                errorMessage ===
+                "You already have an active appointment on this date."
+            ) {
+
+                const fallbackText =
+                    "1️⃣ Choose Another Date\n" +
+                    "0️⃣ Main Menu\n" +
+                    "9️⃣ Back";
+
+                const interactive =
+                    buildInteractiveButtonSpec([
+                        {
+                            id: "date_retry",
+                            title: "Choose Another Date"
+                        },
+                        {
+                            id: "nav_main_menu",
+                            title: "Main Menu"
+                        },
+                        {
+                            id: "nav_back",
+                            title: "Back"
+                        }
+                    ]);
+
+                sendWhatsAppMenuReply(
+                    ss,
+                    senderPhone,
+                    "❌ You already have an active appointment on this date." +
+                    "\n\n" +
+                    "Please choose another date.",
+                    {
+                        fallbackText: fallbackText,
+                        interactive: interactive
+                    }
+                );
+
+            } else {
+
+                sendWhatsAppReply(
+                    ss,
+                    senderPhone,
+                    "❌ " +
+                    errorMessage +
+                    "\n\n" +
+                    "Please choose another time or send Hi to start again."
+                );
+            }
         }
 
     } else if (
@@ -847,6 +963,25 @@ if (
 ) {
 
     handleWhatsAppMyAppointmentsState(
+        ss,
+        senderPhone,
+        session,
+        normalizedMessage
+    );
+    return true;
+}
+
+
+// ======================================================
+// MY APPOINTMENT ACTION STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "MY_APPOINTMENT_ACTION"
+) {
+
+    handleWhatsAppMyAppointmentActionState(
         ss,
         senderPhone,
         session,
@@ -1126,7 +1261,7 @@ if (
                 "🕐 " +
                 result.time +
                 "\n\n" +
-                "Thank you for choosing ABC Clinic.";
+                "Thank you for choosing {{CLINIC_NAME}}.";
 
             sendWhatsAppReply(
                 ss,

@@ -1884,7 +1884,7 @@ if (
             }
         );
 
-        sendWhatsAppReply(
+        sendCustomDateEntryMenuReply(
             ss,
             senderPhone,
             buildDoctorScheduleDateEntryPrompt()
@@ -1934,7 +1934,7 @@ if (
 
     if (!dateCheck.valid) {
 
-        sendWhatsAppReply(
+        sendCustomDateEntryMenuReply(
             ss,
             senderPhone,
             dateCheck.message

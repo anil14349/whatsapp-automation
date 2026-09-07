@@ -106,9 +106,7 @@ if (
                 senderPhone,
                 logoSent
                     ? ""
-                    : "👋 Welcome to " +
-                    getClinicName() +
-                    "!"
+                    : "👋 Welcome to {{CLINIC_NAME}}!"
             );
 
         } else {
@@ -132,9 +130,7 @@ if (
                 senderPhone,
                 logoSent
                     ? ""
-                    : "👋 Welcome to " +
-                    getClinicName() +
-                    "!"
+                    : "👋 Welcome to {{CLINIC_NAME}}!"
             );
         }
     }
@@ -155,6 +151,112 @@ function handleWhatsAppUniversalNavigation(
     session,
     normalizedMessage
 ) {
+
+// ======================================================
+// NO-SLOTS: CHOOSE ANOTHER DATE
+// ======================================================
+if (
+    session &&
+    normalizedMessage === "date_retry"
+) {
+
+    // PATIENT BOOKING
+    if (
+        session.state === "BOOK_DATE" ||
+        session.state === "BOOK_DATE_CUSTOM" ||
+        session.state === "BOOK_TIME" ||
+        session.state === "BOOK_NAME" ||
+        session.state === "BOOK_CONFIRM"
+    ) {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                state: "BOOK_DATE",
+                date: "",
+                time: ""
+            }
+        );
+
+        showBookingDateSelection(
+            ss,
+            senderPhone,
+            getWhatsAppSession(senderPhone)
+        );
+
+        return true;
+    }
+
+
+    // PATIENT RESCHEDULE
+    if (
+        session.state === "RESCHEDULE_DATE" ||
+        session.state === "RESCHEDULE_DATE_CUSTOM" ||
+        session.state === "RESCHEDULE_TIME" ||
+        session.state === "RESCHEDULE_CONFIRM"
+    ) {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                state: "RESCHEDULE_DATE",
+                date: "",
+                time: ""
+            }
+        );
+
+        showRescheduleDateSelection(
+            ss,
+            senderPhone,
+            getWhatsAppSession(senderPhone)
+        );
+
+        return true;
+    }
+
+
+    // DOCTOR RESCHEDULE
+    if (
+        session.state === "DOCTOR_RESCHEDULE_DATE" ||
+        session.state === "DOCTOR_RESCHEDULE_DATE_CUSTOM" ||
+        session.state === "DOCTOR_RESCHEDULE_TIME" ||
+        session.state === "DOCTOR_RESCHEDULE_CONFIRM"
+    ) {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "DOCTOR",
+                state: "DOCTOR_RESCHEDULE_DATE",
+                doctorId: session.doctorId,
+                appointmentId: session.appointmentId,
+                patientName: session.patientName,
+                date: "",
+                time: ""
+            }
+        );
+
+        sendDateMenuReply(
+            ss,
+            senderPhone,
+            buildDoctorRescheduleDateIntro(
+                session.doctorId
+            )
+        );
+
+        return true;
+    }
+
+
+    // SAFE FALLBACK
+    showBookingDateSelection(
+        ss,
+        senderPhone,
+        getWhatsAppSession(senderPhone)
+    );
+
+    return true;
+}
 
 // UNIVERSAL NAVIGATION
 // ======================================================
