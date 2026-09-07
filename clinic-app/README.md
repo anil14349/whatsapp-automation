@@ -1,0 +1,137 @@
+# ABC Clinic — Next.js + Supabase rewrite
+
+Rewrite of the Apps Script bot in [`../src`](../src) (patient/doctor WhatsApp
+bot + Google Sheets/Calendar) into a Next.js + Postgres (Supabase) app with a
+receptionist/admin web UI. See the root [README](../README.md) and this
+branch's history for the architecture decisions behind this rewrite.
+
+**Status**: in progress, built in stages. This stage: project scaffold +
+complete database schema. Business logic, the WhatsApp webhook, and the
+admin UI land in subsequent commits.
+
+---
+
+## Stack
+
+- **Next.js 15** (App Router), TypeScript, Tailwind — single app, single
+  deployable (e.g. Vercel), covering both the WhatsApp webhook (`/api/...`
+  routes) and the admin UI (`/admin/...` pages).
+- **Supabase** (Postgres) — replaces every Google Sheet. Schema in
+  [`supabase/migrations/`](supabase/migrations).
+- **Google Calendar API** (kept) — per-doctor calendar sync via a service
+  account, same behavior as the Apps Script version's `CalendarApp` calls.
+- **Vitest** — unit tests for pure logic (phone/date parsing, availability
+  computation, etc.), run without needing a database.
+
+## Why Next 15, not the newest Next.js
+
+Next 16 is current upstream as of this writing, but it shipped after this
+assistant's knowledge cutoff — pinned to the patched Next **15** line
+(`15.5.25`) instead, since its API surface (async `cookies()`/`headers()`,
+`params`/`searchParams` as Promises, etc.) is well-understood and it isn't
+flagged for any known vulnerability. Revisit this once Next 16 has been
+out long enough to have real-world docs/guidance to work from.
+
+## Known dependency audit findings (as of this stage)
+
+`npm audit` reports issues in the `vitest`/`vite`/`esbuild` dev-tooling
+chain and in `googleapis`'s transitive `uuid` dependency. All are
+build-time/dev-server-only (not reachable by a deployed production
+request) or low-severity transitive noise — not blocking, but worth
+revisiting periodically (`npm audit`) as patched versions land upstream.
+
+---
+
+## Local setup
+
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Environment variables**: copy `.env.example` to `.env.local` and fill
+   in real values (WhatsApp Cloud API credentials are the same ones already
+   used by the Apps Script bot; Supabase URL/keys come from step 3 below;
+   Google service-account credentials are new — see below).
+
+3. **Local Supabase** (needs [Docker](https://docs.docker.com/get-docker/)
+   and the [Supabase CLI](https://supabase.com/docs/guides/cli)):
+   ```bash
+   npm run db:start   # starts local Postgres + Studio via Docker
+   npm run db:reset   # applies every migration in supabase/migrations/ fresh
+   ```
+   `db:start` prints a local `anon`/`service_role` key pair and API URL —
+   put those into `.env.local`.
+
+4. **Google Calendar service account** (only needed once you get to
+   booking flows that touch Calendar): create a Google Cloud service
+   account, enable the Calendar API, and **share each doctor's Google
+   Calendar** with the service account's email address (Calendar Settings
+   → "Share with specific people" → grant "Make changes to events"). This
+   mirrors how the Apps Script bot worked — it needed the *executing
+   Google account* to have access to each `calendar_id` in the `doctors`
+   table.
+
+5. **Run the dev server**:
+   ```bash
+   npm run dev
+   ```
+
+6. **Run tests**:
+   ```bash
+   npm test          # single run
+   npm run test:watch
+   ```
+
+7. **Typecheck / lint / build** (same commands CI should run):
+   ```bash
+   npm run typecheck
+   npm run lint
+   npm run build
+   ```
+
+---
+
+## Database schema
+
+See [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql)
+for the full schema with column-level comments cross-referencing the
+original Google Sheet each table replaces. Summary:
+
+| Table | Was (Apps Script sheet) |
+|---|---|
+| `doctors` | `Doctors` |
+| `doctor_availability` | `Availability` |
+| `doctor_leaves` | `Doctor_Leaves` |
+| `patients` | `Patients` |
+| `appointments` | `Appointments` |
+| `whatsapp_sessions` | `WhatsApp_Sessions` |
+| `home_collection_requests` | `Home_Collection_Requests` |
+| `message_log` | `WhatsApp_Log` (consolidated inbound/outbound/reminder ledger) |
+| `settings` | `Settings` |
+| `admin_users` | *(new — no admin UI existed before this rewrite)* |
+
+[`0002_rls.sql`](supabase/migrations/0002_rls.sql) enables Row Level
+Security on every table with **no** policies for anon/authenticated roles
+— every read/write goes through a Next.js API route using the Supabase
+service-role key (`lib/supabase/server.ts`), which bypasses RLS by design.
+The browser never talks to Supabase directly.
+
+Regenerate TypeScript types from the live schema once local Supabase is
+running (this overwrites the hand-written
+[`lib/supabase/database.types.ts`](lib/supabase/database.types.ts), which
+was written by hand to match the migration since Docker/Supabase CLI
+weren't available in the environment this scaffold was first built in):
+```bash
+npm run db:types
+```
+
+---
+
+## Deploying
+
+Not yet documented — this stage is scaffold-only. Once the app has real
+functionality, this section will cover: creating a real (cloud) Supabase
+project, applying migrations to it, setting environment variables on
+Vercel (or your chosen host), and pointing Meta's WhatsApp webhook at the
+deployed `/api/whatsapp/webhook` URL.

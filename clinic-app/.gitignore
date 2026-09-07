@@ -1,0 +1,25 @@
+# dependencies
+/node_modules
+
+# next.js build output
+/.next/
+/out/
+
+# production
+/build
+
+# env files
+.env
+.env.local
+.env.*.local
+
+# supabase local dev
+/supabase/.branches
+/supabase/.temp
+
+# typescript build info
+*.tsbuildinfo
+next-env.d.ts
+
+# logs
+npm-debug.log*

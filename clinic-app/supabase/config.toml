@@ -1,0 +1,22 @@
+project_id = "clinic-app"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[studio]
+enabled = true
+port = 54323
+
+[auth]
+enabled = false # admin/receptionist login is handled by our own admin_users table + Next.js, not Supabase Auth
+
+[realtime]
+enabled = false
