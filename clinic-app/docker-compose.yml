@@ -1,0 +1,15 @@
+# Convenience wrapper around `docker build` + `docker run` for local
+# testing of the production image. Not required for deployment — most
+# hosts (Fly.io, Render, Cloud Run, etc.) build directly from the
+# Dockerfile without needing this file at all.
+#
+# Usage:
+#   docker compose up --build
+services:
+  clinic-app:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.local
+    restart: unless-stopped

@@ -275,8 +275,106 @@ npm run db:types
 
 ## Deploying
 
-Not yet documented — this stage is scaffold-only. Once the app has real
-functionality, this section will cover: creating a real (cloud) Supabase
-project, applying migrations to it, setting environment variables on
-Vercel (or your chosen host), and pointing Meta's WhatsApp webhook at the
-deployed `/api/whatsapp/webhook` URL.
+**Verification status**: the steps below follow standard, well-documented
+patterns for each piece (Supabase cloud projects, Vercel, Docker's
+official Next.js "standalone" pattern) — but they have **not been run
+end-to-end** from this environment. There's no reachable Supabase
+account, Docker daemon, or hosting account here to actually execute a
+deploy and confirm it works — see the note at the top of this repo's
+[root README](../README.md) and the "What's tested vs. what isn't yet"
+sections above. Treat this as a solid starting runbook, not a
+verified-working one; expect to debug the first real attempt.
+
+### 1. Create a Supabase project
+
+1. Create a project at [supabase.com](https://supabase.com) (or self-host
+   Supabase — out of scope here).
+2. Apply the migrations in [`supabase/migrations/`](supabase/migrations)
+   in order, either via `supabase link` + `supabase db push` (Supabase
+   CLI), or by pasting each file's contents into the SQL Editor in order.
+3. From **Project Settings → API**, note the **Project URL**, **anon
+   public key**, and **service_role key** (server-only, treat as a
+   secret).
+4. Run [`scripts/create-admin-user.mjs`](scripts/create-admin-user.mjs)
+   once against this project (see "First login" above) to create your
+   first admin login.
+
+### 2. Set up Google Calendar access
+
+1. Create a Google Cloud project (or reuse one) and enable the
+   **Google Calendar API**.
+2. Create a **service account**, generate a JSON key for it.
+3. From the key JSON, take `client_email` →
+   `GOOGLE_SERVICE_ACCOUNT_EMAIL`, and `private_key` →
+   `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (keep the `\n` sequences literal
+   when pasting into an env var — see `.env.example`'s comment).
+4. For **each doctor**, share their Google Calendar with the service
+   account's email address (Calendar → Settings → "Share with specific
+   people" → grant **"Make changes to events"**).
+
+### 3. Collect the rest of the environment variables
+
+Fill in every variable in [`.env.example`](.env.example) — same
+`WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID` as the Apps Script
+version if you're migrating from it, plus two you choose yourself:
+`WHATSAPP_VERIFY_TOKEN` (must match what you enter in Meta's webhook
+config) and `WHATSAPP_WEBHOOK_POST_TOKEN` (appended as `?token=...` to
+the callback URL you give Meta). Generate `ADMIN_SESSION_SECRET` with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+### 4a. Deploy to Vercel (simplest path)
+
+1. Import the repo into [Vercel](https://vercel.com), setting the
+   **root directory** to `clinic-app` (this isn't the repo root).
+2. Add every variable from step 3 under Project Settings → Environment
+   Variables.
+3. Deploy. Your webhook URL is
+   `https://<your-vercel-domain>/api/whatsapp/webhook`.
+
+### 4b. Deploy as a Docker container (self-hosted / any container host)
+
+A [`Dockerfile`](Dockerfile) is included, using Next.js's
+[`output: "standalone"`](next.config.mjs) mode — a multi-stage build
+that ships only the traced runtime dependencies, not the full dev
+`node_modules` or source tree.
+
+```bash
+docker build -t clinic-app .
+docker run --env-file .env.local -p 3000:3000 clinic-app
+```
+
+or, for local convenience, `docker compose up --build` (see
+[`docker-compose.yml`](docker-compose.yml)). This runs the same image
+you'd deploy to Fly.io, Render, Cloud Run, a VPS, etc. — point whichever
+host at this `Dockerfile` and supply the same environment variables from
+step 3. Your webhook URL is `https://<your-host>/api/whatsapp/webhook`.
+
+One thing the Dockerfile deliberately does **not** do: it doesn't copy
+this repo's `.npmrc` into the build (that file sets `strict-ssl=false`,
+a workaround for a broken CA bundle in the sandbox this project was
+first scaffolded in — not something that should silently disable TLS
+verification in your own build environment too).
+
+### 5. Configure Meta's WhatsApp webhook
+
+In [Meta for Developers](https://developers.facebook.com/) → your app →
+**WhatsApp → Configuration**:
+
+1. **Callback URL**: your deployed `/api/whatsapp/webhook` URL, with
+   `?token=YOUR_WHATSAPP_WEBHOOK_POST_TOKEN` appended.
+2. **Verify token**: must exactly match `WHATSAPP_VERIFY_TOKEN`.
+3. Click **Verify and save**, then subscribe to the **`messages`**
+   webhook field.
+
+### 6. Smoke test
+
+- Send **Hi** from a WhatsApp number not yet in `patients` — expect the
+  language menu (or main menu, if you've pre-set a language), and a new
+  row appear in `message_log`.
+- Complete a full booking — expect a row in `appointments` and a new
+  event on the doctor's Google Calendar.
+- Log into `/admin` with the account from step 1.4 and confirm the
+  booking shows up under Appointments.
