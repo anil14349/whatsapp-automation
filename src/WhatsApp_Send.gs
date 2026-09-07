@@ -314,9 +314,7 @@ function sendPatientMainMenuReply(
     const line =
         prefix !== undefined
             ? String(prefix)
-            : "👋 Welcome to " +
-            getClinicName() +
-            "!";
+            : "👋 Welcome to {{CLINIC_NAME}}!";
 
     const body =
         (line ? line + "\n\n" : "") +
@@ -765,6 +763,47 @@ function sendDateMenuReply(ss, phone, introText) {
         phone,
         String(introText || "Choose an appointment date."),
         getDateMenuSpec()
+    );
+}
+
+
+
+// Custom-date-entry prompt (the free-text "YYYY-MM-DD" step) previously
+// had no interactive nav affordance — just plain text with no way to
+// tap back to the main menu or the previous step. Gives it the same
+// Main Menu/Back buttons every other menu screen has.
+function sendCustomDateEntryMenuReply(
+    ss,
+    phone,
+    bodyText
+) {
+
+    const text =
+        String(bodyText || "");
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        text,
+        {
+            fallbackText:
+                text +
+                "\n\n" +
+                "0️⃣ Main Menu\n" +
+                "9️⃣ Back",
+
+            interactive:
+                buildInteractiveButtonSpec([
+                    {
+                        id: "nav_main_menu",
+                        title: "Main Menu"
+                    },
+                    {
+                        id: "nav_back",
+                        title: "Back"
+                    }
+                ])
+        }
     );
 }
 

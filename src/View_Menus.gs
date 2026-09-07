@@ -425,7 +425,14 @@ function getDoctorSelectionMenuSpec() {
                         .join(" — ");
 
                 return {
-                    id: String(index + 1),
+                    // Use the real Doctor ID in the WhatsApp list so every
+                    // doctor maps directly to the correct Doctors-sheet row.
+                    // encodeURIComponent keeps spaces/special characters safe.
+                    id:
+                        "doctor_select_" +
+                        encodeURIComponent(
+                            String(doctor.doctorId)
+                        ),
                     title: doctor.doctorName,
                     description: description
                 };
@@ -443,6 +450,37 @@ function getDoctorSelectionMenuSpec() {
                 "Select doctor"
             );
     }
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+
+function getMyAppointmentActionSpec() {
+
+    const fallbackText =
+        "1️⃣ Cancel Appointment\n" +
+        "2️⃣ Reschedule\n" +
+        "3️⃣ Main Menu";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            {
+                id: "appointment_action_cancel",
+                title: "Cancel Appointment"
+            },
+            {
+                id: "appointment_action_reschedule",
+                title: "Reschedule"
+            },
+            {
+                id: "nav_main_menu",
+                title: "Main Menu"
+            }
+        ]);
 
     return {
         fallbackText: fallbackText,
