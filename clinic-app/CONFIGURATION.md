@@ -99,6 +99,13 @@ corresponding bot feature gets ported in a future increment, with no
 schema or UI change needed then — only the missing plumbing in between.
 Treat the ⛔ rows today as "reserved, has no effect yet," not as broken.
 
+This isn't just documented here — `/admin/settings` itself shows a
+**"Not yet active"** badge next to every dormant field, so someone using
+the UI (not reading this doc) still finds out. The badge is driven by
+`DORMANT_SETTING_KEYS` in `lib/settings.ts`, the single source of truth
+for this table — keep it in sync with the ⛔ rows above if a future
+change wires up one of these settings.
+
 ---
 
 ## Per-doctor configuration (`doctors` table, `/admin/doctors`)

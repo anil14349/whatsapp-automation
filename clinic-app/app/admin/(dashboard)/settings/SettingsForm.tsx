@@ -1,6 +1,7 @@
 "use client";
 
 import { useFormState, useFormStatus } from "react-dom";
+import { DORMANT_SETTING_KEYS } from "@/lib/settings";
 import { updateSettingsAction, type FormState } from "./actions";
 
 const initialState: FormState = {};
@@ -18,6 +19,24 @@ function SubmitButton() {
     >
       {pending ? "Saving…" : "Save settings"}
     </button>
+  );
+}
+
+/**
+ * "Not yet active" badge, shown whenever a field's key is in
+ * DORMANT_SETTING_KEYS (see lib/settings.ts) — the setting is still
+ * saved and editable, but no bot code reads it yet because the feature
+ * it controls hasn't been ported. See CONFIGURATION.md for details on
+ * each one.
+ */
+function DormantBadge() {
+  return (
+    <span
+      title="Saved, but no bot feature reads this setting yet — see CONFIGURATION.md"
+      className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
+    >
+      Not yet active
+    </span>
   );
 }
 
@@ -42,6 +61,7 @@ function ToggleField({
       <label htmlFor={name} className="text-sm text-slate-700">
         {label}
       </label>
+      {DORMANT_SETTING_KEYS.has(name) && <DormantBadge />}
     </div>
   );
 }
@@ -61,6 +81,7 @@ function TextField({
     <div>
       <label htmlFor={name} className={labelClass}>
         {label}
+        {DORMANT_SETTING_KEYS.has(name) && <DormantBadge />}
       </label>
       <input id={name} name={name} defaultValue={value} placeholder={placeholder} className={inputClass} />
     </div>
@@ -74,6 +95,10 @@ export function SettingsForm({ settings }: { settings: Record<string, string> })
 
   return (
     <form action={formAction} className="flex flex-col gap-8">
+      <p className="rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-600">
+        Fields marked <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">Not yet active</span> are saved but don&apos;t affect the bot yet — the feature they control hasn&apos;t been built out. See <code className="rounded bg-slate-200 px-1">CONFIGURATION.md</code> for details.
+      </p>
+
       <section>
         <h2 className="text-sm font-semibold text-slate-900">Clinic</h2>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">

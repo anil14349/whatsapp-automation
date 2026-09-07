@@ -13,6 +13,40 @@ import type { Database } from "@/lib/supabase/database.types";
 
 export type SettingsRow = Database["public"]["Tables"]["settings"]["Row"];
 
+/**
+ * Settings keys that are seeded with a default and editable in
+ * /admin/settings, but have no code reading them yet — the feature
+ * they'd control (log retention/truncation, reminders, after-hours
+ * gating, auto-complete, home collection) hasn't been ported from the
+ * Apps Script version. See CONFIGURATION.md for the full breakdown of
+ * why each one is here.
+ *
+ * This is the single source of truth the Settings UI reads to show a
+ * "not yet active" badge — remove a key from this set in the same
+ * change that wires up its feature, so the UI and CONFIGURATION.md
+ * can't silently drift out of sync with what the code actually does.
+ */
+export const DORMANT_SETTING_KEYS: ReadonlySet<string> = new Set([
+  "LOG_RETENTION",
+  "LOG_MAX_ROWS",
+  "LOG_MESSAGE_MAX_CHARS",
+  "ENABLE_INBOUND_LOG",
+  "ENABLE_DEBUG_LOG",
+  "ENABLE_APPOINTMENT_REMINDERS",
+  "REMINDER_HOURS_BEFORE",
+  "REMINDER_WINDOW_MINUTES",
+  "AUTO_COMPLETE_PAST_APPOINTMENTS",
+  "AUTO_COMPLETE_HOURS_AFTER",
+  "ENABLE_AFTER_HOURS_REPLY",
+  "CLINIC_OPEN_TIME",
+  "CLINIC_CLOSE_TIME",
+  "CLINIC_WORKING_DAYS",
+  "AFTER_HOURS_MESSAGE",
+  "HOSPITAL_LATITUDE",
+  "HOSPITAL_LONGITUDE",
+  "HOME_COLLECTION_RADIUS_KM"
+]);
+
 /** All settings as a plain key->value map (every value is stored as text; parse as needed). */
 export async function getAllSettings(
   supabase: SupabaseClient<Database>
