@@ -43,7 +43,74 @@ function ensureWhatsAppSessionsSheet() {
 
 
 
+// Cache layer for getWhatsAppSession(). WhatsApp_Sessions has one row per
+// phone number that has ever messaged the bot and never shrinks, so the
+// linear scan in readWhatsAppSessionFromSheet() gets slower as the clinic's
+// user base grows — this was the main driver of the bot feeling slower
+// over time. CacheService persists ACROSS separate webhook invocations
+// (unlike a plain in-memory variable), so an active conversation mostly
+// hits cache instead of re-scanning the whole sheet on every message.
+// TTL is short enough that a missed invalidation self-heals quickly.
+//
+// NOTE: constants are inlined (not top-level var/const) because
+// scripts/sync-monolith-from-src.js only syncs function bodies into
+// ABC_Clinic_WhatsApp_Complete.gs — a top-level declaration here would
+// silently never reach the monolith.
+
+function getWhatsAppSessionCacheKey(phone) {
+    return "WA_SESSION_" + normalizeWhatsAppPhone(phone);
+}
+
 function getWhatsAppSession(phone) {
+
+    const cacheTtlSeconds = 1800; // 30 minutes
+    const cacheNullSentinel = "__NULL__";
+
+    const cache =
+        CacheService.getScriptCache();
+
+    const cacheKey =
+        getWhatsAppSessionCacheKey(phone);
+
+    const cached =
+        cache.get(cacheKey);
+
+    if (cached !== null) {
+
+        if (cached === cacheNullSentinel) {
+            return null;
+        }
+
+        try {
+            return JSON.parse(cached);
+        } catch (parseError) {
+            // Corrupt/unexpected cache entry — fall through to a real read
+            // rather than propagate the error.
+        }
+    }
+
+    const session =
+        readWhatsAppSessionFromSheet(phone);
+
+    cache.put(
+        cacheKey,
+        session
+            ? JSON.stringify(session)
+            : cacheNullSentinel,
+        cacheTtlSeconds
+    );
+
+    return session;
+}
+
+function invalidateWhatsAppSessionCache(phone) {
+
+    CacheService.getScriptCache().remove(
+        getWhatsAppSessionCacheKey(phone)
+    );
+}
+
+function readWhatsAppSessionFromSheet(phone) {
 
     const sheet =
         ensureWhatsAppSessionsSheet();
@@ -436,6 +503,11 @@ function saveWhatsAppSession(
             updates.location || ""
         ]);
     }
+
+    // Must run after every write (both branches above) so the next read —
+    // whether later in this same execution or a subsequent message — sees
+    // fresh data instead of the value cached before this save.
+    invalidateWhatsAppSessionCache(phone);
 }
 
 
@@ -459,4 +531,6 @@ function clearWhatsAppSession(phone) {
             7
         )
         .clearContent();
+
+    invalidateWhatsAppSessionCache(phone);
 }

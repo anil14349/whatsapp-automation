@@ -17992,173 +17992,44 @@ function sendWhatsAppTemplate(to) {
 
 function getWhatsAppSession(phone) {
 
-    const sheet =
-        ensureWhatsAppSessionsSheet();
+    const cacheTtlSeconds = 1800; // 30 minutes
+    const cacheNullSentinel = "__NULL__";
 
-    const range =
-        sheet.getDataRange();
+    const cache =
+        CacheService.getScriptCache();
 
-    const data =
-        range.getValues();
+    const cacheKey =
+        getWhatsAppSessionCacheKey(phone);
 
-    for (
-        let i = 1;
-        i < data.length;
-        i++
-    ) {
+    const cached =
+        cache.get(cacheKey);
 
-        if (
-            !phonesMatch(
-                data[i][0],
-                phone
-            )
-        ) {
-            continue;
+    if (cached !== null) {
+
+        if (cached === cacheNullSentinel) {
+            return null;
         }
 
-        // ----------------------------------------------------------
-        // IMPORTANT:
-        // Google Sheets may automatically convert:
-        //   "2026-08-18" -> Date object
-        //   "10:00 AM"  -> Date object
-        //
-        // Never use String(Date) for these fields because it produces
-        // values such as:
-        //   "Tue Aug 18 2026 00:00:00 GMT+0530..."
-        //
-        // Normalize them back to the values used by the application.
-        // ----------------------------------------------------------
-
-        let sessionDate = "";
-
-        if (
-            data[i][4] instanceof Date &&
-            !isNaN(data[i][4].getTime())
-        ) {
-
-            sessionDate =
-                Utilities.formatDate(
-                    data[i][4],
-                    TIMEZONE,
-                    "yyyy-MM-dd"
-                );
-
-        } else {
-
-            sessionDate =
-                String(data[i][4] || "").trim();
+        try {
+            return JSON.parse(cached);
+        } catch (parseError) {
+            // Corrupt/unexpected cache entry — fall through to a real read
+            // rather than propagate the error.
         }
-
-        let sessionTime = "";
-
-        if (
-            data[i][5] instanceof Date &&
-            !isNaN(data[i][5].getTime())
-        ) {
-
-            sessionTime =
-                Utilities.formatDate(
-                    data[i][5],
-                    TIMEZONE,
-                    "hh:mm a"
-                );
-
-        } else {
-
-            sessionTime =
-                String(data[i][5] || "").trim();
-        }
-
-        return {
-
-            row:
-                i + 1,
-
-            phone:
-                String(data[i][0]).trim(),
-
-            role:
-                String(data[i][1] || "").trim(),
-
-            state:
-                String(data[i][2] || "").trim(),
-
-            doctorId:
-                String(data[i][3] || "").trim(),
-
-            date:
-                sessionDate,
-
-            time:
-                sessionTime,
-
-            appointmentId:
-                String(data[i][6] || "").trim(),
-
-            updatedAt:
-                data[i][7],
-
-            language:
-                String(data[i][8] || "")
-                    .trim()
-                    .toUpperCase(),
-
-            patientName:
-                String(data[i][9] || "").trim(),
-
-            slotPage:
-                data[i][10] === "" ||
-                data[i][10] === undefined ||
-                data[i][10] === null
-                    ? 0
-                    : parseInt(
-                        data[i][10],
-                        10
-                    ) || 0,
-
-            apptPage:
-                data[i][11] === "" ||
-                data[i][11] === undefined ||
-                data[i][11] === null
-                    ? 0
-                    : parseInt(
-                        data[i][11],
-                        10
-                    ) || 0,
-
-            doctorMenuTier:
-                data[i][12] === "" ||
-                data[i][12] === undefined ||
-                data[i][12] === null
-                    ? ""
-                    : String(data[i][12]).trim(),
-
-            // Generic scroll-position field shared by any paginated list
-            // menu that isn't the appointment list or the slot picker
-            // (doctor selection, doctor's per-day session-remove list).
-            // These states are mutually exclusive with each other and
-            // with slot/appointment pagination, so one column covers all
-            // of them the same way slotPage/apptPage already do for
-            // their own flows.
-            listPage:
-                data[i][13] === "" ||
-                data[i][13] === undefined ||
-                data[i][13] === null
-                    ? 0
-                    : parseInt(
-                        data[i][13],
-                        10
-                    ) || 0,
-
-            // "lat,lng" string captured from a WhatsApp location share,
-            // used by the home blood-sample-collection flow between the
-            // location-check step and the final request being saved.
-            location:
-                String(data[i][14] || "").trim()
-        };
     }
 
-    return null;
+    const session =
+        readWhatsAppSessionFromSheet(phone);
+
+    cache.put(
+        cacheKey,
+        session
+            ? JSON.stringify(session)
+            : cacheNullSentinel,
+        cacheTtlSeconds
+    );
+
+    return session;
 }
 
 
@@ -18357,6 +18228,11 @@ function saveWhatsAppSession(
             updates.location || ""
         ]);
     }
+
+    // Must run after every write (both branches above) so the next read —
+    // whether later in this same execution or a subsequent message — sees
+    // fresh data instead of the value cached before this save.
+    invalidateWhatsAppSessionCache(phone);
 }
 
 function clearWhatsAppSession(phone) {
@@ -18379,6 +18255,8 @@ function clearWhatsAppSession(phone) {
             7
         )
         .clearContent();
+
+    invalidateWhatsAppSessionCache(phone);
 }
 
 
@@ -19238,6 +19116,191 @@ function ensureWhatsAppSessionsSheet() {
     }
 
     return sheet;
+}
+
+
+function getWhatsAppSessionCacheKey(phone) {
+    return "WA_SESSION_" + normalizeWhatsAppPhone(phone);
+}
+
+
+function invalidateWhatsAppSessionCache(phone) {
+
+    CacheService.getScriptCache().remove(
+        getWhatsAppSessionCacheKey(phone)
+    );
+}
+
+
+function readWhatsAppSessionFromSheet(phone) {
+
+    const sheet =
+        ensureWhatsAppSessionsSheet();
+
+    const range =
+        sheet.getDataRange();
+
+    const data =
+        range.getValues();
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        if (
+            !phonesMatch(
+                data[i][0],
+                phone
+            )
+        ) {
+            continue;
+        }
+
+        // ----------------------------------------------------------
+        // IMPORTANT:
+        // Google Sheets may automatically convert:
+        //   "2026-08-18" -> Date object
+        //   "10:00 AM"  -> Date object
+        //
+        // Never use String(Date) for these fields because it produces
+        // values such as:
+        //   "Tue Aug 18 2026 00:00:00 GMT+0530..."
+        //
+        // Normalize them back to the values used by the application.
+        // ----------------------------------------------------------
+
+        let sessionDate = "";
+
+        if (
+            data[i][4] instanceof Date &&
+            !isNaN(data[i][4].getTime())
+        ) {
+
+            sessionDate =
+                Utilities.formatDate(
+                    data[i][4],
+                    TIMEZONE,
+                    "yyyy-MM-dd"
+                );
+
+        } else {
+
+            sessionDate =
+                String(data[i][4] || "").trim();
+        }
+
+        let sessionTime = "";
+
+        if (
+            data[i][5] instanceof Date &&
+            !isNaN(data[i][5].getTime())
+        ) {
+
+            sessionTime =
+                Utilities.formatDate(
+                    data[i][5],
+                    TIMEZONE,
+                    "hh:mm a"
+                );
+
+        } else {
+
+            sessionTime =
+                String(data[i][5] || "").trim();
+        }
+
+        return {
+
+            row:
+                i + 1,
+
+            phone:
+                String(data[i][0]).trim(),
+
+            role:
+                String(data[i][1] || "").trim(),
+
+            state:
+                String(data[i][2] || "").trim(),
+
+            doctorId:
+                String(data[i][3] || "").trim(),
+
+            date:
+                sessionDate,
+
+            time:
+                sessionTime,
+
+            appointmentId:
+                String(data[i][6] || "").trim(),
+
+            updatedAt:
+                data[i][7],
+
+            language:
+                String(data[i][8] || "")
+                    .trim()
+                    .toUpperCase(),
+
+            patientName:
+                String(data[i][9] || "").trim(),
+
+            slotPage:
+                data[i][10] === "" ||
+                data[i][10] === undefined ||
+                data[i][10] === null
+                    ? 0
+                    : parseInt(
+                        data[i][10],
+                        10
+                    ) || 0,
+
+            apptPage:
+                data[i][11] === "" ||
+                data[i][11] === undefined ||
+                data[i][11] === null
+                    ? 0
+                    : parseInt(
+                        data[i][11],
+                        10
+                    ) || 0,
+
+            doctorMenuTier:
+                data[i][12] === "" ||
+                data[i][12] === undefined ||
+                data[i][12] === null
+                    ? ""
+                    : String(data[i][12]).trim(),
+
+            // Generic scroll-position field shared by any paginated list
+            // menu that isn't the appointment list or the slot picker
+            // (doctor selection, doctor's per-day session-remove list).
+            // These states are mutually exclusive with each other and
+            // with slot/appointment pagination, so one column covers all
+            // of them the same way slotPage/apptPage already do for
+            // their own flows.
+            listPage:
+                data[i][13] === "" ||
+                data[i][13] === undefined ||
+                data[i][13] === null
+                    ? 0
+                    : parseInt(
+                        data[i][13],
+                        10
+                    ) || 0,
+
+            // "lat,lng" string captured from a WhatsApp location share,
+            // used by the home blood-sample-collection flow between the
+            // location-check step and the final request being saved.
+            location:
+                String(data[i][14] || "").trim()
+        };
+    }
+
+    return null;
 }
 
 
