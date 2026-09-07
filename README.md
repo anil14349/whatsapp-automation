@@ -17,7 +17,7 @@ There are two equivalent ways to source the production code — pick **one**, do
 
 ### Option B — `src/` split (recommended)
 
-The same code, reorganized into 21 smaller files by responsibility (Model/View/Controller-style). Apps Script merges every bound `.gs` file into one shared global scope regardless of file name or count, so this is behaviorally identical to Option A — just easier to navigate. Bind **every file in `src/`** (all 21) plus, optionally, `ABC_Clinic_Tests.gs`:
+The same code, reorganized into 23 smaller files by responsibility (Model/View/Controller-style). Apps Script merges every bound `.gs` file into one shared global scope regardless of file name or count, so this is behaviorally identical to Option A — just easier to navigate. Bind **every file in `src/`** (all 23) plus, optionally, `ABC_Clinic_Tests.gs`:
 
 | File | Purpose |
 |------|---------|
@@ -31,6 +31,7 @@ The same code, reorganized into 21 smaller files by responsibility (Model/View/C
 | `src/Model_Calendar.gs` | Calendar event lookup & slot-availability engine |
 | `src/Model_Patients.gs` | Patients registry (find/upsert/sync) |
 | `src/Model_Appointments.gs` | Book/cancel/reschedule, appointment lookups |
+| `src/Model_HomeCollection.gs` | `Home_Collection_Requests` sheet — home blood-sample-collection requests |
 | `src/Model_Session.gs` | `WhatsApp_Sessions` sheet read/write |
 | `src/Setup.gs` | `initializeWhatsAppBotSheets()` — one-time creation of every required sheet |
 | `src/Api.gs` | `api()` HTTP-style dispatcher for external callers |
@@ -41,6 +42,7 @@ The same code, reorganized into 21 smaller files by responsibility (Model/View/C
 | `src/Controller_Router.gs` | Top-level message dispatch (greeting/navigation/router) |
 | `src/Controller_DoctorFlow.gs` | Doctor-portal conversation state machine |
 | `src/Controller_PatientFlow.gs` | Patient conversation state machine |
+| `src/Controller_HomeCollection.gs` | Home blood-sample-collection request flow (location-gated by radius) |
 | `src/WhatsApp_Send.gs` | Low-level WhatsApp Cloud API senders |
 
 Every function/variable name is still globally unique across all files (Apps Script requirement) — kept in sync automatically by `scripts/sync-monolith-from-src.js` (`node scripts/sync-monolith-from-src.js --check` reports drift between Option A and Option B without writing).
@@ -121,9 +123,20 @@ WhatsApp allows **at most 10 rows** per list menu and **3 reply buttons** per me
 | **Appointment pickers** (my appointments/cancel/reschedule, doctor-side too) | **Paginated** the same way as time slots |
 | **Doctor portal** | 3-button screens, tiered behind a **More** button (options 1–10 spread across 4 tiers) |
 | **Language** | 6 languages in one list (under limit) |
-| **Doctor selection / session-remove lists** | Up to 9 shown as a tappable list; beyond that, falls back to numbered text for the full list (no pagination) |
+| **Doctor selection / session-remove lists** | **Paginated** the same way as time slots (`WhatsApp_Sessions` → **List Page** column) |
 
 Typed numbers still work everywhere as a backup (including global slot numbers across pages).
+
+### Home sample collection
+
+Patient main menu → **More** → **Home Sample Collection**:
+
+1. Patient shares their location via WhatsApp's native **Location** attachment (typed addresses aren't accepted — there's no geocoding step).
+2. The bot computes the great-circle distance to `HOSPITAL_LATITUDE`/`HOSPITAL_LONGITUDE` (`haversineDistanceKm`) and rejects requests beyond `HOME_COLLECTION_RADIUS_KM` (default 5 km).
+3. Within range, the patient picks a preferred date (Today / Tomorrow / Other) and a time window (Morning / Afternoon / Evening) — no slot inventory to manage.
+4. A row is saved to `Home_Collection_Requests` (`Pending` status); a staff member follows up by phone to confirm the exact visit time.
+
+The feature stays hidden (replies "isn't set up yet") until both `HOSPITAL_LATITUDE` and `HOSPITAL_LONGITUDE` are configured in `Settings`.
 
 ### Refactor / reliability
 
@@ -207,7 +220,7 @@ Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/`
 ### Step 1 — Prepare the spreadsheet
 
 1. Create or open the clinic Google Sheet (this becomes the data store).
-2. After binding the Apps Script project (Step 2 below), run **`initializeWhatsAppBotSheets()`** once from the Apps Script editor — it creates every required sheet with its header row (`Settings`, `WhatsApp_Log`, `Patients`, `WhatsApp_Sessions`, `Doctors`, `Availability`, `Appointments`, `Doctor_Leaves`) if it doesn't already exist. Safe to re-run any time. See `src/README.md` for details.
+2. After binding the Apps Script project (Step 2 below), run **`initializeWhatsAppBotSheets()`** once from the Apps Script editor — it creates every required sheet with its header row (`Settings`, `WhatsApp_Log`, `Patients`, `WhatsApp_Sessions`, `Doctors`, `Availability`, `Appointments`, `Doctor_Leaves`, `Home_Collection_Requests`) if it doesn't already exist. Safe to re-run any time. See `src/README.md` for details.
 3. Fill in the **`Doctors`** sheet, one row per doctor:
 
    | Doctor ID | Doctor Name | Clinic | Calendar ID | WhatsApp | AppointmentDuration | Active | Specialization |
@@ -236,7 +249,7 @@ Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/`
 2. Remove any old/default `Code.gs` content if present (or delete the file).
 3. Add the production code — pick one:
    - **Single file:** add **`ABC_Clinic_WhatsApp_Complete.gs`**, copying the full file from this repo into a script file with that name.
-   - **Split (`src/`):** add all 21 files from `src/` as separate script files, each with the same name (minus `.gs`, which the editor appends automatically).
+   - **Split (`src/`):** add all 23 files from `src/` as separate script files, each with the same name (minus `.gs`, which the editor appends automatically).
 4. *(Optional, recommended for staging)* Add **`ABC_Clinic_Tests.gs`** for in-editor smoke tests.
 5. **Save** the project (Ctrl+S). Give the project a clear name, e.g. `ABC Clinic WhatsApp`.
 
@@ -347,6 +360,8 @@ After the first inbound message, a **`Settings`** sheet is created. Adjust as ne
 | `CLINIC_CLOSE_TIME` | `18:00` | Clinic closes |
 | `CLINIC_WORKING_DAYS` | `Mon,Tue,Wed,Thu,Fri,Sat` | Days the clinic accepts patient messages |
 | `AFTER_HOURS_MESSAGE` | *(empty)* | Optional custom closed message (overrides default) |
+| `HOSPITAL_LATITUDE` / `HOSPITAL_LONGITUDE` | *(empty)* | Hospital coordinates for the home sample-collection radius check — the feature stays hidden behind a "not set up yet" message until both are set |
+| `HOME_COLLECTION_RADIUS_KM` | `5` | Max distance (km) from the hospital a patient can be to request home sample collection |
 
 Optional scheduled jobs (run once in Apps Script editor):
 
@@ -495,7 +510,7 @@ Local Node unit tests (`tests/run-unit-tests.mjs`) are **not included yet** — 
 ```
 ABC_Clinic_WhatsApp_Complete.gs   ← production, Option A: single file
 ABC_Clinic_Tests.gs               ← tests (optional bind, either option)
-src/                               ← production, Option B: split into 21 files (see above)
+src/                               ← production, Option B: split into 23 files (see above)
   Config.gs
   Util_Common.gs
   Logging.gs
@@ -506,6 +521,7 @@ src/                               ← production, Option B: split into 21 files
   Model_Calendar.gs
   Model_Patients.gs
   Model_Appointments.gs
+  Model_HomeCollection.gs
   Model_Session.gs
   Setup.gs
   Api.gs
@@ -516,6 +532,7 @@ src/                               ← production, Option B: split into 21 files
   Controller_Router.gs
   Controller_DoctorFlow.gs
   Controller_PatientFlow.gs
+  Controller_HomeCollection.gs
   WhatsApp_Send.gs
   README.md                        ← src/-specific setup notes (sheet schemas, Settings keys)
 landing/                           ← marketing website (Vercel / Replit)
@@ -527,4 +544,4 @@ scripts/
 README.md                          ← this file
 ```
 
-Option A and Option B are kept in sync with `node scripts/sync-monolith-from-src.js` after editing `src/` — the script copies all **21** `src/*.gs` files into the monolith (function bodies only; top-level comments and consts are not copied — see the script's own header comment). Use `--check` for a dry-run. Run it before deploying the monolith. If you only use one layout, you can ignore the script.
+Option A and Option B are kept in sync with `node scripts/sync-monolith-from-src.js` after editing `src/` — the script copies all **23** `src/*.gs` files into the monolith (function bodies only; top-level comments and consts are not copied — see the script's own header comment). Use `--check` for a dry-run. Run it before deploying the monolith. If you only use one layout, you can ignore the script.

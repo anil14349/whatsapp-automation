@@ -2,7 +2,7 @@
 
 This is the multi-file version of the ABC Clinic WhatsApp bot: the same code as
 [`ABC_Clinic_WhatsApp_Complete.gs`](../ABC_Clinic_WhatsApp_Complete.gs), reorganized into
-21 files by responsibility (Model / View / Controller style) instead of one ~15,700-line file.
+23 files by responsibility (Model / View / Controller style) instead of one ~15,700-line file.
 
 **Apps Script merges every bound `.gs` file into one shared global scope** — file names,
 file count, and file order don't affect behavior at all. This split is purely for humans
@@ -27,6 +27,7 @@ Script project — every function would be declared twice and the project would 
 | `Model_Calendar.gs` | Calendar event lookups and the slot-availability engine (`getAvailableSlots`) |
 | `Model_Patients.gs` | `Patients` registry — find/upsert/sync, name & language resolution |
 | `Model_Appointments.gs` | `bookAppointment` / `cancelAppointment` / `rescheduleAppointment`, appointment lookups |
+| `Model_HomeCollection.gs` | `Home_Collection_Requests` sheet — home blood-sample-collection requests |
 | `Model_Session.gs` | `WhatsApp_Sessions` sheet read/write (conversation state persistence) |
 | `Setup.gs` | `initializeWhatsAppBotSheets()` — one-time idempotent creation of every required sheet with its header row |
 | `Api.gs` | `api()` — HTTP-style dispatcher for external callers (dashboards, etc.) |
@@ -37,9 +38,10 @@ Script project — every function would be declared twice and the project would 
 | `Controller_Router.gs` | Top-level message dispatch: greeting, universal navigation, `processWhatsAppTextMessage` |
 | `Controller_DoctorFlow.gs` | Doctor-portal conversation state machine (`handleWhatsAppDoctorMessage`) |
 | `Controller_PatientFlow.gs` | Patient conversation state machine (`handleWhatsAppPatientMessage`) |
+| `Controller_HomeCollection.gs` | Home blood-sample-collection request flow (location-gated by radius) |
 | `WhatsApp_Send.gs` | Low-level WhatsApp Cloud API senders (text, interactive, template) |
 
-Every top-level function/constant from the original single file exists across these 21
+Every top-level function/constant from the original single file exists across these 23
 files exactly once — kept in sync automatically by `scripts/sync-monolith-from-src.js`
 (`node scripts/sync-monolith-from-src.js --check` reports drift without writing).
 
@@ -135,6 +137,7 @@ or the code creates them lazily the first time they're needed:
 | `WhatsApp_Log` | `Logging.gs` | Single consolidated log — inbound messages, send/webhook errors (successful sends are not logged), and the reminder dedup ledger. Rows are distinguished by a `Direction` column (`INBOUND` / `OUTBOUND` / `WEBHOOK` / `REMINDER`); `Appointment ID`/`Hours Before` are only populated for `REMINDER` rows |
 | `Settings` | `Config.gs` | Log retention & feature toggles (see below) |
 | `Doctors` / `Availability` / `Appointments` / `Doctor_Leaves` | `Setup.gs` | Header row only — see above for the data you still need to enter |
+| `Home_Collection_Requests` | `Model_HomeCollection.gs` | Home blood-sample-collection requests (phone, location, distance, preferred date/time, status) |
 
 ---
 
@@ -185,6 +188,8 @@ Adjust after the first inbound message creates the sheet:
 | `AFTER_HOURS_MESSAGE` | *(empty)* | Optional custom closed message (overrides default) |
 | `CLINIC_NAME` | `ABC Clinic` | Display name used in the "Welcome to..." greeting and the logo caption |
 | `HOSPITAL_LOGO_MEDIA_ID` | *(empty)* | WhatsApp media ID for the hospital logo/photo, sent as an image before the greeting text on every "Hi". Unset by default (no image sent). See `uploadWhatsAppMediaFromDriveFile()` in `Setup.gs` for the one-time upload step to get this ID — it's a WhatsApp media ID, not a public URL |
+| `HOSPITAL_LATITUDE` / `HOSPITAL_LONGITUDE` | *(empty)* | Hospital coordinates for the home sample-collection radius check (`getHospitalLocation()` in `Config.gs`) — the feature stays hidden until both are set |
+| `HOME_COLLECTION_RADIUS_KM` | `5` | Max distance (km) from the hospital a patient can be to request home sample collection (`getHomeCollectionRadiusKm()` in `Config.gs`) |
 
 ---
 
@@ -192,7 +197,7 @@ Adjust after the first inbound message creates the sheet:
 
 1. Open the clinic Google Sheet → **Extensions → Apps Script**.
 2. Remove any default `Code.gs` file.
-3. For each of the 21 files listed above: click **`+` → Script**, name it exactly the
+3. For each of the 23 files listed above: click **`+` → Script**, name it exactly the
    filename minus `.gs` (the editor appends `.gs` automatically), then paste in that file's
    contents from this folder.
 4. *(Optional, recommended for staging)* Also add
@@ -223,7 +228,7 @@ specific to the `src/` split.
 node scripts/sync-monolith-from-src.js
 ```
 
-Then deploy **either** the monolith **or** all `src/` files — not both. The sync script copies **all 20** `src/*.gs` function bodies into the monolith (277 functions); run it before copying Option A into Apps Script. Dry-run: `node scripts/sync-monolith-from-src.js --check`.
+Then deploy **either** the monolith **or** all `src/` files — not both. The sync script copies **all 23** `src/*.gs` function bodies into the monolith; run it before copying Option A into Apps Script. Dry-run: `node scripts/sync-monolith-from-src.js --check`.
 
 **Note:** Top-level `const`/`var` blocks (e.g. `TIMEZONE` in `Config.gs`) are not auto-synced — only `function` bodies. Edit those in both places if you change constants.
 
