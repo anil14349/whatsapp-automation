@@ -1,6 +1,12 @@
 # ABC Clinic WhatsApp Automation
 
-Google Apps Script project for ABC Clinic appointment booking over WhatsApp, backed by Google Sheets and Google Calendar.
+Google Apps Script project for ABC Clinic appointment booking over WhatsApp, backed by Google Sheets and Google Calendar. **This is the current production system** — everything below (Option A/B, deployment steps, Script Properties) describes it.
+
+---
+
+## `clinic-app/` — in-progress Next.js + Supabase rewrite
+
+This branch (`rewrite/supabase-backend`) also contains a ground-up rewrite of this same bot onto Next.js + Postgres (Supabase), plus a new receptionist/admin web UI that has no equivalent in the Apps Script version. It is **not yet a replacement for the production system above** — several WhatsApp flows (cancel/reschedule, doctor portal, home collection, reminders) aren't ported yet, and it hasn't been run against a real Supabase project or WhatsApp number. See [`clinic-app/README.md`](clinic-app/README.md) for full details, what's covered vs. deferred, and setup instructions.
 
 ---
 
@@ -537,6 +543,7 @@ src/                               ← production, Option B: split into 23 files
   README.md                        ← src/-specific setup notes (sheet schemas, Settings keys)
 landing/                           ← marketing website (Vercel / Replit)
 marketing/                         ← brochure, one-pager, offboarding docs
+clinic-app/                        ← in-progress Next.js + Supabase rewrite (see clinic-app/README.md) — not yet production
 scripts/
   sync-monolith-from-src.js        ← copy src/ function bodies into ABC_Clinic_WhatsApp_Complete.gs
   verify-menu-flows.mjs            ← static checks for interactive menu wiring
