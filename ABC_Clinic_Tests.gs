@@ -1643,13 +1643,18 @@ function testInteractiveMenus() {
     const doctorMoreTier4 =
         getDoctorMainMenuMoreSpec(4);
 
+    // Tier 4 is still button-type (2 content buttons + a nav button
+    // fits within WhatsApp's 3-button cap, so no list conversion was
+    // needed here, unlike tiers 1-3).
     if (
         !doctorMoreTier4.interactive ||
-        doctorMoreTier4.interactive.buttons.length !== 2 ||
+        doctorMoreTier4.interactive.buttons.length !== 3 ||
         doctorMoreTier4.interactive.buttons[0].id !==
             "doctor_reschedule" ||
         doctorMoreTier4.interactive.buttons[1].id !==
-            "doctor_status"
+            "doctor_status" ||
+        doctorMoreTier4.interactive.buttons[2].id !==
+            "nav_main_menu"
     ) {
         throw new Error(
             "doctor main more menu tier 4 spec invalid"
