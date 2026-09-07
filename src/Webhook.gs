@@ -60,6 +60,25 @@ function extractInboundWhatsAppMessage(message) {
         }
     }
 
+    // WhatsApp's native "Share Location" attachment — used by the home
+    // blood-sample-collection flow to check the patient is within the
+    // configured radius of the hospital. Carries no text body, so
+    // downstream code must key off latitude/longitude, not messageText.
+    if (
+        messageType === "location" &&
+        message.location &&
+        message.location.latitude !== undefined &&
+        message.location.longitude !== undefined
+    ) {
+
+        return {
+            type: "location",
+            text: "",
+            latitude: Number(message.location.latitude),
+            longitude: Number(message.location.longitude)
+        };
+    }
+
     return {
         type: messageType,
         text: ""
@@ -277,6 +296,14 @@ function doPost(e) {
                 ? value.metadata.phone_number_id
                 : "";
 
+        const inboundLocation =
+            messageType === "location"
+                ? {
+                    latitude: inbound.latitude,
+                    longitude: inbound.longitude
+                }
+                : null;
+
         appendWhatsAppLogEntry(
             ss,
             {
@@ -284,7 +311,17 @@ function doPost(e) {
                 phone: senderPhone,
                 name: senderName,
                 status: messageType,
-                message: messageText,
+                message:
+                    messageText ||
+                    (
+                        inboundLocation
+                            ? "[location shared: " +
+                            inboundLocation.latitude +
+                            "," +
+                            inboundLocation.longitude +
+                            "]"
+                            : ""
+                    ),
                 phoneNumberId: phoneNumberId
             }
         );
@@ -294,7 +331,7 @@ function doPost(e) {
         // WHATSAPP CONVERSATION
         // ========================================================
 
-        if (messageText) {
+        if (messageText || inboundLocation) {
 
             setWhatsAppInboundMessageContext(
                 messageId
@@ -306,7 +343,8 @@ function doPost(e) {
                     ss,
                     senderPhone,
                     senderName,
-                    messageText
+                    messageText,
+                    inboundLocation
                 );
 
             } finally {

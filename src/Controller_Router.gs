@@ -370,7 +370,8 @@ function processWhatsAppTextMessage(
     ss,
     senderPhone,
     senderName,
-    messageText
+    messageText,
+    location
 ) {
 
     const normalizedMessage =
@@ -433,7 +434,8 @@ function processWhatsAppTextMessage(
             senderName,
             messageText,
             normalizedMessage,
-            session
+            session,
+            location
         )
     ) {
         return;
