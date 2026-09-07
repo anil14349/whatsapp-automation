@@ -1095,7 +1095,9 @@ function getDoctorRecord(doctorId) {
                 whatsApp:
                     String(data[i][4] || "").trim(),
                 appointmentDuration:
-                    Number(data[i][5]) || 30
+                    Number(data[i][5]) || 30,
+                specialization:
+                    String(data[i][7] || "").trim()
             };
         }
     }
