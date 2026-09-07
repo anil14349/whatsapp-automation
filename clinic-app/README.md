@@ -378,3 +378,81 @@ In [Meta for Developers](https://developers.facebook.com/) → your app →
   event on the doctor's Google Calendar.
 - Log into `/admin` with the account from step 1.4 and confirm the
   booking shows up under Appointments.
+
+---
+
+## Deploying to multiple hospitals
+
+**The codebase has no multi-tenancy** — every table assumes one
+hospital's data, and every env var assumes one WhatsApp Business number.
+The supported way to serve multiple hospitals is **one Docker image,
+deployed once per hospital**, each pointed at its own Supabase project
+and its own WhatsApp number. Same code everywhere; only environment
+variables differ between deployments. This isn't a limitation to work
+around so much as the standard pattern for healthcare-adjacent
+software — each hospital's data physically lives in its own database,
+never mixed with anyone else's, which is also the easiest thing to tell
+a hospital's compliance/privacy officer.
+
+*(The alternative — one shared deployment/database serving every
+hospital, with a `hospital_id` column threaded through every table and
+query — is real, substantial implementation work this rewrite hasn't
+done. Worth revisiting only once managing N separate Supabase projects
+is itself the bottleneck, which for WhatsApp-bot-scale traffic means a
+lot of hospitals.)*
+
+### What's shared across hospitals vs. what isn't
+
+| Resource | Shared across all hospitals? |
+|---|---|
+| This codebase / Docker image | **Yes** — build once, deploy the same image everywhere |
+| Google Cloud project + service account | **Can be shared** — Calendar access is granted per-*calendar* (each doctor shares their calendar with the service account's email), not per Google Cloud project, so one service account can serve every hospital's doctors |
+| Container registry | **Yes** — push one image, reference it from every hospital's deployment |
+| Supabase project (database) | **No — one per hospital**, full isolation |
+| WhatsApp Business phone number, access token, verify token, webhook post token | **No — one per hospital.** Meta issues a `phone_number_id` per number regardless of architecture, and each hospital's webhook subscription must point at *that hospital's* deployed URL, so this was never shareable either way |
+| `ADMIN_SESSION_SECRET` | **No — unique per hospital.** Sharing it would let a forged/leaked session cookie from one hospital's deployment be replayed against another's |
+| Admin user accounts (`admin_users` rows) | **No** — each hospital's database is separate, so this falls out automatically |
+
+### Provisioning a new hospital
+
+Repeat the full "Deploying" runbook above per hospital, tracking these
+per-hospital values somewhere (a spreadsheet, a secrets manager, your
+hosting provider's project-naming convention — anything that scales
+better than memory once you're past 2-3):
+
+| Field | Example |
+|---|---|
+| Hospital name / slug | `sunrise-clinic` |
+| Supabase project URL + keys | *(from Supabase dashboard)* |
+| WhatsApp `phone_number_id` + access token | *(from Meta for Developers)* |
+| `WHATSAPP_VERIFY_TOKEN` / `WHATSAPP_WEBHOOK_POST_TOKEN` | generate fresh per hospital, don't reuse |
+| `ADMIN_SESSION_SECRET` | generate fresh per hospital, don't reuse |
+| Deployed URL | `https://sunrise-clinic.yourhost.com` |
+| Admin login | created via `npm run create-admin` against that hospital's Supabase project |
+
+### Rolling out an update to every hospital
+
+Since every deployment runs the identical image:
+
+1. Build and push one new image version (tag it, e.g. `clinic-app:v1.2.0`) to your registry.
+2. Update each hospital's deployment to the new tag — one at a time if
+   you want a staggered rollout (catch a bug against one hospital before
+   it reaches the rest), or all at once if your hosting platform
+   supports a fleet-wide redeploy.
+3. Database migrations (new files under `supabase/migrations/`) still
+   need to be applied to **each hospital's Supabase project**
+   individually — there's no shared database to migrate once and be
+   done. `supabase link` + `supabase db push` against each project (or
+   a small script looping over your list of project refs) is the
+   practical way to do this once you have more than a couple.
+
+### Auto-scaling
+
+Each hospital's deployment can auto-scale independently on whatever
+host you choose (replica count, restart-on-crash, etc.) — the app is
+stateless (all state lives in that hospital's Postgres/Supabase, not in
+the container), so running multiple replicas of one hospital's
+deployment is safe. In practice, a single clinic's WhatsApp message
+volume is unlikely to need more than 1-2 replicas; auto-scaling here is
+mostly about availability (a crashed container gets replaced) rather
+than handling real load spikes.
