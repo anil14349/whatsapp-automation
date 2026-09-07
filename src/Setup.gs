@@ -192,6 +192,11 @@ function initializeWhatsAppBotSheets() {
         ensureDoctorLeavesSheet
     );
 
+    ensure(
+        "Home_Collection_Requests",
+        ensureHomeCollectionSheet
+    );
+
     Logger.log(
         "initializeWhatsAppBotSheets: " +
         JSON.stringify(results)

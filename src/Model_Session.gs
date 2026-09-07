@@ -33,7 +33,8 @@ function ensureWhatsAppSessionsSheet() {
             "Slot Page",
             "Appointment Page",
             "Doctor Menu Tier",
-            "List Page"
+            "List Page",
+            "Location"
         ]);
     }
 
@@ -200,7 +201,13 @@ function getWhatsAppSession(phone) {
                     : parseInt(
                         data[i][13],
                         10
-                    ) || 0
+                    ) || 0,
+
+            // "lat,lng" string captured from a WhatsApp location share,
+            // used by the home blood-sample-collection flow between the
+            // location-check step and the final request being saved.
+            location:
+                String(data[i][14] || "").trim()
         };
     }
 
@@ -280,6 +287,17 @@ function ensureWhatsAppSessionListPageColumn(sheet) {
 
 
 
+function ensureWhatsAppSessionLocationColumn(sheet) {
+
+    if (!sheet.getRange(1, 15).getValue()) {
+        sheet
+            .getRange(1, 15)
+            .setValue("Location");
+    }
+}
+
+
+
 function saveWhatsAppSession(
     phone,
     updates
@@ -294,6 +312,7 @@ function saveWhatsAppSession(
     ensureWhatsAppSessionAppointmentPageColumn(sheet);
     ensureWhatsAppSessionDoctorMenuTierColumn(sheet);
     ensureWhatsAppSessionListPageColumn(sheet);
+    ensureWhatsAppSessionLocationColumn(sheet);
 
     const existing =
         getWhatsAppSession(phone);
@@ -308,11 +327,11 @@ function saveWhatsAppSession(
 
         const current =
             sheet
-                .getRange(row, 1, 1, 14)
+                .getRange(row, 1, 1, 15)
                 .getValues()[0];
 
         sheet
-            .getRange(row, 1, 1, 14)
+            .getRange(row, 1, 1, 15)
             .setValues([[
                 phone,
 
@@ -382,7 +401,11 @@ function saveWhatsAppSession(
                         current[13] === null
                             ? 0
                             : current[13]
-                    )
+                    ),
+
+                updates.location !== undefined
+                    ? updates.location
+                    : current[14]
             ]]);
 
     } else {
@@ -409,7 +432,8 @@ function saveWhatsAppSession(
                 : "",
             updates.listPage !== undefined
                 ? updates.listPage
-                : 0
+                : 0,
+            updates.location || ""
         ]);
     }
 }

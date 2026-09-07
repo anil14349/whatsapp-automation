@@ -372,6 +372,21 @@ function ensureSettingsSheet() {
             "AFTER_HOURS_MESSAGE",
             ""
         ]);
+
+        sheet.appendRow([
+            "HOSPITAL_LATITUDE",
+            ""
+        ]);
+
+        sheet.appendRow([
+            "HOSPITAL_LONGITUDE",
+            ""
+        ]);
+
+        sheet.appendRow([
+            "HOME_COLLECTION_RADIUS_KM",
+            "5"
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -427,6 +442,21 @@ function ensureSettingsSheet() {
             sheet,
             "AFTER_HOURS_MESSAGE",
             ""
+        );
+        ensureSettingKey(
+            sheet,
+            "HOSPITAL_LATITUDE",
+            ""
+        );
+        ensureSettingKey(
+            sheet,
+            "HOSPITAL_LONGITUDE",
+            ""
+        );
+        ensureSettingKey(
+            sheet,
+            "HOME_COLLECTION_RADIUS_KM",
+            "5"
         );
     }
 
@@ -579,6 +609,70 @@ function getClinicName() {
         ).trim();
 
     return name || "ABC Clinic";
+}
+
+
+
+// Hospital coordinates used to gate the home blood-sample-collection
+// service to patients within a configurable radius. Both HOSPITAL_LATITUDE
+// and HOSPITAL_LONGITUDE must be set (Settings sheet) for the service to
+// be offered at all — returns null otherwise, so the feature stays
+// disabled until an admin configures it, rather than defaulting to some
+// arbitrary location.
+function getHospitalLocation() {
+
+    const latText =
+        String(
+            getSetting("HOSPITAL_LATITUDE", "") || ""
+        ).trim();
+
+    const lngText =
+        String(
+            getSetting("HOSPITAL_LONGITUDE", "") || ""
+        ).trim();
+
+    // Check the raw setting text is non-empty before parsing — Number("")
+    // is 0, which would otherwise be indistinguishable from a genuine
+    // (0, 0) coordinate and silently treat "not configured" as "hospital
+    // is at the equator".
+    if (!latText || !lngText) {
+        return null;
+    }
+
+    const lat =
+        Number(latText);
+
+    const lng =
+        Number(lngText);
+
+    if (
+        !isFinite(lat) ||
+        !isFinite(lng)
+    ) {
+        return null;
+    }
+
+    return {
+        lat: lat,
+        lng: lng
+    };
+}
+
+
+
+function getHomeCollectionRadiusKm() {
+
+    const radius =
+        Number(
+            getSetting("HOME_COLLECTION_RADIUS_KM", "5")
+        );
+
+    return (
+        isFinite(radius) &&
+        radius > 0
+    )
+        ? radius
+        : 5;
 }
 
 
