@@ -32,7 +32,8 @@ function ensureWhatsAppSessionsSheet() {
             "Patient Name",
             "Slot Page",
             "Appointment Page",
-            "Doctor Menu Tier"
+            "Doctor Menu Tier",
+            "List Page"
         ]);
     }
 
@@ -182,7 +183,24 @@ function getWhatsAppSession(phone) {
                 data[i][12] === undefined ||
                 data[i][12] === null
                     ? ""
-                    : String(data[i][12]).trim()
+                    : String(data[i][12]).trim(),
+
+            // Generic scroll-position field shared by any paginated list
+            // menu that isn't the appointment list or the slot picker
+            // (doctor selection, doctor's per-day session-remove list).
+            // These states are mutually exclusive with each other and
+            // with slot/appointment pagination, so one column covers all
+            // of them the same way slotPage/apptPage already do for
+            // their own flows.
+            listPage:
+                data[i][13] === "" ||
+                data[i][13] === undefined ||
+                data[i][13] === null
+                    ? 0
+                    : parseInt(
+                        data[i][13],
+                        10
+                    ) || 0
         };
     }
 
@@ -251,6 +269,17 @@ function ensureWhatsAppSessionDoctorMenuTierColumn(sheet) {
 
 
 
+function ensureWhatsAppSessionListPageColumn(sheet) {
+
+    if (!sheet.getRange(1, 14).getValue()) {
+        sheet
+            .getRange(1, 14)
+            .setValue("List Page");
+    }
+}
+
+
+
 function saveWhatsAppSession(
     phone,
     updates
@@ -264,6 +293,7 @@ function saveWhatsAppSession(
     ensureWhatsAppSessionSlotPageColumn(sheet);
     ensureWhatsAppSessionAppointmentPageColumn(sheet);
     ensureWhatsAppSessionDoctorMenuTierColumn(sheet);
+    ensureWhatsAppSessionListPageColumn(sheet);
 
     const existing =
         getWhatsAppSession(phone);
@@ -278,11 +308,11 @@ function saveWhatsAppSession(
 
         const current =
             sheet
-                .getRange(row, 1, 1, 13)
+                .getRange(row, 1, 1, 14)
                 .getValues()[0];
 
         sheet
-            .getRange(row, 1, 1, 13)
+            .getRange(row, 1, 1, 14)
             .setValues([[
                 phone,
 
@@ -342,7 +372,17 @@ function saveWhatsAppSession(
 
                 updates.doctorMenuTier !== undefined
                     ? updates.doctorMenuTier
-                    : current[12]
+                    : current[12],
+
+                updates.listPage !== undefined
+                    ? updates.listPage
+                    : (
+                        current[13] === "" ||
+                        current[13] === undefined ||
+                        current[13] === null
+                            ? 0
+                            : current[13]
+                    )
             ]]);
 
     } else {
@@ -366,7 +406,10 @@ function saveWhatsAppSession(
                 : 0,
             updates.doctorMenuTier !== undefined
                 ? updates.doctorMenuTier
-                : ""
+                : "",
+            updates.listPage !== undefined
+                ? updates.listPage
+                : 0
         ]);
     }
 }
