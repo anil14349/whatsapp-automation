@@ -34,13 +34,20 @@ function extractStates(src, pattern) {
 
 const patientFlow = read("src/Controller_PatientFlow.gs");
 const doctorFlow = read("src/Controller_DoctorFlow.gs");
+const homeCollectionFlow = read("src/Controller_HomeCollection.gs");
 const shared = read("src/Controller_Shared.gs");
 const router = read("src/Controller_Router.gs");
 
-const patientStates = extractStates(
-    patientFlow,
-    'state === "([A-Z_]+)"'
-);
+const patientStates = new Set([
+    ...extractStates(
+        patientFlow,
+        'state === "([A-Z_]+)"'
+    ),
+    ...extractStates(
+        homeCollectionFlow,
+        'state === "([A-Z_]+)"'
+    )
+]);
 const doctorStates = extractStates(
     doctorFlow,
     'state === "([A-Z_]+)"'
@@ -89,7 +96,11 @@ const expectedPatientStates = [
     "RESCHEDULE_DATE",
     "RESCHEDULE_DATE_CUSTOM",
     "RESCHEDULE_TIME",
-    "RESCHEDULE_CONFIRM"
+    "RESCHEDULE_CONFIRM",
+    "HOME_COLLECTION_LOCATION",
+    "HOME_COLLECTION_DATE",
+    "HOME_COLLECTION_DATE_CUSTOM",
+    "HOME_COLLECTION_TIME"
 ];
 
 const expectedDoctorStates = [
@@ -208,7 +219,11 @@ assert(
     "RESCHEDULE_DATE",
     "RESCHEDULE_TIME",
     "RESCHEDULE_CONFIRM",
-    "MY_APPOINTMENTS"
+    "MY_APPOINTMENTS",
+    "HOME_COLLECTION_LOCATION",
+    "HOME_COLLECTION_DATE",
+    "HOME_COLLECTION_DATE_CUSTOM",
+    "HOME_COLLECTION_TIME"
 ].forEach(function (state) {
     assert(
         `patient back nav defines ${state}`,
