@@ -250,6 +250,38 @@ function main() {
         );
     }
 
+    // Guard against a class of bug this script can't otherwise catch:
+    // replaceFunction() only ever updates the FIRST declaration of a
+    // given name it finds via regex. If the monolith ever ends up with
+    // two declarations of the same function (e.g. from a manual edit
+    // that pasted a duplicate elsewhere in the file), every future sync
+    // silently keeps the first one current while the second — the one
+    // that actually wins at runtime, since JS uses the last declaration
+    // — goes stale forever with no warning. Fail loudly instead.
+    const duplicateNames = [];
+    const seenNames = {};
+    const nameRegex = /^function\s+([A-Za-z0-9_]+)\s*\(/gm;
+    let nameMatch;
+
+    while ((nameMatch = nameRegex.exec(monolith)) !== null) {
+        const fnName = nameMatch[1];
+
+        if (seenNames[fnName]) {
+            duplicateNames.push(fnName);
+        }
+
+        seenNames[fnName] = true;
+    }
+
+    if (duplicateNames.length > 0) {
+        throw new Error(
+            "Monolith has duplicate function declarations (the LAST " +
+            "one silently wins at runtime, not necessarily the one " +
+            "kept in sync with src/): " +
+            Array.from(new Set(duplicateNames)).join(", ")
+        );
+    }
+
     if (checkOnly) {
         console.log(
             "Check OK: " +
