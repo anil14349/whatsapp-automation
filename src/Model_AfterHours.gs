@@ -394,9 +394,13 @@ function buildAfterHoursMessage(
         " – " +
         config.closeTimeDisplay;
 
+    // {{CLINIC_NAME}} — not a direct getClinicName() call — so this
+    // literal text still matches the localization dictionary's key in
+    // localizeWhatsAppReply() below; the final substitution there
+    // replaces the placeholder with the real name for every language.
     const message =
         "🕐 " +
-        "ABC Clinic is currently closed.\n\n" +
+        "{{CLINIC_NAME}} is currently closed.\n\n" +
         "Our hours: " +
         hoursLine +
         "\n\n" +

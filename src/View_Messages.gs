@@ -71,7 +71,9 @@ function buildAppointmentDetailMessage(appt) {
             appt.date
         ) +
         "\n" +
-        "🕐 " + appt.time
+        "🕐 " + appt.time +
+        "\n\n" +
+        "What would you like to do with this appointment?"
     );
 }
 
@@ -550,13 +552,19 @@ function localizeWhatsAppReply(language, message) {
     const selectedLanguage =
         String(language || "EN").toUpperCase();
 
+    // {{CLINIC_NAME}} is substituted unconditionally further down —
+    // both branches below funnel through it, so a source message built
+    // with the placeholder (see buildAfterHoursMessage, for example)
+    // localizes correctly in every language including English.
     if (selectedLanguage === "EN") {
-        return String(message);
+        return applyClinicNamePlaceholder(
+            String(message)
+        );
     }
 
     const translations = {
         TE: {
-            "Welcome to ABC Clinic!": "ABC క్లినిక్‌కు స్వాగతం!",
+            "Welcome to {{CLINIC_NAME}}!": "{{CLINIC_NAME}} కు స్వాగతం!",
             "Please choose an option:": "దయచేసి ఒక ఎంపికను ఎంచుకోండి:",
             "Book Appointment": "అపాయింట్‌మెంట్ బుక్ చేయండి",
             "My Appointments": "నా అపాయింట్‌మెంట్‌లు",
@@ -609,7 +617,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "ఈ తేదీకి అందుబాటులో సమయాలు లేవు: ",
             "Your booking session has expired.": "మీ బుకింగ్ సెషన్ గడువు ముగిసింది.",
             "Your reschedule session has expired.": "మీ సమయం మార్పు సెషన్ గడువు ముగిసింది.",
-            "Thank you for choosing ABC Clinic.": "ABC క్లినిక్‌ను ఎంచుకున్నందుకు ధన్యవాదాలు.",
+            "Thank you for choosing {{CLINIC_NAME}}.": "{{CLINIC_NAME}} ను ఎంచుకున్నందుకు ధన్యవాదాలు.",
             "Please send Hi to start again.": "మళ్లీ ప్రారంభించడానికి Hi పంపండి.",
             "Sorry, I didn't understand that.": "క్షమించండి, నాకు అర్థం కాలేదు.",
             "Language changed successfully.": "భాష విజయవంతంగా మార్చబడింది.",
@@ -625,7 +633,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "రిమైండర్: ",
             " before your appointment.": " మీ అపాయింట్‌మెంట్‌కు ముందు.",
             "Reply Hi to reschedule or cancel.": "మార్చడానికి లేదా రద్దు చేయడానికి Hi పంపండి.",
-            "ABC Clinic is currently closed.": "ABC క్లినిక్ ప్రస్తుతం మూసివేయబడింది.",
+            "{{CLINIC_NAME}} is currently closed.": "{{CLINIC_NAME}} ప్రస్తుతం మూసివేయబడింది.",
             "Our hours:": "మా సమయాలు:",
             "Please message us during clinic hours to book or manage appointments.": "అపాయింట్‌మెంట్‌లు బుక్ చేయడానికి లేదా నిర్వహించడానికి క్లినిక్ సమయంలో మాకు సందేశం పంపండి.",
             "Reply Hi during open hours to get started.": "ప్రారంభించడానికి తెరిచి ఉన్న సమయంలో Hi పంపండి.",
@@ -681,7 +689,7 @@ function localizeWhatsAppReply(language, message) {
             "More options": "మరిన్ని ఎంపికలు"
         },
         HI: {
-            "Welcome to ABC Clinic!": "एबीसी क्लिनिक में आपका स्वागत है!",
+            "Welcome to {{CLINIC_NAME}}!": "{{CLINIC_NAME}} में आपका स्वागत है!",
             "Please choose an option:": "कृपया एक विकल्प चुनें:",
             "Book Appointment": "अपॉइंटमेंट बुक करें",
             "My Appointments": "मेरे अपॉइंटमेंट",
@@ -734,7 +742,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "इस तारीख के लिए कोई समय उपलब्ध नहीं है: ",
             "Your booking session has expired.": "आपका बुकिंग सत्र समाप्त हो गया है।",
             "Your reschedule session has expired.": "आपका समय परिवर्तन सत्र समाप्त हो गया है।",
-            "Thank you for choosing ABC Clinic.": "एबीसी क्लिनिक चुनने के लिए धन्यवाद।",
+            "Thank you for choosing {{CLINIC_NAME}}.": "{{CLINIC_NAME}} चुनने के लिए धन्यवाद।",
             "Please send Hi to start again.": "फिर से शुरू करने के लिए Hi भेजें।",
             "Sorry, I didn't understand that.": "क्षमा करें, मैं समझ नहीं पाया।",
             "Language changed successfully.": "भाषा सफलतापूर्वक बदल दी गई है।",
@@ -750,7 +758,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "रिमाइंडर: ",
             " before your appointment.": " आपके अपॉइंटमेंट से पहले।",
             "Reply Hi to reschedule or cancel.": "बदलने या रद्द करने के लिए Hi भेजें।",
-            "ABC Clinic is currently closed.": "एबीसी क्लिनिक अभी बंद है।",
+            "{{CLINIC_NAME}} is currently closed.": "{{CLINIC_NAME}} अभी बंद है।",
             "Our hours:": "हमारे समय:",
             "Please message us during clinic hours to book or manage appointments.": "अपॉइंटमेंट बुक या प्रबंधित करने के लिए कृपया क्लिनिक के समय में संदेश भेजें।",
             "Reply Hi during open hours to get started.": "शुरू करने के लिए खुले समय में Hi भेजें।",
@@ -811,7 +819,7 @@ function localizeWhatsAppReply(language, message) {
         // verify against real clinic usage before relying on them in
         // production, especially for time/date-sensitive phrases.
         KA: {
-            "Welcome to ABC Clinic!": "ABC ಕ್ಲಿನಿಕ್‌ಗೆ ಸ್ವಾಗತ!",
+            "Welcome to {{CLINIC_NAME}}!": "{{CLINIC_NAME}} ಗೆ ಸ್ವಾಗತ!",
             "Please choose an option:": "ದಯವಿಟ್ಟು ಒಂದು ಆಯ್ಕೆಯನ್ನು ಆರಿಸಿ:",
             "Book Appointment": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಬುಕ್ ಮಾಡಿ",
             "My Appointments": "ನನ್ನ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗಳು",
@@ -864,7 +872,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "ಇದಕ್ಕೆ ಯಾವುದೇ ಸಮಯಗಳು ಉಳಿದಿಲ್ಲ ",
             "Your booking session has expired.": "ನಿಮ್ಮ ಬುಕಿಂಗ್ ಅವಧಿ ಮುಕ್ತಾಯಗೊಂಡಿದೆ.",
             "Your reschedule session has expired.": "ನಿಮ್ಮ ಮರುಹೊಂದಿಕೆ ಅವಧಿ ಮುಕ್ತಾಯಗೊಂಡಿದೆ.",
-            "Thank you for choosing ABC Clinic.": "ABC ಕ್ಲಿನಿಕ್ ಆಯ್ಕೆ ಮಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು.",
+            "Thank you for choosing {{CLINIC_NAME}}.": "{{CLINIC_NAME}} ಆಯ್ಕೆ ಮಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು.",
             "Please send Hi to start again.": "ಮತ್ತೆ ಪ್ರಾರಂಭಿಸಲು ದಯವಿಟ್ಟು Hi ಕಳುಹಿಸಿ.",
             "Sorry, I didn't understand that.": "ಕ್ಷಮಿಸಿ, ನನಗೆ ಅರ್ಥವಾಗಲಿಲ್ಲ.",
             "Language changed successfully.": "ಭಾಷೆ ಯಶಸ್ವಿಯಾಗಿ ಬದಲಾಯಿಸಲಾಗಿದೆ.",
@@ -880,7 +888,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "ಜ್ಞಾಪನೆ: ",
             " before your appointment.": " ನಿಮ್ಮ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗೆ ಮೊದಲು.",
             "Reply Hi to reschedule or cancel.": "ಮರುಹೊಂದಿಸಲು ಅಥವಾ ರದ್ದುಗೊಳಿಸಲು Hi ಎಂದು ಉತ್ತರಿಸಿ.",
-            "ABC Clinic is currently closed.": "ABC ಕ್ಲಿನಿಕ್ ಪ್ರಸ್ತುತ ಮುಚ್ಚಿದೆ.",
+            "{{CLINIC_NAME}} is currently closed.": "{{CLINIC_NAME}} ಪ್ರಸ್ತುತ ಮುಚ್ಚಿದೆ.",
             "Our hours:": "ನಮ್ಮ ಸಮಯ:",
             "Please message us during clinic hours to book or manage appointments.": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಬುಕ್ ಮಾಡಲು ಅಥವಾ ನಿರ್ವಹಿಸಲು ದಯವಿಟ್ಟು ಕ್ಲಿನಿಕ್ ಸಮಯದಲ್ಲಿ ನಮಗೆ ಸಂದೇಶ ಕಳುಹಿಸಿ.",
             "Reply Hi during open hours to get started.": "ಪ್ರಾರಂಭಿಸಲು ತೆರೆದಿರುವ ಸಮಯದಲ್ಲಿ Hi ಎಂದು ಉತ್ತರಿಸಿ.",
@@ -937,7 +945,7 @@ function localizeWhatsAppReply(language, message) {
         },
 
         TA: {
-            "Welcome to ABC Clinic!": "ABC கிளினிக்கிற்கு வரவேற்கிறோம்!",
+            "Welcome to {{CLINIC_NAME}}!": "{{CLINIC_NAME}}க்கு வரவேற்கிறோம்!",
             "Please choose an option:": "தயவுசெய்து ஒரு விருப்பத்தைத் தேர்ந்தெடுக்கவும்:",
             "Book Appointment": "அப்பாயின்ட்மென்ட் பதிவு செய்யவும்",
             "My Appointments": "எனது அப்பாயின்ட்மென்ட்கள்",
@@ -990,7 +998,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "இதற்கு நேரங்கள் எதுவும் மீதமில்லை ",
             "Your booking session has expired.": "உங்கள் பதிவு அமர்வு காலாவதியானது.",
             "Your reschedule session has expired.": "உங்கள் மாற்றியமைப்பு அமர்வு காலாவதியானது.",
-            "Thank you for choosing ABC Clinic.": "ABC கிளினிக்கைத் தேர்ந்தெடுத்ததற்கு நன்றி.",
+            "Thank you for choosing {{CLINIC_NAME}}.": "{{CLINIC_NAME}}-ஐத் தேர்ந்தெடுத்ததற்கு நன்றி.",
             "Please send Hi to start again.": "மீண்டும் தொடங்க தயவுசெய்து Hi அனுப்பவும்.",
             "Sorry, I didn't understand that.": "மன்னிக்கவும், எனக்கு அது புரியவில்லை.",
             "Language changed successfully.": "மொழி வெற்றிகரமாக மாற்றப்பட்டது.",
@@ -1006,7 +1014,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "நினைவூட்டல்: ",
             " before your appointment.": " உங்கள் அப்பாயின்ட்மென்டுக்கு முன்.",
             "Reply Hi to reschedule or cancel.": "மாற்றியமைக்க அல்லது ரத்து செய்ய Hi என பதிலளிக்கவும்.",
-            "ABC Clinic is currently closed.": "ABC கிளினிக் தற்போது மூடப்பட்டுள்ளது.",
+            "{{CLINIC_NAME}} is currently closed.": "{{CLINIC_NAME}} தற்போது மூடப்பட்டுள்ளது.",
             "Our hours:": "எங்கள் நேரம்:",
             "Please message us during clinic hours to book or manage appointments.": "அப்பாயின்ட்மென்ட் பதிவு செய்ய அல்லது நிர்வகிக்க கிளினிக் நேரத்தில் எங்களுக்கு செய்தி அனுப்பவும்.",
             "Reply Hi during open hours to get started.": "தொடங்க திறந்திருக்கும் நேரத்தில் Hi என பதிலளிக்கவும்.",
@@ -1063,7 +1071,7 @@ function localizeWhatsAppReply(language, message) {
         },
 
         ML: {
-            "Welcome to ABC Clinic!": "ABC ക്ലിനിക്കിലേക്ക് സ്വാഗതം!",
+            "Welcome to {{CLINIC_NAME}}!": "{{CLINIC_NAME}} ലേക്ക് സ്വാഗതം!",
             "Please choose an option:": "ദയവായി ഒരു ഓപ്ഷൻ തിരഞ്ഞെടുക്കുക:",
             "Book Appointment": "അപ്പോയിന്റ്മെന്റ് ബുക്ക് ചെയ്യുക",
             "My Appointments": "എന്റെ അപ്പോയിന്റ്മെന്റുകൾ",
@@ -1116,7 +1124,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "ഇതിനായി സമയങ്ങളൊന്നും ബാക്കിയില്ല ",
             "Your booking session has expired.": "നിങ്ങളുടെ ബുക്കിംഗ് സെഷൻ കാലഹരണപ്പെട്ടു.",
             "Your reschedule session has expired.": "നിങ്ങളുടെ പുനഃക്രമീകരണ സെഷൻ കാലഹരണപ്പെട്ടു.",
-            "Thank you for choosing ABC Clinic.": "ABC ക്ലിനിക്ക് തിരഞ്ഞെടുത്തതിന് നന്ദി.",
+            "Thank you for choosing {{CLINIC_NAME}}.": "{{CLINIC_NAME}} തിരഞ്ഞെടുത്തതിന് നന്ദി.",
             "Please send Hi to start again.": "വീണ്ടും തുടങ്ങാൻ ദയവായി Hi അയയ്ക്കുക.",
             "Sorry, I didn't understand that.": "ക്ഷമിക്കണം, എനിക്ക് അത് മനസ്സിലായില്ല.",
             "Language changed successfully.": "ഭാഷ വിജയകരമായി മാറ്റി.",
@@ -1132,7 +1140,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "ഓർമ്മപ്പെടുത്തൽ: ",
             " before your appointment.": " നിങ്ങളുടെ അപ്പോയിന്റ്മെന്റിന് മുമ്പ്.",
             "Reply Hi to reschedule or cancel.": "പുനഃക്രമീകരിക്കാനോ റദ്ദാക്കാനോ Hi എന്ന് മറുപടി നൽകുക.",
-            "ABC Clinic is currently closed.": "ABC ക്ലിനിക്ക് നിലവിൽ അടച്ചിരിക്കുന്നു.",
+            "{{CLINIC_NAME}} is currently closed.": "{{CLINIC_NAME}} നിലവിൽ അടച്ചിരിക്കുന്നു.",
             "Our hours:": "ഞങ്ങളുടെ സമയം:",
             "Please message us during clinic hours to book or manage appointments.": "അപ്പോയിന്റ്മെന്റ് ബുക്ക് ചെയ്യാനോ കൈകാര്യം ചെയ്യാനോ ക്ലിനിക് സമയത്ത് ഞങ്ങൾക്ക് സന്ദേശം അയയ്ക്കുക.",
             "Reply Hi during open hours to get started.": "തുടങ്ങാൻ തുറന്നിരിക്കുന്ന സമയത്ത് Hi എന്ന് മറുപടി നൽകുക.",
@@ -1202,7 +1210,21 @@ function localizeWhatsAppReply(language, message) {
                 .join(dictionary[englishText]);
         });
 
-    return localizedMessage;
+    return applyClinicNamePlaceholder(localizedMessage);
+}
+
+
+
+// Always substitutes {{CLINIC_NAME}} with the clinic's configured name,
+// regardless of the patient's selected language. Both the English
+// early-return and the translated path in localizeWhatsAppReply() above
+// funnel through this, so a source message can use the placeholder
+// once and localize correctly in every language.
+function applyClinicNamePlaceholder(message) {
+
+    return String(message)
+        .split("{{CLINIC_NAME}}")
+        .join(getClinicName());
 }
 
 
