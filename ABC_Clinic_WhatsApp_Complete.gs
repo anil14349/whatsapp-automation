@@ -2882,9 +2882,13 @@ function buildAfterHoursMessage(
         " – " +
         config.closeTimeDisplay;
 
+    // {{CLINIC_NAME}} — not a direct getClinicName() call — so this
+    // literal text still matches the localization dictionary's key in
+    // localizeWhatsAppReply() below; the final substitution there
+    // replaces the placeholder with the real name for every language.
     const message =
         "🕐 " +
-        getClinicName() + " is currently closed.\n\n" +
+        "{{CLINIC_NAME}} is currently closed.\n\n" +
         "Our hours: " +
         hoursLine +
         "\n\n" +
@@ -8208,11 +8212,10 @@ function getConfirmedAppointmentsForPhone(phone) {
     const appointments =
         getMyAppointments(phone);
 
-    // For the patient's Cancel / Reschedule menus, show every
-    // active appointment. Only cancelled, completed, and no-show
-    // appointments should be hidden. This prevents valid appointments
-    // from disappearing when their status is blank or uses another
-    // active label.
+    // Show every active appointment. Only cancelled, completed, and
+    // no-show appointments should be hidden — this prevents valid
+    // appointments from disappearing when their status is blank or uses
+    // another active label.
     const confirmed =
         appointments.filter(
             function (appt) {
@@ -8639,7 +8642,7 @@ function notifyPatientOfDoctorCancellation(
 
         sendWhatsAppText(
             recipient,
-            getClinicName() + " : Your appointment on " +
+            getClinicName() + ": Your appointment on " +
             appointment.date +
             " at " +
             appointment.time +
@@ -9315,77 +9318,6 @@ function buildSlotSelectionIntro(
         "\n\n" +
         line
     );
-}
-
-
-function getSlotSelectionPageInfo(
-    totalSlots,
-    page
-) {
-
-    const total =
-        Number(totalSlots) || 0;
-
-    let safePage =
-        Number(page) || 0;
-
-    if (safePage < 0) {
-        safePage = 0;
-    }
-
-    if (total <= 9) {
-
-        return {
-            start: 0,
-            end: total,
-            hasPrev: false,
-            hasNext: false,
-            page: 0,
-            totalPages: 1
-        };
-    }
-
-    const lastPage =
-        getLastSlotSelectionPage(total);
-
-    if (safePage > lastPage) {
-        safePage = lastPage;
-    }
-
-    if (safePage === 0) {
-
-        return {
-            start: 0,
-            end: 9,
-            hasPrev: false,
-            hasNext: total > 9,
-            page: 0,
-            totalPages: lastPage + 1
-        };
-    }
-
-    const start =
-        9 + (safePage - 1) * 8;
-
-    const remaining =
-        total - start;
-
-    const hasNext =
-        remaining > 9;
-
-    const slotCount =
-        hasNext
-            ? 8
-            : Math.min(remaining, 9);
-
-    return {
-        start: start,
-        end: start + slotCount,
-        hasPrev: true,
-        hasNext: hasNext,
-        page: safePage,
-        totalPages: lastPage + 1
-    };
 }
 
 
@@ -10647,13 +10579,19 @@ function localizeWhatsAppReply(language, message) {
     const selectedLanguage =
         String(language || "EN").toUpperCase();
 
+    // {{CLINIC_NAME}} is substituted unconditionally further down —
+    // both branches below funnel through it, so a source message built
+    // with the placeholder (see buildAfterHoursMessage, for example)
+    // localizes correctly in every language including English.
     if (selectedLanguage === "EN") {
-        return String(message);
+        return applyClinicNamePlaceholder(
+            String(message)
+        );
     }
 
     const translations = {
         TE: {
-            "Welcome to ABC Clinic!": "{{CLINIC_NAME}} కు స్వాగతం!",
+            "Welcome to {{CLINIC_NAME}}!": "{{CLINIC_NAME}} కు స్వాగతం!",
             "Please choose an option:": "దయచేసి ఒక ఎంపికను ఎంచుకోండి:",
             "Book Appointment": "అపాయింట్‌మెంట్ బుక్ చేయండి",
             "My Appointments": "నా అపాయింట్‌మెంట్‌లు",
@@ -10706,7 +10644,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "ఈ తేదీకి అందుబాటులో సమయాలు లేవు: ",
             "Your booking session has expired.": "మీ బుకింగ్ సెషన్ గడువు ముగిసింది.",
             "Your reschedule session has expired.": "మీ సమయం మార్పు సెషన్ గడువు ముగిసింది.",
-            "Thank you for choosing ABC Clinic.": "{{CLINIC_NAME}} ను ఎంచుకున్నందుకు ధన్యవాదాలు.",
+            "Thank you for choosing {{CLINIC_NAME}}.": "{{CLINIC_NAME}} ను ఎంచుకున్నందుకు ధన్యవాదాలు.",
             "Please send Hi to start again.": "మళ్లీ ప్రారంభించడానికి Hi పంపండి.",
             "Sorry, I didn't understand that.": "క్షమించండి, నాకు అర్థం కాలేదు.",
             "Language changed successfully.": "భాష విజయవంతంగా మార్చబడింది.",
@@ -10722,7 +10660,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "రిమైండర్: ",
             " before your appointment.": " మీ అపాయింట్‌మెంట్‌కు ముందు.",
             "Reply Hi to reschedule or cancel.": "మార్చడానికి లేదా రద్దు చేయడానికి Hi పంపండి.",
-            "ABC Clinic is currently closed.": "{{CLINIC_NAME}} ప్రస్తుతం మూసివేయబడింది.",
+            "{{CLINIC_NAME}} is currently closed.": "{{CLINIC_NAME}} ప్రస్తుతం మూసివేయబడింది.",
             "Our hours:": "మా సమయాలు:",
             "Please message us during clinic hours to book or manage appointments.": "అపాయింట్‌మెంట్‌లు బుక్ చేయడానికి లేదా నిర్వహించడానికి క్లినిక్ సమయంలో మాకు సందేశం పంపండి.",
             "Reply Hi during open hours to get started.": "ప్రారంభించడానికి తెరిచి ఉన్న సమయంలో Hi పంపండి.",
@@ -10778,7 +10716,7 @@ function localizeWhatsAppReply(language, message) {
             "More options": "మరిన్ని ఎంపికలు"
         },
         HI: {
-            "Welcome to ABC Clinic!": "{{CLINIC_NAME}} में आपका स्वागत है!",
+            "Welcome to {{CLINIC_NAME}}!": "{{CLINIC_NAME}} में आपका स्वागत है!",
             "Please choose an option:": "कृपया एक विकल्प चुनें:",
             "Book Appointment": "अपॉइंटमेंट बुक करें",
             "My Appointments": "मेरे अपॉइंटमेंट",
@@ -10831,7 +10769,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "इस तारीख के लिए कोई समय उपलब्ध नहीं है: ",
             "Your booking session has expired.": "आपका बुकिंग सत्र समाप्त हो गया है।",
             "Your reschedule session has expired.": "आपका समय परिवर्तन सत्र समाप्त हो गया है।",
-            "Thank you for choosing ABC Clinic.": "{{CLINIC_NAME}} चुनने के लिए धन्यवाद।",
+            "Thank you for choosing {{CLINIC_NAME}}.": "{{CLINIC_NAME}} चुनने के लिए धन्यवाद।",
             "Please send Hi to start again.": "फिर से शुरू करने के लिए Hi भेजें।",
             "Sorry, I didn't understand that.": "क्षमा करें, मैं समझ नहीं पाया।",
             "Language changed successfully.": "भाषा सफलतापूर्वक बदल दी गई है।",
@@ -10847,7 +10785,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "रिमाइंडर: ",
             " before your appointment.": " आपके अपॉइंटमेंट से पहले।",
             "Reply Hi to reschedule or cancel.": "बदलने या रद्द करने के लिए Hi भेजें।",
-            "ABC Clinic is currently closed.": "{{CLINIC_NAME}} अभी बंद है।",
+            "{{CLINIC_NAME}} is currently closed.": "{{CLINIC_NAME}} अभी बंद है।",
             "Our hours:": "हमारे समय:",
             "Please message us during clinic hours to book or manage appointments.": "अपॉइंटमेंट बुक या प्रबंधित करने के लिए कृपया क्लिनिक के समय में संदेश भेजें।",
             "Reply Hi during open hours to get started.": "शुरू करने के लिए खुले समय में Hi भेजें।",
@@ -10908,7 +10846,7 @@ function localizeWhatsAppReply(language, message) {
         // verify against real clinic usage before relying on them in
         // production, especially for time/date-sensitive phrases.
         KA: {
-            "Welcome to ABC Clinic!": "{{CLINIC_NAME}} ಗೆ ಸ್ವಾಗತ!",
+            "Welcome to {{CLINIC_NAME}}!": "{{CLINIC_NAME}} ಗೆ ಸ್ವಾಗತ!",
             "Please choose an option:": "ದಯವಿಟ್ಟು ಒಂದು ಆಯ್ಕೆಯನ್ನು ಆರಿಸಿ:",
             "Book Appointment": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಬುಕ್ ಮಾಡಿ",
             "My Appointments": "ನನ್ನ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗಳು",
@@ -10961,7 +10899,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "ಇದಕ್ಕೆ ಯಾವುದೇ ಸಮಯಗಳು ಉಳಿದಿಲ್ಲ ",
             "Your booking session has expired.": "ನಿಮ್ಮ ಬುಕಿಂಗ್ ಅವಧಿ ಮುಕ್ತಾಯಗೊಂಡಿದೆ.",
             "Your reschedule session has expired.": "ನಿಮ್ಮ ಮರುಹೊಂದಿಕೆ ಅವಧಿ ಮುಕ್ತಾಯಗೊಂಡಿದೆ.",
-            "Thank you for choosing ABC Clinic.": "{{CLINIC_NAME}} ಆಯ್ಕೆ ಮಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು.",
+            "Thank you for choosing {{CLINIC_NAME}}.": "{{CLINIC_NAME}} ಆಯ್ಕೆ ಮಾಡಿದ್ದಕ್ಕೆ ಧನ್ಯವಾದಗಳು.",
             "Please send Hi to start again.": "ಮತ್ತೆ ಪ್ರಾರಂಭಿಸಲು ದಯವಿಟ್ಟು Hi ಕಳುಹಿಸಿ.",
             "Sorry, I didn't understand that.": "ಕ್ಷಮಿಸಿ, ನನಗೆ ಅರ್ಥವಾಗಲಿಲ್ಲ.",
             "Language changed successfully.": "ಭಾಷೆ ಯಶಸ್ವಿಯಾಗಿ ಬದಲಾಯಿಸಲಾಗಿದೆ.",
@@ -10977,7 +10915,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "ಜ್ಞಾಪನೆ: ",
             " before your appointment.": " ನಿಮ್ಮ ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್‌ಗೆ ಮೊದಲು.",
             "Reply Hi to reschedule or cancel.": "ಮರುಹೊಂದಿಸಲು ಅಥವಾ ರದ್ದುಗೊಳಿಸಲು Hi ಎಂದು ಉತ್ತರಿಸಿ.",
-            "ABC Clinic is currently closed.": "{{CLINIC_NAME}} ಪ್ರಸ್ತುತ ಮುಚ್ಚಿದೆ.",
+            "{{CLINIC_NAME}} is currently closed.": "{{CLINIC_NAME}} ಪ್ರಸ್ತುತ ಮುಚ್ಚಿದೆ.",
             "Our hours:": "ನಮ್ಮ ಸಮಯ:",
             "Please message us during clinic hours to book or manage appointments.": "ಅಪಾಯಿಂಟ್‌ಮೆಂಟ್ ಬುಕ್ ಮಾಡಲು ಅಥವಾ ನಿರ್ವಹಿಸಲು ದಯವಿಟ್ಟು ಕ್ಲಿನಿಕ್ ಸಮಯದಲ್ಲಿ ನಮಗೆ ಸಂದೇಶ ಕಳುಹಿಸಿ.",
             "Reply Hi during open hours to get started.": "ಪ್ರಾರಂಭಿಸಲು ತೆರೆದಿರುವ ಸಮಯದಲ್ಲಿ Hi ಎಂದು ಉತ್ತರಿಸಿ.",
@@ -11034,7 +10972,7 @@ function localizeWhatsAppReply(language, message) {
         },
 
         TA: {
-            "Welcome to ABC Clinic!": "{{CLINIC_NAME}}க்கு வரவேற்கிறோம்!",
+            "Welcome to {{CLINIC_NAME}}!": "{{CLINIC_NAME}}க்கு வரவேற்கிறோம்!",
             "Please choose an option:": "தயவுசெய்து ஒரு விருப்பத்தைத் தேர்ந்தெடுக்கவும்:",
             "Book Appointment": "அப்பாயின்ட்மென்ட் பதிவு செய்யவும்",
             "My Appointments": "எனது அப்பாயின்ட்மென்ட்கள்",
@@ -11087,7 +11025,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "இதற்கு நேரங்கள் எதுவும் மீதமில்லை ",
             "Your booking session has expired.": "உங்கள் பதிவு அமர்வு காலாவதியானது.",
             "Your reschedule session has expired.": "உங்கள் மாற்றியமைப்பு அமர்வு காலாவதியானது.",
-            "Thank you for choosing ABC Clinic.": "{{CLINIC_NAME}}-ஐத் தேர்ந்தெடுத்ததற்கு நன்றி.",
+            "Thank you for choosing {{CLINIC_NAME}}.": "{{CLINIC_NAME}}-ஐத் தேர்ந்தெடுத்ததற்கு நன்றி.",
             "Please send Hi to start again.": "மீண்டும் தொடங்க தயவுசெய்து Hi அனுப்பவும்.",
             "Sorry, I didn't understand that.": "மன்னிக்கவும், எனக்கு அது புரியவில்லை.",
             "Language changed successfully.": "மொழி வெற்றிகரமாக மாற்றப்பட்டது.",
@@ -11103,7 +11041,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "நினைவூட்டல்: ",
             " before your appointment.": " உங்கள் அப்பாயின்ட்மென்டுக்கு முன்.",
             "Reply Hi to reschedule or cancel.": "மாற்றியமைக்க அல்லது ரத்து செய்ய Hi என பதிலளிக்கவும்.",
-            "ABC Clinic is currently closed.": "{{CLINIC_NAME}} தற்போது மூடப்பட்டுள்ளது.",
+            "{{CLINIC_NAME}} is currently closed.": "{{CLINIC_NAME}} தற்போது மூடப்பட்டுள்ளது.",
             "Our hours:": "எங்கள் நேரம்:",
             "Please message us during clinic hours to book or manage appointments.": "அப்பாயின்ட்மென்ட் பதிவு செய்ய அல்லது நிர்வகிக்க கிளினிக் நேரத்தில் எங்களுக்கு செய்தி அனுப்பவும்.",
             "Reply Hi during open hours to get started.": "தொடங்க திறந்திருக்கும் நேரத்தில் Hi என பதிலளிக்கவும்.",
@@ -11160,7 +11098,7 @@ function localizeWhatsAppReply(language, message) {
         },
 
         ML: {
-            "Welcome to ABC Clinic!": "{{CLINIC_NAME}} ലേക്ക് സ്വാഗതം!",
+            "Welcome to {{CLINIC_NAME}}!": "{{CLINIC_NAME}} ലേക്ക് സ്വാഗതം!",
             "Please choose an option:": "ദയവായി ഒരു ഓപ്ഷൻ തിരഞ്ഞെടുക്കുക:",
             "Book Appointment": "അപ്പോയിന്റ്മെന്റ് ബുക്ക് ചെയ്യുക",
             "My Appointments": "എന്റെ അപ്പോയിന്റ്മെന്റുകൾ",
@@ -11213,7 +11151,7 @@ function localizeWhatsAppReply(language, message) {
             "No available slots remain for ": "ഇതിനായി സമയങ്ങളൊന്നും ബാക്കിയില്ല ",
             "Your booking session has expired.": "നിങ്ങളുടെ ബുക്കിംഗ് സെഷൻ കാലഹരണപ്പെട്ടു.",
             "Your reschedule session has expired.": "നിങ്ങളുടെ പുനഃക്രമീകരണ സെഷൻ കാലഹരണപ്പെട്ടു.",
-            "Thank you for choosing ABC Clinic.": "{{CLINIC_NAME}} തിരഞ്ഞെടുത്തതിന് നന്ദി.",
+            "Thank you for choosing {{CLINIC_NAME}}.": "{{CLINIC_NAME}} തിരഞ്ഞെടുത്തതിന് നന്ദി.",
             "Please send Hi to start again.": "വീണ്ടും തുടങ്ങാൻ ദയവായി Hi അയയ്ക്കുക.",
             "Sorry, I didn't understand that.": "ക്ഷമിക്കണം, എനിക്ക് അത് മനസ്സിലായില്ല.",
             "Language changed successfully.": "ഭാഷ വിജയകരമായി മാറ്റി.",
@@ -11229,7 +11167,7 @@ function localizeWhatsAppReply(language, message) {
             "Reminder: ": "ഓർമ്മപ്പെടുത്തൽ: ",
             " before your appointment.": " നിങ്ങളുടെ അപ്പോയിന്റ്മെന്റിന് മുമ്പ്.",
             "Reply Hi to reschedule or cancel.": "പുനഃക്രമീകരിക്കാനോ റദ്ദാക്കാനോ Hi എന്ന് മറുപടി നൽകുക.",
-            "ABC Clinic is currently closed.": "{{CLINIC_NAME}} നിലവിൽ അടച്ചിരിക്കുന്നു.",
+            "{{CLINIC_NAME}} is currently closed.": "{{CLINIC_NAME}} നിലവിൽ അടച്ചിരിക്കുന്നു.",
             "Our hours:": "ഞങ്ങളുടെ സമയം:",
             "Please message us during clinic hours to book or manage appointments.": "അപ്പോയിന്റ്മെന്റ് ബുക്ക് ചെയ്യാനോ കൈകാര്യം ചെയ്യാനോ ക്ലിനിക് സമയത്ത് ഞങ്ങൾക്ക് സന്ദേശം അയയ്ക്കുക.",
             "Reply Hi during open hours to get started.": "തുടങ്ങാൻ തുറന്നിരിക്കുന്ന സമയത്ത് Hi എന്ന് മറുപടി നൽകുക.",
@@ -11299,13 +11237,7 @@ function localizeWhatsAppReply(language, message) {
                 .join(dictionary[englishText]);
         });
 
-    // Always use the original clinic name configured in Settings,
-    // regardless of the patient's selected language.
-    localizedMessage = localizedMessage
-        .split("{{CLINIC_NAME}}")
-        .join(getClinicName());
-
-    return localizedMessage;
+    return applyClinicNamePlaceholder(localizedMessage);
 }
 
 
@@ -11616,33 +11548,6 @@ function addWhatsAppNavigationOptions(session, message) {
 }
 
 
-function buildDateMenuOptionsText() {
-
-    return (
-        "1️⃣ Today\n" +
-        "2️⃣ Tomorrow\n" +
-        "3️⃣ Enter another date"
-    );
-}
-
-function buildDateMenuPrompt(introText) {
-
-    return (
-        String(introText || "Please choose a date:") +
-        "\n\n" +
-        buildDateMenuOptionsText()
-    );
-}
-
-function buildInvalidDateMenuReply() {
-
-    return (
-        "❌ Invalid option.\n\n" +
-        "Please reply with:\n\n" +
-        buildDateMenuOptionsText()
-    );
-}
-
 function buildCustomDateEntryPrompt(isReschedule) {
 
     const prefix =
@@ -11782,10 +11687,10 @@ function handleWhatsAppDateMenuInput(
         );
 
         sendCustomDateEntryMenuReply(
-    ss,
-    phone,
-    buildCustomDateEntryPrompt(isReschedule)
-);
+            ss,
+            phone,
+            buildCustomDateEntryPrompt(isReschedule)
+        );
 
         return;
     }
@@ -11813,14 +11718,14 @@ function handleWhatsAppCustomDateInput(
 
     if (!validation.valid) {
 
-    sendCustomDateEntryMenuReply(
-        ss,
-        phone,
-        validation.message
-    );
+        sendCustomDateEntryMenuReply(
+            ss,
+            phone,
+            validation.message
+        );
 
-    return;
-}
+        return;
+    }
 
     whatsAppShowSlotsForDate(
         ss,
@@ -12060,16 +11965,17 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             return;
 
         case "BOOK_DATE_CUSTOM":
-        saveWhatsAppSession(
-    senderPhone,
-    {
-        ...session,
-        state: "BOOK_DATE",
-        date: "",
-        time: "",
-        slotPage: 0
-    }
-);
+        case "BOOK_TIME":
+            saveWhatsAppSession(
+                phone,
+                {
+                    ...session,
+                    state: "BOOK_DATE",
+                    date: "",
+                    time: "",
+                    slotPage: 0
+                }
+            );
             showBookingDateSelection(ss, phone, session);
             return;
 
@@ -12613,46 +12519,46 @@ function whatsAppShowSlotsForDate(
         );
 
     if (
-    !slots ||
-    slots.length === 0
-) {
+        !slots ||
+        slots.length === 0
+    ) {
 
-    const fallbackText =
-        "1️⃣ Choose Another Date\n" +
-        "0️⃣ Main Menu\n" +
-        "9️⃣ Back";
+        const fallbackText =
+            "1️⃣ Choose Another Date\n" +
+            "0️⃣ Main Menu\n" +
+            "9️⃣ Back";
 
-    const interactive =
-        buildInteractiveButtonSpec([
+        const interactive =
+            buildInteractiveButtonSpec([
+                {
+                    id: "date_retry",
+                    title: "Choose Another Date"
+                },
+                {
+                    id: "nav_main_menu",
+                    title: "Main Menu"
+                },
+                {
+                    id: "nav_back",
+                    title: "Back"
+                }
+            ]);
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            "❌ Sorry, there are no available slots on " +
+            selectedDate +
+            ".\n\n" +
+            "Please choose another date.",
             {
-                id: "date_retry",
-                title: "Choose Another Date"
-            },
-            {
-                id: "nav_main_menu",
-                title: "Main Menu"
-            },
-            {
-                id: "nav_back",
-                title: "Back"
+                fallbackText: fallbackText,
+                interactive: interactive
             }
-        ]);
+        );
 
-    sendWhatsAppMenuReply(
-        ss,
-        senderPhone,
-        "❌ Sorry, there are no available slots on " +
-        selectedDate +
-        ".\n\n" +
-        "Please choose another date.",
-        {
-            fallbackText: fallbackText,
-            interactive: interactive
-        }
-    );
-
-    return false;
-}
+        return false;
+    }
 
     saveWhatsAppSession(
         senderPhone,
@@ -12781,9 +12687,7 @@ if (
                 senderPhone,
                 logoSent
                     ? ""
-                    : "👋 Welcome to " +
-                    getClinicName() +
-                    "!"
+                    : "👋 Welcome to {{CLINIC_NAME}}!"
             );
 
         } else {
@@ -12807,9 +12711,7 @@ if (
                 senderPhone,
                 logoSent
                     ? ""
-                    : "👋 Welcome to " +
-                    getClinicName() +
-                    "!"
+                    : "👋 Welcome to {{CLINIC_NAME}}!"
             );
         }
     }
@@ -14921,30 +14823,11 @@ if (
             }
         );
 
-        sendWhatsAppMenuReply(
-    ss,
-    senderPhone,
-    buildDoctorScheduleDateEntryPrompt(),
-    {
-        fallbackText:
-            buildDoctorScheduleDateEntryPrompt() +
-            "\n\n" +
-            "0️⃣ Main Menu\n" +
-            "9️⃣ Back",
-
-        interactive:
-            buildInteractiveButtonSpec([
-                {
-                    id: "nav_main_menu",
-                    title: "Main Menu"
-                },
-                {
-                    id: "nav_back",
-                    title: "Back"
-                }
-            ])
-    }
-);
+        sendCustomDateEntryMenuReply(
+            ss,
+            senderPhone,
+            buildDoctorScheduleDateEntryPrompt()
+        );
 
         return true;
     }
@@ -14990,11 +14873,11 @@ if (
 
     if (!dateCheck.valid) {
 
-    sendCustomDateEntryMenuReply(
-        ss,
-        senderPhone,
-        dateCheck.message
-    );
+        sendCustomDateEntryMenuReply(
+            ss,
+            senderPhone,
+            dateCheck.message
+        );
 
     } else {
 
@@ -15074,7 +14957,7 @@ if (
         sendPatientMainMenuReply(
             ss,
             senderPhone,
-            "👋 Welcome to " + getClinicName()
+            "👋 Welcome to {{CLINIC_NAME}}!"
         );
     }
     return true;
@@ -15219,7 +15102,10 @@ if (
             senderPhone
         ).filter(
             function (appt) {
-                return isConfirmedAppointmentStatus(
+                // Same fix as getConfirmedAppointmentsForPhone: only
+                // hide truly inactive appointments, so one with a
+                // blank or non-standard status doesn't disappear here.
+                return !isInactiveAppointmentStatus(
                     appt.status
                 );
             }
@@ -15727,9 +15613,7 @@ if (
                 "🕐 " +
                 bookingResult.time +
                 "\n\n" +
-                "Thank you for choosing " +
-                getClinicName() +
-                ".";
+                "Thank you for choosing {{CLINIC_NAME}}.";
 
             sendWhatsAppReply(
                 ss,
@@ -15773,54 +15657,54 @@ if (
                     : "Unable to book the appointment.";
 
             if (
-    errorMessage ===
-    "You already have an active appointment on this date."
-) {
+                errorMessage ===
+                "You already have an active appointment on this date."
+            ) {
 
-    const fallbackText =
-        "1️⃣ Choose Another Date\n" +
-        "0️⃣ Main Menu\n" +
-        "9️⃣ Back";
+                const fallbackText =
+                    "1️⃣ Choose Another Date\n" +
+                    "0️⃣ Main Menu\n" +
+                    "9️⃣ Back";
 
-    const interactive =
-        buildInteractiveButtonSpec([
-            {
-                id: "date_retry",
-                title: "Choose Another Date"
-            },
-            {
-                id: "nav_main_menu",
-                title: "Main Menu"
-            },
-            {
-                id: "nav_back",
-                title: "Back"
+                const interactive =
+                    buildInteractiveButtonSpec([
+                        {
+                            id: "date_retry",
+                            title: "Choose Another Date"
+                        },
+                        {
+                            id: "nav_main_menu",
+                            title: "Main Menu"
+                        },
+                        {
+                            id: "nav_back",
+                            title: "Back"
+                        }
+                    ]);
+
+                sendWhatsAppMenuReply(
+                    ss,
+                    senderPhone,
+                    "❌ You already have an active appointment on this date." +
+                    "\n\n" +
+                    "Please choose another date.",
+                    {
+                        fallbackText: fallbackText,
+                        interactive: interactive
+                    }
+                );
+
+            } else {
+
+                sendWhatsAppReply(
+                    ss,
+                    senderPhone,
+                    "❌ " +
+                    errorMessage +
+                    "\n\n" +
+                    "Please choose another time or send Hi to start again."
+                );
             }
-        ]);
-
-    sendWhatsAppMenuReply(
-        ss,
-        senderPhone,
-        "❌ You already have an active appointment on this date." +
-        "\n\n" +
-        "Please choose another date.",
-        {
-            fallbackText: fallbackText,
-            interactive: interactive
-        }
-    );
-
-} else {
-
-    sendWhatsAppReply(
-        ss,
-        senderPhone,
-        "❌ " +
-        errorMessage +
-        "\n\n" +
-        "Please choose another time or send Hi to start again."
-    );
-}
         }
 
     } else if (
@@ -16269,9 +16153,7 @@ if (
                 "🕐 " +
                 result.time +
                 "\n\n" +
-                "Thank you for choosing " +
-                getClinicName() +
-                ".";
+                "Thank you for choosing {{CLINIC_NAME}}.";
 
             sendWhatsAppReply(
                 ss,
@@ -17191,9 +17073,7 @@ function sendPatientMainMenuReply(
     const line =
         prefix !== undefined
             ? String(prefix)
-            : "👋 Welcome to " +
-            getClinicName() +
-            "!";
+            : "👋 Welcome to {{CLINIC_NAME}}!";
 
     const body =
         (line ? line + "\n\n" : "") +
@@ -18183,11 +18063,11 @@ function getClinicName() {
         String(
             getSetting(
                 "CLINIC_NAME",
-                ""
+                "ABC Clinic"
             ) || ""
         ).trim();
 
-    return name || "";
+    return name || "ABC Clinic";
 }
 
 
@@ -18298,6 +18178,480 @@ function generateUniqueAppointmentId(appointmentSheet) {
         maxAttempts +
         " attempts."
     );
+}
+
+
+function sendAppointmentReceiptCard(to, appointment) {
+
+    const card =
+        createAppointmentReceiptCardBlob(
+            appointment
+        );
+
+    const mediaId =
+        uploadWhatsAppImageBlob(card.blob);
+
+    sendWhatsAppImageMessage(
+        to,
+        mediaId,
+        "🎫 Appointment confirmation — please forward this card to the patient if you booked on their behalf."
+    );
+
+    return mediaId;
+}
+
+
+function createAppointmentReceiptCardBlob(appointment) {
+
+    if (!appointment || !appointment.appointmentId) {
+        throw new Error(
+            "Appointment data is incomplete for receipt generation."
+        );
+    }
+
+    let presentation = null;
+
+    try {
+
+        presentation =
+            SlidesApp.create(
+                getClinicName() + " Appointment Receipt"
+            );
+
+        const slide =
+            presentation
+                .getSlides()[0];
+
+        // Use a clean white canvas.
+        slide
+            .getBackground()
+            .setSolidFill("#FFFFFF");
+
+        const pageWidth =
+            presentation
+                .getPageWidth();
+
+        const pageHeight =
+            presentation
+                .getPageHeight();
+
+        // ------------------------------------------------------
+        // Top clinic/header area
+        // ------------------------------------------------------
+
+        const header =
+            slide.insertShape(
+                SlidesApp.ShapeType.RECTANGLE,
+                0,
+                0,
+                pageWidth,
+                105
+            );
+
+        header
+            .getFill()
+            .setSolidFill("#0B6E4F");
+
+        header
+            .getLine()
+            .setTransparent();
+
+        // ------------------------------------------------------
+        // Hospital logo
+        // ------------------------------------------------------
+
+        const logoFileId =
+            String(
+                getSetting(
+                    "APPOINTMENT_RECEIPT_LOGO_DRIVE_FILE_ID",
+                    "1m5eZGBd_xSeXlVTjjpJBgMvlDYIqhWmx"
+                ) || ""
+            ).trim();
+
+        if (logoFileId) {
+            try {
+                const logoFile =
+                    DriveApp.getFileById(
+                        logoFileId
+                    );
+
+                const logo =
+                    slide.insertImage(
+                        logoFile.getBlob()
+                    );
+
+                logo
+                    .setLeft(22)
+                    .setTop(17)
+                    .setHeight(70);
+            } catch (logoError) {
+                Logger.log(
+                    "Receipt logo could not be inserted: " +
+                    logoError.message
+                );
+            }
+        }
+
+        const clinicName =
+            getClinicName();
+
+        const clinicText =
+            slide.insertTextBox(
+                String(clinicName || ""),
+                105,
+                22,
+                pageWidth - 130,
+                32
+            );
+
+        clinicText
+            .getText()
+            .getTextStyle()
+            .setFontSize(22)
+            .setBold(true)
+            .setForegroundColor("#FFFFFF");
+
+        const statusText =
+            slide.insertTextBox(
+                "APPOINTMENT CONFIRMED",
+                105,
+                56,
+                pageWidth - 130,
+                25
+            );
+
+        statusText
+            .getText()
+            .getTextStyle()
+            .setFontSize(11)
+            .setBold(true)
+            .setForegroundColor("#FFFFFF");
+
+        // ------------------------------------------------------
+        // Appointment details
+        // ------------------------------------------------------
+
+        const doctorRecord =
+            appointment.doctorId
+                ? getDoctorRecord(
+                    appointment.doctorId
+                )
+                : null;
+
+        const specialization =
+            doctorRecord &&
+            doctorRecord.specialization
+                ? doctorRecord.specialization
+                : "";
+
+        const doctorName =
+            String(
+                appointment.doctor ||
+                (doctorRecord &&
+                    doctorRecord.doctorName) ||
+                "Doctor"
+            );
+
+        const details = [
+            ["PATIENT", appointment.patientName || ""],
+            ["DOCTOR", doctorName],
+            ["SPECIALIZATION", specialization || ""],
+            ["DATE", formatReceiptDate(appointment.date)],
+            ["TIME", appointment.time || ""],
+            ["APPOINTMENT ID", appointment.appointmentId],
+            ["CLINIC", (doctorRecord && doctorRecord.clinicName) || clinicName || ""]
+        ];
+
+        let top = 125;
+
+        details.forEach(function(row) {
+
+            const label =
+                slide.insertTextBox(
+                    row[0],
+                    35,
+                    top,
+                    135,
+                    22
+                );
+
+            label
+                .getText()
+                .getTextStyle()
+                .setFontSize(9)
+                .setBold(true)
+                .setForegroundColor("#777777");
+
+            const value =
+                slide.insertTextBox(
+                    String(row[1] || ""),
+                    175,
+                    top - 2,
+                    pageWidth - 210,
+                    25
+                );
+
+            value
+                .getText()
+                .getTextStyle()
+                .setFontSize(13)
+                .setBold(row[0] === "APPOINTMENT ID")
+                .setForegroundColor("#222222");
+
+            top += 43;
+        });
+
+        // ------------------------------------------------------
+        // Footer / sharing instruction
+        // ------------------------------------------------------
+
+        const footerTop =
+            pageHeight - 70;
+
+        const footerLine =
+            slide.insertShape(
+                SlidesApp.ShapeType.RECTANGLE,
+                0,
+                footerTop,
+                pageWidth,
+                1
+            );
+
+        footerLine
+            .getFill()
+            .setSolidFill("#DDDDDD");
+
+        footerLine
+            .getLine()
+            .setTransparent();
+
+        const footer =
+            slide.insertTextBox(
+                "Please show this confirmation at reception.\nYou can forward this card to the patient.",
+                35,
+                footerTop + 10,
+                pageWidth - 70,
+                45
+            );
+
+        footer
+            .getText()
+            .getTextStyle()
+            .setFontSize(9)
+            .setForegroundColor("#666666");
+
+        presentation
+            .saveAndClose();
+
+        // ------------------------------------------------------
+        // Export slide as PNG using Google Slides API.
+        // This avoids any third-party image-generation service.
+        // ------------------------------------------------------
+
+        const presentationId =
+            presentation.getId();
+
+        const pageObjectId =
+            slide.getObjectId();
+
+        const thumbnailUrl =
+            "https://slides.googleapis.com/v1/presentations/" +
+            encodeURIComponent(presentationId) +
+            "/pages/" +
+            encodeURIComponent(pageObjectId) +
+            "/thumbnail" +
+            "?thumbnailProperties.mimeType=PNG" +
+            "&thumbnailProperties.thumbnailSize=LARGE";
+
+        const response =
+            UrlFetchApp.fetch(
+                thumbnailUrl,
+                {
+                    method: "get",
+                    headers: {
+                        Authorization:
+                            "Bearer " +
+                            ScriptApp.getOAuthToken()
+                    },
+                    muteHttpExceptions: true
+                }
+            );
+
+        const code =
+            response.getResponseCode();
+
+        if (code < 200 || code >= 300) {
+            throw new Error(
+                "Google Slides thumbnail export failed (" +
+                code + "): " +
+                response.getContentText()
+            );
+        }
+
+        const thumbnailInfo =
+            JSON.parse(
+                response.getContentText()
+            );
+
+        if (!thumbnailInfo.contentUrl) {
+            throw new Error(
+                "Google Slides did not return a thumbnail URL."
+            );
+        }
+
+        const imageResponse =
+            UrlFetchApp.fetch(
+                thumbnailInfo.contentUrl,
+                {
+                    method: "get",
+                    muteHttpExceptions: true
+                }
+            );
+
+        if (
+            imageResponse.getResponseCode() < 200 ||
+            imageResponse.getResponseCode() >= 300
+        ) {
+            throw new Error(
+                "Unable to download receipt PNG."
+            );
+        }
+
+        const blob =
+            imageResponse
+                .getBlob()
+                .setName(
+                    "appointment-" +
+                    appointment.appointmentId +
+                    ".png"
+                );
+
+        return {
+            blob: blob,
+            presentationId: presentationId
+        };
+
+    } finally {
+
+        if (presentation) {
+            try {
+                DriveApp
+                    .getFileById(
+                        presentation.getId()
+                    )
+                    .setTrashed(true);
+            } catch (trashError) {
+                Logger.log(
+                    "Could not trash temporary receipt presentation: " +
+                    trashError.message
+                );
+            }
+        }
+    }
+}
+
+
+function uploadWhatsAppImageBlob(blob) {
+
+    if (!blob) {
+        throw new Error(
+            "Receipt image blob is missing."
+        );
+    }
+
+    const properties =
+        PropertiesService.getScriptProperties();
+
+    const accessToken =
+        properties.getProperty(
+            "WHATSAPP_ACCESS_TOKEN"
+        );
+
+    const phoneNumberId =
+        properties.getProperty(
+            "WHATSAPP_PHONE_NUMBER_ID"
+        );
+
+    if (!accessToken) {
+        throw new Error(
+            "WHATSAPP_ACCESS_TOKEN is missing."
+        );
+    }
+
+    if (!phoneNumberId) {
+        throw new Error(
+            "WHATSAPP_PHONE_NUMBER_ID is missing."
+        );
+    }
+
+    const url =
+        "https://graph.facebook.com/v26.0/" +
+        phoneNumberId +
+        "/media";
+
+    const response =
+        UrlFetchApp.fetch(
+            url,
+            {
+                method: "post",
+                headers: {
+                    Authorization:
+                        "Bearer " + accessToken
+                },
+                payload: {
+                    messaging_product: "whatsapp",
+                    type: "image/png",
+                    file: blob
+                },
+                muteHttpExceptions: true
+            }
+        );
+
+    const code =
+        response.getResponseCode();
+
+    const body =
+        response.getContentText();
+
+    if (code < 200 || code >= 300) {
+        throw new Error(
+            "WhatsApp receipt upload failed (" +
+            code + "): " +
+            body
+        );
+    }
+
+    const parsed =
+        JSON.parse(body);
+
+    if (!parsed.id) {
+        throw new Error(
+            "WhatsApp receipt upload returned no media ID."
+        );
+    }
+
+    return String(parsed.id);
+}
+
+
+function formatReceiptDate(isoDate) {
+
+    const value =
+        String(isoDate || "").trim();
+
+    if (!value) {
+        return "";
+    }
+
+    try {
+        return Utilities.formatDate(
+            new Date(value + "T00:00:00+05:30"),
+            TIMEZONE,
+            "EEEE, dd MMMM yyyy"
+        );
+    } catch (error) {
+        return value;
+    }
 }
 
 
@@ -18778,6 +19132,36 @@ function getDoctorMainMenuMoreSpec(tier) {
 }
 
 
+function getMyAppointmentActionSpec() {
+
+    const fallbackText =
+        "1️⃣ Cancel Appointment\n" +
+        "2️⃣ Reschedule\n" +
+        "3️⃣ Main Menu";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            {
+                id: "appointment_action_cancel",
+                title: "Cancel Appointment"
+            },
+            {
+                id: "appointment_action_reschedule",
+                title: "Reschedule"
+            },
+            {
+                id: "nav_main_menu",
+                title: "Main Menu"
+            }
+        ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
 function appendWhatsAppHomeNavRow(
     rows,
     listMode
@@ -18821,36 +19205,6 @@ function buildAppointmentDetailMessage(appt) {
         "\n\n" +
         "What would you like to do with this appointment?"
     );
-}
-
-
-function getMyAppointmentActionSpec() {
-
-    const fallbackText =
-        "1️⃣ Cancel Appointment\n" +
-        "2️⃣ Reschedule\n" +
-        "3️⃣ Main Menu";
-
-    const interactive =
-        buildInteractiveButtonSpec([
-            {
-                id: "appointment_action_cancel",
-                title: "Cancel Appointment"
-            },
-            {
-                id: "appointment_action_reschedule",
-                title: "Reschedule"
-            },
-            {
-                id: "nav_main_menu",
-                title: "Main Menu"
-            }
-        ]);
-
-    return {
-        fallbackText: fallbackText,
-        interactive: interactive
-    };
 }
 
 
@@ -19118,6 +19472,14 @@ function buildDoctorLeaveRangeConfirmMessage(
                 : ""
         )
     );
+}
+
+
+function applyClinicNamePlaceholder(message) {
+
+    return String(message)
+        .split("{{CLINIC_NAME}}")
+        .join(getClinicName());
 }
 
 
@@ -19467,6 +19829,7 @@ function whatsAppNavigationShowsBack(session) {
     const patientFlatHome = [
         "BOOK_DOCTOR",
         "MY_APPOINTMENTS",
+        "MY_APPOINTMENT_ACTION",
         "CANCEL_SELECT",
         "RESCHEDULE_SELECT"
     ];
@@ -19846,492 +20209,6 @@ function sendRescheduleConfirmMenuReply(
             ),
         getRescheduleConfirmSpec()
     );
-}
-
-
-
-// ============================================================
-// SHAREABLE APPOINTMENT RECEIPT CARD
-// ============================================================
-// Creates a temporary Google Slides card, exports the first slide
-// as a PNG, uploads that PNG to WhatsApp, sends it to the patient,
-// and then moves the temporary Slides file to Trash.
-//
-// The logo is read from the same Drive file currently used for the
-// hospital-logo greeting. Default ID can be overridden with the
-// Settings key APPOINTMENT_RECEIPT_LOGO_DRIVE_FILE_ID.
-
-function sendAppointmentReceiptCard(to, appointment) {
-
-    const card =
-        createAppointmentReceiptCardBlob(
-            appointment
-        );
-
-    const mediaId =
-        uploadWhatsAppImageBlob(card.blob);
-
-    sendWhatsAppImageMessage(
-        to,
-        mediaId,
-        "🎫 Appointment confirmation — please forward this card to the patient if you booked on their behalf."
-    );
-
-    return mediaId;
-}
-
-
-function createAppointmentReceiptCardBlob(appointment) {
-
-    if (!appointment || !appointment.appointmentId) {
-        throw new Error(
-            "Appointment data is incomplete for receipt generation."
-        );
-    }
-
-    let presentation = null;
-
-    try {
-
-        presentation =
-            SlidesApp.create(
-                getClinicName() + " Appointment Receipt"
-            );
-
-        const slide =
-            presentation
-                .getSlides()[0];
-
-        // Use a clean white canvas.
-        slide
-            .getBackground()
-            .setSolidFill("#FFFFFF");
-
-        const pageWidth =
-            presentation
-                .getPageWidth();
-
-        const pageHeight =
-            presentation
-                .getPageHeight();
-
-        // ------------------------------------------------------
-        // Top clinic/header area
-        // ------------------------------------------------------
-
-        const header =
-            slide.insertShape(
-                SlidesApp.ShapeType.RECTANGLE,
-                0,
-                0,
-                pageWidth,
-                105
-            );
-
-        header
-            .getFill()
-            .setSolidFill("#0B6E4F");
-
-        header
-            .getLine()
-            .setTransparent();
-
-        // ------------------------------------------------------
-        // Hospital logo
-        // ------------------------------------------------------
-
-        const logoFileId =
-            String(
-                getSetting(
-                    "APPOINTMENT_RECEIPT_LOGO_DRIVE_FILE_ID",
-                    "1m5eZGBd_xSeXlVTjjpJBgMvlDYIqhWmx"
-                ) || ""
-            ).trim();
-
-        if (logoFileId) {
-            try {
-                const logoFile =
-                    DriveApp.getFileById(
-                        logoFileId
-                    );
-
-                const logo =
-                    slide.insertImage(
-                        logoFile.getBlob()
-                    );
-
-                logo
-                    .setLeft(22)
-                    .setTop(17)
-                    .setHeight(70);
-            } catch (logoError) {
-                Logger.log(
-                    "Receipt logo could not be inserted: " +
-                    logoError.message
-                );
-            }
-        }
-
-        const clinicName =
-            getClinicName();
-
-        const clinicText =
-            slide.insertTextBox(
-                String(clinicName || ""),
-                105,
-                22,
-                pageWidth - 130,
-                32
-            );
-
-        clinicText
-            .getText()
-            .getTextStyle()
-            .setFontSize(22)
-            .setBold(true)
-            .setForegroundColor("#FFFFFF");
-
-        const statusText =
-            slide.insertTextBox(
-                "APPOINTMENT CONFIRMED",
-                105,
-                56,
-                pageWidth - 130,
-                25
-            );
-
-        statusText
-            .getText()
-            .getTextStyle()
-            .setFontSize(11)
-            .setBold(true)
-            .setForegroundColor("#FFFFFF");
-
-        // ------------------------------------------------------
-        // Appointment details
-        // ------------------------------------------------------
-
-        const doctorRecord =
-            appointment.doctorId
-                ? getDoctorRecord(
-                    appointment.doctorId
-                )
-                : null;
-
-        const specialization =
-            doctorRecord &&
-            doctorRecord.specialization
-                ? doctorRecord.specialization
-                : "";
-
-        const doctorName =
-            String(
-                appointment.doctor ||
-                (doctorRecord &&
-                    doctorRecord.doctorName) ||
-                "Doctor"
-            );
-
-        const details = [
-            ["PATIENT", appointment.patientName || ""],
-            ["DOCTOR", doctorName],
-            ["SPECIALIZATION", specialization || ""],
-            ["DATE", formatReceiptDate(appointment.date)],
-            ["TIME", appointment.time || ""],
-            ["APPOINTMENT ID", appointment.appointmentId],
-            ["CLINIC", (doctorRecord && doctorRecord.clinicName) || clinicName || ""]
-        ];
-
-        let top = 125;
-
-        details.forEach(function(row) {
-
-            const label =
-                slide.insertTextBox(
-                    row[0],
-                    35,
-                    top,
-                    135,
-                    22
-                );
-
-            label
-                .getText()
-                .getTextStyle()
-                .setFontSize(9)
-                .setBold(true)
-                .setForegroundColor("#777777");
-
-            const value =
-                slide.insertTextBox(
-                    String(row[1] || ""),
-                    175,
-                    top - 2,
-                    pageWidth - 210,
-                    25
-                );
-
-            value
-                .getText()
-                .getTextStyle()
-                .setFontSize(13)
-                .setBold(row[0] === "APPOINTMENT ID")
-                .setForegroundColor("#222222");
-
-            top += 43;
-        });
-
-        // ------------------------------------------------------
-        // Footer / sharing instruction
-        // ------------------------------------------------------
-
-        const footerTop =
-            pageHeight - 70;
-
-        const footerLine =
-            slide.insertShape(
-                SlidesApp.ShapeType.RECTANGLE,
-                0,
-                footerTop,
-                pageWidth,
-                1
-            );
-
-        footerLine
-            .getFill()
-            .setSolidFill("#DDDDDD");
-
-        footerLine
-            .getLine()
-            .setTransparent();
-
-        const footer =
-            slide.insertTextBox(
-                "Please show this confirmation at reception.\nYou can forward this card to the patient.",
-                35,
-                footerTop + 10,
-                pageWidth - 70,
-                45
-            );
-
-        footer
-            .getText()
-            .getTextStyle()
-            .setFontSize(9)
-            .setForegroundColor("#666666");
-
-        presentation
-            .saveAndClose();
-
-        // ------------------------------------------------------
-        // Export slide as PNG using Google Slides API.
-        // This avoids any third-party image-generation service.
-        // ------------------------------------------------------
-
-        const presentationId =
-            presentation.getId();
-
-        const pageObjectId =
-            slide.getObjectId();
-
-        const thumbnailUrl =
-            "https://slides.googleapis.com/v1/presentations/" +
-            encodeURIComponent(presentationId) +
-            "/pages/" +
-            encodeURIComponent(pageObjectId) +
-            "/thumbnail" +
-            "?thumbnailProperties.mimeType=PNG" +
-            "&thumbnailProperties.thumbnailSize=LARGE";
-
-        const response =
-            UrlFetchApp.fetch(
-                thumbnailUrl,
-                {
-                    method: "get",
-                    headers: {
-                        Authorization:
-                            "Bearer " +
-                            ScriptApp.getOAuthToken()
-                    },
-                    muteHttpExceptions: true
-                }
-            );
-
-        const code =
-            response.getResponseCode();
-
-        if (code < 200 || code >= 300) {
-            throw new Error(
-                "Google Slides thumbnail export failed (" +
-                code + "): " +
-                response.getContentText()
-            );
-        }
-
-        const thumbnailInfo =
-            JSON.parse(
-                response.getContentText()
-            );
-
-        if (!thumbnailInfo.contentUrl) {
-            throw new Error(
-                "Google Slides did not return a thumbnail URL."
-            );
-        }
-
-        const imageResponse =
-            UrlFetchApp.fetch(
-                thumbnailInfo.contentUrl,
-                {
-                    method: "get",
-                    muteHttpExceptions: true
-                }
-            );
-
-        if (
-            imageResponse.getResponseCode() < 200 ||
-            imageResponse.getResponseCode() >= 300
-        ) {
-            throw new Error(
-                "Unable to download receipt PNG."
-            );
-        }
-
-        const blob =
-            imageResponse
-                .getBlob()
-                .setName(
-                    "appointment-" +
-                    appointment.appointmentId +
-                    ".png"
-                );
-
-        return {
-            blob: blob,
-            presentationId: presentationId
-        };
-
-    } finally {
-
-        if (presentation) {
-            try {
-                DriveApp
-                    .getFileById(
-                        presentation.getId()
-                    )
-                    .setTrashed(true);
-            } catch (trashError) {
-                Logger.log(
-                    "Could not trash temporary receipt presentation: " +
-                    trashError.message
-                );
-            }
-        }
-    }
-}
-
-
-function uploadWhatsAppImageBlob(blob) {
-
-    if (!blob) {
-        throw new Error(
-            "Receipt image blob is missing."
-        );
-    }
-
-    const properties =
-        PropertiesService.getScriptProperties();
-
-    const accessToken =
-        properties.getProperty(
-            "WHATSAPP_ACCESS_TOKEN"
-        );
-
-    const phoneNumberId =
-        properties.getProperty(
-            "WHATSAPP_PHONE_NUMBER_ID"
-        );
-
-    if (!accessToken) {
-        throw new Error(
-            "WHATSAPP_ACCESS_TOKEN is missing."
-        );
-    }
-
-    if (!phoneNumberId) {
-        throw new Error(
-            "WHATSAPP_PHONE_NUMBER_ID is missing."
-        );
-    }
-
-    const url =
-        "https://graph.facebook.com/v26.0/" +
-        phoneNumberId +
-        "/media";
-
-    const response =
-        UrlFetchApp.fetch(
-            url,
-            {
-                method: "post",
-                headers: {
-                    Authorization:
-                        "Bearer " + accessToken
-                },
-                payload: {
-                    messaging_product: "whatsapp",
-                    type: "image/png",
-                    file: blob
-                },
-                muteHttpExceptions: true
-            }
-        );
-
-    const code =
-        response.getResponseCode();
-
-    const body =
-        response.getContentText();
-
-    if (code < 200 || code >= 300) {
-        throw new Error(
-            "WhatsApp receipt upload failed (" +
-            code + "): " +
-            body
-        );
-    }
-
-    const parsed =
-        JSON.parse(body);
-
-    if (!parsed.id) {
-        throw new Error(
-            "WhatsApp receipt upload returned no media ID."
-        );
-    }
-
-    return String(parsed.id);
-}
-
-
-function formatReceiptDate(isoDate) {
-
-    const value =
-        String(isoDate || "").trim();
-
-    if (!value) {
-        return "";
-    }
-
-    try {
-        return Utilities.formatDate(
-            new Date(value + "T00:00:00+05:30"),
-            TIMEZONE,
-            "EEEE, dd MMMM yyyy"
-        );
-    } catch (error) {
-        return value;
-    }
 }
 
 
