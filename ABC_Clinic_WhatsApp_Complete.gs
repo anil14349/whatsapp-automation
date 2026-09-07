@@ -286,6 +286,25 @@ function extractInboundWhatsAppMessage(message) {
         }
     }
 
+    // WhatsApp's native "Share Location" attachment — used by the home
+    // blood-sample-collection flow to check the patient is within the
+    // configured radius of the hospital. Carries no text body, so
+    // downstream code must key off latitude/longitude, not messageText.
+    if (
+        messageType === "location" &&
+        message.location &&
+        message.location.latitude !== undefined &&
+        message.location.longitude !== undefined
+    ) {
+
+        return {
+            type: "location",
+            text: "",
+            latitude: Number(message.location.latitude),
+            longitude: Number(message.location.longitude)
+        };
+    }
+
     return {
         type: messageType,
         text: ""
@@ -1030,6 +1049,21 @@ function ensureSettingsSheet() {
             "AFTER_HOURS_MESSAGE",
             ""
         ]);
+
+        sheet.appendRow([
+            "HOSPITAL_LATITUDE",
+            ""
+        ]);
+
+        sheet.appendRow([
+            "HOSPITAL_LONGITUDE",
+            ""
+        ]);
+
+        sheet.appendRow([
+            "HOME_COLLECTION_RADIUS_KM",
+            "5"
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -1085,6 +1119,21 @@ function ensureSettingsSheet() {
             sheet,
             "AFTER_HOURS_MESSAGE",
             ""
+        );
+        ensureSettingKey(
+            sheet,
+            "HOSPITAL_LATITUDE",
+            ""
+        );
+        ensureSettingKey(
+            sheet,
+            "HOSPITAL_LONGITUDE",
+            ""
+        );
+        ensureSettingKey(
+            sheet,
+            "HOME_COLLECTION_RADIUS_KM",
+            "5"
         );
     }
 
@@ -11991,7 +12040,8 @@ function returnToMainMenu(ss, phone, prefix) {
             doctorId: "",
             date: "",
             time: "",
-            appointmentId: ""
+            appointmentId: "",
+            location: ""
         }
     );
 
@@ -12049,6 +12099,49 @@ function goBackInWhatsAppFlow(ss, phone, session) {
 
         case "MY_APPOINTMENT_ACTION":
             returnToMainMenu(ss, phone);
+            return;
+
+        case "HOME_COLLECTION_LOCATION":
+            saveWhatsAppSession(phone, {
+                state: "PATIENT_MAIN_MORE",
+                location: ""
+            });
+            sendPatientMainMoreMenuReply(
+                ss,
+                phone,
+                ""
+            );
+            return;
+
+        case "HOME_COLLECTION_DATE":
+            saveWhatsAppSession(phone, {
+                state: "HOME_COLLECTION_LOCATION",
+                location: ""
+            });
+            sendCustomDateEntryMenuReply(
+                ss,
+                phone,
+                "🩸 Home Sample Collection\n\n" +
+                "Please share your location (tap 📎 Attach → Location in WhatsApp) " +
+                "so we can confirm you're within " +
+                getHomeCollectionRadiusKm() +
+                " km of " +
+                getClinicName() +
+                "."
+            );
+            return;
+
+        case "HOME_COLLECTION_DATE_CUSTOM":
+        case "HOME_COLLECTION_TIME":
+            saveWhatsAppSession(phone, {
+                state: "HOME_COLLECTION_DATE"
+            });
+            sendDateMenuReply(
+                ss,
+                phone,
+                "Choose a preferred date:",
+                "patient"
+            );
             return;
 
         case "BOOK_DATE":
@@ -15036,8 +15129,23 @@ function handleWhatsAppPatientMessage(
     senderName,
     messageText,
     normalizedMessage,
-    session
+    session,
+    location
 ) {
+
+    if (
+        handleWhatsAppHomeCollectionMessage(
+            ss,
+            senderPhone,
+            senderName,
+            messageText,
+            normalizedMessage,
+            session,
+            location
+        )
+    ) {
+        return true;
+    }
 
 // LANGUAGE SELECTION
 // ======================================================
@@ -15385,6 +15493,24 @@ if (
     );
 
     sendLanguageMenuReply(
+        ss,
+        senderPhone
+    );
+    return true;
+}
+
+
+// ======================================================
+// MORE → HOME SAMPLE COLLECTION
+// ======================================================
+
+if (
+    normalizedMessage === "6" &&
+    session &&
+    session.state === "PATIENT_MAIN_MORE"
+) {
+
+    beginWhatsAppHomeCollectionFlow(
         ss,
         senderPhone
     );
@@ -16419,7 +16545,8 @@ function processWhatsAppTextMessage(
     ss,
     senderPhone,
     senderName,
-    messageText
+    messageText,
+    location
 ) {
 
     const normalizedMessage =
@@ -16482,7 +16609,8 @@ function processWhatsAppTextMessage(
             senderName,
             messageText,
             normalizedMessage,
-            session
+            session,
+            location
         )
     ) {
         return;
@@ -16633,6 +16761,14 @@ function doPost(e) {
                 ? value.metadata.phone_number_id
                 : "";
 
+        const inboundLocation =
+            messageType === "location"
+                ? {
+                    latitude: inbound.latitude,
+                    longitude: inbound.longitude
+                }
+                : null;
+
         appendWhatsAppLogEntry(
             ss,
             {
@@ -16640,7 +16776,17 @@ function doPost(e) {
                 phone: senderPhone,
                 name: senderName,
                 status: messageType,
-                message: messageText,
+                message:
+                    messageText ||
+                    (
+                        inboundLocation
+                            ? "[location shared: " +
+                            inboundLocation.latitude +
+                            "," +
+                            inboundLocation.longitude +
+                            "]"
+                            : ""
+                    ),
                 phoneNumberId: phoneNumberId
             }
         );
@@ -16650,7 +16796,7 @@ function doPost(e) {
         // WHATSAPP CONVERSATION
         // ========================================================
 
-        if (messageText) {
+        if (messageText || inboundLocation) {
 
             setWhatsAppInboundMessageContext(
                 messageId
@@ -16662,7 +16808,8 @@ function doPost(e) {
                     ss,
                     senderPhone,
                     senderName,
-                    messageText
+                    messageText,
+                    inboundLocation
                 );
 
             } finally {
@@ -18001,7 +18148,13 @@ function getWhatsAppSession(phone) {
                     : parseInt(
                         data[i][13],
                         10
-                    ) || 0
+                    ) || 0,
+
+            // "lat,lng" string captured from a WhatsApp location share,
+            // used by the home blood-sample-collection flow between the
+            // location-check step and the final request being saved.
+            location:
+                String(data[i][14] || "").trim()
         };
     }
 
@@ -18080,6 +18233,7 @@ function saveWhatsAppSession(
     ensureWhatsAppSessionAppointmentPageColumn(sheet);
     ensureWhatsAppSessionDoctorMenuTierColumn(sheet);
     ensureWhatsAppSessionListPageColumn(sheet);
+    ensureWhatsAppSessionLocationColumn(sheet);
 
     const existing =
         getWhatsAppSession(phone);
@@ -18094,11 +18248,11 @@ function saveWhatsAppSession(
 
         const current =
             sheet
-                .getRange(row, 1, 1, 14)
+                .getRange(row, 1, 1, 15)
                 .getValues()[0];
 
         sheet
-            .getRange(row, 1, 1, 14)
+            .getRange(row, 1, 1, 15)
             .setValues([[
                 phone,
 
@@ -18168,7 +18322,11 @@ function saveWhatsAppSession(
                         current[13] === null
                             ? 0
                             : current[13]
-                    )
+                    ),
+
+                updates.location !== undefined
+                    ? updates.location
+                    : current[14]
             ]]);
 
     } else {
@@ -18195,7 +18353,8 @@ function saveWhatsAppSession(
                 : "",
             updates.listPage !== undefined
                 ? updates.listPage
-                : 0
+                : 0,
+            updates.location || ""
         ]);
     }
 }
@@ -18298,6 +18457,98 @@ function getClinicName() {
         ).trim();
 
     return name || "ABC Clinic";
+}
+
+
+function getHospitalLocation() {
+
+    const latText =
+        String(
+            getSetting("HOSPITAL_LATITUDE", "") || ""
+        ).trim();
+
+    const lngText =
+        String(
+            getSetting("HOSPITAL_LONGITUDE", "") || ""
+        ).trim();
+
+    // Check the raw setting text is non-empty before parsing — Number("")
+    // is 0, which would otherwise be indistinguishable from a genuine
+    // (0, 0) coordinate and silently treat "not configured" as "hospital
+    // is at the equator".
+    if (!latText || !lngText) {
+        return null;
+    }
+
+    const lat =
+        Number(latText);
+
+    const lng =
+        Number(lngText);
+
+    if (
+        !isFinite(lat) ||
+        !isFinite(lng)
+    ) {
+        return null;
+    }
+
+    return {
+        lat: lat,
+        lng: lng
+    };
+}
+
+
+function getHomeCollectionRadiusKm() {
+
+    const radius =
+        Number(
+            getSetting("HOME_COLLECTION_RADIUS_KM", "5")
+        );
+
+    return (
+        isFinite(radius) &&
+        radius > 0
+    )
+        ? radius
+        : 5;
+}
+
+
+function haversineDistanceKm(
+    lat1,
+    lng1,
+    lat2,
+    lng2
+) {
+
+    const EARTH_RADIUS_KM = 6371;
+
+    const toRadians =
+        function (degrees) {
+            return degrees * (Math.PI / 180);
+        };
+
+    const dLat =
+        toRadians(lat2 - lat1);
+
+    const dLng =
+        toRadians(lng2 - lng1);
+
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRadians(lat1)) *
+        Math.cos(toRadians(lat2)) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+
+    const c =
+        2 * Math.atan2(
+            Math.sqrt(a),
+            Math.sqrt(1 - a)
+        );
+
+    return EARTH_RADIUS_KM * c;
 }
 
 
@@ -18885,6 +19136,75 @@ function formatReceiptDate(isoDate) {
 }
 
 
+function ensureHomeCollectionSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName("Home_Collection_Requests");
+
+    if (!sheet) {
+
+        sheet =
+            ss.insertSheet("Home_Collection_Requests");
+
+        sheet.appendRow([
+            "Request ID",
+            "Phone",
+            "Patient Name",
+            "Latitude",
+            "Longitude",
+            "Distance (km)",
+            "Preferred Date",
+            "Time Window",
+            "Status",
+            "Created At"
+        ]);
+    }
+
+    return sheet;
+}
+
+
+function generateHomeCollectionRequestId() {
+
+    return (
+        "HC" +
+        Utilities.formatDate(
+            new Date(),
+            TIMEZONE,
+            "yyMMddHHmmss"
+        )
+    );
+}
+
+
+function createHomeCollectionRequest(details) {
+
+    const sheet =
+        ensureHomeCollectionSheet();
+
+    const requestId =
+        generateHomeCollectionRequestId();
+
+    sheet.appendRow([
+        requestId,
+        String(details.phone || ""),
+        String(details.patientName || ""),
+        details.latitude,
+        details.longitude,
+        details.distanceKm,
+        String(details.date || ""),
+        String(details.timeWindow || ""),
+        "Pending",
+        new Date()
+    ]);
+
+    return requestId;
+}
+
+
 function ensureWhatsAppSessionsSheet() {
 
     const ss =
@@ -18912,7 +19232,8 @@ function ensureWhatsAppSessionsSheet() {
             "Slot Page",
             "Appointment Page",
             "Doctor Menu Tier",
-            "List Page"
+            "List Page",
+            "Location"
         ]);
     }
 
@@ -18946,6 +19267,16 @@ function ensureWhatsAppSessionListPageColumn(sheet) {
         sheet
             .getRange(1, 14)
             .setValue("List Page");
+    }
+}
+
+
+function ensureWhatsAppSessionLocationColumn(sheet) {
+
+    if (!sheet.getRange(1, 15).getValue()) {
+        sheet
+            .getRange(1, 15)
+            .setValue("Location");
     }
 }
 
@@ -19121,6 +19452,11 @@ function initializeWhatsAppBotSheets() {
         ensureDoctorLeavesSheet
     );
 
+    ensure(
+        "Home_Collection_Requests",
+        ensureHomeCollectionSheet
+    );
+
     Logger.log(
         "initializeWhatsAppBotSheets: " +
         JSON.stringify(results)
@@ -19229,7 +19565,8 @@ function getPatientMainMoreMenuSpec() {
     const fallbackText =
         "3️⃣ Cancel Appointment\n" +
         "4️⃣ Reschedule Appointment\n" +
-        "5️⃣ Change Language";
+        "5️⃣ Change Language\n" +
+        "6️⃣ Home Sample Collection";
 
     const rows = [
         {
@@ -19243,6 +19580,11 @@ function getPatientMainMoreMenuSpec() {
         {
             id: "5",
             title: "Change Language"
+        },
+        {
+            id: "6",
+            title: "Home Sample Collection",
+            description: "Blood sample pickup at your home"
         }
     ];
 
@@ -19405,6 +19747,49 @@ function getDoctorMainMenuMoreSpec(tier) {
                 title: "Doctor Portal"
             }
         ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+function getHomeCollectionTimeWindowSpec() {
+
+    const fallbackText =
+        "1️⃣ Morning (8 AM - 12 PM)\n" +
+        "2️⃣ Afternoon (12 PM - 4 PM)\n" +
+        "3️⃣ Evening (4 PM - 8 PM)";
+
+    const rows = [
+        {
+            id: "1",
+            title: "Morning",
+            description: "8 AM - 12 PM"
+        },
+        {
+            id: "2",
+            title: "Afternoon",
+            description: "12 PM - 4 PM"
+        },
+        {
+            id: "3",
+            title: "Evening",
+            description: "4 PM - 8 PM"
+        }
+    ];
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "patient"
+    );
+
+    const interactive =
+        buildInteractiveListSpec(
+            rows,
+            "Choose"
+        );
 
     return {
         fallbackText: fallbackText,
@@ -20377,6 +20762,382 @@ function handleDoctorPortalMenuChoice(
             ss,
             phone,
             doctorId
+        );
+
+        return true;
+    }
+
+    return false;
+}
+
+
+function beginWhatsAppHomeCollectionFlow(
+    ss,
+    senderPhone
+) {
+
+    if (!getHospitalLocation()) {
+
+        sendPatientMainMoreMenuReply(
+            ss,
+            senderPhone,
+            "❌ Home sample collection isn't set up yet. Please call the clinic directly."
+        );
+
+        return;
+    }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "HOME_COLLECTION_LOCATION",
+            doctorId: "",
+            date: "",
+            time: "",
+            appointmentId: "",
+            location: ""
+        }
+    );
+
+    sendCustomDateEntryMenuReply(
+        ss,
+        senderPhone,
+        "🩸 Home Sample Collection\n\n" +
+        "Please share your location (tap 📎 Attach → Location in WhatsApp) " +
+        "so we can confirm you're within " +
+        getHomeCollectionRadiusKm() +
+        " km of " +
+        getClinicName() +
+        "."
+    );
+}
+
+
+function handleWhatsAppHomeCollectionMessage(
+    ss,
+    senderPhone,
+    senderName,
+    messageText,
+    normalizedMessage,
+    session,
+    location
+) {
+
+    const homeCollectionStates = [
+        "HOME_COLLECTION_LOCATION",
+        "HOME_COLLECTION_DATE",
+        "HOME_COLLECTION_DATE_CUSTOM",
+        "HOME_COLLECTION_TIME"
+    ];
+
+    if (
+        !session ||
+        homeCollectionStates.indexOf(session.state) === -1
+    ) {
+        return false;
+    }
+
+
+    // ======================================================
+    // WAITING FOR LOCATION SHARE
+    // ======================================================
+
+    if (session.state === "HOME_COLLECTION_LOCATION") {
+
+        if (
+            !location ||
+            !isFinite(location.latitude) ||
+            !isFinite(location.longitude)
+        ) {
+
+            sendCustomDateEntryMenuReply(
+                ss,
+                senderPhone,
+                "📍 Please use WhatsApp's Location attachment to share where " +
+                "the sample should be collected — I can't use typed text for this."
+            );
+
+            return true;
+        }
+
+        const hospital =
+            getHospitalLocation();
+
+        if (!hospital) {
+
+            saveWhatsAppSession(
+                senderPhone,
+                { state: "PATIENT_MAIN_MORE" }
+            );
+
+            sendPatientMainMoreMenuReply(
+                ss,
+                senderPhone,
+                "❌ Home sample collection isn't set up yet. Please call the clinic directly."
+            );
+
+            return true;
+        }
+
+        const radiusKm =
+            getHomeCollectionRadiusKm();
+
+        const distanceKm =
+            haversineDistanceKm(
+                location.latitude,
+                location.longitude,
+                hospital.lat,
+                hospital.lng
+            );
+
+        if (distanceKm > radiusKm) {
+
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    state: "PATIENT_MAIN_MORE",
+                    location: ""
+                }
+            );
+
+            sendPatientMainMoreMenuReply(
+                ss,
+                senderPhone,
+                "❌ Sorry, home sample collection is only available within " +
+                radiusKm +
+                " km of " +
+                getClinicName() +
+                ".\n\n" +
+                "Your shared location is about " +
+                distanceKm.toFixed(1) +
+                " km away."
+            );
+
+            return true;
+        }
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                state: "HOME_COLLECTION_DATE",
+                location:
+                    location.latitude +
+                    "," +
+                    location.longitude
+            }
+        );
+
+        sendDateMenuReply(
+            ss,
+            senderPhone,
+            "✅ You're within " +
+            radiusKm +
+            " km — home sample collection is available!\n\n" +
+            "Choose a preferred date:",
+            "patient"
+        );
+
+        return true;
+    }
+
+
+    // ======================================================
+    // WAITING FOR A PREFERRED DATE (Today / Tomorrow / Other)
+    // ======================================================
+
+    if (session.state === "HOME_COLLECTION_DATE") {
+
+        const selectedDate =
+            getISODateFromMenuChoice(
+                normalizedMessage
+            );
+
+        if (selectedDate) {
+
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    state: "HOME_COLLECTION_TIME",
+                    date: selectedDate
+                }
+            );
+
+            sendWhatsAppMenuReply(
+                ss,
+                senderPhone,
+                "🕐 Choose a preferred time window:",
+                getHomeCollectionTimeWindowSpec()
+            );
+
+            return true;
+        }
+
+        if (
+            normalizedMessage === "3" ||
+            normalizedMessage === "date_custom"
+        ) {
+
+            saveWhatsAppSession(
+                senderPhone,
+                { state: "HOME_COLLECTION_DATE_CUSTOM" }
+            );
+
+            sendCustomDateEntryMenuReply(
+                ss,
+                senderPhone,
+                "Please enter the preferred date in YYYY-MM-DD format.\n\n" +
+                "Example:\n" +
+                Utilities.formatDate(
+                    new Date(),
+                    TIMEZONE,
+                    "yyyy-MM-dd"
+                )
+            );
+
+            return true;
+        }
+
+        sendDateMenuReply(
+            ss,
+            senderPhone,
+            "❌ Invalid option.\n\nChoose a preferred date:",
+            "patient"
+        );
+
+        return true;
+    }
+
+
+    // ======================================================
+    // WAITING FOR A TYPED CUSTOM DATE
+    // ======================================================
+
+    if (session.state === "HOME_COLLECTION_DATE_CUSTOM") {
+
+        const validation =
+            validateFutureISODate(
+                String(messageText || "").trim()
+            );
+
+        if (!validation.valid) {
+
+            sendCustomDateEntryMenuReply(
+                ss,
+                senderPhone,
+                validation.message
+            );
+
+            return true;
+        }
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                state: "HOME_COLLECTION_TIME",
+                date: validation.date
+            }
+        );
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            "🕐 Choose a preferred time window:",
+            getHomeCollectionTimeWindowSpec()
+        );
+
+        return true;
+    }
+
+
+    // ======================================================
+    // WAITING FOR A TIME WINDOW → SAVE THE REQUEST
+    // ======================================================
+
+    if (session.state === "HOME_COLLECTION_TIME") {
+
+        const timeWindows = {
+            "1": "Morning (8 AM - 12 PM)",
+            "2": "Afternoon (12 PM - 4 PM)",
+            "3": "Evening (4 PM - 8 PM)"
+        };
+
+        const timeWindow =
+            timeWindows[normalizedMessage];
+
+        if (!timeWindow) {
+
+            sendWhatsAppMenuReply(
+                ss,
+                senderPhone,
+                "❌ Invalid option.\n\nChoose a preferred time window:",
+                getHomeCollectionTimeWindowSpec()
+            );
+
+            return true;
+        }
+
+        const locationParts =
+            String(session.location || "").split(",");
+
+        const latitude =
+            Number(locationParts[0]) || "";
+
+        const longitude =
+            Number(locationParts[1]) || "";
+
+        const hospital =
+            getHospitalLocation();
+
+        const distanceKm =
+            hospital &&
+            isFinite(latitude) &&
+            isFinite(longitude)
+                ? haversineDistanceKm(
+                    latitude,
+                    longitude,
+                    hospital.lat,
+                    hospital.lng
+                )
+                : "";
+
+        const patientName =
+            resolveKnownPatientName(senderPhone) ||
+            senderName ||
+            "";
+
+        createHomeCollectionRequest({
+            phone: senderPhone,
+            patientName: patientName,
+            latitude: latitude,
+            longitude: longitude,
+            distanceKm: distanceKm,
+            date: session.date,
+            timeWindow: timeWindow
+        });
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "MAIN_MENU",
+                doctorId: "",
+                date: "",
+                time: "",
+                appointmentId: "",
+                location: ""
+            }
+        );
+
+        sendPatientMainMenuReply(
+            ss,
+            senderPhone,
+            "✅ Home sample collection requested for " +
+            session.date +
+            " (" +
+            timeWindow +
+            ").\n\n" +
+            "Our team will call you shortly to confirm the exact time."
         );
 
         return true;
