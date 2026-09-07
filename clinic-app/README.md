@@ -5,6 +5,11 @@ bot + Google Sheets/Calendar) into a Next.js + Postgres (Supabase) app with a
 receptionist/admin web UI. See the root [README](../README.md) and this
 branch's history for the architecture decisions behind this rewrite.
 
+For every configuration knob (env vars, `settings` table keys, per-doctor
+fields) organized by module — including which ones are actually wired up
+vs. reserved for a not-yet-ported feature — see
+[`CONFIGURATION.md`](CONFIGURATION.md).
+
 **Status**: in progress, built in stages.
 
 - ✅ Stage 1: project scaffold + complete database schema
