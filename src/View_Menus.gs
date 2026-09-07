@@ -149,7 +149,8 @@ function getPatientMainMoreMenuSpec() {
     const fallbackText =
         "3️⃣ Cancel Appointment\n" +
         "4️⃣ Reschedule Appointment\n" +
-        "5️⃣ Change Language";
+        "5️⃣ Change Language\n" +
+        "6️⃣ Home Sample Collection";
 
     const rows = [
         {
@@ -163,6 +164,11 @@ function getPatientMainMoreMenuSpec() {
         {
             id: "5",
             title: "Change Language"
+        },
+        {
+            id: "6",
+            title: "Home Sample Collection",
+            description: "Blood sample pickup at your home"
         }
     ];
 
@@ -535,6 +541,50 @@ function getDoctorSelectionMenuSpec(page) {
         totalPages: pageInfo.totalPages,
         hasPrev: pageInfo.hasPrev,
         hasNext: pageInfo.hasNext
+    };
+}
+
+
+
+function getHomeCollectionTimeWindowSpec() {
+
+    const fallbackText =
+        "1️⃣ Morning (8 AM - 12 PM)\n" +
+        "2️⃣ Afternoon (12 PM - 4 PM)\n" +
+        "3️⃣ Evening (4 PM - 8 PM)";
+
+    const rows = [
+        {
+            id: "1",
+            title: "Morning",
+            description: "8 AM - 12 PM"
+        },
+        {
+            id: "2",
+            title: "Afternoon",
+            description: "12 PM - 4 PM"
+        },
+        {
+            id: "3",
+            title: "Evening",
+            description: "4 PM - 8 PM"
+        }
+    ];
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "patient"
+    );
+
+    const interactive =
+        buildInteractiveListSpec(
+            rows,
+            "Choose"
+        );
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
     };
 }
 
