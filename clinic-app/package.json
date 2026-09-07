@@ -15,7 +15,8 @@
     "db:stop": "supabase stop",
     "db:reset": "supabase db reset",
     "db:diff": "supabase db diff",
-    "db:types": "supabase gen types typescript --local > lib/supabase/database.types.ts"
+    "db:types": "supabase gen types typescript --local > lib/supabase/database.types.ts",
+    "create-admin": "node scripts/create-admin-user.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

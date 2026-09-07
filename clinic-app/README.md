@@ -12,10 +12,11 @@ branch's history for the architecture decisions behind this rewrite.
   leaves, patients, the slot-availability engine, and
   book/cancel/reschedule appointment logic, all as tested TypeScript
   modules
-- ✅ Stage 3: the WhatsApp webhook + patient booking conversation flow
-  (this stage) — see "What's covered" below for exactly what's in vs.
-  deferred
-- ⏳ Stage 4: the receptionist/admin web UI (not started)
+- ✅ Stage 3: the WhatsApp webhook + patient booking conversation flow —
+  see "What's covered" below for exactly what's in vs. deferred
+- ✅ Stage 4: the receptionist/admin web UI (this stage) — login,
+  dashboard, doctors (incl. availability/leaves), appointments, patients,
+  and configurable settings
 
 ---
 
@@ -194,6 +195,45 @@ Supabase + WhatsApp Cloud API + Calendar calls are typechecked but not
 yet exercised against a live WhatsApp number/database — see "What's
 tested vs. what isn't yet" under stage 2 above; the same caveat applies
 here.
+
+---
+
+## Receptionist/admin web UI (stage 4)
+
+A new capability — no equivalent existed in the Apps Script version, which only had the WhatsApp Doctor Portal conversation and direct Google Sheet editing for staff.
+
+### First login (bootstrap)
+
+There's no signup page — admin accounts are only ever created by someone who already has database access, by design (a public signup form for an admin console would be a real security hole). Create the first one with:
+
+```bash
+source .env.local  # or otherwise export NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
+npm run create-admin -- --email you@clinic.com --password 'a strong password' --name "Your Name"
+```
+
+Then sign in at `/admin/login`.
+
+### What's there
+
+| Page | Purpose |
+|---|---|
+| `/admin/login` | Email/password login (own `admin_users` table + a signed session cookie — **not** Supabase Auth, see below) |
+| `/admin` | Dashboard — today's/upcoming appointment counts, active doctor count |
+| `/admin/doctors` | List + create doctors |
+| `/admin/doctors/[id]` | Edit a doctor's details, manage weekly availability sessions, manage upcoming leaves |
+| `/admin/appointments` | Filterable list (doctor/date/status) with actions: mark Completed/No-Show, cancel |
+| `/admin/patients` | Read-only, searchable patient registry |
+| `/admin/settings` | Every configurable option from the `settings` table, grouped and editable as a real form |
+
+### Design notes
+
+- **Auth is hand-rolled, not Supabase Auth**: `admin_users` (password hashed with Node's built-in `scrypt`, no external dependency) + a signed HTTP-only session cookie (`lib/auth/session.ts`, HMAC-SHA256 keyed by `ADMIN_SESSION_SECRET`, verified with `timingSafeEqual`). Chose this over Supabase Auth because the admin console is a small, fixed set of clinic staff accounts, not end-user signup — didn't want to pull in Auth's email verification/magic-link/OAuth machinery for a need this simple. `supabase/config.toml` has `[auth] enabled = false` accordingly.
+- **Every mutation goes through Next.js Server Actions calling the same `lib/*.ts` functions the WhatsApp bot uses** (e.g. admin appointment cancellation calls the identical `cancelAppointment()` from stage 2, with the same Calendar cleanup and status-transition rules) — not a separate, parallel admin-only code path that could drift from the bot's rules over time.
+- **No ADMIN vs. RECEPTIONIST permission split yet** — the `admin_users.role` column exists (for exactly this purpose later) but every logged-in user currently sees the same full UI. Worth adding once there's a real policy for what a receptionist shouldn't be able to touch (e.g. maybe settings, or deleting doctors).
+
+### Verification
+
+`npm run typecheck`, `npm run build`, `npm run lint` all pass; `npm test` — 65 tests (4 new, covering password hashing: correct/incorrect verification, salting, and graceful rejection of a corrupted hash instead of throwing). The pages/Server Actions themselves are typechecked and built successfully but — same caveat as every stage so far — not yet exercised against a live Supabase instance from this environment.
 
 ---
 
