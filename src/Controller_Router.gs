@@ -241,7 +241,8 @@ if (
             senderPhone,
             buildDoctorRescheduleDateIntro(
                 session.doctorId
-            )
+            ),
+            "doctor"
         );
 
         return true;

@@ -182,7 +182,8 @@ if (
         senderPhone,
         {
             role: "PATIENT",
-            state: "BOOK_DOCTOR"
+            state: "BOOK_DOCTOR",
+            listPage: 0
         }
     );
 
@@ -234,7 +235,8 @@ if (
                 doctorId: "",
                 date: "",
                 time: "",
-                appointmentId: ""
+                appointmentId: "",
+                listPage: 0
             }
         );
 
@@ -410,6 +412,33 @@ if (
     session.state === "BOOK_DOCTOR"
 ) {
 
+    if (
+        normalizedMessage === "doctor_prev" ||
+        normalizedMessage === "doctor_next"
+    ) {
+
+        const currentPage =
+            Number(session.listPage) || 0;
+
+        const nextPage =
+            normalizedMessage === "doctor_prev"
+                ? Math.max(currentPage - 1, 0)
+                : currentPage + 1;
+
+        saveWhatsAppSession(
+            senderPhone,
+            { listPage: nextPage }
+        );
+
+        sendDoctorSelectionReply(
+            ss,
+            senderPhone,
+            nextPage
+        );
+
+        return true;
+    }
+
     const selection =
         String(messageText || "").trim();
 
@@ -476,7 +505,9 @@ if (
             buildDoctorSelectionBody(
                 "❌ Please choose a valid doctor."
             ),
-            getDoctorSelectionMenuSpec()
+            getDoctorSelectionMenuSpec(
+                Number(session.listPage) || 0
+            )
         );
 
     }
@@ -527,7 +558,8 @@ if (
         normalizedMessage,
         "BOOK_TIME",
         "BOOK_DATE_CUSTOM",
-        false
+        false,
+        "patient"
     );
     return true;
 }
@@ -1145,7 +1177,8 @@ if (
         normalizedMessage,
         "RESCHEDULE_TIME",
         "RESCHEDULE_DATE_CUSTOM",
-        true
+        true,
+        "patient"
     );
     return true;
 }

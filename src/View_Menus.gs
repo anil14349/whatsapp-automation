@@ -151,21 +151,31 @@ function getPatientMainMoreMenuSpec() {
         "4️⃣ Reschedule Appointment\n" +
         "5️⃣ Change Language";
 
+    const rows = [
+        {
+            id: "3",
+            title: "Cancel Appointment"
+        },
+        {
+            id: "4",
+            title: "Reschedule"
+        },
+        {
+            id: "5",
+            title: "Change Language"
+        }
+    ];
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "patient"
+    );
+
     const interactive =
-        buildInteractiveButtonSpec([
-            {
-                id: "3",
-                title: "Cancel Appointment"
-            },
-            {
-                id: "4",
-                title: "Reschedule"
-            },
-            {
-                id: "5",
-                title: "Change Language"
-            }
-        ]);
+        buildInteractiveListSpec(
+            rows,
+            "Choose"
+        );
 
     return {
         fallbackText: fallbackText,
@@ -218,21 +228,31 @@ function getDoctorMainMenuMoreSpec(tier) {
             "4️⃣ Schedule by Date\n" +
             "More → next page";
 
+        const rows = [
+            {
+                id: "3",
+                title: "This Week"
+            },
+            {
+                id: "4",
+                title: "Schedule by Date"
+            },
+            {
+                id: "menu_more_2",
+                title: "More"
+            }
+        ];
+
+        appendWhatsAppHomeNavRow(
+            rows,
+            "doctor"
+        );
+
         const interactive =
-            buildInteractiveButtonSpec([
-                {
-                    id: "3",
-                    title: "This Week"
-                },
-                {
-                    id: "4",
-                    title: "Schedule by Date"
-                },
-                {
-                    id: "menu_more_2",
-                    title: "More"
-                }
-            ]);
+            buildInteractiveListSpec(
+                rows,
+                "Choose"
+            );
 
         return {
             fallbackText: fallbackText,
@@ -247,21 +267,31 @@ function getDoctorMainMenuMoreSpec(tier) {
             "6️⃣ Manage Leaves\n" +
             "More → next page";
 
+        const rows = [
+            {
+                id: "5",
+                title: "Manage Availability"
+            },
+            {
+                id: "6",
+                title: "Manage Leaves"
+            },
+            {
+                id: "menu_more_3",
+                title: "More"
+            }
+        ];
+
+        appendWhatsAppHomeNavRow(
+            rows,
+            "doctor"
+        );
+
         const interactive =
-            buildInteractiveButtonSpec([
-                {
-                    id: "5",
-                    title: "Manage Availability"
-                },
-                {
-                    id: "6",
-                    title: "Manage Leaves"
-                },
-                {
-                    id: "menu_more_3",
-                    title: "More"
-                }
-            ]);
+            buildInteractiveListSpec(
+                rows,
+                "Choose"
+            );
 
         return {
             fallbackText: fallbackText,
@@ -276,21 +306,31 @@ function getDoctorMainMenuMoreSpec(tier) {
             "8️⃣ Cancel Patient Appt\n" +
             "More → next page";
 
+        const rows = [
+            {
+                id: "7",
+                title: "My Patients"
+            },
+            {
+                id: "8",
+                title: "Cancel Patient"
+            },
+            {
+                id: "menu_more_4",
+                title: "More"
+            }
+        ];
+
+        appendWhatsAppHomeNavRow(
+            rows,
+            "doctor"
+        );
+
         const interactive =
-            buildInteractiveButtonSpec([
-                {
-                    id: "7",
-                    title: "My Patients"
-                },
-                {
-                    id: "8",
-                    title: "Cancel Patient"
-                },
-                {
-                    id: "menu_more_4",
-                    title: "More"
-                }
-            ]);
+            buildInteractiveListSpec(
+                rows,
+                "Choose"
+            );
 
         return {
             fallbackText: fallbackText,
@@ -359,28 +399,38 @@ function getLanguageMenuSpec() {
 
 
 
-function getDateMenuSpec() {
+function getDateMenuSpec(mode) {
 
     const fallbackText =
         "1️⃣ Today\n" +
         "2️⃣ Tomorrow\n" +
         "3️⃣ Enter another date";
 
+    const rows = [
+        {
+            id: "date_today",
+            title: "Today"
+        },
+        {
+            id: "date_tomorrow",
+            title: "Tomorrow"
+        },
+        {
+            id: "date_custom",
+            title: "Other date"
+        }
+    ];
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        mode
+    );
+
     const interactive =
-        buildInteractiveButtonSpec([
-            {
-                id: "date_today",
-                title: "Today"
-            },
-            {
-                id: "date_tomorrow",
-                title: "Tomorrow"
-            },
-            {
-                id: "date_custom",
-                title: "Other date"
-            }
-        ]);
+        buildInteractiveListSpec(
+            rows,
+            "Choose"
+        );
 
     return {
         fallbackText: fallbackText,
@@ -390,31 +440,41 @@ function getDateMenuSpec() {
 
 
 
-function getDoctorSelectionMenuSpec() {
+function getDoctorSelectionMenuSpec(page) {
 
     const doctors = getDoctors();
 
-    if (doctors.length === 0) {
+    const total =
+        doctors.length;
+
+    if (total === 0) {
         return null;
     }
 
-    let fallbackText =
+    const fallbackText =
         buildDoctorSelectionFallbackText(
             doctors
         );
 
-    // Cap at 9 so appendWhatsAppHomeNavRow always has room for the nav
-    // row (9 + 1 = 10, the WhatsApp interactive-list cap). Beyond that,
-    // skip building an interactive list entirely rather than silently
-    // dropping the nav row or doctors past the 9th — sendWhatsAppMenuReply
-    // falls back to fallbackText (which lists every doctor, uncapped)
-    // whenever menuSpec.interactive is null.
-    let interactive = null;
+    // More than 9 doctors no longer means falling back to a plain
+    // numbered text list — paginate the same way the slot picker and
+    // appointment list already do, reusing their generic page-bounds
+    // math (it only cares about a count, not what the items are).
+    const pageInfo =
+        getSlotSelectionPageInfo(
+            total,
+            page || 0
+        );
 
-    if (doctors.length <= 9) {
+    const visibleDoctors =
+        doctors.slice(
+            pageInfo.start,
+            pageInfo.end
+        );
 
-        const rows = doctors.map(
-            function (doctor, index) {
+    const rows =
+        visibleDoctors.map(
+            function (doctor) {
 
                 const description =
                     [
@@ -439,21 +499,42 @@ function getDoctorSelectionMenuSpec() {
             }
         );
 
-        appendWhatsAppHomeNavRow(
-            rows,
-            "patient"
-        );
+    if (pageInfo.hasPrev) {
 
-        interactive =
-            buildInteractiveListSpec(
-                rows,
-                "Select doctor"
-            );
+        rows.push({
+            id: "doctor_prev",
+            title: "Earlier doctors",
+            description: "Previous page"
+        });
     }
+
+    if (pageInfo.hasNext) {
+
+        rows.push({
+            id: "doctor_next",
+            title: "More doctors",
+            description: "Next page"
+        });
+    }
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "patient"
+    );
+
+    const interactive =
+        buildInteractiveListSpec(
+            rows,
+            "Select doctor"
+        );
 
     return {
         fallbackText: fallbackText,
-        interactive: interactive
+        interactive: interactive,
+        page: pageInfo.page,
+        totalPages: pageInfo.totalPages,
+        hasPrev: pageInfo.hasPrev,
+        hasNext: pageInfo.hasNext
     };
 }
 
@@ -829,28 +910,38 @@ function getYesNoConfirmSpec(mode) {
 
 
 
-function getRescheduleConfirmSpec() {
+function getRescheduleConfirmSpec(mode) {
 
     const fallbackText =
         "1️⃣ Confirm\n" +
         "2️⃣ Choose another time\n" +
         "3️⃣ Cancel";
 
+    const rows = [
+        {
+            id: "confirm_yes",
+            title: "Confirm"
+        },
+        {
+            id: "confirm_other_time",
+            title: "Other time"
+        },
+        {
+            id: "confirm_cancel",
+            title: "Cancel"
+        }
+    ];
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        mode
+    );
+
     const interactive =
-        buildInteractiveButtonSpec([
-            {
-                id: "confirm_yes",
-                title: "Confirm"
-            },
-            {
-                id: "confirm_other_time",
-                title: "Other time"
-            },
-            {
-                id: "confirm_cancel",
-                title: "Cancel"
-            }
-        ]);
+        buildInteractiveListSpec(
+            rows,
+            "Choose"
+        );
 
     return {
         fallbackText: fallbackText,
@@ -860,9 +951,9 @@ function getRescheduleConfirmSpec() {
 
 
 
-function getBookingConfirmSpec() {
+function getBookingConfirmSpec(mode) {
 
-    return getRescheduleConfirmSpec();
+    return getRescheduleConfirmSpec(mode);
 }
 
 
@@ -1256,12 +1347,22 @@ function getDoctorDayAvailabilityActionSpec() {
         "2️⃣ Remove session\n" +
         "3️⃣ Clear entire day";
 
+    const rows = [
+        { id: "1", title: "Add session" },
+        { id: "2", title: "Remove session" },
+        { id: "3", title: "Clear day" }
+    ];
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "doctor"
+    );
+
     const interactive =
-        buildInteractiveButtonSpec([
-            { id: "1", title: "Add session" },
-            { id: "2", title: "Remove session" },
-            { id: "3", title: "Clear day" }
-        ]);
+        buildInteractiveListSpec(
+            rows,
+            "Choose"
+        );
 
     return {
         fallbackText: fallbackText,
@@ -1271,7 +1372,7 @@ function getDoctorDayAvailabilityActionSpec() {
 
 
 
-function getDoctorSessionRemoveListSpec(sessions) {
+function getDoctorSessionRemoveListSpec(sessions, page) {
 
     if (
         !sessions ||
@@ -1279,6 +1380,9 @@ function getDoctorSessionRemoveListSpec(sessions) {
     ) {
         return null;
     }
+
+    const total =
+        sessions.length;
 
     let fallbackText = "";
 
@@ -1295,43 +1399,73 @@ function getDoctorSessionRemoveListSpec(sessions) {
         }
     );
 
-    // Cap at 9 so appendWhatsAppHomeNavRow always has room for the nav
-    // row — see the identical comment in getDoctorSelectionMenuSpec.
-    // fallbackText above already lists every session, uncapped.
-    let interactive = null;
-
-    if (sessions.length <= 9) {
-
-        const rows =
-            sessions.map(
-                function (session, index) {
-
-                    return {
-                        id: String(index + 1),
-                        title:
-                            session.start +
-                            " - " +
-                            session.end,
-                        description: ""
-                    };
-                }
-            );
-
-        appendWhatsAppHomeNavRow(
-            rows,
-            "doctor"
+    // More than 9 sessions in a single day no longer falls back to a
+    // plain numbered text list — paginate like getDoctorSelectionMenuSpec.
+    // Row ids stay absolute 1-based indexes into the full list (matching
+    // what removeDoctorAvailabilitySession expects), regardless of page.
+    const pageInfo =
+        getSlotSelectionPageInfo(
+            total,
+            page || 0
         );
 
-        interactive =
-            buildInteractiveListSpec(
-                rows,
-                "Remove session"
-            );
+    const visibleSessions =
+        sessions.slice(
+            pageInfo.start,
+            pageInfo.end
+        );
+
+    const rows =
+        visibleSessions.map(
+            function (session, index) {
+
+                return {
+                    id: String(pageInfo.start + index + 1),
+                    title:
+                        session.start +
+                        " - " +
+                        session.end,
+                    description: ""
+                };
+            }
+        );
+
+    if (pageInfo.hasPrev) {
+
+        rows.push({
+            id: "session_prev",
+            title: "Earlier sessions",
+            description: "Previous page"
+        });
     }
+
+    if (pageInfo.hasNext) {
+
+        rows.push({
+            id: "session_next",
+            title: "More sessions",
+            description: "Next page"
+        });
+    }
+
+    appendWhatsAppHomeNavRow(
+        rows,
+        "doctor"
+    );
+
+    const interactive =
+        buildInteractiveListSpec(
+            rows,
+            "Remove session"
+        );
 
     return {
         fallbackText: fallbackText.trim(),
-        interactive: interactive
+        interactive: interactive,
+        page: pageInfo.page,
+        totalPages: pageInfo.totalPages,
+        hasPrev: pageInfo.hasPrev,
+        hasNext: pageInfo.hasNext
     };
 }
 

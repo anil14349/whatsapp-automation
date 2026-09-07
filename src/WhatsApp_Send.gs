@@ -507,6 +507,11 @@ function sendRescheduleConfirmMenuReply(
     prefix
 ) {
 
+    const mode =
+        session && session.role === "DOCTOR"
+            ? "doctor"
+            : "patient";
+
     sendWhatsAppMenuReply(
         ss,
         phone,
@@ -520,7 +525,7 @@ function sendRescheduleConfirmMenuReply(
                 session.date,
                 session.time
             ),
-        getRescheduleConfirmSpec()
+        getRescheduleConfirmSpec(mode)
     );
 }
 
@@ -624,7 +629,8 @@ function sendDoctorSessionRemoveMenuReply(
     ss,
     phone,
     doctorId,
-    dayName
+    dayName,
+    page
 ) {
 
     const sessions =
@@ -633,17 +639,35 @@ function sendDoctorSessionRemoveMenuReply(
             dayName
         );
 
-    sendWhatsAppMenuReply(
-        ss,
-        phone,
+    const menuSpec =
+        getDoctorSessionRemoveListSpec(
+            sessions,
+            page || 0
+        );
+
+    let body =
         "Select session to remove:\n\n" +
         buildDoctorDayAvailabilityBody(
             doctorId,
             dayName
-        ),
-        getDoctorSessionRemoveListSpec(
-            sessions
-        )
+        );
+
+    if (
+        menuSpec &&
+        menuSpec.totalPages > 1
+    ) {
+        body +=
+            "\n\nPage " +
+            (menuSpec.page + 1) +
+            " of " +
+            menuSpec.totalPages;
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        menuSpec
     );
 }
 
@@ -756,13 +780,13 @@ function sendSlotSelectionMenuReply(
 
 
 
-function sendDateMenuReply(ss, phone, introText) {
+function sendDateMenuReply(ss, phone, introText, mode) {
 
     sendWhatsAppMenuReply(
         ss,
         phone,
         String(introText || "Choose an appointment date."),
-        getDateMenuSpec()
+        getDateMenuSpec(mode)
     );
 }
 
@@ -809,7 +833,7 @@ function sendCustomDateEntryMenuReply(
 
 
 
-function sendDoctorSelectionReply(ss, phone) {
+function sendDoctorSelectionReply(ss, phone, page) {
 
     const doctors = getDoctors();
 
@@ -825,12 +849,26 @@ function sendDoctorSelectionReply(ss, phone) {
     }
 
     const menuSpec =
-        getDoctorSelectionMenuSpec();
+        getDoctorSelectionMenuSpec(page || 0);
+
+    let body =
+        buildDoctorSelectionBody();
+
+    if (
+        menuSpec &&
+        menuSpec.totalPages > 1
+    ) {
+        body +=
+            "\n\nPage " +
+            (menuSpec.page + 1) +
+            " of " +
+            menuSpec.totalPages;
+    }
 
     sendWhatsAppMenuReply(
         ss,
         phone,
-        buildDoctorSelectionBody(),
+        body,
         menuSpec
     );
 }

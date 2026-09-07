@@ -838,7 +838,8 @@ function beginDoctorRescheduleDateSelection(
     sendDateMenuReply(
         ss,
         phone,
-        buildDoctorRescheduleDateIntro(doctorId)
+        buildDoctorRescheduleDateIntro(doctorId),
+        "doctor"
     );
 }
 
@@ -884,7 +885,7 @@ function handleDoctorWhatsAppRescheduleTimeState(
                         isoDate,
                         selectedTime
                     ),
-                    getRescheduleConfirmSpec()
+                    getRescheduleConfirmSpec("doctor")
                 );
             }
         }
@@ -1777,7 +1778,8 @@ function handleWhatsAppDateMenuInput(
     normalizedMessage,
     nextSlotState,
     customDateState,
-    isReschedule
+    isReschedule,
+    mode
 ) {
 
     const selectedDate =
@@ -1820,7 +1822,8 @@ function handleWhatsAppDateMenuInput(
     sendDateMenuReply(
         ss,
         phone,
-        "❌ Invalid option.\n\nChoose an appointment date."
+        "❌ Invalid option.\n\nChoose an appointment date.",
+        mode
     );
 }
 
@@ -1913,7 +1916,8 @@ function showDoctorDateSelection(ss, phone) {
     sendDateMenuReply(
         ss,
         phone,
-        "📅 Choose a date to view."
+        "📅 Choose a date to view.",
+        "doctor"
     );
 }
 
@@ -2295,7 +2299,8 @@ function goBackInWhatsAppFlow(ss, phone, session) {
         case "BOOK_DATE":
             saveWhatsAppSession(phone, {
                 state: "BOOK_DOCTOR",
-                doctorId: ""
+                doctorId: "",
+                listPage: 0
             });
             sendDoctorSelectionReply(
                 ss,
@@ -2594,7 +2599,8 @@ function goBackInDoctorWhatsAppFlow(
             sendDateMenuReply(
                 ss,
                 phone,
-                buildDoctorRescheduleDateIntro(doctorId)
+                buildDoctorRescheduleDateIntro(doctorId),
+                "doctor"
             );
             return;
 

@@ -302,7 +302,8 @@ if (
                     doctorId: doctorId,
                     date: dayName,
                     time: "",
-                    appointmentId: ""
+                    appointmentId: "",
+                    listPage: 0
                 }
             );
 
@@ -365,6 +366,35 @@ if (
         !doctorId ||
         !dayName
     ) {
+        return true;
+    }
+
+    if (
+        normalizedMessage === "session_prev" ||
+        normalizedMessage === "session_next"
+    ) {
+
+        const currentPage =
+            Number(session.listPage) || 0;
+
+        const nextPage =
+            normalizedMessage === "session_prev"
+                ? Math.max(currentPage - 1, 0)
+                : currentPage + 1;
+
+        saveWhatsAppSession(
+            senderPhone,
+            { listPage: nextPage }
+        );
+
+        sendDoctorSessionRemoveMenuReply(
+            ss,
+            senderPhone,
+            doctorId,
+            dayName,
+            nextPage
+        );
+
         return true;
     }
 
@@ -984,7 +1014,8 @@ if (
         normalizedMessage,
         "DOCTOR_RESCHEDULE_TIME",
         "DOCTOR_RESCHEDULE_DATE_CUSTOM",
-        true
+        true,
+        "doctor"
     );
 
     return true;
@@ -1139,7 +1170,7 @@ if (
                 ss,
                 senderPhone,
                 "❌ " + errorMessage,
-                getRescheduleConfirmSpec()
+                getRescheduleConfirmSpec("doctor")
             );
         }
 
@@ -1195,7 +1226,7 @@ if (
                 session.date,
                 session.time
             ),
-            getRescheduleConfirmSpec()
+            getRescheduleConfirmSpec("doctor")
         );
     }
 
@@ -1896,7 +1927,8 @@ if (
     sendDateMenuReply(
         ss,
         senderPhone,
-        "❌ Invalid option.\n\nChoose a date to view."
+        "❌ Invalid option.\n\nChoose a date to view.",
+        "doctor"
     );
 
     return true;

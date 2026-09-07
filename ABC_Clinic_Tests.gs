@@ -1060,7 +1060,7 @@ function testLocalizationUiCleanup() {
         );
 
     if (
-        localizedMoreMenu.buttons[0].title.indexOf(
+        localizedMoreMenu.sections[0].rows[0].title.indexOf(
             "Cancel"
         ) !== -1
     ) {
@@ -1603,9 +1603,9 @@ function testInteractiveMenus() {
     if (
         !patientMoreSpec.interactive ||
         patientMoreSpec.interactive.type !==
-            "button" ||
-        patientMoreSpec.interactive.buttons.length !==
-            3
+            "list" ||
+        patientMoreSpec.interactive.sections[0].rows.length !==
+            4
     ) {
         throw new Error(
             "patient main more menu spec invalid"
@@ -1632,8 +1632,8 @@ function testInteractiveMenus() {
 
     if (
         !doctorMoreSpec.interactive ||
-        doctorMoreSpec.interactive.type !== "button" ||
-        doctorMoreSpec.interactive.buttons.length !== 3
+        doctorMoreSpec.interactive.type !== "list" ||
+        doctorMoreSpec.interactive.sections[0].rows.length !== 4
     ) {
         throw new Error(
             "doctor main more menu tier 1 spec invalid"
@@ -1644,8 +1644,9 @@ function testInteractiveMenus() {
         getDoctorMainMenuMoreSpec(4);
 
     // Tier 4 is still button-type (2 content buttons + a nav button
-    // fits within WhatsApp's 3-button cap, so no list conversion was
-    // needed here, unlike tiers 1-3).
+    // fits within WhatsApp's 3-button cap, so no list conversion is
+    // needed here, unlike tiers 1-3 which have a "More" row plus a
+    // nav row and so need the 10-row list format instead).
     if (
         !doctorMoreTier4.interactive ||
         doctorMoreTier4.interactive.buttons.length !== 3 ||
