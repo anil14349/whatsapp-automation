@@ -1897,6 +1897,64 @@ function testInteractiveMenus() {
         );
     }
 
+    const mockLocationMessage = {
+        type: "location",
+        location: {
+            latitude: 17.4239,
+            longitude: 78.4738
+        }
+    };
+
+    const parsedLocation =
+        extractInboundWhatsAppMessage(
+            mockLocationMessage
+        );
+
+    if (
+        parsedLocation.type !== "location" ||
+        parsedLocation.latitude !== 17.4239 ||
+        parsedLocation.longitude !== 78.4738
+    ) {
+        throw new Error(
+            "extractInboundWhatsAppMessage location parsing failed"
+        );
+    }
+
+    // Hyderabad Necklace Road to Hitech City is roughly 12-13 km — a
+    // loose sanity range check rather than an exact figure, since the
+    // point is to confirm the formula is in the right ballpark, not to
+    // pin an exact great-circle distance.
+    const sampleDistanceKm =
+        haversineDistanceKm(
+            17.4239,
+            78.4738,
+            17.4483,
+            78.3915
+        );
+
+    if (
+        sampleDistanceKm < 8 ||
+        sampleDistanceKm > 18
+    ) {
+        throw new Error(
+            "haversineDistanceKm sanity check failed: " +
+            sampleDistanceKm
+        );
+    }
+
+    const homeCollectionTimeSpec =
+        getHomeCollectionTimeWindowSpec();
+
+    if (
+        !homeCollectionTimeSpec.interactive ||
+        homeCollectionTimeSpec.interactive.type !== "list" ||
+        homeCollectionTimeSpec.interactive.sections[0].rows.length !== 4
+    ) {
+        throw new Error(
+            "home collection time window spec invalid"
+        );
+    }
+
     const yesNoSpec =
         getYesNoConfirmSpec();
 
