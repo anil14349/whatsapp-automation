@@ -1460,10 +1460,14 @@ function getConfirmedAppointmentsForPhone(phone) {
     const appointments =
         getMyAppointments(phone);
 
+    // Show every active appointment. Only cancelled, completed, and
+    // no-show appointments should be hidden — this prevents valid
+    // appointments from disappearing when their status is blank or uses
+    // another active label.
     const confirmed =
         appointments.filter(
             function (appt) {
-                return isConfirmedAppointmentStatus(
+                return !isInactiveAppointmentStatus(
                     appt.status
                 );
             }
@@ -1613,4 +1617,490 @@ function getDoctorConfirmedAppointments(doctorId) {
     );
 
     return appointments;
+}
+
+
+
+// ============================================================
+// SHAREABLE APPOINTMENT RECEIPT CARD
+// ============================================================
+// Creates a temporary Google Slides card, exports the first slide
+// as a PNG, uploads that PNG to WhatsApp, sends it to the patient,
+// and then moves the temporary Slides file to Trash.
+//
+// The logo is read from the same Drive file currently used for the
+// hospital-logo greeting. Default ID can be overridden with the
+// Settings key APPOINTMENT_RECEIPT_LOGO_DRIVE_FILE_ID.
+
+function sendAppointmentReceiptCard(to, appointment) {
+
+    const card =
+        createAppointmentReceiptCardBlob(
+            appointment
+        );
+
+    const mediaId =
+        uploadWhatsAppImageBlob(card.blob);
+
+    sendWhatsAppImageMessage(
+        to,
+        mediaId,
+        "🎫 Appointment confirmation — please forward this card to the patient if you booked on their behalf."
+    );
+
+    return mediaId;
+}
+
+
+function createAppointmentReceiptCardBlob(appointment) {
+
+    if (!appointment || !appointment.appointmentId) {
+        throw new Error(
+            "Appointment data is incomplete for receipt generation."
+        );
+    }
+
+    let presentation = null;
+
+    try {
+
+        presentation =
+            SlidesApp.create(
+                getClinicName() + " Appointment Receipt"
+            );
+
+        const slide =
+            presentation
+                .getSlides()[0];
+
+        // Use a clean white canvas.
+        slide
+            .getBackground()
+            .setSolidFill("#FFFFFF");
+
+        const pageWidth =
+            presentation
+                .getPageWidth();
+
+        const pageHeight =
+            presentation
+                .getPageHeight();
+
+        // ------------------------------------------------------
+        // Top clinic/header area
+        // ------------------------------------------------------
+
+        const header =
+            slide.insertShape(
+                SlidesApp.ShapeType.RECTANGLE,
+                0,
+                0,
+                pageWidth,
+                105
+            );
+
+        header
+            .getFill()
+            .setSolidFill("#0B6E4F");
+
+        header
+            .getLine()
+            .setTransparent();
+
+        // ------------------------------------------------------
+        // Hospital logo
+        // ------------------------------------------------------
+
+        const logoFileId =
+            String(
+                getSetting(
+                    "APPOINTMENT_RECEIPT_LOGO_DRIVE_FILE_ID",
+                    "1m5eZGBd_xSeXlVTjjpJBgMvlDYIqhWmx"
+                ) || ""
+            ).trim();
+
+        if (logoFileId) {
+            try {
+                const logoFile =
+                    DriveApp.getFileById(
+                        logoFileId
+                    );
+
+                const logo =
+                    slide.insertImage(
+                        logoFile.getBlob()
+                    );
+
+                logo
+                    .setLeft(22)
+                    .setTop(17)
+                    .setHeight(70);
+            } catch (logoError) {
+                Logger.log(
+                    "Receipt logo could not be inserted: " +
+                    logoError.message
+                );
+            }
+        }
+
+        const clinicName =
+            getClinicName();
+
+        const clinicText =
+            slide.insertTextBox(
+                String(clinicName || ""),
+                105,
+                22,
+                pageWidth - 130,
+                32
+            );
+
+        clinicText
+            .getText()
+            .getTextStyle()
+            .setFontSize(22)
+            .setBold(true)
+            .setForegroundColor("#FFFFFF");
+
+        const statusText =
+            slide.insertTextBox(
+                "APPOINTMENT CONFIRMED",
+                105,
+                56,
+                pageWidth - 130,
+                25
+            );
+
+        statusText
+            .getText()
+            .getTextStyle()
+            .setFontSize(11)
+            .setBold(true)
+            .setForegroundColor("#FFFFFF");
+
+        // ------------------------------------------------------
+        // Appointment details
+        // ------------------------------------------------------
+
+        const doctorRecord =
+            appointment.doctorId
+                ? getDoctorRecord(
+                    appointment.doctorId
+                )
+                : null;
+
+        const specialization =
+            doctorRecord &&
+            doctorRecord.specialization
+                ? doctorRecord.specialization
+                : "";
+
+        const doctorName =
+            String(
+                appointment.doctor ||
+                (doctorRecord &&
+                    doctorRecord.doctorName) ||
+                "Doctor"
+            );
+
+        const details = [
+            ["PATIENT", appointment.patientName || ""],
+            ["DOCTOR", doctorName],
+            ["SPECIALIZATION", specialization || ""],
+            ["DATE", formatReceiptDate(appointment.date)],
+            ["TIME", appointment.time || ""],
+            ["APPOINTMENT ID", appointment.appointmentId],
+            ["CLINIC", (doctorRecord && doctorRecord.clinicName) || clinicName || ""]
+        ];
+
+        let top = 125;
+
+        details.forEach(function(row) {
+
+            const label =
+                slide.insertTextBox(
+                    row[0],
+                    35,
+                    top,
+                    135,
+                    22
+                );
+
+            label
+                .getText()
+                .getTextStyle()
+                .setFontSize(9)
+                .setBold(true)
+                .setForegroundColor("#777777");
+
+            const value =
+                slide.insertTextBox(
+                    String(row[1] || ""),
+                    175,
+                    top - 2,
+                    pageWidth - 210,
+                    25
+                );
+
+            value
+                .getText()
+                .getTextStyle()
+                .setFontSize(13)
+                .setBold(row[0] === "APPOINTMENT ID")
+                .setForegroundColor("#222222");
+
+            top += 43;
+        });
+
+        // ------------------------------------------------------
+        // Footer / sharing instruction
+        // ------------------------------------------------------
+
+        const footerTop =
+            pageHeight - 70;
+
+        const footerLine =
+            slide.insertShape(
+                SlidesApp.ShapeType.RECTANGLE,
+                0,
+                footerTop,
+                pageWidth,
+                1
+            );
+
+        footerLine
+            .getFill()
+            .setSolidFill("#DDDDDD");
+
+        footerLine
+            .getLine()
+            .setTransparent();
+
+        const footer =
+            slide.insertTextBox(
+                "Please show this confirmation at reception.\nYou can forward this card to the patient.",
+                35,
+                footerTop + 10,
+                pageWidth - 70,
+                45
+            );
+
+        footer
+            .getText()
+            .getTextStyle()
+            .setFontSize(9)
+            .setForegroundColor("#666666");
+
+        presentation
+            .saveAndClose();
+
+        // ------------------------------------------------------
+        // Export slide as PNG using Google Slides API.
+        // This avoids any third-party image-generation service.
+        // ------------------------------------------------------
+
+        const presentationId =
+            presentation.getId();
+
+        const pageObjectId =
+            slide.getObjectId();
+
+        const thumbnailUrl =
+            "https://slides.googleapis.com/v1/presentations/" +
+            encodeURIComponent(presentationId) +
+            "/pages/" +
+            encodeURIComponent(pageObjectId) +
+            "/thumbnail" +
+            "?thumbnailProperties.mimeType=PNG" +
+            "&thumbnailProperties.thumbnailSize=LARGE";
+
+        const response =
+            UrlFetchApp.fetch(
+                thumbnailUrl,
+                {
+                    method: "get",
+                    headers: {
+                        Authorization:
+                            "Bearer " +
+                            ScriptApp.getOAuthToken()
+                    },
+                    muteHttpExceptions: true
+                }
+            );
+
+        const code =
+            response.getResponseCode();
+
+        if (code < 200 || code >= 300) {
+            throw new Error(
+                "Google Slides thumbnail export failed (" +
+                code + "): " +
+                response.getContentText()
+            );
+        }
+
+        const thumbnailInfo =
+            JSON.parse(
+                response.getContentText()
+            );
+
+        if (!thumbnailInfo.contentUrl) {
+            throw new Error(
+                "Google Slides did not return a thumbnail URL."
+            );
+        }
+
+        const imageResponse =
+            UrlFetchApp.fetch(
+                thumbnailInfo.contentUrl,
+                {
+                    method: "get",
+                    muteHttpExceptions: true
+                }
+            );
+
+        if (
+            imageResponse.getResponseCode() < 200 ||
+            imageResponse.getResponseCode() >= 300
+        ) {
+            throw new Error(
+                "Unable to download receipt PNG."
+            );
+        }
+
+        const blob =
+            imageResponse
+                .getBlob()
+                .setName(
+                    "appointment-" +
+                    appointment.appointmentId +
+                    ".png"
+                );
+
+        return {
+            blob: blob,
+            presentationId: presentationId
+        };
+
+    } finally {
+
+        if (presentation) {
+            try {
+                DriveApp
+                    .getFileById(
+                        presentation.getId()
+                    )
+                    .setTrashed(true);
+            } catch (trashError) {
+                Logger.log(
+                    "Could not trash temporary receipt presentation: " +
+                    trashError.message
+                );
+            }
+        }
+    }
+}
+
+
+function uploadWhatsAppImageBlob(blob) {
+
+    if (!blob) {
+        throw new Error(
+            "Receipt image blob is missing."
+        );
+    }
+
+    const properties =
+        PropertiesService.getScriptProperties();
+
+    const accessToken =
+        properties.getProperty(
+            "WHATSAPP_ACCESS_TOKEN"
+        );
+
+    const phoneNumberId =
+        properties.getProperty(
+            "WHATSAPP_PHONE_NUMBER_ID"
+        );
+
+    if (!accessToken) {
+        throw new Error(
+            "WHATSAPP_ACCESS_TOKEN is missing."
+        );
+    }
+
+    if (!phoneNumberId) {
+        throw new Error(
+            "WHATSAPP_PHONE_NUMBER_ID is missing."
+        );
+    }
+
+    const url =
+        "https://graph.facebook.com/v26.0/" +
+        phoneNumberId +
+        "/media";
+
+    const response =
+        UrlFetchApp.fetch(
+            url,
+            {
+                method: "post",
+                headers: {
+                    Authorization:
+                        "Bearer " + accessToken
+                },
+                payload: {
+                    messaging_product: "whatsapp",
+                    type: "image/png",
+                    file: blob
+                },
+                muteHttpExceptions: true
+            }
+        );
+
+    const code =
+        response.getResponseCode();
+
+    const body =
+        response.getContentText();
+
+    if (code < 200 || code >= 300) {
+        throw new Error(
+            "WhatsApp receipt upload failed (" +
+            code + "): " +
+            body
+        );
+    }
+
+    const parsed =
+        JSON.parse(body);
+
+    if (!parsed.id) {
+        throw new Error(
+            "WhatsApp receipt upload returned no media ID."
+        );
+    }
+
+    return String(parsed.id);
+}
+
+
+function formatReceiptDate(isoDate) {
+
+    const value =
+        String(isoDate || "").trim();
+
+    if (!value) {
+        return "";
+    }
+
+    try {
+        return Utilities.formatDate(
+            new Date(value + "T00:00:00+05:30"),
+            TIMEZONE,
+            "EEEE, dd MMMM yyyy"
+        );
+    } catch (error) {
+        return value;
+    }
 }
