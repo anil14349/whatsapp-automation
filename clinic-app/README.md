@@ -8,12 +8,13 @@ branch's history for the architecture decisions behind this rewrite.
 **Status**: in progress, built in stages.
 
 - ✅ Stage 1: project scaffold + complete database schema
-- ✅ Stage 2: core business logic (this stage) — settings, doctors,
-  availability, leaves, patients, the slot-availability engine, and
+- ✅ Stage 2: core business logic — settings, doctors, availability,
+  leaves, patients, the slot-availability engine, and
   book/cancel/reschedule appointment logic, all as tested TypeScript
   modules
-- ⏳ Stage 3: the WhatsApp webhook + patient/doctor conversation state
-  machines (not started)
+- ✅ Stage 3: the WhatsApp webhook + patient booking conversation flow
+  (this stage) — see "What's covered" below for exactly what's in vs.
+  deferred
 - ⏳ Stage 4: the receptionist/admin web UI (not started)
 
 ---
@@ -142,6 +143,57 @@ orchestrate real Supabase + Calendar calls (`bookAppointment`,
 `lib/doctors.ts`/`lib/patients.ts`) are typechecked but **not yet
 exercised against a live database** — that's the first thing to verify
 once `npm run db:start` is available to you locally.
+
+---
+
+## WhatsApp webhook + patient booking flow (stage 3)
+
+| Module | Was (Apps Script) | Notes |
+|---|---|---|
+| `app/api/whatsapp/webhook/route.ts` | `doGet`/`doPost` (Webhook.gs) | Same fail-closed token verification; always replies 200 to Meta even on internal error (there's no useful non-2xx response that would help) |
+| `lib/whatsapp/dedup.ts` | The `WA_PROCESSED_*`/`WA_PROCESSING_*`/`WA_OUTBOUND_*` CacheService dance in Webhook.gs | Collapses to one `INSERT ... ON CONFLICT DO NOTHING` — a real unique constraint (migration 0005) is atomic by construction, so the multi-key lock-with-retry-fallback logic the Apps Script version needed doesn't have a reason to exist here |
+| `lib/whatsapp/inbound.ts` | `extractInboundWhatsAppMessage` | Pure function, unit-tested |
+| `lib/whatsapp/send.ts` | The core of WhatsApp_Send.gs | Only the two send primitives (text, interactive) plus a menu-reply wrapper — not all ~30 of that file's per-flow convenience wrappers; each gets added as its flow is ported |
+| `lib/whatsapp/menus.ts` | The relevant subset of View_Menus.gs | Doctor-portal menus, appointment-list pickers, pagination controls aren't ported yet |
+| `lib/whatsapp/localize.ts` + `localization.json` | `localizeWhatsAppReply` (View_Messages.gs) | The ~600 lines of TE/HI/KA/TA/ML translation dictionaries were **extracted programmatically** from the Apps Script source (see the script referenced in the localize.ts doc comment), not hand-retyped — guarantees fidelity for scripts this assistant can't fully proofread by eye |
+| `lib/sessions.ts` | Model_Session.gs | No caching layer needed, same reasoning as `lib/settings.ts` |
+| `lib/whatsapp/router.ts` + `patientFlow.ts` | Controller_Router.gs + Controller_PatientFlow.gs | See below for exactly what's covered |
+
+### What's covered vs. deferred
+
+**Working end-to-end**: greeting ("Hi") → language selection (first-time
+users) or straight to the main menu (returning users) → Book Appointment
+→ choose doctor → choose date (today/tomorrow/custom) → choose an
+available time slot → capture patient name (first-time bookers only) →
+confirm → **real booking against Postgres + Google Calendar**, with the
+same booking-integrity guarantees from stage 2.
+
+**Deferred to a later increment** (each follows the same pattern
+established here, so this is scoping work, not redesign work):
+- My Appointments / cancel / reschedule patient sub-flows
+- The "More" menu (change language, etc.)
+- Doctor conversation flow entirely (a doctor messaging in gets a
+  placeholder reply, not the Doctor Portal)
+- Home blood-sample-collection flow
+- Doctor-selection and slot-list **pagination** (this version lists
+  everything on one screen, capped at WhatsApp's 10-row list limit —
+  fine for a handful of doctors, not yet built out for more)
+- The shareable appointment receipt card (image generation)
+- Appointment reminders, after-hours auto-reply, auto-complete-past-
+  appointments background jobs
+
+### Verification
+
+`npm run typecheck`, `npm run build`, `npm run lint`, and `npm test`
+(61 tests) all pass. As with stage 2, the parts with real branching
+logic and no required I/O are unit-tested (inbound message parsing,
+localization incl. round-tripping every language against the extracted
+dictionaries, menu spec builders, slot-selection id encoding/decoding).
+The webhook route and the conversation flow handlers that orchestrate
+Supabase + WhatsApp Cloud API + Calendar calls are typechecked but not
+yet exercised against a live WhatsApp number/database — see "What's
+tested vs. what isn't yet" under stage 2 above; the same caveat applies
+here.
 
 ---
 

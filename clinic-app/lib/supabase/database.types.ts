@@ -307,6 +307,20 @@ export interface Database {
         Update: Partial<Database["public"]["Tables"]["admin_users"]["Row"]>;
         Relationships: [];
       };
+      whatsapp_message_dedup: {
+        Row: {
+          message_id: string;
+          processed_at: string;
+        };
+        Insert: {
+          message_id: string;
+          processed_at?: string;
+        };
+        Update: Partial<
+          Database["public"]["Tables"]["whatsapp_message_dedup"]["Row"]
+        >;
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
