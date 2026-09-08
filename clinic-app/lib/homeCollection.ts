@@ -51,3 +51,57 @@ export async function createHomeCollectionRequest(
 
   return data;
 }
+
+/**
+ * Every status a staff member can move a request through, in the order
+ * they'd naturally progress — no enum in the schema (unlike
+ * appointment_status), since this is a much simpler "someone calls the
+ * patient back" workflow than the booking system's, not worth a
+ * migration to formalize until it needs to be.
+ */
+export const HOME_COLLECTION_STATUSES = [
+  "Requested",
+  "Contacted",
+  "Completed",
+  "Cancelled"
+] as const;
+
+export type HomeCollectionStatus = (typeof HOME_COLLECTION_STATUSES)[number];
+
+export async function listHomeCollectionRequests(
+  supabase: SupabaseClient<Database>,
+  options: { status?: string } = {}
+): Promise<HomeCollectionRequest[]> {
+  let query = supabase
+    .from("home_collection_requests")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (options.status) {
+    query = query.eq("status", options.status);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to list home collection requests: ${error.message}`);
+  }
+
+  return data;
+}
+
+export async function updateHomeCollectionStatus(
+  supabase: SupabaseClient<Database>,
+  requestId: string,
+  status: HomeCollectionStatus
+): Promise<void> {
+  const { error } = await supabase
+    .from("home_collection_requests")
+    .update({ status })
+    .eq("id", requestId);
+
+  if (error) {
+    throw new Error(`Failed to update home collection request status: ${error.message}`);
+  }
+}

@@ -200,15 +200,13 @@ today's schedule, managing appointments (mark Completed/No-Show, cancel,
 reschedule any patient's booking — the same `cancelAppointment`/
 `rescheduleAppointment`/`markAppointmentStatus` functions the admin UI
 uses, with `authorizedDoctorId` instead of an admin session), managing
-weekly availability (add/remove sessions), and managing leave dates
-(add/cancel). Condensed from `src/Controller_DoctorFlow.gs`'s ~26 states
-to ~17 by using list menus (no 3-button pressure) instead of a tiered
-"More" sub-menu — **not** ported: the leave-*range* states (add/cancel a
-leave spanning multiple days in one step — `addDoctorLeaveRange` already
-exists in `lib/doctors.ts` for this, just not wired into the WhatsApp
-flow yet; single-date leave is fully working). A cancel/reschedule
-initiated by the doctor sends the patient a best-effort notification
-text, localized to the patient's own saved language.
+weekly availability (add/remove sessions), and managing leave dates —
+single day or a date range in one step (`addDoctorLeaveRange`).
+Condensed from `src/Controller_DoctorFlow.gs`'s ~26 states to ~20 by
+using list menus (no 3-button pressure) instead of a tiered "More"
+sub-menu. A cancel/reschedule initiated by the doctor sends the patient
+a best-effort notification text, localized to the patient's own saved
+language.
 
 Also working end-to-end: **Home Sample Collection**
 (More menu → Home Sample Collection) — ports
@@ -222,10 +220,10 @@ all); `lib/scheduling/geo.ts`'s `haversineDistanceKm` checks it's within
 `HOSPITAL_LONGITUDE` settings (both now wired — see `lib/settings.ts`'s
 `getHospitalLocation`/`getHomeCollectionRadiusKm`), then a preferred
 date + time window is captured and saved as a `home_collection_requests`
-row (`lib/homeCollection.ts`) for staff to follow up by phone. No
-admin UI page for this table yet — it's a `select * from
-home_collection_requests` away if a clinic needs to see pending requests
-before that's built.
+row (`lib/homeCollection.ts`) for staff to follow up by phone. Staff
+manage these at **`/admin/home-collection`** — filterable by status,
+with a per-row status dropdown (Requested → Contacted → Completed, or
+Cancelled) via `updateHomeCollectionStatusAction`.
 
 Also working end-to-end: the **shareable appointment receipt card**
 (`lib/whatsapp/receipt.tsx`) — sent as a WhatsApp image message right
@@ -238,9 +236,14 @@ already bundled with Next, **no new dependency, no native binary to
 compile**, so it works the same in a Vercel deploy or the Docker image).
 `lib/whatsapp/send.ts`'s new `uploadWhatsAppMedia`/`sendWhatsAppImage`
 port `uploadWhatsAppImageBlob` using Node's built-in `FormData`/`Blob`
-instead of `UrlFetchApp`'s payload object. No clinic logo on the card
-(the Apps Script version pulled one from a hardcoded Google Drive file
-id — no equivalent asset source exists here yet). A failure generating
+instead of `UrlFetchApp`'s payload object. An optional clinic logo
+(`CLINIC_LOGO_URL` setting — any publicly reachable image URL, unlike
+the Apps Script version's hardcoded Google Drive file id) renders in
+the header if set; `isRenderableLogoUrl` rejects anything that isn't an
+absolute `http(s)` URL up front, and a logo that's set but unfetchable
+(bad URL, host down) degrades to "no logo" rather than breaking the
+whole card — see `lib/whatsapp/receipt.test.ts`'s test against a
+deliberately unfetchable URL. A failure generating
 or sending the card is swallowed after logging — it must never undo or
 fail a booking that already succeeded, same as the original's
 try/catch. **This is the one place in the whole rewrite with an actual
@@ -260,22 +263,27 @@ Also now working: **doctor-selection pagination** —
 `getDoctorSelectionMenuSpec` (`lib/whatsapp/menus.ts`) pages past
 WhatsApp's 10-row list limit exactly like the appointment lists already
 did, using the `list_page` session column and `doctor_prev`/`doctor_next`
-ids (matching the Apps Script version's own naming) — and **log
+ids (matching the Apps Script version's own naming); **log
 retention/truncation**, via `lib/logCleanup.ts` and the daily
-`/api/cron/log-cleanup` job. `DORMANT_SETTING_KEYS` in `lib/settings.ts`
-is now empty — every setting seeded so far has real code behind it.
+`/api/cron/log-cleanup` job; and **doctor leave-range add/cancel** —
+the Doctor Portal's leave menu now offers "Add Leave (Single Day)" and
+"Add Leave (Date Range)" side by side (`DOCTOR_LEAVE_RANGE_START/END/REASON`
+states in `lib/whatsapp/doctorFlow.ts`, calling the
+`addDoctorLeaveRange` that already existed in `lib/doctors.ts` since
+stage 2 but was never wired into the WhatsApp flow until now).
+`DORMANT_SETTING_KEYS` in `lib/settings.ts` is now empty — every
+setting seeded so far has real code behind it.
 
-**Deferred to a later increment** (each follows the same pattern
-established here, so this is scoping work, not redesign work):
-- Doctor leave-range add/cancel (see above — single-date leave works)
-- Admin UI page for home collection requests (the table/logic exist,
-  see above — just no `/admin` page listing them yet)
-- A clinic logo on the receipt card (see above)
+Every item from this rewrite's original "deferred to a later increment"
+list is now closed. Remaining known gaps are narrower and noted inline
+above (no clinic-logo asset upload UI — it's a URL field — and the
+"Not yet exercised against a live [service]" caveat that applies to
+this entire project, not any one feature).
 
 ### Verification
 
 `npm run typecheck`, `npm run build`, `npm run lint`, and `npm test`
-(109 tests as of doctor-selection pagination + log cleanup) all pass. As
+(112 tests as of the receipt-logo addition) all pass. As
 with stage 2, the parts with real branching logic and no required I/O
 are unit-tested (inbound message parsing, localization incl.
 round-tripping every language against the extracted dictionaries, menu
@@ -396,6 +404,7 @@ Then sign in at `/admin/login`.
 | `/admin/doctors/[id]` | Edit a doctor's details, manage weekly availability sessions, manage upcoming leaves — **ADMIN only** |
 | `/admin/appointments` | Filterable list (doctor/date/status) with actions: mark Completed/No-Show, cancel |
 | `/admin/patients` | Read-only, searchable patient registry |
+| `/admin/home-collection` | Home sample collection requests, filterable by status, with a per-row status dropdown |
 | `/admin/settings` | Every configurable option from the `settings` table, grouped and editable as a real form — **ADMIN only** |
 
 ### Design notes

@@ -187,6 +187,8 @@ change here is reflected on the very next slot lookup.
 | Switch Book Appointment to a native WhatsApp Flow form | Set up `WHATSAPP_FLOW_ID` + keypair env vars, then `settings.ENABLE_WHATSAPP_FLOW_BOOKING` via `/admin/settings` — see README's "WhatsApp Flows" section |
 | Turn on appointment reminders / auto-complete-past-appointments | Set `CRON_SECRET`, deploy with `vercel.json`'s cron config (or point any external scheduler at `/api/cron/reminders` / `/api/cron/auto-complete`), then the relevant toggle via `/admin/settings` — see README's "Scheduled jobs" section |
 | Turn on the after-hours auto-reply | `settings.ENABLE_AFTER_HOURS_REPLY` + `CLINIC_OPEN_TIME`/`CLINIC_CLOSE_TIME`/`CLINIC_WORKING_DAYS` via `/admin/settings` — no scheduled job needed, this one runs per-message |
+| Add a logo to the appointment receipt card | `settings.CLINIC_LOGO_URL` via `/admin/settings` — any publicly reachable image URL |
+| See/manage home sample collection requests | `/admin/home-collection` |
 | Rotate the WhatsApp access token | `WHATSAPP_ACCESS_TOKEN` env var + redeploy |
 | Change how long an admin stays logged in | Edit `SESSION_DURATION_MS` in `lib/auth/session.ts` (no UI/env var yet) |
 | Add a new language | Add its translations to `lib/whatsapp/localization.json`, add the code to `SUPPORTED_LANGUAGES` in `lib/patients.ts`, and add it to the `LANGUAGE_BY_CHOICE` map in `lib/whatsapp/patientFlow.ts` and the language menu in `lib/whatsapp/menus.ts` |

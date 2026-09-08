@@ -103,6 +103,12 @@ export function SettingsForm({ settings }: { settings: Record<string, string> })
         <h2 className="text-sm font-semibold text-slate-900">Clinic</h2>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <TextField name="CLINIC_NAME" label="Clinic name" value={value("CLINIC_NAME", "ABC Clinic")} />
+          <TextField
+            name="CLINIC_LOGO_URL"
+            label="Logo URL (optional)"
+            value={value("CLINIC_LOGO_URL")}
+            placeholder="https://.../logo.png — shown on the appointment receipt card"
+          />
           <TextField name="CLINIC_WORKING_DAYS" label="Working days" value={value("CLINIC_WORKING_DAYS")} placeholder="Mon,Tue,Wed,Thu,Fri,Sat" />
           <TextField name="CLINIC_OPEN_TIME" label="Opens" value={value("CLINIC_OPEN_TIME")} placeholder="09:00" />
           <TextField name="CLINIC_CLOSE_TIME" label="Closes" value={value("CLINIC_CLOSE_TIME")} placeholder="18:00" />

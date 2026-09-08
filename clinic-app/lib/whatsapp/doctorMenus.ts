@@ -201,6 +201,7 @@ export function parseAvailabilitySessionSelection(
   return null;
 }
 
+/** 4 options doesn't fit the 3-button cap, so this is a list, unlike getDoctorAvailabilityMenuSpec's equivalent. */
 export function getDoctorLeaveMenuSpec(upcomingLeaves: DoctorLeave[]): MenuReply {
   const summary =
     upcomingLeaves.length === 0
@@ -208,12 +209,16 @@ export function getDoctorLeaveMenuSpec(upcomingLeaves: DoctorLeave[]): MenuReply
       : upcomingLeaves.map((leave) => `${leave.leave_date}${leave.reason ? ` (${leave.reason})` : ""}`).join("\n");
 
   return {
-    fallbackText: `${summary}\n\n1️⃣ Add Leave\n2️⃣ Cancel a Leave\n0️⃣ Main Menu`,
-    interactive: buildInteractiveButtonSpec([
-      { id: "add_leave", title: "Add Leave" },
-      { id: "cancel_leave", title: "Cancel a Leave" },
-      { id: "nav_main_menu", title: "Main Menu" }
-    ])
+    fallbackText: `${summary}\n\n1️⃣ Add Leave (single day)\n2️⃣ Add Leave (date range)\n3️⃣ Cancel a Leave\n0️⃣ Main Menu`,
+    interactive: buildInteractiveListSpec(
+      [
+        { id: "add_leave_single", title: "Add Leave (Single Day)" },
+        { id: "add_leave_range", title: "Add Leave (Date Range)" },
+        { id: "cancel_leave", title: "Cancel a Leave" },
+        { id: "nav_main_menu", title: "Main Menu" }
+      ],
+      "Select option"
+    )
   };
 }
 

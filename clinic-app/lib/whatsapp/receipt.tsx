@@ -9,10 +9,13 @@ import { ImageResponse } from "next/og";
  * resvg, no extra dependency, no native binary to compile — works the
  * same in a Vercel deploy or the Docker image).
  *
- * No clinic logo (the Apps Script version pulled one from a hardcoded
- * Google Drive file id — there's no equivalent asset source here yet).
- * Worth revisiting if a clinic wants branding on the card; see
- * clinic-app/README.md.
+ * Optional clinic logo via the CLINIC_LOGO_URL setting — the Apps
+ * Script version pulled one from a hardcoded Google Drive file id; this
+ * version takes any publicly reachable image URL instead (Satori, which
+ * ImageResponse uses under the hood, fetches it at render time — a
+ * local file path or an auth-gated URL won't render, hence
+ * isRenderableLogoUrl's http(s)-only check below). Renders fine with no
+ * logo at all if the setting is blank, same as before this existed.
  */
 
 export interface AppointmentReceiptDetails {
@@ -23,6 +26,22 @@ export interface AppointmentReceiptDetails {
   date: string; // "YYYY-MM-DD"
   time: string; // display label, e.g. "9:00 AM"
   appointmentCode: string;
+  /** Optional — see CLINIC_LOGO_URL in lib/settings.ts. Blank/invalid is silently treated as "no logo", never an error. */
+  logoUrl?: string;
+}
+
+/** Satori needs an absolute, fetchable URL — a relative path or a non-http(s) scheme (e.g. `file://`) would fail silently or throw deep inside rendering, so this is checked up front instead. */
+export function isRenderableLogoUrl(url: string | undefined): url is string {
+  if (!url) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 const ROW_LABEL_COLOR = "#777777";
@@ -57,16 +76,29 @@ export function renderAppointmentReceiptImage(details: AppointmentReceiptDetails
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
-            justifyContent: "center",
+            alignItems: "center",
+            gap: 20,
             height: 150,
             padding: "0 48px",
             backgroundColor: "#0B6E4F"
           }}
         >
-          <div style={{ fontSize: 36, fontWeight: 700, color: "#FFFFFF" }}>{details.clinicName}</div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#FFFFFF", marginTop: 6, letterSpacing: 2 }}>
-            APPOINTMENT CONFIRMED
+          {isRenderableLogoUrl(details.logoUrl) && (
+            // eslint-disable-next-line @next/next/no-img-element -- Satori (ImageResponse) requires a plain <img>, not next/image.
+            <img
+              src={details.logoUrl}
+              alt=""
+              width={70}
+              height={70}
+              style={{ borderRadius: 8, objectFit: "contain", backgroundColor: "#FFFFFF" }}
+            />
+          )}
+
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div style={{ fontSize: 36, fontWeight: 700, color: "#FFFFFF" }}>{details.clinicName}</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#FFFFFF", marginTop: 6, letterSpacing: 2 }}>
+              APPOINTMENT CONFIRMED
+            </div>
           </div>
         </div>
 

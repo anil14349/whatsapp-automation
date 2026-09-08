@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { href: "/admin/appointments", label: "Appointments", roles: ["ADMIN", "RECEPTIONIST"] },
   { href: "/admin/doctors", label: "Doctors", roles: ["ADMIN"] },
   { href: "/admin/patients", label: "Patients", roles: ["ADMIN", "RECEPTIONIST"] },
+  { href: "/admin/home-collection", label: "Home Collection", roles: ["ADMIN", "RECEPTIONIST"] },
   { href: "/admin/settings", label: "Settings", roles: ["ADMIN"] }
 ] as const satisfies ReadonlyArray<{ href: string; label: string; roles: readonly AdminRole[] }>;
 

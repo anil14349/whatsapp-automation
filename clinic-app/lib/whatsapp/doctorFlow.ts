@@ -5,6 +5,7 @@ import type { Doctor, DoctorAvailability } from "@/lib/doctors";
 import {
   addDoctorAvailabilitySession,
   addDoctorLeave,
+  addDoctorLeaveRange,
   deactivateDoctorLeave,
   getDoctorAvailability,
   getDoctorUpcomingLeaves,
@@ -48,13 +49,13 @@ import {
 
 /**
  * Doctor Portal conversation state machine. Ports src/Controller_DoctorFlow.gs
- * — condensed from that file's ~26 states to ~17 by using list menus (no
+ * — condensed from that file's ~26 states to ~20 by using list menus (no
  * row-count pressure vs. WhatsApp's 3-button cap) instead of a tiered
- * "More" sub-menu, and by covering single-date leave only (not the
- * DOCTOR_LEAVE_RANGE_* start/end range states — see "Deferred" note in
- * clinic-app/README.md). Same underlying business logic throughout:
- * cancelAppointment/rescheduleAppointment/markAppointmentStatus with
- * authorizedDoctorId, exactly like the admin UI's appointment actions.
+ * "More" sub-menu. Single-date and date-range leave both work (Add Leave
+ * (Single Day) / Add Leave (Date Range) in the leave menu). Same
+ * underlying business logic throughout: cancelAppointment/
+ * rescheduleAppointment/markAppointmentStatus with authorizedDoctorId,
+ * exactly like the admin UI's appointment actions.
  */
 export async function handleDoctorMessage(
   ctx: FlowContext,
@@ -454,13 +455,19 @@ export async function handleDoctorMessage(
     // --------------------------------------------------------------
 
     case "DOCTOR_LEAVE_MENU": {
-      if (normalizedMessage === "add_leave" || normalizedMessage === "1") {
+      if (normalizedMessage === "add_leave_single" || normalizedMessage === "1") {
         await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_LEAVE_DATE" });
         await reply(ctx, "Please enter the leave date in YYYY-MM-DD format.");
         return true;
       }
 
-      if (normalizedMessage === "cancel_leave" || normalizedMessage === "2") {
+      if (normalizedMessage === "add_leave_range" || normalizedMessage === "2") {
+        await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_LEAVE_RANGE_START" });
+        await reply(ctx, "Please enter the first day of leave in YYYY-MM-DD format.");
+        return true;
+      }
+
+      if (normalizedMessage === "cancel_leave" || normalizedMessage === "3") {
         const today = formatDateKey(new Date(), ctx.timezone);
         const leaves = await getDoctorUpcomingLeaves(ctx.supabase, doctor.id, today);
 
@@ -505,6 +512,74 @@ export async function handleDoctorMessage(
       const reason = normalizedMessage === "skip" ? "" : messageText.trim();
       await addDoctorLeave(ctx.supabase, doctor.id, session.session_date, reason);
       return returnDoctorToMenu(ctx, `Leave added for ${session.session_date}.`);
+    }
+
+    // Date-range leave — start/end/reason use the same session_date/
+    // session_time repurposing the availability states above already
+    // do (scratch fields, not literally "a date" and "a time" here).
+    case "DOCTOR_LEAVE_RANGE_START": {
+      const typed = messageText.trim();
+      const today = formatDateKey(new Date(), ctx.timezone);
+
+      if (!isValidISODate(typed) || typed < today) {
+        await reply(ctx, "That doesn't look like a valid future date. Please enter YYYY-MM-DD.");
+        return true;
+      }
+
+      await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_LEAVE_RANGE_END", session_date: typed });
+      await reply(ctx, "Please enter the last day of leave in YYYY-MM-DD format.");
+      return true;
+    }
+
+    case "DOCTOR_LEAVE_RANGE_END": {
+      if (!session.session_date) {
+        return returnDoctorToMenu(ctx);
+      }
+
+      const typed = messageText.trim();
+
+      if (!isValidISODate(typed) || typed < session.session_date) {
+        await reply(
+          ctx,
+          "That doesn't look like a valid date (must be on or after the first day). Please enter YYYY-MM-DD."
+        );
+        return true;
+      }
+
+      await saveSession(ctx.supabase, ctx.phone, {
+        state: "DOCTOR_LEAVE_RANGE_REASON",
+        session_time: typed
+      });
+      await reply(ctx, "Reason (optional) — reply with a reason, or send 'skip'.");
+      return true;
+    }
+
+    case "DOCTOR_LEAVE_RANGE_REASON": {
+      if (!session.session_date || !session.session_time) {
+        return returnDoctorToMenu(ctx);
+      }
+
+      const reason = normalizedMessage === "skip" ? "" : messageText.trim();
+
+      try {
+        const result = await addDoctorLeaveRange(
+          ctx.supabase,
+          doctor.id,
+          session.session_date,
+          session.session_time,
+          reason
+        );
+
+        return returnDoctorToMenu(
+          ctx,
+          `Leave added for ${session.session_date} through ${session.session_time} (${result.added} day${result.added === 1 ? "" : "s"}).`
+        );
+      } catch (error) {
+        return returnDoctorToMenu(
+          ctx,
+          `Could not add leave range: ${error instanceof Error ? error.message : "unknown error"}`
+        );
+      }
     }
 
     case "DOCTOR_LEAVE_CANCEL_PICK": {

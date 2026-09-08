@@ -19,7 +19,7 @@ import {
   formatTimeLabel,
   isValidISODate
 } from "@/lib/scheduling/dates";
-import { getBooleanSetting, getHomeCollectionRadiusKm, getHospitalLocation } from "@/lib/settings";
+import { getBooleanSetting, getHomeCollectionRadiusKm, getHospitalLocation, getSetting } from "@/lib/settings";
 import { getServerEnv } from "@/lib/env";
 import { haversineDistanceKm } from "@/lib/scheduling/geo";
 import { createHomeCollectionRequest } from "@/lib/homeCollection";
@@ -811,10 +811,11 @@ export async function handlePatientMessage(
  */
 async function sendAppointmentReceiptCard(
   ctx: FlowContext,
-  details: AppointmentReceiptDetails
+  details: Omit<AppointmentReceiptDetails, "logoUrl">
 ): Promise<void> {
   try {
-    const imageBuffer = await generateAppointmentReceiptImageBuffer(details);
+    const logoUrl = await getSetting(ctx.supabase, "CLINIC_LOGO_URL", "");
+    const imageBuffer = await generateAppointmentReceiptImageBuffer({ ...details, logoUrl });
     const mediaId = await uploadWhatsAppMedia(imageBuffer, "image/png");
     await sendWhatsAppImage(
       ctx.phone,
