@@ -3,6 +3,7 @@ import { reply, replyMenu } from "./context";
 import { getSession, saveSession } from "@/lib/sessions";
 import { findPatientByPhone } from "@/lib/patients";
 import { findDoctorByWhatsAppPhone } from "@/lib/doctors";
+import { buildAfterHoursMessage, getAfterHoursSettings, shouldBlockPatientForAfterHours } from "@/lib/afterHours";
 import { getLanguageMenuSpec, getMainMenuSpec } from "./menus";
 import { handlePatientMessage } from "./patientFlow";
 import { handleDoctorMessage, sendDoctorMainMenu } from "./doctorFlow";
@@ -23,11 +24,10 @@ const GREETING_WORDS = new Set([
  * Top-level message dispatch. Ports src/Controller_Router.gs's
  * handleWhatsAppGreeting + processWhatsAppTextMessage, including doctor
  * routing (findDoctorByWhatsAppPhone -> lib/whatsapp/doctorFlow.ts
- * instead of the patient flow). A session's `role` column, once set to
- * "DOCTOR" by a successful lookup, is what fast-paths every later
- * message to the doctor flow without re-querying the doctors table on
- * every single inbound message — only the greeting and role-DOCTOR
- * paths do that lookup.
+ * instead of the patient flow) and the after-hours gate (checked before
+ * greeting/patient dispatch, same order the Apps Script version used —
+ * a patient's "Hi" during closed hours gets the after-hours reply
+ * instead of the normal welcome menu).
  */
 export async function processInboundMessage(
   ctx: FlowContext,
@@ -35,36 +35,39 @@ export async function processInboundMessage(
   location?: InboundLocation
 ): Promise<void> {
   const normalizedMessage = messageText.toLowerCase().trim();
-
-  // Doctor identity is checked on every message, not just the greeting,
-  // by way of the session's saved role — a doctor's session is only ever
-  // created with role "DOCTOR" (see handleGreeting below and
-  // sendDoctorMainMenu), so this doesn't cost a doctors-table lookup per
-  // message the way re-checking findDoctorByWhatsAppPhone every time
-  // would.
   const session = await getSession(ctx.supabase, ctx.phone);
+  const doctor = await findDoctorByWhatsAppPhone(ctx.supabase, ctx.phone);
 
-  if (session?.role === "DOCTOR" && session.doctor_id) {
-    const doctor = await findDoctorByWhatsAppPhone(ctx.supabase, ctx.phone);
-
-    if (doctor) {
-      if (GREETING_WORDS.has(normalizedMessage)) {
-        await sendDoctorMainMenu(ctx, doctor);
-        return;
-      }
-
-      const handled = await handleDoctorMessage(ctx, doctor, messageText, normalizedMessage);
-
-      if (!handled) {
-        await reply(ctx, "Sorry, I didn't understand that.\n\nPlease send Hi to start again.");
-      }
-
+  if (doctor) {
+    if (GREETING_WORDS.has(normalizedMessage)) {
+      await sendDoctorMainMenu(ctx, doctor);
       return;
     }
+
+    const handled = await handleDoctorMessage(ctx, doctor, messageText, normalizedMessage);
+
+    if (!handled) {
+      await reply(ctx, "Sorry, I didn't understand that.\n\nPlease send Hi to start again.");
+    }
+
+    return;
+  }
+
+  const blocked = await shouldBlockPatientForAfterHours(ctx.supabase, {
+    session,
+    isDoctor: false,
+    timezone: ctx.timezone
+  });
+
+  if (blocked) {
+    const settings = await getAfterHoursSettings(ctx.supabase);
+    const language = await resolveAfterHoursLanguage(ctx, session);
+    await reply(ctx, buildAfterHoursMessage(language, ctx.clinicName, settings));
+    return;
   }
 
   if (GREETING_WORDS.has(normalizedMessage)) {
-    await handleGreeting(ctx);
+    await handleGreeting(ctx, session);
     return;
   }
 
@@ -75,16 +78,27 @@ export async function processInboundMessage(
   }
 }
 
-async function handleGreeting(ctx: FlowContext): Promise<void> {
-  const doctor = await findDoctorByWhatsAppPhone(ctx.supabase, ctx.phone);
+/** Ports resolveLanguageForAfterHoursReply — the session's saved language if valid, else the patient registry's, else "EN". */
+async function resolveAfterHoursLanguage(
+  ctx: FlowContext,
+  session: Awaited<ReturnType<typeof getSession>>
+): Promise<string> {
+  const sessionLanguage = session?.language?.toUpperCase() ?? "";
 
-  if (doctor) {
-    await sendDoctorMainMenu(ctx, doctor);
-    return;
+  if (SUPPORTED_LANGUAGE_CODES.has(sessionLanguage)) {
+    return sessionLanguage;
   }
 
-  const session = await getSession(ctx.supabase, ctx.phone);
+  const patient = await findPatientByPhone(ctx.supabase, ctx.phone);
+  const patientLanguage = patient?.language?.toUpperCase() ?? "";
 
+  return SUPPORTED_LANGUAGE_CODES.has(patientLanguage) ? patientLanguage : "EN";
+}
+
+async function handleGreeting(
+  ctx: FlowContext,
+  session: Awaited<ReturnType<typeof getSession>>
+): Promise<void> {
   let savedLanguage = String(session?.language ?? "").toUpperCase();
 
   if (!SUPPORTED_LANGUAGE_CODES.has(savedLanguage)) {

@@ -33,6 +33,15 @@ const serverEnvSchema = z.object({
   WHATSAPP_FLOW_PRIVATE_KEY: z.string().optional().or(z.literal("")),
   WHATSAPP_FLOW_PRIVATE_KEY_PASSPHRASE: z.string().optional().or(z.literal("")),
 
+  // Checked against the `Authorization: Bearer <CRON_SECRET>` header
+  // Vercel Cron automatically sends for scheduled invocations (see
+  // vercel.json + app/api/cron/*/route.ts). Optional like
+  // WHATSAPP_FLOW_ID (a deployment that doesn't use the cron jobs
+  // shouldn't be forced to configure this) — but the route handlers
+  // compare against it fail-closed, so an unset value can never match a
+  // request header and accidentally accept unauthenticated cron calls.
+  CRON_SECRET: z.string().optional().or(z.literal("")),
+
   ADMIN_SESSION_SECRET: z.string().min(32, "must be at least 32 characters"),
 
   CLINIC_TIMEZONE: z.string().default("Asia/Kolkata")

@@ -73,6 +73,12 @@ section for full setup steps.
 |---|---|---|
 | `ADMIN_SESSION_SECRET` | Yes, min 32 chars | Signs the admin session cookie (HMAC-SHA256). Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. **Never share this value across separate hospital deployments** — see `clinic-app/README.md`'s multi-hospital section |
 
+### Scheduled jobs — `lib/cronAuth.ts`, `app/api/cron/*/route.ts`
+
+| Variable | Required | Notes |
+|---|---|---|
+| `CRON_SECRET` | Only if using the reminders/auto-complete cron jobs | Checked against `Authorization: Bearer <CRON_SECRET>` — Vercel Cron sends this automatically (`vercel.json`); any other scheduler needs to set it explicitly. Unset means both `/api/cron/*` routes always return 401 |
+
 ### Misc
 
 | Variable | Required | Notes |
@@ -93,15 +99,15 @@ section for full setup steps.
 | `LOG_MESSAGE_MAX_CHARS` | `500` | Truncate long logged message text | ⛔ Not yet wired — `lib/whatsapp/log.ts` logs the full message text untruncated |
 | `ENABLE_INBOUND_LOG` | `TRUE` | Whether to log inbound messages at all | ⛔ Not yet wired — the webhook logs unconditionally regardless of this toggle |
 | `ENABLE_DEBUG_LOG` | `TRUE` | Whether to log outbound sends | ⛔ Not yet wired — no outbound logging exists yet at all (inbound only) |
-| `ENABLE_APPOINTMENT_REMINDERS` | `TRUE` | Send WhatsApp reminders before appointments | ⛔ Not yet wired — the reminders job isn't ported (README stage 3 deferred list) |
-| `REMINDER_HOURS_BEFORE` | `24` | Comma-separated lead times | ⛔ Not yet wired (same as above) |
-| `REMINDER_WINDOW_MINUTES` | `45` | Send window for the reminder job | ⛔ Not yet wired (same as above) |
-| `AUTO_COMPLETE_PAST_APPOINTMENTS` | `FALSE` | Auto-mark past Confirmed appointments Completed | ⛔ Not yet wired — no background job exists; use `/admin/appointments`'s manual Completed/No-Show buttons instead |
-| `AUTO_COMPLETE_HOURS_AFTER` | `4` | Grace period before auto-completing | ⛔ Not yet wired (same as above) |
-| `ENABLE_AFTER_HOURS_REPLY` | `FALSE` | Auto-reply when patients message outside clinic hours | ⛔ Not yet wired — after-hours gating isn't ported (README stage 3 deferred list) |
-| `CLINIC_OPEN_TIME` / `CLINIC_CLOSE_TIME` | `09:00` / `18:00` | Clinic hours for the above | ⛔ Not yet wired (same as above) |
-| `CLINIC_WORKING_DAYS` | `Mon,Tue,Wed,Thu,Fri,Sat` | Days the after-hours gate treats as open | ⛔ Not yet wired (same as above) |
-| `AFTER_HOURS_MESSAGE` | *(empty)* | Custom closed-message override | ⛔ Not yet wired (same as above) |
+| `ENABLE_APPOINTMENT_REMINDERS` | `TRUE` | Send WhatsApp reminders before appointments | ✅ Active — `lib/reminders.ts`, invoked by the `/api/cron/reminders` scheduled job. Needs `CRON_SECRET` configured and the job actually scheduled (Vercel Cron via `vercel.json`, or any external scheduler hitting that URL) to ever run — see README's "Scheduled jobs" section |
+| `REMINDER_HOURS_BEFORE` | `24` | Comma-separated lead times | ✅ Active (same as above) |
+| `REMINDER_WINDOW_MINUTES` | `45` | Send window for the reminder job | ✅ Active (same as above) |
+| `AUTO_COMPLETE_PAST_APPOINTMENTS` | `FALSE` | Auto-mark past Confirmed appointments Completed | ✅ Active — `lib/autoComplete.ts`, invoked by the `/api/cron/auto-complete` scheduled job. Same scheduling caveat as reminders above; `/admin/appointments`'s manual Completed/No-Show buttons work regardless of this setting |
+| `AUTO_COMPLETE_HOURS_AFTER` | `4` | Grace period before auto-completing | ✅ Active (same as above) |
+| `ENABLE_AFTER_HOURS_REPLY` | `FALSE` | Auto-reply when patients message outside clinic hours | ✅ Active — `lib/afterHours.ts`, checked on every inbound patient message by `lib/whatsapp/router.ts` (no scheduled job needed — this one runs inline per message) |
+| `CLINIC_OPEN_TIME` / `CLINIC_CLOSE_TIME` | `09:00` / `18:00` | Clinic hours for the above | ✅ Active (same as above) |
+| `CLINIC_WORKING_DAYS` | `Mon,Tue,Wed,Thu,Fri,Sat` | Days the after-hours gate treats as open | ✅ Active (same as above) |
+| `AFTER_HOURS_MESSAGE` | *(empty)* | Custom closed-message override | ✅ Active (same as above) |
 | `HOSPITAL_LATITUDE` / `HOSPITAL_LONGITUDE` | *(empty)* | Clinic location for the home-collection radius check | ✅ Active — `getHospitalLocation` (`lib/settings.ts`), used by `lib/whatsapp/patientFlow.ts`'s Home Sample Collection flow. Leave either blank and the flow tells patients it isn't set up yet, rather than silently treating (0, 0) as the clinic's location |
 | `HOME_COLLECTION_RADIUS_KM` | `5` | Service radius for home collection | ✅ Active — `getHomeCollectionRadiusKm` (`lib/settings.ts`) |
 
@@ -176,6 +182,8 @@ change here is reflected on the very next slot lookup.
 | Fix "doctor shows up but can't be booked" | Check `calendar_id` is set for that doctor |
 | Turn off tap-to-select menus (numbered text only) | `settings.ENABLE_INTERACTIVE_MENUS` via `/admin/settings` |
 | Switch Book Appointment to a native WhatsApp Flow form | Set up `WHATSAPP_FLOW_ID` + keypair env vars, then `settings.ENABLE_WHATSAPP_FLOW_BOOKING` via `/admin/settings` — see README's "WhatsApp Flows" section |
+| Turn on appointment reminders / auto-complete-past-appointments | Set `CRON_SECRET`, deploy with `vercel.json`'s cron config (or point any external scheduler at `/api/cron/reminders` / `/api/cron/auto-complete`), then the relevant toggle via `/admin/settings` — see README's "Scheduled jobs" section |
+| Turn on the after-hours auto-reply | `settings.ENABLE_AFTER_HOURS_REPLY` + `CLINIC_OPEN_TIME`/`CLINIC_CLOSE_TIME`/`CLINIC_WORKING_DAYS` via `/admin/settings` — no scheduled job needed, this one runs per-message |
 | Rotate the WhatsApp access token | `WHATSAPP_ACCESS_TOKEN` env var + redeploy |
 | Change how long an admin stays logged in | Edit `SESSION_DURATION_MS` in `lib/auth/session.ts` (no UI/env var yet) |
 | Add a new language | Add its translations to `lib/whatsapp/localization.json`, add the code to `SUPPORTED_LANGUAGES` in `lib/patients.ts`, and add it to the `LANGUAGE_BY_CHOICE` map in `lib/whatsapp/patientFlow.ts` and the language menu in `lib/whatsapp/menus.ts` |

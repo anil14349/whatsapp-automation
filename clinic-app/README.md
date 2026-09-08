@@ -242,6 +242,13 @@ renderer and asserts on the PNG magic bytes) rather than typecheck-only
 verification, since image rendering is exactly the kind of thing that
 can silently produce garbage without ever throwing.
 
+Also working end-to-end: **appointment reminders**, **auto-complete-past-
+appointments**, and the **after-hours auto-reply** — see the "Scheduled
+jobs" section below for reminders/auto-complete (both run on a schedule,
+not per-message) and `lib/afterHours.ts` for the after-hours gate (runs
+inline in `lib/whatsapp/router.ts`, before every greeting/patient
+message dispatch — no scheduling needed for that one).
+
 **Deferred to a later increment** (each follows the same pattern
 established here, so this is scoping work, not redesign work):
 - Doctor leave-range add/cancel (see above — single-date leave works)
@@ -252,20 +259,22 @@ established here, so this is scoping work, not redesign work):
   everything on one screen, capped at WhatsApp's 10-row list limit —
   fine for a handful of doctors, not yet built out for more; appointment
   lists *are* paginated, see above)
-- Appointment reminders, after-hours auto-reply, auto-complete-past-
-  appointments background jobs
+- Log retention/truncation (`LOG_RETENTION`/`LOG_MAX_ROWS`/
+  `LOG_MESSAGE_MAX_CHARS`/`ENABLE_INBOUND_LOG`/`ENABLE_DEBUG_LOG` — the
+  only settings still flagged dormant in `/admin/settings`)
 
 ### Verification
 
 `npm run typecheck`, `npm run build`, `npm run lint`, and `npm test`
-(95 tests as of the appointment receipt card addition) all pass. As
+(107 tests as of the scheduled-jobs addition) all pass. As
 with stage 2, the parts with real branching logic and no required I/O
 are unit-tested (inbound message parsing, localization incl.
 round-tripping every language against the extracted dictionaries, menu
 spec builders, slot-selection id encoding/decoding, appointment-list
 pagination and choice classification, doctor-portal weekday/session/leave
-selection parsing, haversine distance, and — the one actual runtime
-test in the whole rewrite — real PNG generation for the receipt card).
+selection parsing, haversine distance, after-hours clinic-hours gating
+across timezones, and — the one actual runtime test in the whole
+rewrite — real PNG generation for the receipt card).
 The webhook route and the conversation flow handlers that orchestrate
 Supabase + WhatsApp Cloud API + Calendar calls are typechecked but not
 yet exercised against a live WhatsApp number/database — see "What's
@@ -425,6 +434,58 @@ weren't available in the environment this scaffold was first built in):
 ```bash
 npm run db:types
 ```
+
+---
+
+## Scheduled jobs (reminders, auto-complete-past-appointments)
+
+Two background jobs need something external to trigger them
+periodically — they're plain HTTPS `GET` endpoints, not self-scheduling:
+
+| Job | Endpoint | Suggested cadence | Reads |
+|---|---|---|---|
+| Appointment reminders | `/api/cron/reminders` | Every 30 minutes | `lib/reminders.ts` |
+| Auto-complete past appointments | `/api/cron/auto-complete` | Hourly | `lib/autoComplete.ts` |
+
+Both are protected by `CRON_SECRET` (see `.env.example`) — every request
+must send `Authorization: Bearer <CRON_SECRET>`, checked with a
+constant-time comparison (`lib/cronAuth.ts`), same fail-closed pattern
+as `WHATSAPP_WEBHOOK_POST_TOKEN`. **Both are also still gated by their
+own setting** (`ENABLE_APPOINTMENT_REMINDERS`, `AUTO_COMPLETE_PAST_APPOINTMENTS`
+in `/admin/settings`) — the schedule below only controls how often the
+endpoint is *checked*, not whether it does anything.
+
+### Option A — Vercel Cron (if deploying to Vercel)
+
+[`vercel.json`](vercel.json) already declares both schedules. Vercel
+sends the `Authorization` header automatically as long as `CRON_SECRET`
+is set in the project's environment variables — nothing else to
+configure. **Note**: Vercel's free (Hobby) tier historically limits
+cron jobs to once/day — running every 30 minutes may require a paid
+plan. Check Vercel's current pricing page rather than trusting this
+number, since it's the kind of detail that changes.
+
+### Option B — any external scheduler (Docker / self-hosted deployments)
+
+`vercel.json` has no effect outside a Vercel deployment. Point any
+scheduler capable of an HTTPS call + a custom header at the same two
+URLs — a `crontab` entry, a GitHub Actions scheduled workflow, an
+external uptime/cron service (cron-job.org, etc.):
+
+```bash
+# Example crontab entries (adjust the host):
+*/30 * * * * curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-app.example.com/api/cron/reminders
+0 * * * *    curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-app.example.com/api/cron/auto-complete
+```
+
+**Verification status**: not exercised against a live scheduler from
+this environment (no reachable Vercel project or external cron
+service) — `lib/reminders.ts`/`lib/autoComplete.ts`'s logic is
+typechecked, tested where the logic is timezone-sensitive
+(`lib/afterHours.test.ts` for the related after-hours gate), and the
+routes themselves build successfully, but the actual scheduled
+invocation path (Vercel Cron's request shape, or a real `curl` hitting
+a deployed URL) hasn't been run for real.
 
 ---
 
