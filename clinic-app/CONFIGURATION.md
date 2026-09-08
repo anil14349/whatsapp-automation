@@ -67,7 +67,13 @@ All three are optional and unused unless `ENABLE_WHATSAPP_FLOW_BOOKING`
 is turned on below — see `clinic-app/README.md`'s "WhatsApp Flows"
 section for full setup steps.
 
-### Admin auth — `lib/auth/session.ts`
+### Admin auth — `lib/auth/session.ts`, `lib/auth/authorize.ts`
+
+Role (`ADMIN` | `RECEPTIONIST`, `admin_users.role`) is not an env
+var/setting — set per-account via `scripts/create-admin-user.mjs --role`
+or edited directly in the `admin_users` table. See
+`clinic-app/README.md`'s "Admin/Receptionist roles" section for exactly
+what each role can do and where it's enforced.
 
 | Variable | Required | Notes |
 |---|---|---|

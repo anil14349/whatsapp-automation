@@ -383,21 +383,66 @@ Then sign in at `/admin/login`.
 |---|---|
 | `/admin/login` | Email/password login (own `admin_users` table + a signed session cookie — **not** Supabase Auth, see below) |
 | `/admin` | Dashboard — today's/upcoming appointment counts, active doctor count |
-| `/admin/doctors` | List + create doctors |
-| `/admin/doctors/[id]` | Edit a doctor's details, manage weekly availability sessions, manage upcoming leaves |
+| `/admin/doctors` | List + create doctors — **ADMIN only** |
+| `/admin/doctors/[id]` | Edit a doctor's details, manage weekly availability sessions, manage upcoming leaves — **ADMIN only** |
 | `/admin/appointments` | Filterable list (doctor/date/status) with actions: mark Completed/No-Show, cancel |
 | `/admin/patients` | Read-only, searchable patient registry |
-| `/admin/settings` | Every configurable option from the `settings` table, grouped and editable as a real form |
+| `/admin/settings` | Every configurable option from the `settings` table, grouped and editable as a real form — **ADMIN only** |
 
 ### Design notes
 
 - **Auth is hand-rolled, not Supabase Auth**: `admin_users` (password hashed with Node's built-in `scrypt`, no external dependency) + a signed HTTP-only session cookie (`lib/auth/session.ts`, HMAC-SHA256 keyed by `ADMIN_SESSION_SECRET`, verified with `timingSafeEqual`). Chose this over Supabase Auth because the admin console is a small, fixed set of clinic staff accounts, not end-user signup — didn't want to pull in Auth's email verification/magic-link/OAuth machinery for a need this simple. `supabase/config.toml` has `[auth] enabled = false` accordingly.
 - **Every mutation goes through Next.js Server Actions calling the same `lib/*.ts` functions the WhatsApp bot uses** (e.g. admin appointment cancellation calls the identical `cancelAppointment()` from stage 2, with the same Calendar cleanup and status-transition rules) — not a separate, parallel admin-only code path that could drift from the bot's rules over time.
-- **No ADMIN vs. RECEPTIONIST permission split yet** — the `admin_users.role` column exists (for exactly this purpose later) but every logged-in user currently sees the same full UI. Worth adding once there's a real policy for what a receptionist shouldn't be able to touch (e.g. maybe settings, or deleting doctors).
+
+### Admin/Receptionist roles
+
+`admin_users.role` (`ADMIN` | `RECEPTIONIST`) is enforced by
+`lib/auth/authorize.ts`:
+
+| Area | ADMIN | RECEPTIONIST |
+|---|---|---|
+| Dashboard, Appointments, Patients | ✅ | ✅ |
+| Doctors (add/edit, availability, leaves) | ✅ | ⛔ redirected to `/admin` |
+| Settings | ✅ | ⛔ redirected to `/admin` |
+
+This is a default split, not a policy handed down from the Apps Script
+version (which had no admin UI at all, so no precedent existed) — a
+receptionist can run day-to-day operations (manage appointments, look up
+patients) but not reconfigure doctor rosters/availability or clinic-wide
+settings. Adjust `NAV_ITEMS` in `layout.tsx` and the `requireAdminRole`/
+`assertAdminRole` calls in each page/action if a clinic wants a
+different split.
+
+Two enforcement points per restricted area, not one:
+- **Pages/layouts** use `requireAdminRole` (redirects to `/admin/login`
+  if not logged in at all, or to `/admin` if logged in with the wrong
+  role) — this is what makes a direct URL visit to `/admin/settings`
+  redirect a receptionist away instead of rendering the page.
+- **Server Actions** use `assertAdminRole` (throws instead of
+  redirecting — an action has no page of its own to redirect from). This
+  also closed a real gap found while adding this: **none of the admin
+  Server Actions checked any session at all before this change**, valid
+  or not — a Server Action is a directly callable endpoint independent
+  of whichever page renders a button for it, so "the page is behind the
+  layout's login check" was never actually sufficient on its own. Every
+  mutating action across doctors/appointments/settings now requires a
+  valid session at minimum, with the doctors/settings ones additionally
+  requiring the `ADMIN` role.
 
 ### Verification
 
-`npm run typecheck`, `npm run build`, `npm run lint` all pass; `npm test` — 65 tests (4 new, covering password hashing: correct/incorrect verification, salting, and graceful rejection of a corrupted hash instead of throwing). The pages/Server Actions themselves are typechecked and built successfully but — same caveat as every stage so far — not yet exercised against a live Supabase instance from this environment.
+`npm run typecheck`, `npm run build`, and `npm test` (107 tests) all
+pass; `npm run lint` remains broken for the pre-existing, unrelated Next
+16 reason noted elsewhere in this README — ESLint itself via the direct
+binary (`./node_modules/.bin/eslint . --ext .ts,.tsx`) is clean. No
+dedicated test file for `lib/auth/authorize.ts` — it's coupled to
+Next.js's `cookies()`, same reasoning `lib/auth/session.ts` itself has
+never had one either (only the pure `lib/auth/password.ts` does). The
+pages/Server Actions themselves are typechecked and built successfully
+but — same caveat as every stage so far — not yet exercised against a
+live Supabase instance from this environment, so the actual
+redirect/rejection behavior for a real RECEPTIONIST login hasn't been
+clicked through end to end.
 
 ---
 

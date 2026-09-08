@@ -1,8 +1,10 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getAllSettings } from "@/lib/settings";
+import { requireAdminRole } from "@/lib/auth/authorize";
 import { SettingsForm } from "./SettingsForm";
 
 export default async function SettingsPage() {
+  await requireAdminRole(["ADMIN"]);
   const supabase = getSupabaseServerClient();
   const settings = await getAllSettings(supabase);
 

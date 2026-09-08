@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { setSetting } from "@/lib/settings";
+import { assertAdminRole } from "@/lib/auth/authorize";
 
 export interface FormState {
   error?: string;
@@ -41,6 +42,7 @@ export async function updateSettingsAction(
   formData: FormData
 ): Promise<FormState> {
   try {
+    await assertAdminRole(["ADMIN"]);
     const supabase = getSupabaseServerClient();
 
     for (const key of TEXT_KEYS) {

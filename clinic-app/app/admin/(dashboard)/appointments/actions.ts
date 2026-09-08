@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { GoogleCalendar } from "@/lib/calendar/google";
 import { cancelAppointment, markAppointmentStatus } from "@/lib/appointments";
+import { assertAdminRole } from "@/lib/auth/authorize";
 
 /**
  * Admin cancellation goes through the same cancelAppointment() used by
@@ -16,6 +17,7 @@ export async function adminCancelAppointmentAction(
   appointmentId: string,
   doctorId: string
 ): Promise<void> {
+  await assertAdminRole(["ADMIN", "RECEPTIONIST"]);
   const supabase = getSupabaseServerClient();
   const calendar = new GoogleCalendar();
 
@@ -31,6 +33,7 @@ export async function markAppointmentStatusAction(
   doctorId: string,
   status: "Completed" | "No-Show"
 ): Promise<void> {
+  await assertAdminRole(["ADMIN", "RECEPTIONIST"]);
   const supabase = getSupabaseServerClient();
 
   const result = await markAppointmentStatus(supabase, appointmentId, doctorId, status);

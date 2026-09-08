@@ -2,6 +2,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { listDoctors } from "@/lib/doctors";
 import { formatDateKey } from "@/lib/scheduling/dates";
 import { getServerEnv } from "@/lib/env";
+import { requireAdminRole } from "@/lib/auth/authorize";
 import type { AppointmentStatus } from "@/lib/supabase/database.types";
 import { AppointmentRowActions } from "./AppointmentRowActions";
 
@@ -23,6 +24,7 @@ export default async function AppointmentsPage({
 }: {
   searchParams: Promise<{ doctorId?: string; date?: string; status?: string }>;
 }) {
+  await requireAdminRole(["ADMIN", "RECEPTIONIST"]);
   const filters = await searchParams;
   const supabase = getSupabaseServerClient();
   const env = getServerEnv();

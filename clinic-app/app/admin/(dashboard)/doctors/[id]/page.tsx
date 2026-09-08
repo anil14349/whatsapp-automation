@@ -3,6 +3,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getDoctorAvailability, getDoctorById, getDoctorUpcomingLeaves } from "@/lib/doctors";
 import { formatDateKey } from "@/lib/scheduling/dates";
 import { getServerEnv } from "@/lib/env";
+import { requireAdminRole } from "@/lib/auth/authorize";
 import { EditDoctorForm } from "./EditDoctorForm";
 import { AvailabilityManager } from "./AvailabilityManager";
 import { LeavesManager } from "./LeavesManager";
@@ -12,6 +13,7 @@ export default async function DoctorDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireAdminRole(["ADMIN"]);
   const { id } = await params;
   const supabase = getSupabaseServerClient();
   const env = getServerEnv();

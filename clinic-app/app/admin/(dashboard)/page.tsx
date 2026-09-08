@@ -2,6 +2,7 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { listDoctors } from "@/lib/doctors";
 import { formatDateKey } from "@/lib/scheduling/dates";
 import { getServerEnv } from "@/lib/env";
+import { requireAdminRole } from "@/lib/auth/authorize";
 
 async function getDashboardStats() {
   const supabase = getSupabaseServerClient();
@@ -39,6 +40,7 @@ function StatCard({ label, value }: { label: string; value: number }) {
 }
 
 export default async function DashboardPage() {
+  await requireAdminRole(["ADMIN", "RECEPTIONIST"]);
   const stats = await getDashboardStats();
 
   return (
