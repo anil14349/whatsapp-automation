@@ -96,6 +96,43 @@ export async function sendWhatsAppInteractive(
   });
 }
 
+/**
+ * Sends the interactive "flow" message type that opens a native WhatsApp
+ * Flow form in the patient's chat (see lib/whatsapp/flowBooking.ts +
+ * app/api/whatsapp/flow/route.ts). `flowToken` round-trips back to our
+ * Flow endpoint as `flow_token` on every screen request — we set it to
+ * the patient's phone number so the endpoint can look up the same
+ * whatsapp_sessions row the button-based booking flow uses, with no
+ * extra token-to-phone mapping table needed.
+ */
+export async function sendWhatsAppFlow(
+  to: string,
+  bodyText: string,
+  params: { flowId: string; flowToken: string; ctaLabel: string }
+): Promise<void> {
+  await sendWhatsAppGraphPayload(to, {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "interactive",
+    interactive: {
+      type: "flow",
+      body: { text: bodyText },
+      action: {
+        name: "flow",
+        parameters: {
+          flow_message_version: "3",
+          flow_id: params.flowId,
+          flow_token: params.flowToken,
+          flow_cta: params.ctaLabel,
+          flow_action: "navigate",
+          flow_action_payload: { screen: "SELECT_DOCTOR" }
+        }
+      }
+    }
+  });
+}
+
 export interface MenuReply {
   fallbackText: string;
   interactive: InteractiveMenuSpec | null;

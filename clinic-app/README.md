@@ -203,6 +203,85 @@ here.
 
 ---
 
+## WhatsApp Flows (native "Book Appointment" form)
+
+An optional alternative to the list/button booking conversation above:
+[WhatsApp Flows](https://developers.facebook.com/docs/whatsapp/flows)
+open a real multi-screen native form inside the chat (dropdowns, a date
+picker, radio buttons) instead of a back-and-forth of separate list
+messages — mainly useful once you have more doctors/slots than
+WhatsApp's 10-row list-message limit comfortably fits.
+
+| Module | Purpose |
+|---|---|
+| `lib/whatsapp/flowCrypto.ts` | Implements Meta's Flow endpoint encryption contract (RSA-OAEP/SHA-256 to unwrap an AES key, AES-128-GCM for the actual payload) — the one genuinely fiddly part of this feature, isolated with its own round-trip test |
+| `lib/whatsapp/flowBooking.ts` | Screen-by-screen booking logic (doctor → date → time → name/confirm), reusing the exact same `lib/appointments.ts`/`lib/scheduling` functions the list/button flow uses — same booking rules, same double-booking guarantees, just a different UI driving them |
+| `app/api/whatsapp/flow/route.ts` | The Flow's "Data Exchange" HTTPS endpoint — decrypts, dispatches, encrypts the response, handles Meta's `ping` health check and the required 421-on-decryption-failure behavior |
+| `whatsapp-flows/booking-flow.json` | The Flow definition itself (screens/components) — paste into Meta's Flow Builder, or publish via its API |
+| `scripts/generate-flow-keypair.mjs` | One-time RSA keypair generator for the endpoint |
+
+### Turning it on
+
+This is off by default (`ENABLE_WHATSAPP_FLOW_BOOKING` seeds to `FALSE` —
+see migration `0006_whatsapp_flow_booking_setting.sql`) and falls back to
+the existing list/button flow whenever it's off, `WHATSAPP_FLOW_ID` isn't
+configured, or sending the flow-trigger message fails for any reason —
+see `startBooking()` in `lib/whatsapp/patientFlow.ts`.
+
+1. **Generate a keypair**: `node scripts/generate-flow-keypair.mjs`.
+   Paste the printed `WHATSAPP_FLOW_PRIVATE_KEY` /
+   `WHATSAPP_FLOW_PRIVATE_KEY_PASSPHRASE` into your `.env`.
+2. **Upload the public key** it printed to Meta, for your WhatsApp phone
+   number:
+   ```bash
+   curl -X POST \
+     "https://graph.facebook.com/v26.0/<PHONE_NUMBER_ID>/whatsapp_business_encryption" \
+     -H "Authorization: Bearer <WHATSAPP_ACCESS_TOKEN>" \
+     -F "business_public_key=<paste the PEM public key>"
+   ```
+3. **Create the Flow** in Meta's Flow Builder (Business Manager → WhatsApp
+   Manager → Flows), paste in `whatsapp-flows/booking-flow.json` (or
+   recreate the same screens in the visual builder), and set its
+   "Endpoint URI" to
+   `https://<your-deployed-app>/api/whatsapp/flow?token=<WHATSAPP_WEBHOOK_POST_TOKEN>`
+   (same token as the main webhook — see that route's comment for why
+   this is fail-closed rather than a separate secret).
+4. Publish the Flow, copy its **Flow ID** into `WHATSAPP_FLOW_ID`.
+5. Turn on **"Use a native WhatsApp Flow form for Book Appointment"** in
+   `/admin/settings`.
+6. Use the Flow Builder's own **Preview** panel to test the screens end
+   to end before relying on it with real patients.
+
+### Verification status — please read before relying on this
+
+**Not exercised against a live WhatsApp Flow or a real Meta test number**
+— there's no reachable WhatsApp Business Account, Flow Builder, or
+public HTTPS endpoint from this development environment. What *is*
+verified:
+- `lib/whatsapp/flowCrypto.ts` has a full round-trip test: a real
+  generated RSA keypair encrypts a request the way Meta's servers do
+  (per the published spec), this code decrypts it, and the reverse for
+  the response — confirms the crypto is internally self-consistent and
+  matches the documented algorithm choices.
+- `npm run typecheck`, `npm run build`, `npm run lint`, `npm test` all
+  pass with these files in place.
+
+What's **not** verified, and worth testing carefully against a real Flow
+before going live with it:
+- The exact screen/component names and `data`/`payload` wiring in
+  `whatsapp-flows/booking-flow.json` — Flow JSON's schema has evolved
+  across versions; treat this file as a solid starting draft to validate
+  in the Flow Builder's JSON editor, not a guaranteed-correct artifact.
+- Whether a completed Flow's `nfm_reply` message reliably arrives at the
+  main webhook the way `lib/whatsapp/inbound.ts`/
+  `app/api/whatsapp/webhook/route.ts` assume — the booking itself doesn't
+  depend on this (it's created server-side inside the Flow endpoint's
+  final `data_exchange` call), so a `nfm_reply` that never arrives, or
+  arrives in a different shape than expected, degrades to "no
+  acknowledgement text sent" rather than a failed or duplicated booking.
+
+---
+
 ## Receptionist/admin web UI (stage 4)
 
 A new capability — no equivalent existed in the Apps Script version, which only had the WhatsApp Doctor Portal conversation and direct Google Sheet editing for staff.

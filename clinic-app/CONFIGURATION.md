@@ -55,6 +55,18 @@ their appointments — booking still works, just without an event created
 (`lib/scheduling/slots.ts` returns no slots at all if `calendar_id` is
 blank, actually — see note under "Per-doctor configuration" below).
 
+### WhatsApp Flows — `lib/whatsapp/flowCrypto.ts`, `app/api/whatsapp/flow/route.ts`
+
+| Variable | Required | Notes |
+|---|---|---|
+| `WHATSAPP_FLOW_ID` | Only if `ENABLE_WHATSAPP_FLOW_BOOKING` is on | The published Flow's ID from Meta's Flow Builder |
+| `WHATSAPP_FLOW_PRIVATE_KEY` | Only if `ENABLE_WHATSAPP_FLOW_BOOKING` is on | Generate with `node scripts/generate-flow-keypair.mjs`. Same `\n`-literal convention as `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` |
+| `WHATSAPP_FLOW_PRIVATE_KEY_PASSPHRASE` | Only if `ENABLE_WHATSAPP_FLOW_BOOKING` is on | Printed alongside the private key by the same script |
+
+All three are optional and unused unless `ENABLE_WHATSAPP_FLOW_BOOKING`
+is turned on below — see `clinic-app/README.md`'s "WhatsApp Flows"
+section for full setup steps.
+
 ### Admin auth — `lib/auth/session.ts`
 
 | Variable | Required | Notes |
@@ -75,6 +87,7 @@ blank, actually — see note under "Per-doctor configuration" below).
 |---|---|---|---|
 | `CLINIC_NAME` | `ABC Clinic` | Substituted for every `{{CLINIC_NAME}}` placeholder in bot messages | ✅ Active |
 | `ENABLE_INTERACTIVE_MENUS` | `TRUE` | Tap-to-select WhatsApp menus vs. falling back to plain numbered text | ✅ Active |
+| `ENABLE_WHATSAPP_FLOW_BOOKING` | `FALSE` | Use a native WhatsApp Flow form for Book Appointment instead of the list/button conversation | ✅ Active, but requires `WHATSAPP_FLOW_ID` + a keypair configured (see env vars above) — falls back to the list/button flow if either is missing, even when this is `TRUE` |
 | `LOG_RETENTION` | `month` | How long `message_log` rows are kept | ⛔ Not yet wired — no cleanup job exists; `message_log` currently grows unbounded |
 | `LOG_MAX_ROWS` | `5000` | Row cap after retention cleanup | ⛔ Not yet wired (depends on the cleanup job above) |
 | `LOG_MESSAGE_MAX_CHARS` | `500` | Truncate long logged message text | ⛔ Not yet wired — `lib/whatsapp/log.ts` logs the full message text untruncated |
@@ -161,6 +174,7 @@ change here is reflected on the very next slot lookup.
 | Change a doctor's slot length | `/admin/doctors/[id]` → doctor details form |
 | Fix "doctor shows up but can't be booked" | Check `calendar_id` is set for that doctor |
 | Turn off tap-to-select menus (numbered text only) | `settings.ENABLE_INTERACTIVE_MENUS` via `/admin/settings` |
+| Switch Book Appointment to a native WhatsApp Flow form | Set up `WHATSAPP_FLOW_ID` + keypair env vars, then `settings.ENABLE_WHATSAPP_FLOW_BOOKING` via `/admin/settings` — see README's "WhatsApp Flows" section |
 | Rotate the WhatsApp access token | `WHATSAPP_ACCESS_TOKEN` env var + redeploy |
 | Change how long an admin stays logged in | Edit `SESSION_DURATION_MS` in `lib/auth/session.ts` (no UI/env var yet) |
 | Add a new language | Add its translations to `lib/whatsapp/localization.json`, add the code to `SUPPORTED_LANGUAGES` in `lib/patients.ts`, and add it to the `LANGUAGE_BY_CHOICE` map in `lib/whatsapp/patientFlow.ts` and the language menu in `lib/whatsapp/menus.ts` |

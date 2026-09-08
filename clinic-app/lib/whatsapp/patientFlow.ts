@@ -10,6 +10,9 @@ import {
   registerPatientForBooking
 } from "@/lib/patients";
 import { formatDateKey, formatTimeLabel, isValidISODate } from "@/lib/scheduling/dates";
+import { getBooleanSetting } from "@/lib/settings";
+import { getServerEnv } from "@/lib/env";
+import { sendWhatsAppFlow } from "./send";
 import {
   getDateMenuSpec,
   getDoctorSelectionMenuSpec,
@@ -81,8 +84,7 @@ export async function handlePatientMessage(
 
     case "MAIN_MENU": {
       if (normalizedMessage === "1") {
-        await saveSession(ctx.supabase, ctx.phone, { state: "BOOK_DOCTOR" });
-        return sendDoctorSelection(ctx);
+        return startBooking(ctx);
       }
 
       if (normalizedMessage === "2") {
@@ -318,6 +320,46 @@ async function sendDoctorSelection(ctx: FlowContext): Promise<boolean> {
   const doctors = await listDoctors(ctx.supabase, { activeOnly: true });
   await replyMenu(ctx, "Select a doctor:", getDoctorSelectionMenuSpec(doctors));
   return true;
+}
+
+/**
+ * Entry point for "Book Appointment" — sends the native WhatsApp Flow
+ * form (see lib/whatsapp/flowBooking.ts) when the clinic has one
+ * configured and turned on, otherwise falls back to the existing
+ * list/button conversation exactly as before. The session state is only
+ * set to BOOK_DOCTOR in the fallback case; the Flow path sets its own
+ * BOOK_VIA_FLOW state from inside the Flow endpoint's INIT handler once
+ * WhatsApp actually opens the form (which may never happen if the
+ * patient ignores the message), not here.
+ */
+async function startBooking(ctx: FlowContext): Promise<boolean> {
+  const flowBookingEnabled = await getBooleanSetting(
+    ctx.supabase,
+    "ENABLE_WHATSAPP_FLOW_BOOKING",
+    false
+  );
+
+  const env = getServerEnv();
+
+  if (flowBookingEnabled && env.WHATSAPP_FLOW_ID) {
+    try {
+      await sendWhatsAppFlow(ctx.phone, "Let's book your appointment.", {
+        flowId: env.WHATSAPP_FLOW_ID,
+        flowToken: ctx.phone,
+        ctaLabel: "Book Appointment"
+      });
+      return true;
+    } catch (error) {
+      console.error(
+        "Failed to send WhatsApp Flow booking message, falling back to list menu.",
+        error
+      );
+      // Falls through to the list/button flow below.
+    }
+  }
+
+  await saveSession(ctx.supabase, ctx.phone, { state: "BOOK_DOCTOR" });
+  return sendDoctorSelection(ctx);
 }
 
 async function offerSlotsForDate(

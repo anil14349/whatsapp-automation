@@ -9,6 +9,7 @@ import { tryBeginMessageProcessing } from "@/lib/whatsapp/dedup";
 import { logMessage } from "@/lib/whatsapp/log";
 import { processInboundMessage } from "@/lib/whatsapp/router";
 import type { FlowContext } from "@/lib/whatsapp/context";
+import { sendWhatsAppText } from "@/lib/whatsapp/send";
 
 /**
  * Ports doGet/doPost from src/Webhook.gs.
@@ -47,6 +48,7 @@ interface WhatsAppWebhookBody {
             type?: string;
             button_reply?: { id?: string };
             list_reply?: { id?: string };
+            nfm_reply?: { response_json?: string };
           };
           location?: { latitude?: number; longitude?: number };
         }>;
@@ -102,6 +104,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if ("latitude" in inbound && "longitude" in inbound) {
       logText = `[location shared: ${inbound.latitude},${inbound.longitude}]`;
+    } else if (inbound.type === "flow_reply" && "flowResponse" in inbound) {
+      logText = `[flow completed: ${JSON.stringify(inbound.flowResponse)}]`;
     } else {
       logText = inbound.text;
     }
@@ -134,6 +138,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       };
 
       await processInboundMessage(ctx, inbound.text);
+    } else if (inbound.type === "flow_reply" && "flowResponse" in inbound) {
+      // The Flow endpoint (app/api/whatsapp/flow/route.ts) already
+      // created the appointment server-side during the final screen's
+      // data_exchange, before WhatsApp ever sends this completion
+      // message here — so this is purely an acknowledgement, not a
+      // second booking attempt. Not yet verified against a live Flow
+      // (see README): if Meta's nfm_reply contract turns out to carry
+      // useful data worth surfacing, this is the place to read it from
+      // inbound.flowResponse.
+      await sendWhatsAppText(
+        senderPhone,
+        "Thanks! Your appointment request has been received."
+      );
     }
 
     return okResponse();

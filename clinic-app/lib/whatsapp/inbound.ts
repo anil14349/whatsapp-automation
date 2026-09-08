@@ -9,6 +9,7 @@ export type InboundMessage =
   | { type: "text"; text: string }
   | { type: "interactive"; text: string }
   | { type: "location"; text: ""; latitude: number; longitude: number }
+  | { type: "flow_reply"; text: ""; flowResponse: Record<string, unknown> }
   | { type: string; text: "" };
 
 interface RawWhatsAppMessage {
@@ -18,6 +19,7 @@ interface RawWhatsAppMessage {
     type?: string;
     button_reply?: { id?: string };
     list_reply?: { id?: string };
+    nfm_reply?: { response_json?: string };
   };
   location?: { latitude?: number; longitude?: number };
 }
@@ -46,6 +48,23 @@ export function extractInboundWhatsAppMessage(
         type: "interactive",
         text: String(interactive.list_reply.id ?? "").trim()
       };
+    }
+
+    // Sent when a patient completes (or exits) a WhatsApp Flow — see
+    // lib/whatsapp/flowBooking.ts. The booking itself is already done by
+    // the time this arrives (our Flow endpoint completed it server-side
+    // during the final screen's data_exchange), so this is informational
+    // only; the router acknowledges it without re-running the booking.
+    if (interactive.type === "nfm_reply" && interactive.nfm_reply?.response_json) {
+      try {
+        return {
+          type: "flow_reply",
+          text: "",
+          flowResponse: JSON.parse(interactive.nfm_reply.response_json) as Record<string, unknown>
+        };
+      } catch {
+        return { type: "flow_reply", text: "", flowResponse: {} };
+      }
     }
   }
 

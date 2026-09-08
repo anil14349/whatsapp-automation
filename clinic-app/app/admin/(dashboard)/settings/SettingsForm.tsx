@@ -151,6 +151,11 @@ export function SettingsForm({ settings }: { settings: Record<string, string> })
         <h2 className="text-sm font-semibold text-slate-900">Interactive menus &amp; logging</h2>
         <div className="mt-3 flex flex-col gap-3">
           <ToggleField name="ENABLE_INTERACTIVE_MENUS" label="Use tap-to-select WhatsApp menus (falls back to numbered text if off)" checked={isOn("ENABLE_INTERACTIVE_MENUS")} />
+          <ToggleField
+            name="ENABLE_WHATSAPP_FLOW_BOOKING"
+            label="Use a native WhatsApp Flow form for Book Appointment (needs WHATSAPP_FLOW_ID + a private key configured — see CONFIGURATION.md)"
+            checked={isOn("ENABLE_WHATSAPP_FLOW_BOOKING")}
+          />
           <ToggleField name="ENABLE_INBOUND_LOG" label="Log inbound messages" checked={isOn("ENABLE_INBOUND_LOG")} />
           <ToggleField name="ENABLE_DEBUG_LOG" label="Log outbound sends" checked={isOn("ENABLE_DEBUG_LOG")} />
         </div>
