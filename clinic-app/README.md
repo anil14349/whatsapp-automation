@@ -220,29 +220,52 @@ admin UI page for this table yet — it's a `select * from
 home_collection_requests` away if a clinic needs to see pending requests
 before that's built.
 
+Also working end-to-end: the **shareable appointment receipt card**
+(`lib/whatsapp/receipt.tsx`) — sent as a WhatsApp image message right
+after every successful booking. Ports
+`src/Model_Appointments.gs`'s `createAppointmentReceiptCardBlob` (which
+built a throwaway Google Slide and exported it as a PNG — the only
+image-rendering option available from Apps Script) using Next.js's
+built-in `next/og` (`ImageResponse` — Satori + resvg under the hood,
+already bundled with Next, **no new dependency, no native binary to
+compile**, so it works the same in a Vercel deploy or the Docker image).
+`lib/whatsapp/send.ts`'s new `uploadWhatsAppMedia`/`sendWhatsAppImage`
+port `uploadWhatsAppImageBlob` using Node's built-in `FormData`/`Blob`
+instead of `UrlFetchApp`'s payload object. No clinic logo on the card
+(the Apps Script version pulled one from a hardcoded Google Drive file
+id — no equivalent asset source exists here yet). A failure generating
+or sending the card is swallowed after logging — it must never undo or
+fail a booking that already succeeded, same as the original's
+try/catch. **This is the one place in the whole rewrite with an actual
+runtime test** (`lib/whatsapp/receipt.test.ts` calls the real image
+renderer and asserts on the PNG magic bytes) rather than typecheck-only
+verification, since image rendering is exactly the kind of thing that
+can silently produce garbage without ever throwing.
+
 **Deferred to a later increment** (each follows the same pattern
 established here, so this is scoping work, not redesign work):
 - Doctor leave-range add/cancel (see above — single-date leave works)
 - Admin UI page for home collection requests (the table/logic exist,
   see above — just no `/admin` page listing them yet)
+- A clinic logo on the receipt card (see above)
 - Doctor-selection and slot-list **pagination** (this version lists
   everything on one screen, capped at WhatsApp's 10-row list limit —
   fine for a handful of doctors, not yet built out for more; appointment
   lists *are* paginated, see above)
-- The shareable appointment receipt card (image generation)
 - Appointment reminders, after-hours auto-reply, auto-complete-past-
   appointments background jobs
 
 ### Verification
 
 `npm run typecheck`, `npm run build`, `npm run lint`, and `npm test`
-(93 tests as of the Home Sample Collection addition) all pass. As with
-stage 2, the parts with real branching logic and no required I/O are
-unit-tested (inbound message parsing, localization incl. round-tripping
-every language against the extracted dictionaries, menu spec builders,
-slot-selection id encoding/decoding, appointment-list pagination and
-choice classification, doctor-portal weekday/session/leave selection
-parsing, haversine distance).
+(95 tests as of the appointment receipt card addition) all pass. As
+with stage 2, the parts with real branching logic and no required I/O
+are unit-tested (inbound message parsing, localization incl.
+round-tripping every language against the extracted dictionaries, menu
+spec builders, slot-selection id encoding/decoding, appointment-list
+pagination and choice classification, doctor-portal weekday/session/leave
+selection parsing, haversine distance, and — the one actual runtime
+test in the whole rewrite — real PNG generation for the receipt card).
 The webhook route and the conversation flow handlers that orchestrate
 Supabase + WhatsApp Cloud API + Calendar calls are typechecked but not
 yet exercised against a live WhatsApp number/database — see "What's

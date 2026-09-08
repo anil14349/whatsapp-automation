@@ -23,7 +23,8 @@ import { getBooleanSetting, getHomeCollectionRadiusKm, getHospitalLocation } fro
 import { getServerEnv } from "@/lib/env";
 import { haversineDistanceKm } from "@/lib/scheduling/geo";
 import { createHomeCollectionRequest } from "@/lib/homeCollection";
-import { sendWhatsAppFlow } from "./send";
+import { sendWhatsAppFlow, sendWhatsAppImage, uploadWhatsAppMedia } from "./send";
+import { generateAppointmentReceiptImageBuffer, type AppointmentReceiptDetails } from "./receipt";
 import type { AppointmentListItem } from "./menus";
 import {
   buildAppointmentDetailMessage,
@@ -751,24 +752,61 @@ export async function handlePatientMessage(
       });
 
       const doctor = await getDoctorById(ctx.supabase, result.appointment.doctor_id);
-      const appointmentDateTime = new Date(
-        `${result.appointment.appointment_date}T${result.appointment.appointment_time}`
+      const appointmentDateTime = combineDateAndTime(
+        result.appointment.appointment_date,
+        result.appointment.appointment_time,
+        ctx.timezone
       );
+      const timeLabel = formatTimeLabel(appointmentDateTime, ctx.timezone);
 
       await reply(
         ctx,
         "Appointment confirmed!\n\n" +
           `Doctor: ${doctor?.name ?? ""}\n` +
           `Date: ${result.appointment.appointment_date}\n` +
-          `Time: ${formatTimeLabel(appointmentDateTime, ctx.timezone)}\n\n` +
+          `Time: ${timeLabel}\n\n` +
           "Thank you for choosing {{CLINIC_NAME}}."
       );
+
+      await sendAppointmentReceiptCard(ctx, {
+        clinicName: ctx.clinicName,
+        patientName: result.appointment.patient_name,
+        doctorName: doctor?.name ?? "Doctor",
+        specialization: doctor?.specialization ?? "",
+        date: result.appointment.appointment_date,
+        time: timeLabel,
+        appointmentCode: result.appointment.appointment_code
+      });
 
       return true;
     }
 
     default:
       return false;
+  }
+}
+
+/**
+ * Best-effort: generates and sends the shareable appointment receipt
+ * card after a successful booking (ports the try/catch around
+ * sendAppointmentReceiptCard in src/Controller_PatientFlow.gs) — a
+ * failure here must never undo or fail the booking that already
+ * succeeded, so every error is swallowed after logging.
+ */
+async function sendAppointmentReceiptCard(
+  ctx: FlowContext,
+  details: AppointmentReceiptDetails
+): Promise<void> {
+  try {
+    const imageBuffer = await generateAppointmentReceiptImageBuffer(details);
+    const mediaId = await uploadWhatsAppMedia(imageBuffer, "image/png");
+    await sendWhatsAppImage(
+      ctx.phone,
+      mediaId,
+      "Appointment confirmation — please forward this card to the patient if you booked on their behalf."
+    );
+  } catch (error) {
+    console.error("Appointment receipt card failed; booking remains successful.", error);
   }
 }
 

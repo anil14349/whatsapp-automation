@@ -150,6 +150,7 @@ change here is reflected on the very next slot lookup.
 | Password hash algorithm | `lib/auth/password.ts` | Node's built-in `scrypt`, 64-byte derived key |
 | Appointment-code / patient-code format | `lib/appointments.ts` / `lib/patients.ts` | `A` + 8 hex chars / `PAT-YYYYMMDD-NNNN` |
 | Supported languages | `lib/patients.ts` → `SUPPORTED_LANGUAGES` | EN, TE, HI, KA, TA, ML |
+| Appointment receipt card layout/colors, no clinic logo | `lib/whatsapp/receipt.tsx` | Green header, clinic name text only — no env var/setting for a logo image yet |
 
 ---
 
