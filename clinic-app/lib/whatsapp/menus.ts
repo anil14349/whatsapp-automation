@@ -213,24 +213,27 @@ export interface AppointmentListItem {
 // Leaves room for up to 3 extra control rows (Previous + Next + Main
 // Menu, all of which can appear together on a middle page) within
 // WhatsApp's 10-row list cap — 7 + 3 = 10.
-const APPOINTMENT_LIST_PAGE_SIZE = 7;
+export const APPOINTMENT_LIST_PAGE_SIZE = 7;
 
-export interface AppointmentListPage {
-  pageItems: AppointmentListItem[];
+export interface PaginatedListPage<T> {
+  pageItems: T[];
   hasPrev: boolean;
   hasNext: boolean;
 }
 
-/** Slices a full appointment list into one page — mirrors the doctor/slot pagination pattern (page size leaves room for a Prev/Next control row within WhatsApp's 10-row list cap). */
-export function paginateAppointmentList(
-  appointments: AppointmentListItem[],
-  page: number
-): AppointmentListPage {
+/**
+ * Slices a full list into one page — generic so both the patient-facing
+ * appointment list below and the doctor portal's own patient/session/leave
+ * lists (lib/whatsapp/doctorFlow.ts) share one pagination implementation.
+ * Page size leaves room for up to 3 control rows (Previous/Next/Main
+ * Menu) within WhatsApp's 10-row list cap.
+ */
+export function paginateAppointmentList<T>(items: T[], page: number): PaginatedListPage<T> {
   const start = page * APPOINTMENT_LIST_PAGE_SIZE;
   return {
-    pageItems: appointments.slice(start, start + APPOINTMENT_LIST_PAGE_SIZE),
+    pageItems: items.slice(start, start + APPOINTMENT_LIST_PAGE_SIZE),
     hasPrev: page > 0,
-    hasNext: start + APPOINTMENT_LIST_PAGE_SIZE < appointments.length
+    hasNext: start + APPOINTMENT_LIST_PAGE_SIZE < items.length
   };
 }
 

@@ -185,10 +185,27 @@ My Appointments. See `lib/whatsapp/patientFlow.ts`'s
 pagination/selection logic all three list screens (My Appointments,
 Cancel, Reschedule) reuse.
 
+Also working end-to-end: the **Doctor Portal** conversation flow
+(`lib/whatsapp/doctorFlow.ts`) — a WhatsApp number matching a doctor's
+`whatsapp_phone` (see `lib/doctors.ts`'s `findDoctorByWhatsAppPhone`,
+wired into `lib/whatsapp/router.ts`) gets a completely different menu:
+today's schedule, managing appointments (mark Completed/No-Show, cancel,
+reschedule any patient's booking — the same `cancelAppointment`/
+`rescheduleAppointment`/`markAppointmentStatus` functions the admin UI
+uses, with `authorizedDoctorId` instead of an admin session), managing
+weekly availability (add/remove sessions), and managing leave dates
+(add/cancel). Condensed from `src/Controller_DoctorFlow.gs`'s ~26 states
+to ~17 by using list menus (no 3-button pressure) instead of a tiered
+"More" sub-menu — **not** ported: the leave-*range* states (add/cancel a
+leave spanning multiple days in one step — `addDoctorLeaveRange` already
+exists in `lib/doctors.ts` for this, just not wired into the WhatsApp
+flow yet; single-date leave is fully working). A cancel/reschedule
+initiated by the doctor sends the patient a best-effort notification
+text, localized to the patient's own saved language.
+
 **Deferred to a later increment** (each follows the same pattern
 established here, so this is scoping work, not redesign work):
-- Doctor conversation flow entirely (a doctor messaging in gets a
-  placeholder reply, not the Doctor Portal)
+- Doctor leave-range add/cancel (see above — single-date leave works)
 - Home blood-sample-collection flow
 - Doctor-selection and slot-list **pagination** (this version lists
   everything on one screen, capped at WhatsApp's 10-row list limit —
@@ -201,12 +218,13 @@ established here, so this is scoping work, not redesign work):
 ### Verification
 
 `npm run typecheck`, `npm run build`, `npm run lint`, and `npm test`
-(81 tests as of the My Appointments/cancel/reschedule addition) all
-pass. As with stage 2, the parts with real branching logic and no
-required I/O are unit-tested (inbound message parsing, localization
-incl. round-tripping every language against the extracted dictionaries,
-menu spec builders, slot-selection id encoding/decoding, appointment-list
-pagination and choice classification).
+(90 tests as of the Doctor Portal addition) all pass. As with stage 2,
+the parts with real branching logic and no required I/O are
+unit-tested (inbound message parsing, localization incl. round-tripping
+every language against the extracted dictionaries, menu spec builders,
+slot-selection id encoding/decoding, appointment-list pagination and
+choice classification, doctor-portal weekday/session/leave selection
+parsing).
 The webhook route and the conversation flow handlers that orchestrate
 Supabase + WhatsApp Cloud API + Calendar calls are typechecked but not
 yet exercised against a live WhatsApp number/database — see "What's

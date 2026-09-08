@@ -129,7 +129,7 @@ change wires up one of these settings.
 | `name`, `specialization`, `clinic_name` | Display text shown to patients when picking a doctor | |
 | `appointment_duration_minutes` | Slot length used by the availability engine (`lib/scheduling/availability.ts`) | Changing it only affects future slot computations, not existing booked appointments |
 | `calendar_id` | Which Google Calendar to sync bookings to | **Leave blank and the doctor gets zero available slots at all** — `getAvailableSlotsForDoctor()` returns `[]` immediately if `calendar_id` is empty (see `lib/scheduling/slots.ts`). This is a real gotcha: a doctor added without a Calendar ID looks "available" in the UI but can never actually be booked via WhatsApp until one is set |
-| `whatsapp_phone` | Which inbound number routes to this doctor's flow | Not yet consumed — the doctor conversation flow isn't ported (see README stage 3 deferred list); currently has no effect |
+| `whatsapp_phone` | Which inbound number routes to the Doctor Portal instead of the patient flow | Consumed by `findDoctorByWhatsAppPhone` (`lib/doctors.ts`), checked on every inbound message via `lib/whatsapp/router.ts`. Must match the number the doctor actually messages from, `active` must be `true` |
 | `active` | Whether the doctor appears in patient-facing doctor selection | `listDoctors(supabase, { activeOnly: true })` filters on this |
 
 ## Per-doctor availability & leaves

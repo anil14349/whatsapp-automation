@@ -225,6 +225,41 @@ export async function bookAppointment(
   throw new Error("Unreachable: booking loop exited without returning.");
 }
 
+/**
+ * Doctor-only: marks a Confirmed appointment Completed or No-Show.
+ * Shared by the admin UI (app/admin/(dashboard)/appointments/actions.ts)
+ * and the WhatsApp Doctor Portal (lib/whatsapp/doctorFlow.ts) — one
+ * status-transition rule, not two copies that could drift.
+ */
+export async function markAppointmentStatus(
+  supabase: SupabaseClient<Database>,
+  appointmentId: string,
+  doctorId: string,
+  status: Extract<AppointmentStatus, "Completed" | "No-Show">
+): Promise<AppointmentResult> {
+  const { data, error } = await supabase
+    .from("appointments")
+    .update({ status })
+    .eq("id", appointmentId)
+    .eq("doctor_id", doctorId) // fail-closed ownership, same pattern as cancelAppointment
+    .in("status", ["Confirmed"])
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to update appointment status: ${error.message}`);
+  }
+
+  if (!data) {
+    return {
+      success: false,
+      message: "Appointment not found, not yours, or no longer Confirmed."
+    };
+  }
+
+  return { success: true, message: `Marked as ${status}.`, appointment: data };
+}
+
 export interface CancelAppointmentOptions {
   /** Set when a doctor is cancelling on a patient's behalf via the doctor portal. */
   authorizedDoctorId?: string;
