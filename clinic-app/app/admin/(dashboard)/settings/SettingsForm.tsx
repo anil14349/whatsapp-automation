@@ -146,6 +146,13 @@ export function SettingsForm({ settings }: { settings: Record<string, string> })
 
       <section>
         <h2 className="text-sm font-semibold text-slate-900">Home sample collection</h2>
+        <div className="mt-3 flex flex-col gap-3">
+          <ToggleField
+            name="ENABLE_HOME_COLLECTION"
+            label="Offer home sample collection to patients (turn off if this clinic doesn't do diagnostics/lab collection)"
+            checked={isOn("ENABLE_HOME_COLLECTION")}
+          />
+        </div>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <TextField name="HOSPITAL_LATITUDE" label="Clinic latitude" value={value("HOSPITAL_LATITUDE")} />
           <TextField name="HOSPITAL_LONGITUDE" label="Clinic longitude" value={value("HOSPITAL_LONGITUDE")} />

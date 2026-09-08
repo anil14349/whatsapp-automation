@@ -114,7 +114,8 @@ what each role can do and where it's enforced.
 | `CLINIC_OPEN_TIME` / `CLINIC_CLOSE_TIME` | `09:00` / `18:00` | Clinic hours for the above | ✅ Active (same as above) |
 | `CLINIC_WORKING_DAYS` | `Mon,Tue,Wed,Thu,Fri,Sat` | Days the after-hours gate treats as open | ✅ Active (same as above) |
 | `AFTER_HOURS_MESSAGE` | *(empty)* | Custom closed-message override | ✅ Active (same as above) |
-| `HOSPITAL_LATITUDE` / `HOSPITAL_LONGITUDE` | *(empty)* | Clinic location for the home-collection radius check | ✅ Active — `getHospitalLocation` (`lib/settings.ts`), used by `lib/whatsapp/patientFlow.ts`'s Home Sample Collection flow. Leave either blank and the flow tells patients it isn't set up yet, rather than silently treating (0, 0) as the clinic's location |
+| `ENABLE_HOME_COLLECTION` | `TRUE` | Whether to offer Home Sample Collection at all | ✅ Active — hides the "Home Sample Collection" option from the WhatsApp More menu entirely (`getPatientMoreMenuSpec` in `lib/whatsapp/menus.ts`) and from the admin sidebar (`/admin/home-collection`) when off. For a hospital that doesn't do diagnostics/lab collection — turn this off instead of just leaving `HOSPITAL_LATITUDE`/`LONGITUDE` blank, which only bounces the patient back *after* they've already tapped the option |
+| `HOSPITAL_LATITUDE` / `HOSPITAL_LONGITUDE` | *(empty)* | Clinic location for the home-collection radius check | ✅ Active — `getHospitalLocation` (`lib/settings.ts`), used by `lib/whatsapp/patientFlow.ts`'s Home Sample Collection flow. Leave either blank and the flow tells patients it isn't set up yet, rather than silently treating (0, 0) as the clinic's location. Only relevant if `ENABLE_HOME_COLLECTION` is on |
 | `HOME_COLLECTION_RADIUS_KM` | `5` | Service radius for home collection | ✅ Active — `getHomeCollectionRadiusKm` (`lib/settings.ts`) |
 
 **Every setting above is now active** — `DORMANT_SETTING_KEYS` in
@@ -189,6 +190,7 @@ change here is reflected on the very next slot lookup.
 | Turn on the after-hours auto-reply | `settings.ENABLE_AFTER_HOURS_REPLY` + `CLINIC_OPEN_TIME`/`CLINIC_CLOSE_TIME`/`CLINIC_WORKING_DAYS` via `/admin/settings` — no scheduled job needed, this one runs per-message |
 | Add a logo to the appointment receipt card | `settings.CLINIC_LOGO_URL` via `/admin/settings` — any publicly reachable image URL |
 | See/manage home sample collection requests | `/admin/home-collection` |
+| Turn off diagnostics/home sample collection entirely for a hospital that doesn't offer it | `settings.ENABLE_HOME_COLLECTION` via `/admin/settings` |
 | Rotate the WhatsApp access token | `WHATSAPP_ACCESS_TOKEN` env var + redeploy |
 | Change how long an admin stays logged in | Edit `SESSION_DURATION_MS` in `lib/auth/session.ts` (no UI/env var yet) |
 | Add a new language | Add its translations to `lib/whatsapp/localization.json`, add the code to `SUPPORTED_LANGUAGES` in `lib/patients.ts`, and add it to the `LANGUAGE_BY_CHOICE` map in `lib/whatsapp/patientFlow.ts` and the language menu in `lib/whatsapp/menus.ts` |

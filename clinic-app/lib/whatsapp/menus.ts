@@ -206,20 +206,34 @@ export function getYesNoConfirmSpec(): MenuReply {
 }
 
 /** "More" sub-menu — options that don't fit the 3-button main menu. */
-export function getPatientMoreMenuSpec(): MenuReply {
+/**
+ * `homeCollectionEnabled` gates the "Home Sample Collection" row/line —
+ * off for a hospital that doesn't offer diagnostics/lab collection at
+ * all (see ENABLE_HOME_COLLECTION in lib/settings.ts), so the option
+ * simply isn't there rather than being shown and then bouncing the
+ * patient back after they tap it. It's always the last option before
+ * Main Menu, so dropping it never renumbers 1/2/3/0.
+ */
+export function getPatientMoreMenuSpec(homeCollectionEnabled: boolean): MenuReply {
+  const fallbackLines = [
+    "1️⃣ Cancel Appointment",
+    "2️⃣ Reschedule Appointment",
+    "3️⃣ Change Language",
+    ...(homeCollectionEnabled ? ["4️⃣ Home Sample Collection"] : []),
+    "0️⃣ Main Menu"
+  ];
+
+  const rows: MenuRow[] = [
+    { id: "cancel_appointment", title: "Cancel Appointment" },
+    { id: "reschedule_appointment", title: "Reschedule Appointment" },
+    { id: "change_language", title: "Change Language" },
+    ...(homeCollectionEnabled ? [{ id: "home_collection", title: "Home Sample Collection" }] : []),
+    { id: "nav_main_menu", title: "Main Menu" }
+  ];
+
   return {
-    fallbackText:
-      "1️⃣ Cancel Appointment\n2️⃣ Reschedule Appointment\n3️⃣ Change Language\n4️⃣ Home Sample Collection\n0️⃣ Main Menu",
-    interactive: buildInteractiveListSpec(
-      [
-        { id: "cancel_appointment", title: "Cancel Appointment" },
-        { id: "reschedule_appointment", title: "Reschedule Appointment" },
-        { id: "change_language", title: "Change Language" },
-        { id: "home_collection", title: "Home Sample Collection" },
-        { id: "nav_main_menu", title: "Main Menu" }
-      ],
-      "Select option"
-    )
+    fallbackText: fallbackLines.join("\n"),
+    interactive: buildInteractiveListSpec(rows, "Select option")
   };
 }
 

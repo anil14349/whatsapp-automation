@@ -225,6 +225,17 @@ manage these at **`/admin/home-collection`** — filterable by status,
 with a per-row status dropdown (Requested → Contacted → Completed, or
 Cancelled) via `updateHomeCollectionStatusAction`.
 
+**Optional per hospital** — `ENABLE_HOME_COLLECTION` (`/admin/settings`,
+default on) hides the "Home Sample Collection" option from the WhatsApp
+More menu entirely, and hides the `/admin/home-collection` sidebar link,
+for a hospital that doesn't do diagnostics/lab collection at all. This
+is distinct from (and checked *before*) the existing
+`HOSPITAL_LATITUDE`/`LONGITUDE` gate — that one only fires *after* a
+patient has already tapped the option; this one means the option isn't
+offered in the first place. The admin page itself stays reachable
+directly even when off, so historical requests are never hidden, just
+the entry points to create new ones.
+
 Also working end-to-end: the **shareable appointment receipt card**
 (`lib/whatsapp/receipt.tsx`) — sent as a WhatsApp image message right
 after every successful booking. Ports
@@ -283,7 +294,7 @@ this entire project, not any one feature).
 ### Verification
 
 `npm run typecheck`, `npm run build`, `npm run lint`, and `npm test`
-(112 tests as of the receipt-logo addition) all pass. As
+(114 tests as of making Home Sample Collection optional per hospital) all pass. As
 with stage 2, the parts with real branching logic and no required I/O
 are unit-tested (inbound message parsing, localization incl.
 round-tripping every language against the extracted dictionaries, menu

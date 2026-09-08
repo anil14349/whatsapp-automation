@@ -5,6 +5,7 @@ import {
   classifyAppointmentListChoice,
   getAppointmentListMenuSpec,
   getDoctorSelectionMenuSpec,
+  getPatientMoreMenuSpec,
   getSlotSelectionMenuSpec,
   paginateAppointmentList,
   parseSlotSelectionId,
@@ -160,6 +161,30 @@ function makeDoctors(count: number): Doctor[] {
     specialization: "General Medicine"
   })) as Doctor[];
 }
+
+describe("getPatientMoreMenuSpec", () => {
+  it("includes Home Sample Collection when enabled", () => {
+    const menu = getPatientMoreMenuSpec(true);
+    const rows = menu.interactive && "sections" in menu.interactive ? menu.interactive.sections[0]?.rows : [];
+    const ids = rows?.map((r) => r.id) ?? [];
+
+    expect(ids).toContain("home_collection");
+    expect(menu.fallbackText).toContain("Home Sample Collection");
+  });
+
+  it("omits Home Sample Collection when disabled, without renumbering the other options", () => {
+    const menu = getPatientMoreMenuSpec(false);
+    const rows = menu.interactive && "sections" in menu.interactive ? menu.interactive.sections[0]?.rows : [];
+    const ids = rows?.map((r) => r.id) ?? [];
+
+    expect(ids).not.toContain("home_collection");
+    expect(menu.fallbackText).not.toContain("Home Sample Collection");
+    expect(menu.fallbackText).toContain("1️⃣ Cancel Appointment");
+    expect(menu.fallbackText).toContain("2️⃣ Reschedule Appointment");
+    expect(menu.fallbackText).toContain("3️⃣ Change Language");
+    expect(menu.fallbackText).toContain("0️⃣ Main Menu");
+  });
+});
 
 describe("getDoctorSelectionMenuSpec pagination", () => {
   it("fits everything on one page with no controls when under the page size", () => {

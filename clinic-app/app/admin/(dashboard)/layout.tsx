@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAdminSession } from "@/lib/auth/session";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { getClinicNameSafe } from "@/lib/settings";
+import { getBooleanSetting, getClinicNameSafe } from "@/lib/settings";
 import type { AdminRole } from "@/lib/supabase/database.types";
 import { LogoutButton } from "./LogoutButton";
 
@@ -34,11 +34,29 @@ export default async function DashboardLayout({
     redirect("/admin/login");
   }
 
-  const visibleNavItems = NAV_ITEMS.filter((item) =>
-    (item.roles as readonly AdminRole[]).includes(session.role)
-  );
+  const supabase = getSupabaseServerClient();
 
-  const clinicName = await getClinicNameSafe(getSupabaseServerClient);
+  const [clinicName, homeCollectionEnabled] = await Promise.all([
+    getClinicNameSafe(getSupabaseServerClient),
+    getBooleanSetting(supabase, "ENABLE_HOME_COLLECTION", true).catch(() => true)
+  ]);
+
+  // The /admin/home-collection *page* stays reachable directly even when
+  // this is off (a hospital that turned diagnostics off after having
+  // some historical requests can still review them) — only the sidebar
+  // link disappears, matching how the WhatsApp menu entry disappears
+  // for patients (see lib/whatsapp/patientFlow.ts's sendMoreMenu).
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (!(item.roles as readonly AdminRole[]).includes(session.role)) {
+      return false;
+    }
+
+    if (item.href === "/admin/home-collection" && !homeCollectionEnabled) {
+      return false;
+    }
+
+    return true;
+  });
 
   return (
     <div className="flex min-h-screen bg-slate-50">

@@ -123,7 +123,7 @@ export async function handlePatientMessage(
         normalizedMessage === "3"
       ) {
         await saveSession(ctx.supabase, ctx.phone, { state: "PATIENT_MAIN_MORE" });
-        await replyMenu(ctx, "More options:", getPatientMoreMenuSpec());
+        await sendMoreMenu(ctx, "More options:");
         return true;
       }
 
@@ -157,14 +157,26 @@ export async function handlePatientMessage(
       }
 
       if (normalizedMessage === "home_collection" || normalizedMessage === "4") {
-        return startHomeCollectionFlow(ctx);
+        const homeCollectionEnabled = await getBooleanSetting(
+          ctx.supabase,
+          "ENABLE_HOME_COLLECTION",
+          true
+        );
+
+        if (homeCollectionEnabled) {
+          return startHomeCollectionFlow(ctx);
+        }
+
+        // Falls through to "Invalid option" below — same as any other
+        // unrecognized input, since this option isn't offered at all
+        // when disabled (see sendMoreMenu).
       }
 
       if (normalizedMessage === "nav_main_menu" || normalizedMessage === "0") {
         return returnToMainMenu(ctx);
       }
 
-      await replyMenu(ctx, "Invalid option.", getPatientMoreMenuSpec());
+      await sendMoreMenu(ctx, "Invalid option.");
       return true;
     }
 
@@ -1040,11 +1052,28 @@ async function startAppointmentListFlow(
 /**
  * Entry point for "Home Sample Collection" from the More menu — ports
  * beginWhatsAppHomeCollectionFlow in src/Controller_HomeCollection.gs.
- * Bails immediately (before asking for a location at all) if the clinic
- * hasn't configured HOSPITAL_LATITUDE/LONGITUDE yet, same as the
- * original.
+ * Bails immediately (before asking for a location at all) if the
+ * hospital doesn't offer it at all (ENABLE_HOME_COLLECTION) or hasn't
+ * configured HOSPITAL_LATITUDE/LONGITUDE yet, same as the original.
+ * The ENABLE_HOME_COLLECTION check here is defense in depth — the menu
+ * shouldn't offer this option at all when disabled (see sendMoreMenu),
+ * but a stale cached menu or a typed "4" could still reach this
+ * function directly.
  */
 async function startHomeCollectionFlow(ctx: FlowContext): Promise<boolean> {
+  const homeCollectionEnabled = await getBooleanSetting(
+    ctx.supabase,
+    "ENABLE_HOME_COLLECTION",
+    true
+  );
+
+  if (!homeCollectionEnabled) {
+    return returnToMainMenuWithMessage(
+      ctx,
+      "Home sample collection isn't offered by this clinic."
+    );
+  }
+
   const hospital = await getHospitalLocation(ctx.supabase);
 
   if (!hospital) {
@@ -1076,6 +1105,17 @@ async function returnToMainMenuWithMessage(ctx: FlowContext, message: string): P
   await saveSession(ctx.supabase, ctx.phone, { state: "MAIN_MENU" });
   await replyMenu(ctx, message, getMainMenuSpec());
   return true;
+}
+
+/** Sends the "More" menu, with the Home Sample Collection option present or absent per ENABLE_HOME_COLLECTION — the single place that decides whether patients see it at all. */
+async function sendMoreMenu(ctx: FlowContext, bodyText: string): Promise<void> {
+  const homeCollectionEnabled = await getBooleanSetting(
+    ctx.supabase,
+    "ENABLE_HOME_COLLECTION",
+    true
+  );
+
+  await replyMenu(ctx, bodyText, getPatientMoreMenuSpec(homeCollectionEnabled));
 }
 
 /**
