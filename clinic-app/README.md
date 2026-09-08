@@ -72,10 +72,17 @@ revisiting periodically (`npm audit`) as patched versions land upstream.
    and the [Supabase CLI](https://supabase.com/docs/guides/cli)):
    ```bash
    npm run db:start   # starts local Postgres + Studio via Docker
-   npm run db:reset   # applies every migration in supabase/migrations/ fresh
+   npm run db:reset   # applies every migration, then supabase/seed.sql
    ```
    `db:start` prints a local `anon`/`service_role` key pair and API URL —
-   put those into `.env.local`.
+   put those into `.env.local`. `db:reset` also runs
+   [`supabase/seed.sql`](supabase/seed.sql) automatically (standard
+   Supabase CLI behavior) — sample doctors, patients, and appointments
+   in a spread of statuses, so `/admin` isn't empty on first login. Seed
+   data is local-dev/demo only — never run `db:reset` against a real
+   clinic's database. It doesn't create an admin login; run
+   `npm run create-admin` (see "Receptionist/admin web UI" below) for
+   that regardless.
 
 4. **Google Calendar service account** (only needed once you get to
    booking flows that touch Calendar): create a Google Cloud service
@@ -249,24 +256,26 @@ not per-message) and `lib/afterHours.ts` for the after-hours gate (runs
 inline in `lib/whatsapp/router.ts`, before every greeting/patient
 message dispatch — no scheduling needed for that one).
 
+Also now working: **doctor-selection pagination** —
+`getDoctorSelectionMenuSpec` (`lib/whatsapp/menus.ts`) pages past
+WhatsApp's 10-row list limit exactly like the appointment lists already
+did, using the `list_page` session column and `doctor_prev`/`doctor_next`
+ids (matching the Apps Script version's own naming) — and **log
+retention/truncation**, via `lib/logCleanup.ts` and the daily
+`/api/cron/log-cleanup` job. `DORMANT_SETTING_KEYS` in `lib/settings.ts`
+is now empty — every setting seeded so far has real code behind it.
+
 **Deferred to a later increment** (each follows the same pattern
 established here, so this is scoping work, not redesign work):
 - Doctor leave-range add/cancel (see above — single-date leave works)
 - Admin UI page for home collection requests (the table/logic exist,
   see above — just no `/admin` page listing them yet)
 - A clinic logo on the receipt card (see above)
-- Doctor-selection and slot-list **pagination** (this version lists
-  everything on one screen, capped at WhatsApp's 10-row list limit —
-  fine for a handful of doctors, not yet built out for more; appointment
-  lists *are* paginated, see above)
-- Log retention/truncation (`LOG_RETENTION`/`LOG_MAX_ROWS`/
-  `LOG_MESSAGE_MAX_CHARS`/`ENABLE_INBOUND_LOG`/`ENABLE_DEBUG_LOG` — the
-  only settings still flagged dormant in `/admin/settings`)
 
 ### Verification
 
 `npm run typecheck`, `npm run build`, `npm run lint`, and `npm test`
-(107 tests as of the scheduled-jobs addition) all pass. As
+(109 tests as of doctor-selection pagination + log cleanup) all pass. As
 with stage 2, the parts with real branching logic and no required I/O
 are unit-tested (inbound message parsing, localization incl.
 round-tripping every language against the extracted dictionaries, menu
@@ -491,18 +500,21 @@ periodically — they're plain HTTPS `GET` endpoints, not self-scheduling:
 |---|---|---|---|
 | Appointment reminders | `/api/cron/reminders` | Every 30 minutes | `lib/reminders.ts` |
 | Auto-complete past appointments | `/api/cron/auto-complete` | Hourly | `lib/autoComplete.ts` |
+| `message_log` retention cleanup | `/api/cron/log-cleanup` | Daily | `lib/logCleanup.ts` |
 
-Both are protected by `CRON_SECRET` (see `.env.example`) — every request
-must send `Authorization: Bearer <CRON_SECRET>`, checked with a
+All three are protected by `CRON_SECRET` (see `.env.example`) — every
+request must send `Authorization: Bearer <CRON_SECRET>`, checked with a
 constant-time comparison (`lib/cronAuth.ts`), same fail-closed pattern
-as `WHATSAPP_WEBHOOK_POST_TOKEN`. **Both are also still gated by their
-own setting** (`ENABLE_APPOINTMENT_REMINDERS`, `AUTO_COMPLETE_PAST_APPOINTMENTS`
-in `/admin/settings`) — the schedule below only controls how often the
-endpoint is *checked*, not whether it does anything.
+as `WHATSAPP_WEBHOOK_POST_TOKEN`. **Reminders/auto-complete are also
+still gated by their own setting** (`ENABLE_APPOINTMENT_REMINDERS`,
+`AUTO_COMPLETE_PAST_APPOINTMENTS` in `/admin/settings`) — the schedule
+below only controls how often the endpoint is *checked*, not whether it
+does anything. Log cleanup has no on/off setting of its own — `LOG_RETENTION`/
+`LOG_MAX_ROWS` control how aggressive it is, not whether it runs at all.
 
 ### Option A — Vercel Cron (if deploying to Vercel)
 
-[`vercel.json`](vercel.json) already declares both schedules. Vercel
+[`vercel.json`](vercel.json) already declares all three schedules. Vercel
 sends the `Authorization` header automatically as long as `CRON_SECRET`
 is set in the project's environment variables — nothing else to
 configure. **Note**: Vercel's free (Hobby) tier historically limits
@@ -513,7 +525,7 @@ number, since it's the kind of detail that changes.
 ### Option B — any external scheduler (Docker / self-hosted deployments)
 
 `vercel.json` has no effect outside a Vercel deployment. Point any
-scheduler capable of an HTTPS call + a custom header at the same two
+scheduler capable of an HTTPS call + a custom header at the same three
 URLs — a `crontab` entry, a GitHub Actions scheduled workflow, an
 external uptime/cron service (cron-job.org, etc.):
 
@@ -521,6 +533,7 @@ external uptime/cron service (cron-job.org, etc.):
 # Example crontab entries (adjust the host):
 */30 * * * * curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-app.example.com/api/cron/reminders
 0 * * * *    curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-app.example.com/api/cron/auto-complete
+0 3 * * *    curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-app.example.com/api/cron/log-cleanup
 ```
 
 **Verification status**: not exercised against a live scheduler from

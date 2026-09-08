@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
+import { getBooleanSetting, getNumberSetting } from "@/lib/settings";
 
 /**
  * Ports appendWhatsAppLogEntry — writes to the consolidated message_log
@@ -9,6 +10,14 @@ import type { Database } from "@/lib/supabase/database.types";
  * "has this exact reminder already been sent" check the Apps Script
  * version did against this same sheet, just via a real indexed query
  * (message_log_reminder_dedup_idx) instead of scanning every row.
+ *
+ * ENABLE_INBOUND_LOG/ENABLE_DEBUG_LOG only gate IN/OUT rows — ERROR and
+ * REMINDER rows are always written regardless, same as the Apps Script
+ * version: an error matters no matter what, and the reminder ledger is
+ * functional dedup state the scheduler depends on, not optional
+ * diagnostics (see hasReminderBeenSent below and its doc comment on
+ * lib/reminders.ts). LOG_MESSAGE_MAX_CHARS truncates every row's
+ * `message` regardless of direction.
  */
 export async function logMessage(
   supabase: SupabaseClient<Database>,
@@ -23,18 +32,35 @@ export async function logMessage(
     hoursBefore?: number;
   }
 ): Promise<void> {
-  const { error } = await supabase.from("message_log").insert({
-    direction: entry.direction,
-    phone: entry.phone ?? "",
-    patient_name: entry.patientName ?? "",
-    status: entry.status ?? "",
-    message: entry.message ?? "",
-    phone_number_id: entry.phoneNumberId ?? "",
-    appointment_id: entry.appointmentId ?? null,
-    hours_before: entry.hoursBefore ?? null
-  });
+  try {
+    if (entry.direction === "IN" && !(await getBooleanSetting(supabase, "ENABLE_INBOUND_LOG", true))) {
+      return;
+    }
 
-  if (error) {
+    if (entry.direction === "OUT" && !(await getBooleanSetting(supabase, "ENABLE_DEBUG_LOG", true))) {
+      return;
+    }
+
+    const maxChars = await getNumberSetting(supabase, "LOG_MESSAGE_MAX_CHARS", 500);
+    const message = entry.message ?? "";
+    const truncatedMessage =
+      maxChars > 0 && message.length > maxChars ? `${message.slice(0, maxChars)}…` : message;
+
+    const { error } = await supabase.from("message_log").insert({
+      direction: entry.direction,
+      phone: entry.phone ?? "",
+      patient_name: entry.patientName ?? "",
+      status: entry.status ?? "",
+      message: truncatedMessage,
+      phone_number_id: entry.phoneNumberId ?? "",
+      appointment_id: entry.appointmentId ?? null,
+      hours_before: entry.hoursBefore ?? null
+    });
+
+    if (error) {
+      throw error;
+    }
+  } catch (error) {
     // Logging failures shouldn't break the actual webhook response —
     // matches the Apps Script version's try/catch-and-continue around
     // its own debug logging.

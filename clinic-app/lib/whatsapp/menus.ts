@@ -107,23 +107,42 @@ export function getDateMenuSpec(): MenuReply {
   };
 }
 
-export function getDoctorSelectionMenuSpec(doctors: Doctor[]): MenuReply {
+/**
+ * Paginated (page size matches APPOINTMENT_LIST_PAGE_SIZE, reusing
+ * paginateAppointmentList — same 10-row-cap headroom reasoning, just
+ * doctor_prev/doctor_next instead of appt_prev/appt_next, matching the
+ * Apps Script version's doctor_prev/doctor_next ids). The plain-text
+ * fallback always lists every doctor regardless of page — a numbered
+ * text list has no WhatsApp row-count limit to page around, so there's
+ * no reason to make a non-interactive-menu user page through it too;
+ * only the tappable list needs pagination.
+ */
+export function getDoctorSelectionMenuSpec(doctors: Doctor[], page = 0): MenuReply {
   const fallbackLines = doctors.map(
     (doctor, index) =>
       `${index + 1}. ${doctor.name}${doctor.specialization ? ` — ${doctor.specialization}` : ""}`
   );
 
+  const { pageItems, hasPrev, hasNext } = paginateAppointmentList(doctors, page);
+
+  const rows: MenuRow[] = pageItems.map((doctor) => ({
+    id: `doctor_select_${doctor.doctor_code}`,
+    title: doctor.name,
+    description: doctor.specialization || doctor.clinic_name
+  }));
+
+  if (hasPrev) {
+    rows.push({ id: "doctor_prev", title: "⬅️ Previous" });
+  }
+
+  if (hasNext) {
+    rows.push({ id: "doctor_next", title: "➡️ Next" });
+  }
+
   return {
     fallbackText:
       fallbackLines.join("\n") + "\n\nReply with the doctor's number.",
-    interactive: buildInteractiveListSpec(
-      doctors.map((doctor, index) => ({
-        id: `doctor_select_${doctor.doctor_code}`,
-        title: doctor.name,
-        description: doctor.specialization || doctor.clinic_name
-      })),
-      "Select doctor"
-    )
+    interactive: buildInteractiveListSpec(rows, "Select doctor")
   };
 }
 

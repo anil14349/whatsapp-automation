@@ -97,14 +97,14 @@ what each role can do and where it's enforced.
 
 | Key | Default | Controls | **Wired up?** |
 |---|---|---|---|
-| `CLINIC_NAME` | `ABC Clinic` | Substituted for every `{{CLINIC_NAME}}` placeholder in bot messages | ✅ Active |
+| `CLINIC_NAME` | `ABC Clinic` | Substituted for every `{{CLINIC_NAME}}` placeholder in bot messages, and used for the browser tab title, the landing page (`/`), and both admin headers (`/admin/login`, the dashboard sidebar) via `getClinicNameSafe` (`lib/settings.ts`) | ✅ Active |
 | `ENABLE_INTERACTIVE_MENUS` | `TRUE` | Tap-to-select WhatsApp menus vs. falling back to plain numbered text | ✅ Active |
 | `ENABLE_WHATSAPP_FLOW_BOOKING` | `FALSE` | Use a native WhatsApp Flow form for Book Appointment instead of the list/button conversation | ✅ Active, but requires `WHATSAPP_FLOW_ID` + a keypair configured (see env vars above) — falls back to the list/button flow if either is missing, even when this is `TRUE` |
-| `LOG_RETENTION` | `month` | How long `message_log` rows are kept | ⛔ Not yet wired — no cleanup job exists; `message_log` currently grows unbounded |
-| `LOG_MAX_ROWS` | `5000` | Row cap after retention cleanup | ⛔ Not yet wired (depends on the cleanup job above) |
-| `LOG_MESSAGE_MAX_CHARS` | `500` | Truncate long logged message text | ⛔ Not yet wired — `lib/whatsapp/log.ts` logs the full message text untruncated |
-| `ENABLE_INBOUND_LOG` | `TRUE` | Whether to log inbound messages at all | ⛔ Not yet wired — the webhook logs unconditionally regardless of this toggle |
-| `ENABLE_DEBUG_LOG` | `TRUE` | Whether to log outbound sends | ⛔ Not yet wired — no outbound logging exists yet at all (inbound only) |
+| `LOG_RETENTION` | `month` | How long `message_log` rows are kept | ✅ Active — `lib/logCleanup.ts`, invoked by the `/api/cron/log-cleanup` scheduled job (daily). REMINDER rows are exempt (they're the reminder scheduler's dedup ledger, not routine log volume) |
+| `LOG_MAX_ROWS` | `5000` | Row cap after retention cleanup | ✅ Active (same as above) |
+| `LOG_MESSAGE_MAX_CHARS` | `500` | Truncate long logged message text | ✅ Active — `lib/whatsapp/log.ts`'s `logMessage()` truncates every row regardless of direction |
+| `ENABLE_INBOUND_LOG` | `TRUE` | Whether to log inbound messages at all | ✅ Active — checked inside `logMessage()` |
+| `ENABLE_DEBUG_LOG` | `TRUE` | Whether to log outbound sends | ✅ Active — `lib/whatsapp/context.ts`'s `reply`/`replyMenu` now log every outbound send (direction `OUT`), checked inside `logMessage()` |
 | `ENABLE_APPOINTMENT_REMINDERS` | `TRUE` | Send WhatsApp reminders before appointments | ✅ Active — `lib/reminders.ts`, invoked by the `/api/cron/reminders` scheduled job. Needs `CRON_SECRET` configured and the job actually scheduled (Vercel Cron via `vercel.json`, or any external scheduler hitting that URL) to ever run — see README's "Scheduled jobs" section |
 | `REMINDER_HOURS_BEFORE` | `24` | Comma-separated lead times | ✅ Active (same as above) |
 | `REMINDER_WINDOW_MINUTES` | `45` | Send window for the reminder job | ✅ Active (same as above) |
@@ -117,19 +117,16 @@ what each role can do and where it's enforced.
 | `HOSPITAL_LATITUDE` / `HOSPITAL_LONGITUDE` | *(empty)* | Clinic location for the home-collection radius check | ✅ Active — `getHospitalLocation` (`lib/settings.ts`), used by `lib/whatsapp/patientFlow.ts`'s Home Sample Collection flow. Leave either blank and the flow tells patients it isn't set up yet, rather than silently treating (0, 0) as the clinic's location |
 | `HOME_COLLECTION_RADIUS_KM` | `5` | Service radius for home collection | ✅ Active — `getHomeCollectionRadiusKm` (`lib/settings.ts`) |
 
-**Why they're editable in the admin UI if most don't do anything yet**:
-the `settings` table and its admin form were built as the general
-mechanism stage 2/4 established; each toggle activates the moment its
-corresponding bot feature gets ported in a future increment, with no
-schema or UI change needed then — only the missing plumbing in between.
-Treat the ⛔ rows today as "reserved, has no effect yet," not as broken.
-
-This isn't just documented here — `/admin/settings` itself shows a
-**"Not yet active"** badge next to every dormant field, so someone using
-the UI (not reading this doc) still finds out. The badge is driven by
-`DORMANT_SETTING_KEYS` in `lib/settings.ts`, the single source of truth
-for this table — keep it in sync with the ⛔ rows above if a future
-change wires up one of these settings.
+**Every setting above is now active** — `DORMANT_SETTING_KEYS` in
+`lib/settings.ts` is currently empty, and `/admin/settings` shows no
+"Not yet active" badges. It's kept as a mechanism, not deleted: if a
+future setting is added to the `settings` table ahead of the code that
+reads it (the `settings` table/admin form were built as a general
+mechanism from the start, precisely so a new toggle doesn't need a
+schema/UI change to go from "reserved" to "active"), add its key there
+so the badge shows up again until the matching feature lands — then
+remove it in that same change, so the UI and this table can't silently
+drift out of sync with what the code actually does.
 
 ---
 

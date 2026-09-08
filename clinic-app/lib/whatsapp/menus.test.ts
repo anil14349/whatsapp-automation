@@ -4,6 +4,7 @@ import {
   buildInteractiveListSpec,
   classifyAppointmentListChoice,
   getAppointmentListMenuSpec,
+  getDoctorSelectionMenuSpec,
   getSlotSelectionMenuSpec,
   paginateAppointmentList,
   parseSlotSelectionId,
@@ -11,6 +12,7 @@ import {
   truncateInteractiveLabel,
   type AppointmentListItem
 } from "./menus";
+import type { Doctor } from "@/lib/doctors";
 
 describe("truncateInteractiveLabel", () => {
   it("passes short text through unchanged", () => {
@@ -147,6 +149,53 @@ describe("classifyAppointmentListChoice", () => {
   it("rejects an out-of-range or non-numeric choice", () => {
     expect(classifyAppointmentListChoice("99", 5)).toEqual({ type: "invalid" });
     expect(classifyAppointmentListChoice("abc", 5)).toEqual({ type: "invalid" });
+  });
+});
+
+function makeDoctors(count: number): Doctor[] {
+  return Array.from({ length: count }, (_, i) => ({
+    id: `doc-${i}`,
+    doctor_code: `D${String(i).padStart(3, "0")}`,
+    name: `Dr. ${i}`,
+    specialization: "General Medicine"
+  })) as Doctor[];
+}
+
+describe("getDoctorSelectionMenuSpec pagination", () => {
+  it("fits everything on one page with no controls when under the page size", () => {
+    const menu = getDoctorSelectionMenuSpec(makeDoctors(3), 0);
+    const rows = menu.interactive && "sections" in menu.interactive ? menu.interactive.sections[0]?.rows : [];
+    const ids = rows?.map((r) => r.id) ?? [];
+
+    expect(ids).toHaveLength(3);
+    expect(ids).not.toContain("doctor_prev");
+    expect(ids).not.toContain("doctor_next");
+  });
+
+  it("adds doctor_prev/doctor_next controls once the list exceeds one page", () => {
+    const doctors = makeDoctors(11);
+
+    const page0 = getDoctorSelectionMenuSpec(doctors, 0);
+    const rows0 =
+      page0.interactive && "sections" in page0.interactive ? page0.interactive.sections[0]?.rows : [];
+    const ids0 = rows0?.map((r) => r.id) ?? [];
+    expect(ids0).toContain("doctor_next");
+    expect(ids0).not.toContain("doctor_prev");
+
+    const page1 = getDoctorSelectionMenuSpec(doctors, 1);
+    const rows1 =
+      page1.interactive && "sections" in page1.interactive ? page1.interactive.sections[0]?.rows : [];
+    const ids1 = rows1?.map((r) => r.id) ?? [];
+    expect(ids1).toContain("doctor_prev");
+  });
+
+  it("always lists every doctor in the plain-text fallback regardless of page", () => {
+    const doctors = makeDoctors(11);
+    const menu = getDoctorSelectionMenuSpec(doctors, 0);
+
+    for (let i = 0; i < 11; i++) {
+      expect(menu.fallbackText).toContain(`${i + 1}. Dr. ${i}`);
+    }
   });
 });
 

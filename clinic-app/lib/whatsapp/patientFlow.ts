@@ -562,6 +562,17 @@ export async function handlePatientMessage(
 
     case "BOOK_DOCTOR": {
       const doctors = await listDoctors(ctx.supabase, { activeOnly: true });
+      const currentPage = session.list_page ?? 0;
+
+      if (normalizedMessage === "doctor_prev" || normalizedMessage === "doctor_next") {
+        const nextPage =
+          normalizedMessage === "doctor_prev" ? Math.max(currentPage - 1, 0) : currentPage + 1;
+
+        await saveSession(ctx.supabase, ctx.phone, { list_page: nextPage });
+        await replyMenu(ctx, "Select a doctor:", getDoctorSelectionMenuSpec(doctors, nextPage));
+        return true;
+      }
+
       let selectedDoctorCode: string | null = null;
 
       if (normalizedMessage.startsWith("doctor_select_")) {
@@ -578,13 +589,18 @@ export async function handlePatientMessage(
         : null;
 
       if (!doctor) {
-        await replyMenu(ctx, "Please choose a valid doctor.", getDoctorSelectionMenuSpec(doctors));
+        await replyMenu(
+          ctx,
+          "Please choose a valid doctor.",
+          getDoctorSelectionMenuSpec(doctors, currentPage)
+        );
         return true;
       }
 
       await saveSession(ctx.supabase, ctx.phone, {
         state: "BOOK_DATE",
-        doctor_id: doctor.id
+        doctor_id: doctor.id,
+        list_page: 0
       });
 
       await replyMenu(
@@ -852,7 +868,7 @@ async function startBooking(ctx: FlowContext): Promise<boolean> {
     }
   }
 
-  await saveSession(ctx.supabase, ctx.phone, { state: "BOOK_DOCTOR" });
+  await saveSession(ctx.supabase, ctx.phone, { state: "BOOK_DOCTOR", list_page: 0 });
   return sendDoctorSelection(ctx);
 }
 

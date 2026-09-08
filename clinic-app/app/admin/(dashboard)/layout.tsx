@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getAdminSession } from "@/lib/auth/session";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getClinicNameSafe } from "@/lib/settings";
 import type { AdminRole } from "@/lib/supabase/database.types";
 import { LogoutButton } from "./LogoutButton";
 
@@ -35,11 +37,13 @@ export default async function DashboardLayout({
     (item.roles as readonly AdminRole[]).includes(session.role)
   );
 
+  const clinicName = await getClinicNameSafe(getSupabaseServerClient);
+
   return (
     <div className="flex min-h-screen bg-slate-50">
       <aside className="flex w-60 flex-col border-r border-slate-200 bg-white">
         <div className="border-b border-slate-200 px-5 py-4">
-          <p className="text-sm font-semibold text-slate-900">Clinic Admin</p>
+          <p className="text-sm font-semibold text-slate-900">{clinicName} Admin</p>
           <p className="mt-0.5 truncate text-xs text-slate-500">{session.email}</p>
           <p className="mt-0.5 text-xs font-medium text-brand-600">{session.role}</p>
         </div>
