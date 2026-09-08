@@ -1,23 +1,37 @@
 import type { FlowContext } from "./context";
 import { reply, replyMenu } from "./context";
+import type { WhatsAppSession } from "@/lib/sessions";
 import { getSession, saveSession } from "@/lib/sessions";
+import type { Doctor } from "@/lib/doctors";
 import { getDoctorById, listDoctors } from "@/lib/doctors";
 import { getAvailableSlotsForDoctor } from "@/lib/scheduling/slots";
-import { bookAppointment } from "@/lib/appointments";
+import type { Appointment } from "@/lib/appointments";
+import { bookAppointment, cancelAppointment, getConfirmedAppointmentsForPhone, rescheduleAppointment } from "@/lib/appointments";
 import {
   isValidPatientName,
   patientNeedsNameCapture,
   registerPatientForBooking
 } from "@/lib/patients";
-import { formatDateKey, formatTimeLabel, isValidISODate } from "@/lib/scheduling/dates";
+import {
+  combineDateAndTime,
+  formatDateKey,
+  formatTimeLabel,
+  isValidISODate
+} from "@/lib/scheduling/dates";
 import { getBooleanSetting } from "@/lib/settings";
 import { getServerEnv } from "@/lib/env";
 import { sendWhatsAppFlow } from "./send";
+import type { AppointmentListItem } from "./menus";
 import {
+  buildAppointmentDetailMessage,
+  classifyAppointmentListChoice,
+  getAppointmentListMenuSpec,
   getDateMenuSpec,
   getDoctorSelectionMenuSpec,
   getLanguageMenuSpec,
   getMainMenuSpec,
+  getMyAppointmentActionSpec,
+  getPatientMoreMenuSpec,
   getSlotSelectionMenuSpec,
   getYesNoConfirmSpec,
   parseSlotSelectionId,
@@ -25,15 +39,16 @@ import {
 } from "./menus";
 
 /**
- * Patient conversation state machine. Ports the booking path of
- * src/Controller_PatientFlow.gs (LANGUAGE_SELECT through BOOK_CONFIRM).
+ * Patient conversation state machine. Ports src/Controller_PatientFlow.gs
+ * (+ the appointment-list helpers in src/Controller_Shared.gs) — booking,
+ * My Appointments, cancel, and reschedule.
  *
- * NOT yet ported in this stage: My Appointments / cancel / reschedule
- * sub-flows, the "More" menu, doctor selection pagination (doctor_prev/
+ * NOT yet ported in this stage: doctor selection pagination (doctor_prev/
  * doctor_next — this version lists all doctors in one screen, capped at
- * WhatsApp's 10-row list limit), and the shareable appointment receipt
- * card. Each follows the same pattern established here; see
- * clinic-app/README.md for what's tracked as remaining.
+ * WhatsApp's 10-row list limit), home sample collection, and the
+ * shareable appointment receipt card. Each follows the same pattern
+ * established here; see clinic-app/README.md for what's tracked as
+ * remaining.
  */
 
 const LANGUAGE_BY_CHOICE: Record<string, string> = {
@@ -88,14 +103,315 @@ export async function handlePatientMessage(
       }
 
       if (normalizedMessage === "2") {
-        await reply(
+        return startAppointmentListFlow(
           ctx,
-          "My Appointments isn't available in this build yet — check back soon."
+          "MY_APPOINTMENTS",
+          "Your appointments:\nSelect one to view options.",
+          "You have no active appointments to show."
         );
+      }
+
+      if (
+        normalizedMessage === "menu_more" ||
+        normalizedMessage === "more" ||
+        normalizedMessage === "3"
+      ) {
+        await saveSession(ctx.supabase, ctx.phone, { state: "PATIENT_MAIN_MORE" });
+        await replyMenu(ctx, "More options:", getPatientMoreMenuSpec());
         return true;
       }
 
       await replyMenu(ctx, "Invalid option.", getMainMenuSpec());
+      return true;
+    }
+
+    case "PATIENT_MAIN_MORE": {
+      if (normalizedMessage === "cancel_appointment" || normalizedMessage === "1") {
+        return startAppointmentListFlow(
+          ctx,
+          "CANCEL_SELECT",
+          "Select the appointment to cancel:",
+          "You have no active appointments to cancel."
+        );
+      }
+
+      if (normalizedMessage === "reschedule_appointment" || normalizedMessage === "2") {
+        return startAppointmentListFlow(
+          ctx,
+          "RESCHEDULE_SELECT",
+          "Select the appointment to reschedule:",
+          "You have no active appointments to reschedule."
+        );
+      }
+
+      if (normalizedMessage === "change_language" || normalizedMessage === "3") {
+        await saveSession(ctx.supabase, ctx.phone, { state: "LANGUAGE_SELECT" });
+        await replyMenu(ctx, "Select your language:", getLanguageMenuSpec());
+        return true;
+      }
+
+      if (normalizedMessage === "nav_main_menu" || normalizedMessage === "0") {
+        return returnToMainMenu(ctx);
+      }
+
+      await replyMenu(ctx, "Invalid option.", getPatientMoreMenuSpec());
+      return true;
+    }
+
+    case "MY_APPOINTMENTS": {
+      return handleAppointmentListChoice(
+        ctx,
+        session,
+        normalizedMessage,
+        "Your appointments:\nSelect one to view options.",
+        async (item, appointment) => {
+          await saveSession(ctx.supabase, ctx.phone, {
+            state: "MY_APPOINTMENT_ACTION",
+            doctor_id: appointment.doctor_id,
+            session_date: appointment.appointment_date,
+            session_time: appointment.appointment_time,
+            appointment_id: appointment.id
+          });
+
+          await replyMenu(ctx, buildAppointmentDetailMessage(item), getMyAppointmentActionSpec());
+          return true;
+        }
+      );
+    }
+
+    case "MY_APPOINTMENT_ACTION": {
+      if (!session.appointment_id) {
+        return expireFlow(ctx);
+      }
+
+      if (normalizedMessage === "appointment_action_cancel" || normalizedMessage === "1") {
+        await saveSession(ctx.supabase, ctx.phone, { state: "CANCEL_CONFIRM" });
+        await replyMenu(ctx, "Cancel this appointment?", getYesNoConfirmSpec());
+        return true;
+      }
+
+      if (normalizedMessage === "appointment_action_reschedule" || normalizedMessage === "2") {
+        if (!session.doctor_id) {
+          return expireFlow(ctx);
+        }
+
+        await saveSession(ctx.supabase, ctx.phone, { state: "RESCHEDULE_DATE" });
+        await replyMenu(ctx, "Choose a new date:", getDateMenuSpec());
+        return true;
+      }
+
+      if (normalizedMessage === "nav_main_menu" || normalizedMessage === "0") {
+        return returnToMainMenu(ctx);
+      }
+
+      await replyMenu(ctx, "Invalid option.", getMyAppointmentActionSpec());
+      return true;
+    }
+
+    case "CANCEL_SELECT": {
+      return handleAppointmentListChoice(
+        ctx,
+        session,
+        normalizedMessage,
+        "Select the appointment to cancel:",
+        async (item, appointment) => {
+          await saveSession(ctx.supabase, ctx.phone, {
+            state: "CANCEL_CONFIRM",
+            appointment_id: appointment.id
+          });
+
+          await replyMenu(
+            ctx,
+            `${buildAppointmentDetailMessage(item)}\n\nCancel this appointment?`,
+            getYesNoConfirmSpec()
+          );
+          return true;
+        }
+      );
+    }
+
+    case "CANCEL_CONFIRM": {
+      if (!session.appointment_id) {
+        return expireFlow(ctx);
+      }
+
+      if (normalizedMessage === "1" || normalizedMessage === "confirm_yes") {
+        const result = await cancelAppointment(ctx.supabase, ctx.calendar, session.appointment_id, {
+          patientPhone: ctx.phone
+        });
+
+        await saveSession(ctx.supabase, ctx.phone, { state: "MAIN_MENU", appointment_id: null });
+
+        await replyMenu(
+          ctx,
+          result.success ? `Appointment cancelled.\n\n${result.message}` : `Unable to cancel: ${result.message}`,
+          getMainMenuSpec()
+        );
+        return true;
+      }
+
+      if (normalizedMessage === "2" || normalizedMessage === "confirm_no") {
+        await saveSession(ctx.supabase, ctx.phone, { state: "MAIN_MENU" });
+        await replyMenu(ctx, "Okay, appointment was not cancelled.", getMainMenuSpec());
+        return true;
+      }
+
+      await replyMenu(ctx, "Invalid option.", getYesNoConfirmSpec());
+      return true;
+    }
+
+    case "RESCHEDULE_SELECT": {
+      return handleAppointmentListChoice(
+        ctx,
+        session,
+        normalizedMessage,
+        "Select the appointment to reschedule:",
+        async (item, appointment) => {
+          await saveSession(ctx.supabase, ctx.phone, {
+            state: "RESCHEDULE_DATE",
+            doctor_id: appointment.doctor_id,
+            appointment_id: appointment.id
+          });
+
+          await replyMenu(ctx, `${item.doctorName}\n\nChoose a new date:`, getDateMenuSpec());
+          return true;
+        }
+      );
+    }
+
+    case "RESCHEDULE_DATE": {
+      if (!session.doctor_id || !session.appointment_id) {
+        return expireFlow(ctx);
+      }
+
+      const quickDate = resolveQuickDateChoice(normalizedMessage, ctx.timezone);
+
+      if (quickDate) {
+        return offerRescheduleSlotsForDate(ctx, session.doctor_id, quickDate);
+      }
+
+      if (normalizedMessage === "3") {
+        await saveSession(ctx.supabase, ctx.phone, { state: "RESCHEDULE_DATE_CUSTOM" });
+        await reply(ctx, "Please enter the date in YYYY-MM-DD format.");
+        return true;
+      }
+
+      await replyMenu(ctx, "Invalid option.", getDateMenuSpec());
+      return true;
+    }
+
+    case "RESCHEDULE_DATE_CUSTOM": {
+      if (!session.doctor_id || !session.appointment_id) {
+        return expireFlow(ctx);
+      }
+
+      const typed = messageText.trim();
+
+      if (!isValidISODate(typed) || typed < formatDateKey(new Date(), ctx.timezone)) {
+        await reply(
+          ctx,
+          "That doesn't look like a valid future date.\n\nPlease enter the date in YYYY-MM-DD format."
+        );
+        return true;
+      }
+
+      return offerRescheduleSlotsForDate(ctx, session.doctor_id, typed);
+    }
+
+    case "RESCHEDULE_TIME": {
+      if (!session.doctor_id || !session.session_date || !session.appointment_id) {
+        return expireFlow(ctx);
+      }
+
+      const doctor = await getDoctorById(ctx.supabase, session.doctor_id);
+
+      if (!doctor) {
+        return expireFlow(ctx);
+      }
+
+      const slots = await getAvailableSlotsForDoctor(ctx.supabase, ctx.calendar, {
+        doctor,
+        dateString: session.session_date,
+        timezone: ctx.timezone
+      });
+
+      const selected =
+        parseSlotSelectionId(normalizedMessage) ??
+        resolveTypedSlotSelection(normalizedMessage, slots);
+
+      const isOffered = selected && slots.some((s) => s.getTime() === selected.getTime());
+
+      if (!isOffered || !selected) {
+        await replyMenu(
+          ctx,
+          "Please choose one of the available slots:",
+          getSlotSelectionMenuSpec(slots, ctx.timezone)
+        );
+        return true;
+      }
+
+      await saveSession(ctx.supabase, ctx.phone, {
+        session_time: formatTimeLabel(selected, ctx.timezone),
+        state: "RESCHEDULE_CONFIRM"
+      });
+
+      await replyMenu(
+        ctx,
+        `New date: ${session.session_date}\nNew time: ${formatTimeLabel(selected, ctx.timezone)}\n\nConfirm reschedule?`,
+        getYesNoConfirmSpec()
+      );
+      return true;
+    }
+
+    case "RESCHEDULE_CONFIRM": {
+      if (!session.appointment_id || !session.session_date || !session.session_time) {
+        return expireFlow(ctx);
+      }
+
+      if (normalizedMessage === "1" || normalizedMessage === "confirm_yes") {
+        const result = await rescheduleAppointment(ctx.supabase, ctx.calendar, {
+          appointmentId: session.appointment_id,
+          newDateString: session.session_date,
+          newTimeString: session.session_time,
+          timezone: ctx.timezone,
+          patientPhone: ctx.phone
+        });
+
+        if (!result.success || !result.appointment) {
+          await reply(
+            ctx,
+            `${result.message}\n\nPlease choose another time or send Hi to start again.`
+          );
+          return true;
+        }
+
+        const doctor = await getDoctorById(ctx.supabase, result.appointment.doctor_id);
+
+        await saveSession(ctx.supabase, ctx.phone, {
+          state: "MAIN_MENU",
+          doctor_id: null,
+          session_date: "",
+          session_time: ""
+        });
+
+        await reply(
+          ctx,
+          "Appointment rescheduled!\n\n" +
+            `Doctor: ${doctor?.name ?? ""}\n` +
+            `Date: ${result.appointment.appointment_date}\n` +
+            `Time: ${session.session_time}\n\n` +
+            "Thank you for choosing {{CLINIC_NAME}}."
+        );
+        return true;
+      }
+
+      if (normalizedMessage === "2" || normalizedMessage === "confirm_no") {
+        await saveSession(ctx.supabase, ctx.phone, { state: "MAIN_MENU" });
+        await replyMenu(ctx, "Okay, appointment was not changed.", getMainMenuSpec());
+        return true;
+      }
+
+      await replyMenu(ctx, "Invalid option.", getYesNoConfirmSpec());
       return true;
     }
 
@@ -140,24 +456,20 @@ export async function handlePatientMessage(
         return expireBooking(ctx);
       }
 
-      let dateString: string | null = null;
+      const quickDate = resolveQuickDateChoice(normalizedMessage, ctx.timezone);
 
-      if (normalizedMessage === "1") {
-        dateString = formatDateKey(new Date(), ctx.timezone);
-      } else if (normalizedMessage === "2") {
-        const tomorrow = new Date();
-        tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-        dateString = formatDateKey(tomorrow, ctx.timezone);
-      } else if (normalizedMessage === "3") {
+      if (quickDate) {
+        return offerSlotsForDate(ctx, session.doctor_id, quickDate);
+      }
+
+      if (normalizedMessage === "3") {
         await saveSession(ctx.supabase, ctx.phone, { state: "BOOK_DATE_CUSTOM" });
         await reply(ctx, "Please enter the date in YYYY-MM-DD format.");
         return true;
-      } else {
-        await replyMenu(ctx, "Invalid option.", getDateMenuSpec());
-        return true;
       }
 
-      return offerSlotsForDate(ctx, session.doctor_id, dateString);
+      await replyMenu(ctx, "Invalid option.", getDateMenuSpec());
+      return true;
     }
 
     case "BOOK_DATE_CUSTOM": {
@@ -404,5 +716,174 @@ async function offerSlotsForDate(
 async function expireBooking(ctx: FlowContext): Promise<boolean> {
   await saveSession(ctx.supabase, ctx.phone, { state: "MAIN_MENU" });
   await reply(ctx, "Your booking session has expired.\n\nPlease send Hi to start again.");
+  return true;
+}
+
+/** Same as expireBooking but for the My Appointments/cancel/reschedule sub-flows, which aren't "a booking" — wording only. */
+async function expireFlow(ctx: FlowContext): Promise<boolean> {
+  await saveSession(ctx.supabase, ctx.phone, { state: "MAIN_MENU" });
+  await reply(ctx, "Your session has expired.\n\nPlease send Hi to start again.");
+  return true;
+}
+
+async function returnToMainMenu(ctx: FlowContext): Promise<boolean> {
+  await saveSession(ctx.supabase, ctx.phone, { state: "MAIN_MENU" });
+  await replyMenu(ctx, "Main menu:", getMainMenuSpec());
+  return true;
+}
+
+/** "1"/"2" -> today/tomorrow as an ISO date string; anything else (including "3", the custom-date option) -> null, left for the caller to handle. */
+function resolveQuickDateChoice(normalizedMessage: string, timezone: string): string | null {
+  if (normalizedMessage === "1") {
+    return formatDateKey(new Date(), timezone);
+  }
+
+  if (normalizedMessage === "2") {
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    return formatDateKey(tomorrow, timezone);
+  }
+
+  return null;
+}
+
+async function offerRescheduleSlotsForDate(
+  ctx: FlowContext,
+  doctorId: string,
+  dateString: string
+): Promise<boolean> {
+  const doctor = await getDoctorById(ctx.supabase, doctorId);
+
+  if (!doctor) {
+    return expireFlow(ctx);
+  }
+
+  const slots = await getAvailableSlotsForDoctor(ctx.supabase, ctx.calendar, {
+    doctor,
+    dateString,
+    timezone: ctx.timezone
+  });
+
+  await saveSession(ctx.supabase, ctx.phone, {
+    state: "RESCHEDULE_TIME",
+    session_date: dateString
+  });
+
+  if (slots.length === 0) {
+    await reply(
+      ctx,
+      `Sorry, there are no available slots on ${dateString}.\n\nPlease choose another date.`
+    );
+    return true;
+  }
+
+  await replyMenu(
+    ctx,
+    "Available slots:\nPlease choose a new time.",
+    getSlotSelectionMenuSpec(slots, ctx.timezone)
+  );
+
+  return true;
+}
+
+/** Resolves each appointment's doctor_id -> doctor name once per unique doctor, not once per appointment. */
+async function toAppointmentListItems(
+  ctx: FlowContext,
+  appointments: Appointment[]
+): Promise<AppointmentListItem[]> {
+  const uniqueDoctorIds = [...new Set(appointments.map((a) => a.doctor_id))];
+  const doctors = await Promise.all(uniqueDoctorIds.map((id) => getDoctorById(ctx.supabase, id)));
+
+  const nameById = new Map<string, string>();
+  for (const doctor of doctors) {
+    if (doctor) {
+      nameById.set(doctor.id, doctor.name);
+    }
+  }
+
+  return appointments.map((appointment) => ({
+    appointmentId: appointment.id,
+    doctorName: nameById.get(appointment.doctor_id) ?? "Doctor",
+    date: appointment.appointment_date,
+    time: formatTimeLabel(
+      combineDateAndTime(appointment.appointment_date, appointment.appointment_time, ctx.timezone),
+      ctx.timezone
+    )
+  }));
+}
+
+/**
+ * Entry point for My Appointments / Cancel / Reschedule from the main
+ * menu or the More menu — fetches the patient's confirmed appointments,
+ * bails to the main menu with a friendly message if there are none, or
+ * saves the target state (with pagination reset to page 0) and sends
+ * page 1 of the list.
+ */
+async function startAppointmentListFlow(
+  ctx: FlowContext,
+  state: string,
+  bodyText: string,
+  emptyMessage: string
+): Promise<boolean> {
+  const appointments = await getConfirmedAppointmentsForPhone(ctx.supabase, ctx.phone);
+
+  if (appointments.length === 0) {
+    return returnToMainMenuWithMessage(ctx, emptyMessage);
+  }
+
+  await saveSession(ctx.supabase, ctx.phone, { state, appointment_page: 0 });
+
+  const items = await toAppointmentListItems(ctx, appointments);
+  await replyMenu(ctx, bodyText, getAppointmentListMenuSpec(items, 0));
+  return true;
+}
+
+async function returnToMainMenuWithMessage(ctx: FlowContext, message: string): Promise<boolean> {
+  await saveSession(ctx.supabase, ctx.phone, { state: "MAIN_MENU" });
+  await replyMenu(ctx, message, getMainMenuSpec());
+  return true;
+}
+
+/**
+ * Reacts to a tap/typed choice against an already-sent appointment list
+ * (My Appointments / Cancel / Reschedule all share this — see
+ * lib/whatsapp/menus.ts's getAppointmentListMenuSpec) — pagination,
+ * "main menu", or a selection, which invokes `onChosen` with both the
+ * display-ready item and the underlying appointment row.
+ */
+async function handleAppointmentListChoice(
+  ctx: FlowContext,
+  session: WhatsAppSession,
+  normalizedMessage: string,
+  bodyText: string,
+  onChosen: (item: AppointmentListItem, appointment: Appointment) => Promise<boolean>
+): Promise<boolean> {
+  const appointments = await getConfirmedAppointmentsForPhone(ctx.supabase, ctx.phone);
+
+  if (appointments.length === 0) {
+    return returnToMainMenuWithMessage(ctx, "You have no active appointments.");
+  }
+
+  const items = await toAppointmentListItems(ctx, appointments);
+  const page = Number(session.appointment_page) || 0;
+  const choice = classifyAppointmentListChoice(normalizedMessage, items.length);
+
+  if (choice.type === "main_menu") {
+    return returnToMainMenu(ctx);
+  }
+
+  if (choice.type === "prev" || choice.type === "next") {
+    const nextPage = choice.type === "prev" ? Math.max(page - 1, 0) : page + 1;
+    await saveSession(ctx.supabase, ctx.phone, { appointment_page: nextPage });
+    await replyMenu(ctx, bodyText, getAppointmentListMenuSpec(items, nextPage));
+    return true;
+  }
+
+  if (choice.type === "select") {
+    await saveSession(ctx.supabase, ctx.phone, { appointment_page: 0 });
+    return onChosen(items[choice.index]!, appointments[choice.index]!);
+  }
+
+  await replyMenu(ctx, "Invalid option.", getAppointmentListMenuSpec(items, page));
   return true;
 }

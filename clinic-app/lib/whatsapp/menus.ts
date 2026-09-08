@@ -185,3 +185,162 @@ export function getYesNoConfirmSpec(): MenuReply {
     ])
   };
 }
+
+/** "More" sub-menu — options that don't fit the 3-button main menu. */
+export function getPatientMoreMenuSpec(): MenuReply {
+  return {
+    fallbackText:
+      "1️⃣ Cancel Appointment\n2️⃣ Reschedule Appointment\n3️⃣ Change Language\n0️⃣ Main Menu",
+    interactive: buildInteractiveListSpec(
+      [
+        { id: "cancel_appointment", title: "Cancel Appointment" },
+        { id: "reschedule_appointment", title: "Reschedule Appointment" },
+        { id: "change_language", title: "Change Language" },
+        { id: "nav_main_menu", title: "Main Menu" }
+      ],
+      "Select option"
+    )
+  };
+}
+
+export interface AppointmentListItem {
+  appointmentId: string;
+  doctorName: string;
+  date: string;
+  time: string;
+}
+
+// Leaves room for up to 3 extra control rows (Previous + Next + Main
+// Menu, all of which can appear together on a middle page) within
+// WhatsApp's 10-row list cap — 7 + 3 = 10.
+const APPOINTMENT_LIST_PAGE_SIZE = 7;
+
+export interface AppointmentListPage {
+  pageItems: AppointmentListItem[];
+  hasPrev: boolean;
+  hasNext: boolean;
+}
+
+/** Slices a full appointment list into one page — mirrors the doctor/slot pagination pattern (page size leaves room for a Prev/Next control row within WhatsApp's 10-row list cap). */
+export function paginateAppointmentList(
+  appointments: AppointmentListItem[],
+  page: number
+): AppointmentListPage {
+  const start = page * APPOINTMENT_LIST_PAGE_SIZE;
+  return {
+    pageItems: appointments.slice(start, start + APPOINTMENT_LIST_PAGE_SIZE),
+    hasPrev: page > 0,
+    hasNext: start + APPOINTMENT_LIST_PAGE_SIZE < appointments.length
+  };
+}
+
+/**
+ * Paginated appointment picker — used by My Appointments, Cancel, and
+ * Reschedule (each just labels the list differently via `bodyText`,
+ * built by the caller). Row ids are `appt_<index>` where index is
+ * relative to the *full* list, not the page, so a selection resolves
+ * correctly regardless of which page it was tapped from — see
+ * parseAppointmentSelectionId.
+ */
+export function getAppointmentListMenuSpec(
+  appointments: AppointmentListItem[],
+  page: number
+): MenuReply {
+  const { pageItems, hasPrev, hasNext } = paginateAppointmentList(appointments, page);
+  const offset = page * APPOINTMENT_LIST_PAGE_SIZE;
+
+  const rows: MenuRow[] = pageItems.map((item, i) => ({
+    id: `appt_${offset + i}`,
+    title: item.doctorName || "Doctor",
+    description: `${item.date} at ${item.time}`
+  }));
+
+  if (hasPrev) {
+    rows.push({ id: "appt_prev", title: "⬅️ Previous" });
+  }
+
+  if (hasNext) {
+    rows.push({ id: "appt_next", title: "➡️ Next" });
+  }
+
+  rows.push({ id: "nav_main_menu", title: "Main Menu" });
+
+  const fallbackLines = pageItems.map(
+    (item, i) => `${offset + i + 1}. ${item.doctorName} — ${item.date} at ${item.time}`
+  );
+
+  return {
+    fallbackText:
+      fallbackLines.join("\n") +
+      "\n\nReply with the appointment number" +
+      (hasPrev ? ", 'prev'" : "") +
+      (hasNext ? ", 'next'" : "") +
+      ", or 0 for the main menu.",
+    interactive: buildInteractiveListSpec(rows, "Select")
+  };
+}
+
+export type AppointmentListChoice =
+  | { type: "select"; index: number }
+  | { type: "prev" }
+  | { type: "next" }
+  | { type: "main_menu" }
+  | { type: "invalid" };
+
+/** Classifies a reply to getAppointmentListMenuSpec — id-based (list tap) or typed-number fallback. */
+export function classifyAppointmentListChoice(
+  input: string,
+  appointmentsLength: number
+): AppointmentListChoice {
+  const normalized = input.trim().toLowerCase();
+
+  if (normalized === "nav_main_menu" || normalized === "0") {
+    return { type: "main_menu" };
+  }
+
+  if (normalized === "appt_prev" || normalized === "prev") {
+    return { type: "prev" };
+  }
+
+  if (normalized === "appt_next" || normalized === "next") {
+    return { type: "next" };
+  }
+
+  // Row-tap ids (`appt_9`) already carry a 0-based absolute index into
+  // the full list (see getAppointmentListMenuSpec). A typed number, by
+  // contrast, is the 1-based position shown in the fallback text
+  // ("1. Dr X — ...") — these are two different conventions for the
+  // same input, not interchangeable, so each needs its own offset.
+  if (normalized.startsWith("appt_")) {
+    const index = Number(normalized.slice("appt_".length));
+
+    if (!Number.isInteger(index) || index < 0 || index >= appointmentsLength) {
+      return { type: "invalid" };
+    }
+
+    return { type: "select", index };
+  }
+
+  const typedNumber = Number(normalized);
+
+  if (!Number.isInteger(typedNumber) || typedNumber < 1 || typedNumber > appointmentsLength) {
+    return { type: "invalid" };
+  }
+
+  return { type: "select", index: typedNumber - 1 };
+}
+
+export function getMyAppointmentActionSpec(): MenuReply {
+  return {
+    fallbackText: "1️⃣ Cancel\n2️⃣ Reschedule\n0️⃣ Main Menu",
+    interactive: buildInteractiveButtonSpec([
+      { id: "appointment_action_cancel", title: "Cancel" },
+      { id: "appointment_action_reschedule", title: "Reschedule" },
+      { id: "nav_main_menu", title: "Main Menu" }
+    ])
+  };
+}
+
+export function buildAppointmentDetailMessage(item: AppointmentListItem): string {
+  return `👨‍⚕️ ${item.doctorName}\n📅 ${item.date}\n🕐 ${item.time}`;
+}

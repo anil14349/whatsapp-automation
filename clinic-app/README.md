@@ -174,16 +174,26 @@ available time slot → capture patient name (first-time bookers only) →
 confirm → **real booking against Postgres + Google Calendar**, with the
 same booking-integrity guarantees from stage 2.
 
+Also working end-to-end: **My Appointments** (paginated list of the
+patient's confirmed appointments, 7 per page) → pick one → **Cancel** or
+**Reschedule** (choose a new date/time, same availability engine as
+booking) → confirmed against Postgres + Calendar. The **"More" menu**
+(Cancel Appointment / Reschedule Appointment / Change Language) is the
+entry point for cancel/reschedule when the patient hasn't first opened
+My Appointments. See `lib/whatsapp/patientFlow.ts`'s
+`handleAppointmentListChoice`/`startAppointmentListFlow` for the shared
+pagination/selection logic all three list screens (My Appointments,
+Cancel, Reschedule) reuse.
+
 **Deferred to a later increment** (each follows the same pattern
 established here, so this is scoping work, not redesign work):
-- My Appointments / cancel / reschedule patient sub-flows
-- The "More" menu (change language, etc.)
 - Doctor conversation flow entirely (a doctor messaging in gets a
   placeholder reply, not the Doctor Portal)
 - Home blood-sample-collection flow
 - Doctor-selection and slot-list **pagination** (this version lists
   everything on one screen, capped at WhatsApp's 10-row list limit —
-  fine for a handful of doctors, not yet built out for more)
+  fine for a handful of doctors, not yet built out for more; appointment
+  lists *are* paginated, see above)
 - The shareable appointment receipt card (image generation)
 - Appointment reminders, after-hours auto-reply, auto-complete-past-
   appointments background jobs
@@ -191,10 +201,12 @@ established here, so this is scoping work, not redesign work):
 ### Verification
 
 `npm run typecheck`, `npm run build`, `npm run lint`, and `npm test`
-(61 tests) all pass. As with stage 2, the parts with real branching
-logic and no required I/O are unit-tested (inbound message parsing,
-localization incl. round-tripping every language against the extracted
-dictionaries, menu spec builders, slot-selection id encoding/decoding).
+(81 tests as of the My Appointments/cancel/reschedule addition) all
+pass. As with stage 2, the parts with real branching logic and no
+required I/O are unit-tested (inbound message parsing, localization
+incl. round-tripping every language against the extracted dictionaries,
+menu spec builders, slot-selection id encoding/decoding, appointment-list
+pagination and choice classification).
 The webhook route and the conversation flow handlers that orchestrate
 Supabase + WhatsApp Cloud API + Calendar calls are typechecked but not
 yet exercised against a live WhatsApp number/database — see "What's
