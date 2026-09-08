@@ -1,4 +1,4 @@
-import type { FlowContext } from "./context";
+import type { FlowContext, InboundLocation } from "./context";
 import { reply, replyMenu } from "./context";
 import { getSession, saveSession } from "@/lib/sessions";
 import { findPatientByPhone } from "@/lib/patients";
@@ -31,7 +31,8 @@ const GREETING_WORDS = new Set([
  */
 export async function processInboundMessage(
   ctx: FlowContext,
-  messageText: string
+  messageText: string,
+  location?: InboundLocation
 ): Promise<void> {
   const normalizedMessage = messageText.toLowerCase().trim();
 
@@ -67,7 +68,7 @@ export async function processInboundMessage(
     return;
   }
 
-  const handled = await handlePatientMessage(ctx, messageText, normalizedMessage);
+  const handled = await handlePatientMessage(ctx, messageText, normalizedMessage, location);
 
   if (!handled) {
     await reply(ctx, "Sorry, I didn't understand that.\n\nPlease send Hi to start again.");

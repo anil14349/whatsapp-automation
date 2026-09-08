@@ -5,6 +5,12 @@ import type { MenuReply } from "./send";
 import { sendMenuReply, sendWhatsAppText } from "./send";
 import { localizeWhatsAppReply } from "./localize";
 
+/** A WhatsApp "Share Location" attachment, normalized. */
+export interface InboundLocation {
+  latitude: number;
+  longitude: number;
+}
+
 /** Everything a conversation-flow handler needs, gathered once per inbound message. */
 export interface FlowContext {
   supabase: SupabaseClient<Database>;

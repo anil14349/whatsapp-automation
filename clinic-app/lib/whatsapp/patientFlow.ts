@@ -1,4 +1,4 @@
-import type { FlowContext } from "./context";
+import type { FlowContext, InboundLocation } from "./context";
 import { reply, replyMenu } from "./context";
 import type { WhatsAppSession } from "@/lib/sessions";
 import { getSession, saveSession } from "@/lib/sessions";
@@ -8,6 +8,7 @@ import { getAvailableSlotsForDoctor } from "@/lib/scheduling/slots";
 import type { Appointment } from "@/lib/appointments";
 import { bookAppointment, cancelAppointment, getConfirmedAppointmentsForPhone, rescheduleAppointment } from "@/lib/appointments";
 import {
+  findPatientByPhone,
   isValidPatientName,
   patientNeedsNameCapture,
   registerPatientForBooking
@@ -18,8 +19,10 @@ import {
   formatTimeLabel,
   isValidISODate
 } from "@/lib/scheduling/dates";
-import { getBooleanSetting } from "@/lib/settings";
+import { getBooleanSetting, getHomeCollectionRadiusKm, getHospitalLocation } from "@/lib/settings";
 import { getServerEnv } from "@/lib/env";
+import { haversineDistanceKm } from "@/lib/scheduling/geo";
+import { createHomeCollectionRequest } from "@/lib/homeCollection";
 import { sendWhatsAppFlow } from "./send";
 import type { AppointmentListItem } from "./menus";
 import {
@@ -28,12 +31,14 @@ import {
   getAppointmentListMenuSpec,
   getDateMenuSpec,
   getDoctorSelectionMenuSpec,
+  getHomeCollectionTimeWindowSpec,
   getLanguageMenuSpec,
   getMainMenuSpec,
   getMyAppointmentActionSpec,
   getPatientMoreMenuSpec,
   getSlotSelectionMenuSpec,
   getYesNoConfirmSpec,
+  HOME_COLLECTION_TIME_WINDOWS,
   parseSlotSelectionId,
   resolveTypedSlotSelection
 } from "./menus";
@@ -45,10 +50,9 @@ import {
  *
  * NOT yet ported in this stage: doctor selection pagination (doctor_prev/
  * doctor_next — this version lists all doctors in one screen, capped at
- * WhatsApp's 10-row list limit), home sample collection, and the
- * shareable appointment receipt card. Each follows the same pattern
- * established here; see clinic-app/README.md for what's tracked as
- * remaining.
+ * WhatsApp's 10-row list limit) and the shareable appointment receipt
+ * card. Each follows the same pattern established here; see
+ * clinic-app/README.md for what's tracked as remaining.
  */
 
 const LANGUAGE_BY_CHOICE: Record<string, string> = {
@@ -63,7 +67,8 @@ const LANGUAGE_BY_CHOICE: Record<string, string> = {
 export async function handlePatientMessage(
   ctx: FlowContext,
   messageText: string,
-  normalizedMessage: string
+  normalizedMessage: string,
+  location?: InboundLocation
 ): Promise<boolean> {
   const session = await getSession(ctx.supabase, ctx.phone);
 
@@ -150,11 +155,150 @@ export async function handlePatientMessage(
         return true;
       }
 
+      if (normalizedMessage === "home_collection" || normalizedMessage === "4") {
+        return startHomeCollectionFlow(ctx);
+      }
+
       if (normalizedMessage === "nav_main_menu" || normalizedMessage === "0") {
         return returnToMainMenu(ctx);
       }
 
       await replyMenu(ctx, "Invalid option.", getPatientMoreMenuSpec());
+      return true;
+    }
+
+    case "HOME_COLLECTION_LOCATION": {
+      if (!location || !Number.isFinite(location.latitude) || !Number.isFinite(location.longitude)) {
+        await reply(
+          ctx,
+          "📍 Please use WhatsApp's Location attachment to share where the sample should be collected — typed text can't be used for this."
+        );
+        return true;
+      }
+
+      const hospital = await getHospitalLocation(ctx.supabase);
+
+      if (!hospital) {
+        return returnToMainMenuWithMessage(
+          ctx,
+          "Home sample collection isn't set up yet. Please call the clinic directly."
+        );
+      }
+
+      const radiusKm = await getHomeCollectionRadiusKm(ctx.supabase);
+      const distanceKm = haversineDistanceKm(location.latitude, location.longitude, hospital.lat, hospital.lng);
+
+      if (distanceKm > radiusKm) {
+        return returnToMainMenuWithMessage(
+          ctx,
+          `Sorry, home sample collection is only available within ${radiusKm} km of {{CLINIC_NAME}}.\n\nYour shared location is about ${distanceKm.toFixed(1)} km away.`
+        );
+      }
+
+      await saveSession(ctx.supabase, ctx.phone, {
+        state: "HOME_COLLECTION_DATE",
+        location: `${location.latitude},${location.longitude}`
+      });
+
+      await replyMenu(
+        ctx,
+        `You're within ${radiusKm} km — home sample collection is available!\n\nChoose a preferred date:`,
+        getDateMenuSpec()
+      );
+      return true;
+    }
+
+    case "HOME_COLLECTION_DATE": {
+      const quickDate = resolveQuickDateChoice(normalizedMessage, ctx.timezone);
+
+      if (quickDate) {
+        await saveSession(ctx.supabase, ctx.phone, { state: "HOME_COLLECTION_TIME", session_date: quickDate });
+        await replyMenu(ctx, "Choose a preferred time window:", getHomeCollectionTimeWindowSpec());
+        return true;
+      }
+
+      if (normalizedMessage === "3") {
+        await saveSession(ctx.supabase, ctx.phone, { state: "HOME_COLLECTION_DATE_CUSTOM" });
+        await reply(ctx, "Please enter the preferred date in YYYY-MM-DD format.");
+        return true;
+      }
+
+      await replyMenu(ctx, "Invalid option.\n\nChoose a preferred date:", getDateMenuSpec());
+      return true;
+    }
+
+    case "HOME_COLLECTION_DATE_CUSTOM": {
+      const typed = messageText.trim();
+
+      if (!isValidISODate(typed) || typed < formatDateKey(new Date(), ctx.timezone)) {
+        await reply(
+          ctx,
+          "That doesn't look like a valid future date.\n\nPlease enter the preferred date in YYYY-MM-DD format."
+        );
+        return true;
+      }
+
+      await saveSession(ctx.supabase, ctx.phone, { state: "HOME_COLLECTION_TIME", session_date: typed });
+      await replyMenu(ctx, "Choose a preferred time window:", getHomeCollectionTimeWindowSpec());
+      return true;
+    }
+
+    case "HOME_COLLECTION_TIME": {
+      const timeWindow = HOME_COLLECTION_TIME_WINDOWS[normalizedMessage];
+
+      if (!timeWindow) {
+        await replyMenu(
+          ctx,
+          "Invalid option.\n\nChoose a preferred time window:",
+          getHomeCollectionTimeWindowSpec()
+        );
+        return true;
+      }
+
+      if (!session.session_date) {
+        return expireFlow(ctx);
+      }
+
+      const [latText, lngText] = (session.location || "").split(",");
+      const latitude = Number(latText);
+      const longitude = Number(lngText);
+      const hospital = await getHospitalLocation(ctx.supabase);
+
+      const distanceKm =
+        hospital && Number.isFinite(latitude) && Number.isFinite(longitude)
+          ? haversineDistanceKm(latitude, longitude, hospital.lat, hospital.lng)
+          : 0;
+
+      const knownPatient = await findPatientByPhone(ctx.supabase, ctx.phone);
+      const patientName = knownPatient?.name || ctx.senderName || "Patient";
+
+      await createHomeCollectionRequest(ctx.supabase, {
+        phone: ctx.phone,
+        patientName,
+        latitude: Number.isFinite(latitude) ? latitude : 0,
+        longitude: Number.isFinite(longitude) ? longitude : 0,
+        distanceKm,
+        preferredDate: session.session_date,
+        timeWindow
+      });
+
+      const requestedDate = session.session_date;
+
+      await saveSession(ctx.supabase, ctx.phone, {
+        role: "PATIENT",
+        state: "MAIN_MENU",
+        doctor_id: null,
+        session_date: "",
+        session_time: "",
+        appointment_id: null,
+        location: ""
+      });
+
+      await replyMenu(
+        ctx,
+        `Home sample collection requested for ${requestedDate} (${timeWindow}).\n\nOur team will call you shortly to confirm the exact time.`,
+        getMainMenuSpec()
+      );
       return true;
     }
 
@@ -835,6 +979,41 @@ async function startAppointmentListFlow(
 
   const items = await toAppointmentListItems(ctx, appointments);
   await replyMenu(ctx, bodyText, getAppointmentListMenuSpec(items, 0));
+  return true;
+}
+
+/**
+ * Entry point for "Home Sample Collection" from the More menu — ports
+ * beginWhatsAppHomeCollectionFlow in src/Controller_HomeCollection.gs.
+ * Bails immediately (before asking for a location at all) if the clinic
+ * hasn't configured HOSPITAL_LATITUDE/LONGITUDE yet, same as the
+ * original.
+ */
+async function startHomeCollectionFlow(ctx: FlowContext): Promise<boolean> {
+  const hospital = await getHospitalLocation(ctx.supabase);
+
+  if (!hospital) {
+    return returnToMainMenuWithMessage(
+      ctx,
+      "Home sample collection isn't set up yet. Please call the clinic directly."
+    );
+  }
+
+  const radiusKm = await getHomeCollectionRadiusKm(ctx.supabase);
+
+  await saveSession(ctx.supabase, ctx.phone, {
+    state: "HOME_COLLECTION_LOCATION",
+    doctor_id: null,
+    session_date: "",
+    session_time: "",
+    appointment_id: null,
+    location: ""
+  });
+
+  await reply(
+    ctx,
+    `Home Sample Collection\n\nPlease share your location (tap the attachment icon -> Location in WhatsApp) so we can confirm you're within ${radiusKm} km of {{CLINIC_NAME}}.`
+  );
   return true;
 }
 

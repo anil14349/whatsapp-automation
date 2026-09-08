@@ -203,10 +203,28 @@ flow yet; single-date leave is fully working). A cancel/reschedule
 initiated by the doctor sends the patient a best-effort notification
 text, localized to the patient's own saved language.
 
+Also working end-to-end: **Home Sample Collection**
+(More menu → Home Sample Collection) — ports
+`src/Controller_HomeCollection.gs`/`Model_HomeCollection.gs`. The patient
+shares their WhatsApp location (the `location` inbound message type,
+now threaded through `lib/whatsapp/router.ts` →
+`handlePatientMessage`'s optional `location` parameter — previously
+only `"text"`/`"interactive"` messages reached the conversation flow at
+all); `lib/scheduling/geo.ts`'s `haversineDistanceKm` checks it's within
+`HOME_COLLECTION_RADIUS_KM` of the clinic's `HOSPITAL_LATITUDE`/
+`HOSPITAL_LONGITUDE` settings (both now wired — see `lib/settings.ts`'s
+`getHospitalLocation`/`getHomeCollectionRadiusKm`), then a preferred
+date + time window is captured and saved as a `home_collection_requests`
+row (`lib/homeCollection.ts`) for staff to follow up by phone. No
+admin UI page for this table yet — it's a `select * from
+home_collection_requests` away if a clinic needs to see pending requests
+before that's built.
+
 **Deferred to a later increment** (each follows the same pattern
 established here, so this is scoping work, not redesign work):
 - Doctor leave-range add/cancel (see above — single-date leave works)
-- Home blood-sample-collection flow
+- Admin UI page for home collection requests (the table/logic exist,
+  see above — just no `/admin` page listing them yet)
 - Doctor-selection and slot-list **pagination** (this version lists
   everything on one screen, capped at WhatsApp's 10-row list limit —
   fine for a handful of doctors, not yet built out for more; appointment
@@ -218,13 +236,13 @@ established here, so this is scoping work, not redesign work):
 ### Verification
 
 `npm run typecheck`, `npm run build`, `npm run lint`, and `npm test`
-(90 tests as of the Doctor Portal addition) all pass. As with stage 2,
-the parts with real branching logic and no required I/O are
+(93 tests as of the Home Sample Collection addition) all pass. As with
+stage 2, the parts with real branching logic and no required I/O are
 unit-tested (inbound message parsing, localization incl. round-tripping
 every language against the extracted dictionaries, menu spec builders,
 slot-selection id encoding/decoding, appointment-list pagination and
 choice classification, doctor-portal weekday/session/leave selection
-parsing).
+parsing, haversine distance).
 The webhook route and the conversation flow handlers that orchestrate
 Supabase + WhatsApp Cloud API + Calendar calls are typechecked but not
 yet exercised against a live WhatsApp number/database — see "What's

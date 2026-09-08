@@ -41,10 +41,7 @@ export const DORMANT_SETTING_KEYS: ReadonlySet<string> = new Set([
   "CLINIC_OPEN_TIME",
   "CLINIC_CLOSE_TIME",
   "CLINIC_WORKING_DAYS",
-  "AFTER_HOURS_MESSAGE",
-  "HOSPITAL_LATITUDE",
-  "HOSPITAL_LONGITUDE",
-  "HOME_COLLECTION_RADIUS_KM"
+  "AFTER_HOURS_MESSAGE"
 ]);
 
 /** All settings as a plain key->value map (every value is stored as text; parse as needed). */
@@ -101,6 +98,43 @@ export async function getNumberSetting(
   const raw = await getSetting(supabase, key, String(defaultValue));
   const parsed = Number(raw);
   return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
+export interface HospitalLocation {
+  lat: number;
+  lng: number;
+}
+
+/**
+ * Ported from getHospitalLocation in src/Config.gs — null if either
+ * coordinate is unset, checked against the raw (pre-Number()) setting
+ * text so an unconfigured value is never silently treated as a genuine
+ * (0, 0) coordinate (Number("") is 0).
+ */
+export async function getHospitalLocation(
+  supabase: SupabaseClient<Database>
+): Promise<HospitalLocation | null> {
+  const [latText, lngText] = await Promise.all([
+    getSetting(supabase, "HOSPITAL_LATITUDE", ""),
+    getSetting(supabase, "HOSPITAL_LONGITUDE", "")
+  ]);
+
+  if (!latText.trim() || !lngText.trim()) {
+    return null;
+  }
+
+  const lat = Number(latText);
+  const lng = Number(lngText);
+
+  return Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+}
+
+/** Ported from getHomeCollectionRadiusKm in src/Config.gs. */
+export async function getHomeCollectionRadiusKm(
+  supabase: SupabaseClient<Database>
+): Promise<number> {
+  const radius = await getNumberSetting(supabase, "HOME_COLLECTION_RADIUS_KM", 5);
+  return radius > 0 ? radius : 5;
 }
 
 /** Upserts one setting — used by the admin UI's Settings page. */

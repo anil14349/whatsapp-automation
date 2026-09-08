@@ -119,7 +119,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       phoneNumberId
     });
 
-    if (inbound.type === "text" || inbound.type === "interactive") {
+    if (inbound.type === "text" || inbound.type === "interactive" || inbound.type === "location") {
       const [clinicName, interactiveMenusEnabled, session] = await Promise.all([
         getSetting(supabase, "CLINIC_NAME", "ABC Clinic"),
         getBooleanSetting(supabase, "ENABLE_INTERACTIVE_MENUS", true),
@@ -137,7 +137,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         language: session?.language || "EN"
       };
 
-      await processInboundMessage(ctx, inbound.text);
+      const location =
+        "latitude" in inbound && "longitude" in inbound
+          ? { latitude: inbound.latitude, longitude: inbound.longitude }
+          : undefined;
+
+      await processInboundMessage(ctx, inbound.text, location);
     } else if (inbound.type === "flow_reply" && "flowResponse" in inbound) {
       // The Flow endpoint (app/api/whatsapp/flow/route.ts) already
       // created the appointment server-side during the final screen's

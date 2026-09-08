@@ -9,11 +9,15 @@ describe("DORMANT_SETTING_KEYS", () => {
     // active" badge on a setting that really does work.
     expect(DORMANT_SETTING_KEYS.has("CLINIC_NAME")).toBe(false);
     expect(DORMANT_SETTING_KEYS.has("ENABLE_INTERACTIVE_MENUS")).toBe(false);
+    // Wired up by lib/whatsapp/patientFlow.ts's home collection flow
+    // (getHospitalLocation/getHomeCollectionRadiusKm in lib/settings.ts).
+    expect(DORMANT_SETTING_KEYS.has("HOSPITAL_LATITUDE")).toBe(false);
+    expect(DORMANT_SETTING_KEYS.has("HOSPITAL_LONGITUDE")).toBe(false);
+    expect(DORMANT_SETTING_KEYS.has("HOME_COLLECTION_RADIUS_KM")).toBe(false);
   });
 
   it("includes settings for features not yet ported (spot check)", () => {
     expect(DORMANT_SETTING_KEYS.has("ENABLE_APPOINTMENT_REMINDERS")).toBe(true);
     expect(DORMANT_SETTING_KEYS.has("ENABLE_AFTER_HOURS_REPLY")).toBe(true);
-    expect(DORMANT_SETTING_KEYS.has("HOME_COLLECTION_RADIUS_KM")).toBe(true);
   });
 });

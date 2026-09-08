@@ -102,8 +102,8 @@ section for full setup steps.
 | `CLINIC_OPEN_TIME` / `CLINIC_CLOSE_TIME` | `09:00` / `18:00` | Clinic hours for the above | ⛔ Not yet wired (same as above) |
 | `CLINIC_WORKING_DAYS` | `Mon,Tue,Wed,Thu,Fri,Sat` | Days the after-hours gate treats as open | ⛔ Not yet wired (same as above) |
 | `AFTER_HOURS_MESSAGE` | *(empty)* | Custom closed-message override | ⛔ Not yet wired (same as above) |
-| `HOSPITAL_LATITUDE` / `HOSPITAL_LONGITUDE` | *(empty)* | Clinic location for the home-collection radius check | ⛔ Not yet wired — home sample collection isn't ported (README stage 3 deferred list) |
-| `HOME_COLLECTION_RADIUS_KM` | `5` | Service radius for home collection | ⛔ Not yet wired (same as above) |
+| `HOSPITAL_LATITUDE` / `HOSPITAL_LONGITUDE` | *(empty)* | Clinic location for the home-collection radius check | ✅ Active — `getHospitalLocation` (`lib/settings.ts`), used by `lib/whatsapp/patientFlow.ts`'s Home Sample Collection flow. Leave either blank and the flow tells patients it isn't set up yet, rather than silently treating (0, 0) as the clinic's location |
+| `HOME_COLLECTION_RADIUS_KM` | `5` | Service radius for home collection | ✅ Active — `getHomeCollectionRadiusKm` (`lib/settings.ts`) |
 
 **Why they're editable in the admin UI if most don't do anything yet**:
 the `settings` table and its admin form were built as the general

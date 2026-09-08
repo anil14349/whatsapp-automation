@@ -190,18 +190,36 @@ export function getYesNoConfirmSpec(): MenuReply {
 export function getPatientMoreMenuSpec(): MenuReply {
   return {
     fallbackText:
-      "1️⃣ Cancel Appointment\n2️⃣ Reschedule Appointment\n3️⃣ Change Language\n0️⃣ Main Menu",
+      "1️⃣ Cancel Appointment\n2️⃣ Reschedule Appointment\n3️⃣ Change Language\n4️⃣ Home Sample Collection\n0️⃣ Main Menu",
     interactive: buildInteractiveListSpec(
       [
         { id: "cancel_appointment", title: "Cancel Appointment" },
         { id: "reschedule_appointment", title: "Reschedule Appointment" },
         { id: "change_language", title: "Change Language" },
+        { id: "home_collection", title: "Home Sample Collection" },
         { id: "nav_main_menu", title: "Main Menu" }
       ],
       "Select option"
     )
   };
 }
+
+export function getHomeCollectionTimeWindowSpec(): MenuReply {
+  return {
+    fallbackText: "1️⃣ Morning (8 AM - 12 PM)\n2️⃣ Afternoon (12 PM - 4 PM)\n3️⃣ Evening (4 PM - 8 PM)",
+    interactive: buildInteractiveButtonSpec([
+      { id: "1", title: "Morning" },
+      { id: "2", title: "Afternoon" },
+      { id: "3", title: "Evening" }
+    ])
+  };
+}
+
+export const HOME_COLLECTION_TIME_WINDOWS: Record<string, string> = {
+  "1": "Morning (8 AM - 12 PM)",
+  "2": "Afternoon (12 PM - 4 PM)",
+  "3": "Evening (4 PM - 8 PM)"
+};
 
 export interface AppointmentListItem {
   appointmentId: string;
