@@ -44,7 +44,25 @@ export default async function HomePage() {
           href="/admin"
           className="rounded-md bg-brand-600 px-4 py-2 font-medium text-white hover:bg-brand-700"
         >
-          Admin / Receptionist Console
+          Admin
+        </Link>
+
+        {/*
+          Receptionists and admins both sign in through the same
+          /admin/login form and admin_session cookie — there's no
+          separate receptionist auth path — so this is a labeling
+          shortcut, not a different destination. It exists so
+          receptionist staff have their own clearly-named entry point
+          instead of clicking an "Admin" button to do their job.
+          loginAction (app/admin/login/actions.ts) sends RECEPTIONIST
+          accounts straight to /admin/appointments after sign-in rather
+          than the ADMIN-oriented stats dashboard.
+        */}
+        <Link
+          href="/admin"
+          className="rounded-md border border-brand-600 px-4 py-2 font-medium text-brand-700 hover:bg-brand-50"
+        >
+          Receptionist
         </Link>
 
         <Link

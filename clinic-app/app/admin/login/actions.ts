@@ -34,5 +34,11 @@ export async function loginAction(
   }
 
   await createAdminSession(result.user);
-  redirect("/admin");
+
+  // Receptionists' day-to-day work is the appointments list, not the
+  // ADMIN-oriented stats dashboard (which surfaces things like "Active
+  // doctors" that aren't a receptionist's concern) — skip straight to
+  // it instead of making them click through every time. The Dashboard
+  // nav link is still there if they want the overview.
+  redirect(result.user.role === "RECEPTIONIST" ? "/admin/appointments" : "/admin");
 }
