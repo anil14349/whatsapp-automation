@@ -1,7 +1,7 @@
 "use client";
 
 import { useTransition } from "react";
-import { HOME_COLLECTION_STATUSES, type HomeCollectionStatus } from "@/lib/homeCollection";
+import { HOME_COLLECTION_STATUSES, type HomeCollectionStatus } from "@/lib/homeCollectionStatus";
 import { updateHomeCollectionStatusAction } from "./actions";
 
 export function HomeCollectionRowActions({

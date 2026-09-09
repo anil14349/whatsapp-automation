@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { updateHomeCollectionStatus, type HomeCollectionStatus } from "@/lib/homeCollection";
+import { updateHomeCollectionStatus } from "@/lib/homeCollection";
+import type { HomeCollectionStatus } from "@/lib/homeCollectionStatus";
 import { assertAdminRole } from "@/lib/auth/authorize";
 
 export async function updateHomeCollectionStatusAction(

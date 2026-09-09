@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
+import type { HomeCollectionStatus } from "./homeCollectionStatus";
 
 /**
  * Ports the relevant parts of src/Model_HomeCollection.gs. Status starts
@@ -51,22 +52,6 @@ export async function createHomeCollectionRequest(
 
   return data;
 }
-
-/**
- * Every status a staff member can move a request through, in the order
- * they'd naturally progress — no enum in the schema (unlike
- * appointment_status), since this is a much simpler "someone calls the
- * patient back" workflow than the booking system's, not worth a
- * migration to formalize until it needs to be.
- */
-export const HOME_COLLECTION_STATUSES = [
-  "Requested",
-  "Contacted",
-  "Completed",
-  "Cancelled"
-] as const;
-
-export type HomeCollectionStatus = (typeof HOME_COLLECTION_STATUSES)[number];
 
 export async function listHomeCollectionRequests(
   supabase: SupabaseClient<Database>,

@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { listHomeCollectionRequests, HOME_COLLECTION_STATUSES } from "@/lib/homeCollection";
+import { listHomeCollectionRequests } from "@/lib/homeCollection";
+import { HOME_COLLECTION_STATUSES } from "@/lib/homeCollectionStatus";
 import { requireAdminRole } from "@/lib/auth/authorize";
 import { HomeCollectionRowActions } from "./HomeCollectionRowActions";
 
