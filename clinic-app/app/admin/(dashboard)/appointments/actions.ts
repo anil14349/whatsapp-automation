@@ -9,6 +9,7 @@ import { getAvailableSlotsForDoctor } from "@/lib/scheduling/slots";
 import { formatTimeLabel } from "@/lib/scheduling/dates";
 import { getServerEnv } from "@/lib/env";
 import { assertAdminRole } from "@/lib/auth/authorize";
+import { sendDoctorBroadcast } from "@/lib/broadcast";
 
 /**
  * Admin cancellation goes through the same cancelAppointment() used by
@@ -162,4 +163,57 @@ export async function createWalkInAppointmentAction(
 
   revalidatePath("/admin/appointments");
   return { success: true };
+}
+
+export interface BroadcastFormState {
+  error?: string;
+  success?: boolean;
+  sent?: number;
+  errors?: number;
+  recipientCount?: number;
+}
+
+/**
+ * Web-admin counterpart to the WhatsApp Doctor Portal's Broadcast option
+ * (lib/whatsapp/doctorFlow.ts's DOCTOR_BROADCAST_* states) — same
+ * sendDoctorBroadcast() call, so an admin/receptionist gets identical
+ * behavior (dedup by phone, per-recipient try/catch, message_log rows)
+ * without needing the doctor's own WhatsApp number.
+ */
+export async function broadcastToDoctorPatientsAction(
+  _prevState: BroadcastFormState,
+  formData: FormData
+): Promise<BroadcastFormState> {
+  const doctorId = String(formData.get("doctorId") ?? "").trim();
+  const dateString = String(formData.get("date") ?? "").trim();
+  const message = String(formData.get("message") ?? "").trim();
+
+  if (!doctorId || !dateString) {
+    return { error: "Missing doctor or date filter." };
+  }
+
+  if (!message) {
+    return { error: "Message can't be empty." };
+  }
+
+  try {
+    await assertAdminRole(["ADMIN", "RECEPTIONIST"]);
+    const supabase = getSupabaseServerClient();
+    const env = getServerEnv();
+
+    const result = await sendDoctorBroadcast(supabase, doctorId, dateString, message, env.CLINIC_TIMEZONE);
+
+    if (result.recipientCount === 0) {
+      return { error: `No confirmed appointments for that doctor on ${dateString}.` };
+    }
+
+    return {
+      success: true,
+      sent: result.sent,
+      errors: result.errors,
+      recipientCount: result.recipientCount
+    };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to send broadcast." };
+  }
 }

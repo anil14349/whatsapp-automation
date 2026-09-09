@@ -6,6 +6,7 @@ import { requireAdminRole } from "@/lib/auth/authorize";
 import type { AppointmentStatus } from "@/lib/supabase/database.types";
 import { AppointmentRowActions } from "./AppointmentRowActions";
 import { NewAppointmentForm } from "./NewAppointmentForm";
+import { BroadcastForm } from "./BroadcastForm";
 
 const VALID_STATUSES: readonly AppointmentStatus[] = [
   "Confirmed",
@@ -19,6 +20,22 @@ function parseStatusFilter(value: string | undefined): AppointmentStatus | null 
     ? (value as AppointmentStatus)
     : null;
 }
+
+/**
+ * A Server Action's maxDuration is set on the route segment that
+ * renders the form invoking it, not in the "use server" actions file
+ * itself (that file may only export async functions). This page renders
+ * BroadcastForm, whose action (broadcastToDoctorPatientsAction, in
+ * ./actions.ts) awaits sendDoctorBroadcast's full send loop
+ * synchronously so the admin UI can show the final sent/error counts —
+ * unlike the WhatsApp Doctor Portal's copy of that call
+ * (lib/whatsapp/doctorFlow.ts), which defers it into an after()
+ * callback instead. Raise this if a clinic's confirmed-appointment list
+ * doesn't finish broadcasting in time (see CONFIGURATION.md's "Doctor
+ * broadcast timeouts" section), bounded by whatever your hosting plan
+ * allows.
+ */
+export const maxDuration = 60;
 
 export default async function AppointmentsPage({
   searchParams
@@ -173,6 +190,10 @@ export default async function AppointmentsPage({
           </tbody>
         </table>
       </div>
+
+      {filters.doctorId && filters.date && (
+        <BroadcastForm doctorId={filters.doctorId} date={filters.date} />
+      )}
     </div>
   );
 }
