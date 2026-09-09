@@ -123,21 +123,14 @@ export async function createWalkInAppointmentAction(
   const dateString = String(formData.get("date") ?? "").trim();
   const slotIso = String(formData.get("slot") ?? "").trim();
   const patientName = String(formData.get("patientName") ?? "").trim();
-  // Digits only — a human typing a phone number will inconsistently
-  // include spaces/dashes/parens ("987-654-3210" vs "9876543210"), and
-  // unlike WhatsApp-originated bookings (where the phone always arrives
-  // pre-formatted from Meta), this is the first bookAppointment() caller
-  // taking free-typed phone input. patients.phone itself is safe either
-  // way (upsertPatient/findPatientByPhone normalize internally down to
-  // the last 10 digits — see lib/phone.ts), but appointments.patient_phone
-  // is a raw denormalized snapshot column compared with a literal
-  // string match (both by the same-day-duplicate pre-check below and by
-  // the appointments_one_active_per_patient_per_day_idx DB constraint) —
-  // stripping punctuation here at least prevents that check from being
-  // defeated by formatting alone. It does NOT fully resolve a mismatch
-  // against a country-code-included WhatsApp-format number for the same
-  // patient (e.g. "9876543210" here vs "919876543210" from a WhatsApp
-  // booking) — see the flagged follow-up on lib/appointments.ts for that.
+  // Digits only for basic input cleanup — a human typing a phone number
+  // will inconsistently include spaces/dashes/parens ("987-654-3210" vs
+  // "9876543210"). bookAppointment() itself now normalizes patientPhone
+  // via lib/phone.ts's normalizeWhatsAppPhone (last 10 digits) before
+  // comparing/storing it, so this free-typed input — unlike WhatsApp's
+  // consistently country-code-prefixed sender phone — correctly matches
+  // the same real patient's WhatsApp-originated appointments too (e.g.
+  // "9876543210" here vs "919876543210" from a WhatsApp booking).
   const patientPhone = String(formData.get("patientPhone") ?? "").trim().replace(/\D/g, "");
 
   if (!doctorId || !dateString || !slotIso || !patientName || !patientPhone) {

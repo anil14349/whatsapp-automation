@@ -9,6 +9,7 @@ import { getDoctorById } from "@/lib/doctors";
 import { getAvailableSlotsForDoctor } from "@/lib/scheduling/slots";
 import { registerPatientForBooking } from "@/lib/patients";
 import { combineDateAndTime, isValidISODate } from "@/lib/scheduling/dates";
+import { normalizeWhatsAppPhone, phonesMatch } from "@/lib/phone";
 
 /**
  * Book/cancel/reschedule. Ports the core of src/Model_Appointments.gs.
@@ -82,7 +83,21 @@ export async function bookAppointment(
   calendar: CalendarPort,
   params: BookAppointmentParams
 ): Promise<AppointmentResult> {
-  const { doctorId, dateString, patientName, patientPhone, timezone } = params;
+  const { doctorId, dateString, patientName, timezone } = params;
+
+  // Normalize once at the root so every caller (WhatsApp senders arriving
+  // pre-formatted with a country code, the native WhatsApp Flow endpoint,
+  // and free-typed admin/receptionist walk-in input) ends up comparing
+  // and storing the same last-10-digit form patients.phone already uses
+  // (see lib/phone.ts) — otherwise the same real number in two different
+  // formats looks like two different patients to the same-day-duplicate
+  // check and the appointments_one_active_per_patient_per_day_idx
+  // constraint, even though patients.phone resolves them to one row.
+  const patientPhone = normalizeWhatsAppPhone(params.patientPhone);
+
+  if (!patientPhone) {
+    return { success: false, message: "A valid patient phone number is required." };
+  }
 
   if (!isValidISODate(dateString)) {
     return { success: false, message: "Invalid appointment date." };
@@ -489,10 +504,14 @@ export function checkAppointmentOwnership(
   }
 
   if (options.patientPhone) {
-    // Exact match is fine here: patient_phone is stored as entered by
-    // upsertPatient (which normalizes it), and every caller passes the
-    // same normalized value used at booking time.
-    if (appointment.patient_phone !== options.patientPhone) {
+    // Compare via phonesMatch (normalizes both sides to the last 10
+    // digits) rather than a raw string match: bookAppointment now stores
+    // patient_phone normalized, but rows written before that fix (or by
+    // any caller that didn't go through it) may still hold the raw
+    // as-sent format, and the caller's options.patientPhone can arrive in
+    // either form too (e.g. ctx.phone from WhatsApp). A strict `!==`
+    // would wrongly deny ownership for the exact same real number.
+    if (!phonesMatch(appointment.patient_phone, options.patientPhone)) {
       return { success: false, message: "Appointment does not belong to this phone number." };
     }
 
@@ -515,10 +534,17 @@ export async function getConfirmedAppointmentsForPhone(
   supabase: SupabaseClient<Database>,
   phone: string
 ): Promise<Appointment[]> {
+  // Normalize so this matches whatever format bookAppointment now stores
+  // (last 10 digits) regardless of how the caller's phone arrived. Note:
+  // this won't find appointments written before this fix whose
+  // patient_phone still holds the raw pre-normalization format — see the
+  // backfill note on bookAppointment.
+  const normalizedPhone = normalizeWhatsAppPhone(phone);
+
   const { data, error } = await supabase
     .from("appointments")
     .select("*")
-    .eq("patient_phone", phone)
+    .eq("patient_phone", normalizedPhone)
     .eq("status", "Confirmed")
     .order("appointment_date")
     .order("appointment_time");
