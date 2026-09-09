@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { getClinicNameSafe } from "@/lib/settings";
 import { LoginForm } from "./LoginForm";
@@ -14,6 +15,13 @@ export default async function AdminLoginPage() {
         <div className="mt-6">
           <LoginForm />
         </div>
+
+        <p className="mt-4 text-center text-xs text-slate-400">
+          Looking for the Doctor Portal instead?{" "}
+          <Link href="/doctor/login" className="font-medium text-brand-600 hover:text-brand-700">
+            Sign in here
+          </Link>
+        </p>
       </div>
     </main>
   );

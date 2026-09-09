@@ -39,12 +39,21 @@ export default async function HomePage() {
         </p>
       )}
 
-      <Link
-        href="/admin"
-        className="rounded-md bg-brand-600 px-4 py-2 font-medium text-white hover:bg-brand-700"
-      >
-        Go to Admin Console
-      </Link>
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Link
+          href="/admin"
+          className="rounded-md bg-brand-600 px-4 py-2 font-medium text-white hover:bg-brand-700"
+        >
+          Admin / Receptionist Console
+        </Link>
+
+        <Link
+          href="/doctor"
+          className="rounded-md border border-brand-600 px-4 py-2 font-medium text-brand-700 hover:bg-brand-50"
+        >
+          Doctor Portal
+        </Link>
+      </div>
 
       <p className="text-xs text-slate-400">
         WhatsApp webhook:{" "}
