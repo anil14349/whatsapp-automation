@@ -12,6 +12,7 @@ import {
 } from "@/lib/doctors";
 import type { Weekday } from "@/lib/supabase/database.types";
 import { assertAdminRole } from "@/lib/auth/authorize";
+import { hashPassword, validateNewPassword } from "@/lib/auth/password";
 
 export interface FormState {
   error?: string;
@@ -150,4 +151,52 @@ export async function cancelLeaveAction(doctorId: string, leaveDate: string): Pr
   const supabase = getSupabaseServerClient();
   await deactivateDoctorLeave(supabase, doctorId, leaveDate);
   revalidatePath(`/admin/doctors/${doctorId}`);
+}
+
+export interface ResetPasswordFormState {
+  error?: string;
+  success?: boolean;
+}
+
+/**
+ * Sets (or resets) a doctor's portal login. Note: the doctor session
+ * cookie (lib/auth/doctorSession.ts) is a stateless signed token with no
+ * server-side session store, so an already-issued session isn't
+ * invalidated by this action — it simply expires on its own after 12
+ * hours. Acceptable tradeoff for now; revoking on reset would require
+ * adding a session-versioning column and is not worth the migration for
+ * this use case.
+ */
+export async function resetDoctorPasswordAction(
+  doctorId: string,
+  _prevState: ResetPasswordFormState,
+  formData: FormData
+): Promise<ResetPasswordFormState> {
+  await assertAdminRole(["ADMIN"]);
+
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+  const confirmPassword = String(formData.get("confirmPassword") ?? "");
+
+  if (!email) {
+    return { error: "Email is required to set up portal login." };
+  }
+
+  const validationError = validateNewPassword(password, confirmPassword);
+  if (validationError) {
+    return { error: validationError };
+  }
+
+  try {
+    const supabase = getSupabaseServerClient();
+    await updateDoctor(supabase, doctorId, {
+      email,
+      password_hash: await hashPassword(password)
+    });
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Failed to reset password." };
+  }
+
+  revalidatePath(`/admin/doctors/${doctorId}`);
+  return { success: true };
 }

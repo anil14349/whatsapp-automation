@@ -7,6 +7,7 @@ import { requireAdminRole } from "@/lib/auth/authorize";
 import { EditDoctorForm } from "./EditDoctorForm";
 import { AvailabilityManager } from "./AvailabilityManager";
 import { LeavesManager } from "./LeavesManager";
+import { ResetDoctorPasswordForm } from "./ResetDoctorPasswordForm";
 
 export default async function DoctorDetailPage({
   params
@@ -38,6 +39,13 @@ export default async function DoctorDetailPage({
         <h2 className="text-sm font-semibold text-slate-900">Doctor details</h2>
         <div className="mt-4">
           <EditDoctorForm doctor={doctor} />
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">Doctor Portal login</h2>
+        <div className="mt-4">
+          <ResetDoctorPasswordForm doctorId={doctor.id} email={doctor.email} />
         </div>
       </section>
 

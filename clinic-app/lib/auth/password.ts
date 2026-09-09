@@ -17,6 +17,29 @@ export async function hashPassword(password: string): Promise<string> {
   return `scrypt:${salt.toString("hex")}:${derivedKey.toString("hex")}`;
 }
 
+const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * Shared by every "set/reset a password" form — currently the admin
+ * doctor-password-reset action (app/admin/(dashboard)/doctors/actions.ts).
+ * Pulled out as a pure function (no I/O) so it's unit-testable on its
+ * own, same reasoning as lib/patients.ts's isValidPatientName.
+ * scripts/set-doctor-password.mjs's own inline validation stays
+ * separate — that script has no TypeScript/build step to import this
+ * from.
+ */
+export function validateNewPassword(password: string, confirmPassword: string): string | null {
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`;
+  }
+
+  if (password !== confirmPassword) {
+    return "Passwords do not match.";
+  }
+
+  return null;
+}
+
 export async function verifyPassword(
   password: string,
   storedHash: string
