@@ -1,0 +1,213 @@
+{
+  "version": "6.3",
+  "data_api_version": "3.0",
+  "routing_model": {
+    "SELECT_DOCTOR": ["SELECT_DATE"],
+    "SELECT_DATE": ["SELECT_TIME"],
+    "SELECT_TIME": ["CONFIRM"],
+    "CONFIRM": []
+  },
+  "screens": [
+    {
+      "id": "SELECT_DOCTOR",
+      "title": "Select Doctor",
+      "data": {
+        "doctors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          },
+          "__example__": [{ "id": "sample", "title": "Dr. Sample", "description": "General Medicine" }]
+        },
+        "error_message": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "select_doctor_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Book an appointment"
+              },
+              {
+                "type": "ErrorMessage",
+                "text": "${data.error_message}",
+                "visible": "${data.error_message}"
+              },
+              {
+                "type": "Dropdown",
+                "name": "doctor_id",
+                "label": "Doctor",
+                "required": true,
+                "data-source": "${data.doctors}"
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": { "doctor_id": "${form.doctor_id}" }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "SELECT_DATE",
+      "title": "Select Date",
+      "data": {
+        "doctor_name": { "type": "string", "__example__": "Dr. Sample" },
+        "minimum_date": { "type": "string", "__example__": "2026-01-01" },
+        "error_message": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "select_date_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "${data.doctor_name}"
+              },
+              {
+                "type": "ErrorMessage",
+                "text": "${data.error_message}",
+                "visible": "${data.error_message}"
+              },
+              {
+                "type": "DatePicker",
+                "name": "appointment_date",
+                "label": "Appointment date",
+                "required": true,
+                "min-date": "${data.minimum_date}"
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": { "appointment_date": "${form.appointment_date}" }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "SELECT_TIME",
+      "title": "Select Time",
+      "data": {
+        "slots": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" }
+            }
+          },
+          "__example__": [{ "id": "2026-01-01T09:00:00.000Z", "title": "9:00 AM" }]
+        },
+        "error_message": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "select_time_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Available times"
+              },
+              {
+                "type": "ErrorMessage",
+                "text": "${data.error_message}",
+                "visible": "${data.error_message}"
+              },
+              {
+                "type": "RadioButtonsGroup",
+                "name": "time_slot",
+                "label": "Time",
+                "required": true,
+                "data-source": "${data.slots}"
+              },
+              {
+                "type": "Footer",
+                "label": "Continue",
+                "on-click-action": {
+                  "name": "data_exchange",
+                  "payload": { "time_slot": "${form.time_slot}" }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "CONFIRM",
+      "title": "Confirm",
+      "terminal": true,
+      "data": {
+        "doctor_name": { "type": "string", "__example__": "Dr. Sample" },
+        "appointment_date": { "type": "string", "__example__": "2026-01-01" },
+        "appointment_time": { "type": "string", "__example__": "9:00 AM" },
+        "error_message": { "type": "string", "__example__": "" }
+      },
+      "layout": {
+        "type": "SingleColumnLayout",
+        "children": [
+          {
+            "type": "Form",
+            "name": "confirm_form",
+            "children": [
+              {
+                "type": "TextHeading",
+                "text": "Confirm your appointment"
+              },
+              {
+                "type": "TextBody",
+                "text": "Doctor: ${data.doctor_name}\nDate: ${data.appointment_date}\nTime: ${data.appointment_time}"
+              },
+              {
+                "type": "ErrorMessage",
+                "text": "${data.error_message}",
+                "visible": "${data.error_message}"
+              },
+              {
+                "type": "TextInput",
+                "name": "patient_name",
+                "label": "Your full name",
+                "input-type": "text",
+                "required": true
+              },
+              {
+                "type": "Footer",
+                "label": "Confirm Booking",
+                "on-click-action": {
+                  "name": "complete",
+                  "payload": { "patient_name": "${form.patient_name}" }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

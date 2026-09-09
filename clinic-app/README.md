@@ -72,10 +72,17 @@ revisiting periodically (`npm audit`) as patched versions land upstream.
    and the [Supabase CLI](https://supabase.com/docs/guides/cli)):
    ```bash
    npm run db:start   # starts local Postgres + Studio via Docker
-   npm run db:reset   # applies every migration in supabase/migrations/ fresh
+   npm run db:reset   # applies every migration, then supabase/seed.sql
    ```
    `db:start` prints a local `anon`/`service_role` key pair and API URL —
-   put those into `.env.local`.
+   put those into `.env.local`. `db:reset` also runs
+   [`supabase/seed.sql`](supabase/seed.sql) automatically (standard
+   Supabase CLI behavior) — sample doctors, patients, and appointments
+   in a spread of statuses, so `/admin` isn't empty on first login. Seed
+   data is local-dev/demo only — never run `db:reset` against a real
+   clinic's database. It doesn't create an admin login; run
+   `npm run create-admin` (see "Receptionist/admin web UI" below) for
+   that regardless.
 
 4. **Google Calendar service account** (only needed once you get to
    booking flows that touch Calendar): create a Google Cloud service
@@ -174,32 +181,212 @@ available time slot → capture patient name (first-time bookers only) →
 confirm → **real booking against Postgres + Google Calendar**, with the
 same booking-integrity guarantees from stage 2.
 
-**Deferred to a later increment** (each follows the same pattern
-established here, so this is scoping work, not redesign work):
-- My Appointments / cancel / reschedule patient sub-flows
-- The "More" menu (change language, etc.)
-- Doctor conversation flow entirely (a doctor messaging in gets a
-  placeholder reply, not the Doctor Portal)
-- Home blood-sample-collection flow
-- Doctor-selection and slot-list **pagination** (this version lists
-  everything on one screen, capped at WhatsApp's 10-row list limit —
-  fine for a handful of doctors, not yet built out for more)
-- The shareable appointment receipt card (image generation)
-- Appointment reminders, after-hours auto-reply, auto-complete-past-
-  appointments background jobs
+Also working end-to-end: **My Appointments** (paginated list of the
+patient's confirmed appointments, 7 per page) → pick one → **Cancel** or
+**Reschedule** (choose a new date/time, same availability engine as
+booking) → confirmed against Postgres + Calendar. The **"More" menu**
+(Cancel Appointment / Reschedule Appointment / Change Language) is the
+entry point for cancel/reschedule when the patient hasn't first opened
+My Appointments. See `lib/whatsapp/patientFlow.ts`'s
+`handleAppointmentListChoice`/`startAppointmentListFlow` for the shared
+pagination/selection logic all three list screens (My Appointments,
+Cancel, Reschedule) reuse.
+
+Also working end-to-end: the **Doctor Portal** conversation flow
+(`lib/whatsapp/doctorFlow.ts`) — a WhatsApp number matching a doctor's
+`whatsapp_phone` (see `lib/doctors.ts`'s `findDoctorByWhatsAppPhone`,
+wired into `lib/whatsapp/router.ts`) gets a completely different menu:
+today's schedule, managing appointments (mark Completed/No-Show, cancel,
+reschedule any patient's booking — the same `cancelAppointment`/
+`rescheduleAppointment`/`markAppointmentStatus` functions the admin UI
+uses, with `authorizedDoctorId` instead of an admin session), managing
+weekly availability (add/remove sessions), and managing leave dates —
+single day or a date range in one step (`addDoctorLeaveRange`).
+Condensed from `src/Controller_DoctorFlow.gs`'s ~26 states to ~20 by
+using list menus (no 3-button pressure) instead of a tiered "More"
+sub-menu. A cancel/reschedule initiated by the doctor sends the patient
+a best-effort notification text, localized to the patient's own saved
+language.
+
+Also working end-to-end: **Home Sample Collection**
+(More menu → Home Sample Collection) — ports
+`src/Controller_HomeCollection.gs`/`Model_HomeCollection.gs`. The patient
+shares their WhatsApp location (the `location` inbound message type,
+now threaded through `lib/whatsapp/router.ts` →
+`handlePatientMessage`'s optional `location` parameter — previously
+only `"text"`/`"interactive"` messages reached the conversation flow at
+all); `lib/scheduling/geo.ts`'s `haversineDistanceKm` checks it's within
+`HOME_COLLECTION_RADIUS_KM` of the clinic's `HOSPITAL_LATITUDE`/
+`HOSPITAL_LONGITUDE` settings (both now wired — see `lib/settings.ts`'s
+`getHospitalLocation`/`getHomeCollectionRadiusKm`), then a preferred
+date + time window is captured and saved as a `home_collection_requests`
+row (`lib/homeCollection.ts`) for staff to follow up by phone. Staff
+manage these at **`/admin/home-collection`** — filterable by status,
+with a per-row status dropdown (Requested → Contacted → Completed, or
+Cancelled) via `updateHomeCollectionStatusAction`.
+
+**Optional per hospital** — `ENABLE_HOME_COLLECTION` (`/admin/settings`,
+default on) hides the "Home Sample Collection" option from the WhatsApp
+More menu entirely, and hides the `/admin/home-collection` sidebar link,
+for a hospital that doesn't do diagnostics/lab collection at all. This
+is distinct from (and checked *before*) the existing
+`HOSPITAL_LATITUDE`/`LONGITUDE` gate — that one only fires *after* a
+patient has already tapped the option; this one means the option isn't
+offered in the first place. The admin page itself stays reachable
+directly even when off, so historical requests are never hidden, just
+the entry points to create new ones.
+
+Also working end-to-end: the **shareable appointment receipt card**
+(`lib/whatsapp/receipt.tsx`) — sent as a WhatsApp image message right
+after every successful booking. Ports
+`src/Model_Appointments.gs`'s `createAppointmentReceiptCardBlob` (which
+built a throwaway Google Slide and exported it as a PNG — the only
+image-rendering option available from Apps Script) using Next.js's
+built-in `next/og` (`ImageResponse` — Satori + resvg under the hood,
+already bundled with Next, **no new dependency, no native binary to
+compile**, so it works the same in a Vercel deploy or the Docker image).
+`lib/whatsapp/send.ts`'s new `uploadWhatsAppMedia`/`sendWhatsAppImage`
+port `uploadWhatsAppImageBlob` using Node's built-in `FormData`/`Blob`
+instead of `UrlFetchApp`'s payload object. An optional clinic logo
+(`CLINIC_LOGO_URL` setting — any publicly reachable image URL, unlike
+the Apps Script version's hardcoded Google Drive file id) renders in
+the header if set; `isRenderableLogoUrl` rejects anything that isn't an
+absolute `http(s)` URL up front, and a logo that's set but unfetchable
+(bad URL, host down) degrades to "no logo" rather than breaking the
+whole card — see `lib/whatsapp/receipt.test.ts`'s test against a
+deliberately unfetchable URL. A failure generating
+or sending the card is swallowed after logging — it must never undo or
+fail a booking that already succeeded, same as the original's
+try/catch. **This is the one place in the whole rewrite with an actual
+runtime test** (`lib/whatsapp/receipt.test.ts` calls the real image
+renderer and asserts on the PNG magic bytes) rather than typecheck-only
+verification, since image rendering is exactly the kind of thing that
+can silently produce garbage without ever throwing.
+
+Also working end-to-end: **appointment reminders**, **auto-complete-past-
+appointments**, and the **after-hours auto-reply** — see the "Scheduled
+jobs" section below for reminders/auto-complete (both run on a schedule,
+not per-message) and `lib/afterHours.ts` for the after-hours gate (runs
+inline in `lib/whatsapp/router.ts`, before every greeting/patient
+message dispatch — no scheduling needed for that one).
+
+Also now working: **doctor-selection pagination** —
+`getDoctorSelectionMenuSpec` (`lib/whatsapp/menus.ts`) pages past
+WhatsApp's 10-row list limit exactly like the appointment lists already
+did, using the `list_page` session column and `doctor_prev`/`doctor_next`
+ids (matching the Apps Script version's own naming); **log
+retention/truncation**, via `lib/logCleanup.ts` and the daily
+`/api/cron/log-cleanup` job; and **doctor leave-range add/cancel** —
+the Doctor Portal's leave menu now offers "Add Leave (Single Day)" and
+"Add Leave (Date Range)" side by side (`DOCTOR_LEAVE_RANGE_START/END/REASON`
+states in `lib/whatsapp/doctorFlow.ts`, calling the
+`addDoctorLeaveRange` that already existed in `lib/doctors.ts` since
+stage 2 but was never wired into the WhatsApp flow until now).
+`DORMANT_SETTING_KEYS` in `lib/settings.ts` is now empty — every
+setting seeded so far has real code behind it.
+
+Every item from this rewrite's original "deferred to a later increment"
+list is now closed. Remaining known gaps are narrower and noted inline
+above (no clinic-logo asset upload UI — it's a URL field — and the
+"Not yet exercised against a live [service]" caveat that applies to
+this entire project, not any one feature).
 
 ### Verification
 
 `npm run typecheck`, `npm run build`, `npm run lint`, and `npm test`
-(61 tests) all pass. As with stage 2, the parts with real branching
-logic and no required I/O are unit-tested (inbound message parsing,
-localization incl. round-tripping every language against the extracted
-dictionaries, menu spec builders, slot-selection id encoding/decoding).
+(114 tests as of making Home Sample Collection optional per hospital) all pass. As
+with stage 2, the parts with real branching logic and no required I/O
+are unit-tested (inbound message parsing, localization incl.
+round-tripping every language against the extracted dictionaries, menu
+spec builders, slot-selection id encoding/decoding, appointment-list
+pagination and choice classification, doctor-portal weekday/session/leave
+selection parsing, haversine distance, after-hours clinic-hours gating
+across timezones, and — the one actual runtime test in the whole
+rewrite — real PNG generation for the receipt card).
 The webhook route and the conversation flow handlers that orchestrate
 Supabase + WhatsApp Cloud API + Calendar calls are typechecked but not
 yet exercised against a live WhatsApp number/database — see "What's
 tested vs. what isn't yet" under stage 2 above; the same caveat applies
 here.
+
+---
+
+## WhatsApp Flows (native "Book Appointment" form)
+
+An optional alternative to the list/button booking conversation above:
+[WhatsApp Flows](https://developers.facebook.com/docs/whatsapp/flows)
+open a real multi-screen native form inside the chat (dropdowns, a date
+picker, radio buttons) instead of a back-and-forth of separate list
+messages — mainly useful once you have more doctors/slots than
+WhatsApp's 10-row list-message limit comfortably fits.
+
+| Module | Purpose |
+|---|---|
+| `lib/whatsapp/flowCrypto.ts` | Implements Meta's Flow endpoint encryption contract (RSA-OAEP/SHA-256 to unwrap an AES key, AES-128-GCM for the actual payload) — the one genuinely fiddly part of this feature, isolated with its own round-trip test |
+| `lib/whatsapp/flowBooking.ts` | Screen-by-screen booking logic (doctor → date → time → name/confirm), reusing the exact same `lib/appointments.ts`/`lib/scheduling` functions the list/button flow uses — same booking rules, same double-booking guarantees, just a different UI driving them |
+| `app/api/whatsapp/flow/route.ts` | The Flow's "Data Exchange" HTTPS endpoint — decrypts, dispatches, encrypts the response, handles Meta's `ping` health check and the required 421-on-decryption-failure behavior |
+| `whatsapp-flows/booking-flow.json` | The Flow definition itself (screens/components) — paste into Meta's Flow Builder, or publish via its API |
+| `scripts/generate-flow-keypair.mjs` | One-time RSA keypair generator for the endpoint |
+
+### Turning it on
+
+This is off by default (`ENABLE_WHATSAPP_FLOW_BOOKING` seeds to `FALSE` —
+see migration `0006_whatsapp_flow_booking_setting.sql`) and falls back to
+the existing list/button flow whenever it's off, `WHATSAPP_FLOW_ID` isn't
+configured, or sending the flow-trigger message fails for any reason —
+see `startBooking()` in `lib/whatsapp/patientFlow.ts`.
+
+1. **Generate a keypair**: `node scripts/generate-flow-keypair.mjs`.
+   Paste the printed `WHATSAPP_FLOW_PRIVATE_KEY` /
+   `WHATSAPP_FLOW_PRIVATE_KEY_PASSPHRASE` into your `.env`.
+2. **Upload the public key** it printed to Meta, for your WhatsApp phone
+   number:
+   ```bash
+   curl -X POST \
+     "https://graph.facebook.com/v26.0/<PHONE_NUMBER_ID>/whatsapp_business_encryption" \
+     -H "Authorization: Bearer <WHATSAPP_ACCESS_TOKEN>" \
+     -F "business_public_key=<paste the PEM public key>"
+   ```
+3. **Create the Flow** in Meta's Flow Builder (Business Manager → WhatsApp
+   Manager → Flows), paste in `whatsapp-flows/booking-flow.json` (or
+   recreate the same screens in the visual builder), and set its
+   "Endpoint URI" to
+   `https://<your-deployed-app>/api/whatsapp/flow?token=<WHATSAPP_WEBHOOK_POST_TOKEN>`
+   (same token as the main webhook — see that route's comment for why
+   this is fail-closed rather than a separate secret).
+4. Publish the Flow, copy its **Flow ID** into `WHATSAPP_FLOW_ID`.
+5. Turn on **"Use a native WhatsApp Flow form for Book Appointment"** in
+   `/admin/settings`.
+6. Use the Flow Builder's own **Preview** panel to test the screens end
+   to end before relying on it with real patients.
+
+### Verification status — please read before relying on this
+
+**Not exercised against a live WhatsApp Flow or a real Meta test number**
+— there's no reachable WhatsApp Business Account, Flow Builder, or
+public HTTPS endpoint from this development environment. What *is*
+verified:
+- `lib/whatsapp/flowCrypto.ts` has a full round-trip test: a real
+  generated RSA keypair encrypts a request the way Meta's servers do
+  (per the published spec), this code decrypts it, and the reverse for
+  the response — confirms the crypto is internally self-consistent and
+  matches the documented algorithm choices.
+- `npm run typecheck`, `npm run build`, `npm run lint`, `npm test` all
+  pass with these files in place.
+
+What's **not** verified, and worth testing carefully against a real Flow
+before going live with it:
+- The exact screen/component names and `data`/`payload` wiring in
+  `whatsapp-flows/booking-flow.json` — Flow JSON's schema has evolved
+  across versions; treat this file as a solid starting draft to validate
+  in the Flow Builder's JSON editor, not a guaranteed-correct artifact.
+- Whether a completed Flow's `nfm_reply` message reliably arrives at the
+  main webhook the way `lib/whatsapp/inbound.ts`/
+  `app/api/whatsapp/webhook/route.ts` assume — the booking itself doesn't
+  depend on this (it's created server-side inside the Flow endpoint's
+  final `data_exchange` call), so a `nfm_reply` that never arrives, or
+  arrives in a different shape than expected, degrades to "no
+  acknowledgement text sent" rather than a failed or duplicated booking.
 
 ---
 
@@ -224,21 +411,67 @@ Then sign in at `/admin/login`.
 |---|---|
 | `/admin/login` | Email/password login (own `admin_users` table + a signed session cookie — **not** Supabase Auth, see below) |
 | `/admin` | Dashboard — today's/upcoming appointment counts, active doctor count |
-| `/admin/doctors` | List + create doctors |
-| `/admin/doctors/[id]` | Edit a doctor's details, manage weekly availability sessions, manage upcoming leaves |
-| `/admin/appointments` | Filterable list (doctor/date/status) with actions: mark Completed/No-Show, cancel |
+| `/admin/doctors` | List + create doctors — **ADMIN only** |
+| `/admin/doctors/[id]` | Edit a doctor's details, manage weekly availability sessions, manage upcoming leaves — **ADMIN only** |
+| `/admin/appointments` | Filterable list (doctor/date/status) with actions: mark Completed/No-Show, cancel. Also a "New Appointment (walk-in)" form for patients who come to the hospital directly instead of booking over WhatsApp — goes through the same `bookAppointment()` as every other booking path, so it shares the same slot-availability and double-booking guarantees |
 | `/admin/patients` | Read-only, searchable patient registry |
-| `/admin/settings` | Every configurable option from the `settings` table, grouped and editable as a real form |
+| `/admin/home-collection` | Home sample collection requests, filterable by status, with a per-row status dropdown |
+| `/admin/settings` | Every configurable option from the `settings` table, grouped and editable as a real form — **ADMIN only** |
 
 ### Design notes
 
 - **Auth is hand-rolled, not Supabase Auth**: `admin_users` (password hashed with Node's built-in `scrypt`, no external dependency) + a signed HTTP-only session cookie (`lib/auth/session.ts`, HMAC-SHA256 keyed by `ADMIN_SESSION_SECRET`, verified with `timingSafeEqual`). Chose this over Supabase Auth because the admin console is a small, fixed set of clinic staff accounts, not end-user signup — didn't want to pull in Auth's email verification/magic-link/OAuth machinery for a need this simple. `supabase/config.toml` has `[auth] enabled = false` accordingly.
 - **Every mutation goes through Next.js Server Actions calling the same `lib/*.ts` functions the WhatsApp bot uses** (e.g. admin appointment cancellation calls the identical `cancelAppointment()` from stage 2, with the same Calendar cleanup and status-transition rules) — not a separate, parallel admin-only code path that could drift from the bot's rules over time.
-- **No ADMIN vs. RECEPTIONIST permission split yet** — the `admin_users.role` column exists (for exactly this purpose later) but every logged-in user currently sees the same full UI. Worth adding once there's a real policy for what a receptionist shouldn't be able to touch (e.g. maybe settings, or deleting doctors).
+
+### Admin/Receptionist roles
+
+`admin_users.role` (`ADMIN` | `RECEPTIONIST`) is enforced by
+`lib/auth/authorize.ts`:
+
+| Area | ADMIN | RECEPTIONIST |
+|---|---|---|
+| Dashboard, Appointments, Patients | ✅ | ✅ |
+| Doctors (add/edit, availability, leaves) | ✅ | ⛔ redirected to `/admin` |
+| Settings | ✅ | ⛔ redirected to `/admin` |
+
+This is a default split, not a policy handed down from the Apps Script
+version (which had no admin UI at all, so no precedent existed) — a
+receptionist can run day-to-day operations (manage appointments, look up
+patients) but not reconfigure doctor rosters/availability or clinic-wide
+settings. Adjust `NAV_ITEMS` in `layout.tsx` and the `requireAdminRole`/
+`assertAdminRole` calls in each page/action if a clinic wants a
+different split.
+
+Two enforcement points per restricted area, not one:
+- **Pages/layouts** use `requireAdminRole` (redirects to `/admin/login`
+  if not logged in at all, or to `/admin` if logged in with the wrong
+  role) — this is what makes a direct URL visit to `/admin/settings`
+  redirect a receptionist away instead of rendering the page.
+- **Server Actions** use `assertAdminRole` (throws instead of
+  redirecting — an action has no page of its own to redirect from). This
+  also closed a real gap found while adding this: **none of the admin
+  Server Actions checked any session at all before this change**, valid
+  or not — a Server Action is a directly callable endpoint independent
+  of whichever page renders a button for it, so "the page is behind the
+  layout's login check" was never actually sufficient on its own. Every
+  mutating action across doctors/appointments/settings now requires a
+  valid session at minimum, with the doctors/settings ones additionally
+  requiring the `ADMIN` role.
 
 ### Verification
 
-`npm run typecheck`, `npm run build`, `npm run lint` all pass; `npm test` — 65 tests (4 new, covering password hashing: correct/incorrect verification, salting, and graceful rejection of a corrupted hash instead of throwing). The pages/Server Actions themselves are typechecked and built successfully but — same caveat as every stage so far — not yet exercised against a live Supabase instance from this environment.
+`npm run typecheck`, `npm run build`, and `npm test` (107 tests) all
+pass; `npm run lint` remains broken for the pre-existing, unrelated Next
+16 reason noted elsewhere in this README — ESLint itself via the direct
+binary (`./node_modules/.bin/eslint . --ext .ts,.tsx`) is clean. No
+dedicated test file for `lib/auth/authorize.ts` — it's coupled to
+Next.js's `cookies()`, same reasoning `lib/auth/session.ts` itself has
+never had one either (only the pure `lib/auth/password.ts` does). The
+pages/Server Actions themselves are typechecked and built successfully
+but — same caveat as every stage so far — not yet exercised against a
+live Supabase instance from this environment, so the actual
+redirect/rejection behavior for a real RECEPTIONIST login hasn't been
+clicked through end to end.
 
 ---
 
@@ -275,6 +508,62 @@ weren't available in the environment this scaffold was first built in):
 ```bash
 npm run db:types
 ```
+
+---
+
+## Scheduled jobs (reminders, auto-complete-past-appointments)
+
+Two background jobs need something external to trigger them
+periodically — they're plain HTTPS `GET` endpoints, not self-scheduling:
+
+| Job | Endpoint | Suggested cadence | Reads |
+|---|---|---|---|
+| Appointment reminders | `/api/cron/reminders` | Every 30 minutes | `lib/reminders.ts` |
+| Auto-complete past appointments | `/api/cron/auto-complete` | Hourly | `lib/autoComplete.ts` |
+| `message_log` retention cleanup | `/api/cron/log-cleanup` | Daily | `lib/logCleanup.ts` |
+
+All three are protected by `CRON_SECRET` (see `.env.example`) — every
+request must send `Authorization: Bearer <CRON_SECRET>`, checked with a
+constant-time comparison (`lib/cronAuth.ts`), same fail-closed pattern
+as `WHATSAPP_WEBHOOK_POST_TOKEN`. **Reminders/auto-complete are also
+still gated by their own setting** (`ENABLE_APPOINTMENT_REMINDERS`,
+`AUTO_COMPLETE_PAST_APPOINTMENTS` in `/admin/settings`) — the schedule
+below only controls how often the endpoint is *checked*, not whether it
+does anything. Log cleanup has no on/off setting of its own — `LOG_RETENTION`/
+`LOG_MAX_ROWS` control how aggressive it is, not whether it runs at all.
+
+### Option A — Vercel Cron (if deploying to Vercel)
+
+[`vercel.json`](vercel.json) already declares all three schedules. Vercel
+sends the `Authorization` header automatically as long as `CRON_SECRET`
+is set in the project's environment variables — nothing else to
+configure. **Note**: Vercel's free (Hobby) tier historically limits
+cron jobs to once/day — running every 30 minutes may require a paid
+plan. Check Vercel's current pricing page rather than trusting this
+number, since it's the kind of detail that changes.
+
+### Option B — any external scheduler (Docker / self-hosted deployments)
+
+`vercel.json` has no effect outside a Vercel deployment. Point any
+scheduler capable of an HTTPS call + a custom header at the same three
+URLs — a `crontab` entry, a GitHub Actions scheduled workflow, an
+external uptime/cron service (cron-job.org, etc.):
+
+```bash
+# Example crontab entries (adjust the host):
+*/30 * * * * curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-app.example.com/api/cron/reminders
+0 * * * *    curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-app.example.com/api/cron/auto-complete
+0 3 * * *    curl -fsS -H "Authorization: Bearer $CRON_SECRET" https://your-app.example.com/api/cron/log-cleanup
+```
+
+**Verification status**: not exercised against a live scheduler from
+this environment (no reachable Vercel project or external cron
+service) — `lib/reminders.ts`/`lib/autoComplete.ts`'s logic is
+typechecked, tested where the logic is timezone-sensitive
+(`lib/afterHours.test.ts` for the related after-hours gate), and the
+routes themselves build successfully, but the actual scheduled
+invocation path (Vercel Cron's request shape, or a real `curl` hitting
+a deployed URL) hasn't been run for real.
 
 ---
 

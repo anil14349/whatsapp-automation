@@ -54,6 +54,54 @@ async function sendWhatsAppGraphPayload(
   return responseBody ? JSON.parse(responseBody) : null;
 }
 
+/**
+ * Uploads a media file (e.g. the appointment receipt PNG — see
+ * lib/whatsapp/receipt.tsx) to WhatsApp's Media API, returning the media
+ * id needed to reference it in a subsequent message. Ports
+ * uploadWhatsAppImageBlob from src/Model_Appointments.gs — this version
+ * uses Node's built-in FormData/Blob (no extra dependency) instead of
+ * Apps Script's UrlFetchApp payload object.
+ */
+export async function uploadWhatsAppMedia(buffer: Buffer, mimeType: string): Promise<string> {
+  const env = getServerEnv();
+  const url = `https://graph.facebook.com/v26.0/${env.WHATSAPP_PHONE_NUMBER_ID}/media`;
+
+  const form = new FormData();
+  form.set("messaging_product", "whatsapp");
+  form.set("type", mimeType);
+  form.set("file", new Blob([new Uint8Array(buffer)], { type: mimeType }));
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.WHATSAPP_ACCESS_TOKEN}` },
+    body: form
+  });
+
+  const body = await response.text();
+
+  if (!response.ok) {
+    throw new Error(`WhatsApp media upload failed (${response.status}): ${body}`);
+  }
+
+  const parsed = body ? (JSON.parse(body) as { id?: string }) : {};
+
+  if (!parsed.id) {
+    throw new Error("WhatsApp media upload returned no media id.");
+  }
+
+  return parsed.id;
+}
+
+export async function sendWhatsAppImage(to: string, mediaId: string, caption: string): Promise<void> {
+  await sendWhatsAppGraphPayload(to, {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "image",
+    image: { id: mediaId, caption }
+  });
+}
+
 export async function sendWhatsAppText(to: string, messageText: string): Promise<void> {
   await sendWhatsAppGraphPayload(to, {
     messaging_product: "whatsapp",
@@ -93,6 +141,43 @@ export async function sendWhatsAppInteractive(
     to,
     type: "interactive",
     interactive
+  });
+}
+
+/**
+ * Sends the interactive "flow" message type that opens a native WhatsApp
+ * Flow form in the patient's chat (see lib/whatsapp/flowBooking.ts +
+ * app/api/whatsapp/flow/route.ts). `flowToken` round-trips back to our
+ * Flow endpoint as `flow_token` on every screen request — we set it to
+ * the patient's phone number so the endpoint can look up the same
+ * whatsapp_sessions row the button-based booking flow uses, with no
+ * extra token-to-phone mapping table needed.
+ */
+export async function sendWhatsAppFlow(
+  to: string,
+  bodyText: string,
+  params: { flowId: string; flowToken: string; ctaLabel: string }
+): Promise<void> {
+  await sendWhatsAppGraphPayload(to, {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "interactive",
+    interactive: {
+      type: "flow",
+      body: { text: bodyText },
+      action: {
+        name: "flow",
+        parameters: {
+          flow_message_version: "3",
+          flow_id: params.flowId,
+          flow_token: params.flowToken,
+          flow_cta: params.ctaLabel,
+          flow_action: "navigate",
+          flow_action_payload: { screen: "SELECT_DOCTOR" }
+        }
+      }
+    }
   });
 }
 

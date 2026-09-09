@@ -55,11 +55,35 @@ their appointments — booking still works, just without an event created
 (`lib/scheduling/slots.ts` returns no slots at all if `calendar_id` is
 blank, actually — see note under "Per-doctor configuration" below).
 
-### Admin auth — `lib/auth/session.ts`
+### WhatsApp Flows — `lib/whatsapp/flowCrypto.ts`, `app/api/whatsapp/flow/route.ts`
+
+| Variable | Required | Notes |
+|---|---|---|
+| `WHATSAPP_FLOW_ID` | Only if `ENABLE_WHATSAPP_FLOW_BOOKING` is on | The published Flow's ID from Meta's Flow Builder |
+| `WHATSAPP_FLOW_PRIVATE_KEY` | Only if `ENABLE_WHATSAPP_FLOW_BOOKING` is on | Generate with `node scripts/generate-flow-keypair.mjs`. Same `\n`-literal convention as `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` |
+| `WHATSAPP_FLOW_PRIVATE_KEY_PASSPHRASE` | Only if `ENABLE_WHATSAPP_FLOW_BOOKING` is on | Printed alongside the private key by the same script |
+
+All three are optional and unused unless `ENABLE_WHATSAPP_FLOW_BOOKING`
+is turned on below — see `clinic-app/README.md`'s "WhatsApp Flows"
+section for full setup steps.
+
+### Admin auth — `lib/auth/session.ts`, `lib/auth/authorize.ts`
+
+Role (`ADMIN` | `RECEPTIONIST`, `admin_users.role`) is not an env
+var/setting — set per-account via `scripts/create-admin-user.mjs --role`
+or edited directly in the `admin_users` table. See
+`clinic-app/README.md`'s "Admin/Receptionist roles" section for exactly
+what each role can do and where it's enforced.
 
 | Variable | Required | Notes |
 |---|---|---|
 | `ADMIN_SESSION_SECRET` | Yes, min 32 chars | Signs the admin session cookie (HMAC-SHA256). Generate with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`. **Never share this value across separate hospital deployments** — see `clinic-app/README.md`'s multi-hospital section |
+
+### Scheduled jobs — `lib/cronAuth.ts`, `app/api/cron/*/route.ts`
+
+| Variable | Required | Notes |
+|---|---|---|
+| `CRON_SECRET` | Only if using the reminders/auto-complete cron jobs | Checked against `Authorization: Bearer <CRON_SECRET>` — Vercel Cron sends this automatically (`vercel.json`); any other scheduler needs to set it explicitly. Unset means both `/api/cron/*` routes always return 401 |
 
 ### Misc
 
@@ -73,38 +97,37 @@ blank, actually — see note under "Per-doctor configuration" below).
 
 | Key | Default | Controls | **Wired up?** |
 |---|---|---|---|
-| `CLINIC_NAME` | `ABC Clinic` | Substituted for every `{{CLINIC_NAME}}` placeholder in bot messages | ✅ Active |
+| `CLINIC_NAME` | `ABC Clinic` | Substituted for every `{{CLINIC_NAME}}` placeholder in bot messages, and used for the browser tab title, the landing page (`/`), and both admin headers (`/admin/login`, the dashboard sidebar) via `getClinicNameSafe` (`lib/settings.ts`) | ✅ Active |
 | `ENABLE_INTERACTIVE_MENUS` | `TRUE` | Tap-to-select WhatsApp menus vs. falling back to plain numbered text | ✅ Active |
-| `LOG_RETENTION` | `month` | How long `message_log` rows are kept | ⛔ Not yet wired — no cleanup job exists; `message_log` currently grows unbounded |
-| `LOG_MAX_ROWS` | `5000` | Row cap after retention cleanup | ⛔ Not yet wired (depends on the cleanup job above) |
-| `LOG_MESSAGE_MAX_CHARS` | `500` | Truncate long logged message text | ⛔ Not yet wired — `lib/whatsapp/log.ts` logs the full message text untruncated |
-| `ENABLE_INBOUND_LOG` | `TRUE` | Whether to log inbound messages at all | ⛔ Not yet wired — the webhook logs unconditionally regardless of this toggle |
-| `ENABLE_DEBUG_LOG` | `TRUE` | Whether to log outbound sends | ⛔ Not yet wired — no outbound logging exists yet at all (inbound only) |
-| `ENABLE_APPOINTMENT_REMINDERS` | `TRUE` | Send WhatsApp reminders before appointments | ⛔ Not yet wired — the reminders job isn't ported (README stage 3 deferred list) |
-| `REMINDER_HOURS_BEFORE` | `24` | Comma-separated lead times | ⛔ Not yet wired (same as above) |
-| `REMINDER_WINDOW_MINUTES` | `45` | Send window for the reminder job | ⛔ Not yet wired (same as above) |
-| `AUTO_COMPLETE_PAST_APPOINTMENTS` | `FALSE` | Auto-mark past Confirmed appointments Completed | ⛔ Not yet wired — no background job exists; use `/admin/appointments`'s manual Completed/No-Show buttons instead |
-| `AUTO_COMPLETE_HOURS_AFTER` | `4` | Grace period before auto-completing | ⛔ Not yet wired (same as above) |
-| `ENABLE_AFTER_HOURS_REPLY` | `FALSE` | Auto-reply when patients message outside clinic hours | ⛔ Not yet wired — after-hours gating isn't ported (README stage 3 deferred list) |
-| `CLINIC_OPEN_TIME` / `CLINIC_CLOSE_TIME` | `09:00` / `18:00` | Clinic hours for the above | ⛔ Not yet wired (same as above) |
-| `CLINIC_WORKING_DAYS` | `Mon,Tue,Wed,Thu,Fri,Sat` | Days the after-hours gate treats as open | ⛔ Not yet wired (same as above) |
-| `AFTER_HOURS_MESSAGE` | *(empty)* | Custom closed-message override | ⛔ Not yet wired (same as above) |
-| `HOSPITAL_LATITUDE` / `HOSPITAL_LONGITUDE` | *(empty)* | Clinic location for the home-collection radius check | ⛔ Not yet wired — home sample collection isn't ported (README stage 3 deferred list) |
-| `HOME_COLLECTION_RADIUS_KM` | `5` | Service radius for home collection | ⛔ Not yet wired (same as above) |
+| `ENABLE_WHATSAPP_FLOW_BOOKING` | `FALSE` | Use a native WhatsApp Flow form for Book Appointment instead of the list/button conversation | ✅ Active, but requires `WHATSAPP_FLOW_ID` + a keypair configured (see env vars above) — falls back to the list/button flow if either is missing, even when this is `TRUE` |
+| `LOG_RETENTION` | `month` | How long `message_log` rows are kept | ✅ Active — `lib/logCleanup.ts`, invoked by the `/api/cron/log-cleanup` scheduled job (daily). REMINDER rows are exempt (they're the reminder scheduler's dedup ledger, not routine log volume) |
+| `LOG_MAX_ROWS` | `5000` | Row cap after retention cleanup | ✅ Active (same as above) |
+| `LOG_MESSAGE_MAX_CHARS` | `500` | Truncate long logged message text | ✅ Active — `lib/whatsapp/log.ts`'s `logMessage()` truncates every row regardless of direction |
+| `ENABLE_INBOUND_LOG` | `TRUE` | Whether to log inbound messages at all | ✅ Active — checked inside `logMessage()` |
+| `ENABLE_DEBUG_LOG` | `TRUE` | Whether to log outbound sends | ✅ Active — `lib/whatsapp/context.ts`'s `reply`/`replyMenu` now log every outbound send (direction `OUT`), checked inside `logMessage()` |
+| `ENABLE_APPOINTMENT_REMINDERS` | `TRUE` | Send WhatsApp reminders before appointments | ✅ Active — `lib/reminders.ts`, invoked by the `/api/cron/reminders` scheduled job. Needs `CRON_SECRET` configured and the job actually scheduled (Vercel Cron via `vercel.json`, or any external scheduler hitting that URL) to ever run — see README's "Scheduled jobs" section |
+| `REMINDER_HOURS_BEFORE` | `24` | Comma-separated lead times | ✅ Active (same as above) |
+| `REMINDER_WINDOW_MINUTES` | `45` | Send window for the reminder job | ✅ Active (same as above) |
+| `AUTO_COMPLETE_PAST_APPOINTMENTS` | `FALSE` | Auto-mark past Confirmed appointments Completed | ✅ Active — `lib/autoComplete.ts`, invoked by the `/api/cron/auto-complete` scheduled job. Same scheduling caveat as reminders above; `/admin/appointments`'s manual Completed/No-Show buttons work regardless of this setting |
+| `AUTO_COMPLETE_HOURS_AFTER` | `4` | Grace period before auto-completing | ✅ Active (same as above) |
+| `ENABLE_AFTER_HOURS_REPLY` | `FALSE` | Auto-reply when patients message outside clinic hours | ✅ Active — `lib/afterHours.ts`, checked on every inbound patient message by `lib/whatsapp/router.ts` (no scheduled job needed — this one runs inline per message) |
+| `CLINIC_OPEN_TIME` / `CLINIC_CLOSE_TIME` | `09:00` / `18:00` | Clinic hours for the above | ✅ Active (same as above) |
+| `CLINIC_WORKING_DAYS` | `Mon,Tue,Wed,Thu,Fri,Sat` | Days the after-hours gate treats as open | ✅ Active (same as above) |
+| `AFTER_HOURS_MESSAGE` | *(empty)* | Custom closed-message override | ✅ Active (same as above) |
+| `ENABLE_HOME_COLLECTION` | `TRUE` | Whether to offer Home Sample Collection at all | ✅ Active — hides the "Home Sample Collection" option from the WhatsApp More menu entirely (`getPatientMoreMenuSpec` in `lib/whatsapp/menus.ts`) and from the admin sidebar (`/admin/home-collection`) when off. For a hospital that doesn't do diagnostics/lab collection — turn this off instead of just leaving `HOSPITAL_LATITUDE`/`LONGITUDE` blank, which only bounces the patient back *after* they've already tapped the option |
+| `HOSPITAL_LATITUDE` / `HOSPITAL_LONGITUDE` | *(empty)* | Clinic location for the home-collection radius check | ✅ Active — `getHospitalLocation` (`lib/settings.ts`), used by `lib/whatsapp/patientFlow.ts`'s Home Sample Collection flow. Leave either blank and the flow tells patients it isn't set up yet, rather than silently treating (0, 0) as the clinic's location. Only relevant if `ENABLE_HOME_COLLECTION` is on |
+| `HOME_COLLECTION_RADIUS_KM` | `5` | Service radius for home collection | ✅ Active — `getHomeCollectionRadiusKm` (`lib/settings.ts`) |
 
-**Why they're editable in the admin UI if most don't do anything yet**:
-the `settings` table and its admin form were built as the general
-mechanism stage 2/4 established; each toggle activates the moment its
-corresponding bot feature gets ported in a future increment, with no
-schema or UI change needed then — only the missing plumbing in between.
-Treat the ⛔ rows today as "reserved, has no effect yet," not as broken.
-
-This isn't just documented here — `/admin/settings` itself shows a
-**"Not yet active"** badge next to every dormant field, so someone using
-the UI (not reading this doc) still finds out. The badge is driven by
-`DORMANT_SETTING_KEYS` in `lib/settings.ts`, the single source of truth
-for this table — keep it in sync with the ⛔ rows above if a future
-change wires up one of these settings.
+**Every setting above is now active** — `DORMANT_SETTING_KEYS` in
+`lib/settings.ts` is currently empty, and `/admin/settings` shows no
+"Not yet active" badges. It's kept as a mechanism, not deleted: if a
+future setting is added to the `settings` table ahead of the code that
+reads it (the `settings` table/admin form were built as a general
+mechanism from the start, precisely so a new toggle doesn't need a
+schema/UI change to go from "reserved" to "active"), add its key there
+so the badge shows up again until the matching feature lands — then
+remove it in that same change, so the UI and this table can't silently
+drift out of sync with what the code actually does.
 
 ---
 
@@ -116,7 +139,7 @@ change wires up one of these settings.
 | `name`, `specialization`, `clinic_name` | Display text shown to patients when picking a doctor | |
 | `appointment_duration_minutes` | Slot length used by the availability engine (`lib/scheduling/availability.ts`) | Changing it only affects future slot computations, not existing booked appointments |
 | `calendar_id` | Which Google Calendar to sync bookings to | **Leave blank and the doctor gets zero available slots at all** — `getAvailableSlotsForDoctor()` returns `[]` immediately if `calendar_id` is empty (see `lib/scheduling/slots.ts`). This is a real gotcha: a doctor added without a Calendar ID looks "available" in the UI but can never actually be booked via WhatsApp until one is set |
-| `whatsapp_phone` | Which inbound number routes to this doctor's flow | Not yet consumed — the doctor conversation flow isn't ported (see README stage 3 deferred list); currently has no effect |
+| `whatsapp_phone` | Which inbound number routes to the Doctor Portal instead of the patient flow | Consumed by `findDoctorByWhatsAppPhone` (`lib/doctors.ts`), checked on every inbound message via `lib/whatsapp/router.ts`. Must match the number the doctor actually messages from, `active` must be `true` |
 | `active` | Whether the doctor appears in patient-facing doctor selection | `listDoctors(supabase, { activeOnly: true })` filters on this |
 
 ## Per-doctor availability & leaves
@@ -137,6 +160,7 @@ change here is reflected on the very next slot lookup.
 | Password hash algorithm | `lib/auth/password.ts` | Node's built-in `scrypt`, 64-byte derived key |
 | Appointment-code / patient-code format | `lib/appointments.ts` / `lib/patients.ts` | `A` + 8 hex chars / `PAT-YYYYMMDD-NNNN` |
 | Supported languages | `lib/patients.ts` → `SUPPORTED_LANGUAGES` | EN, TE, HI, KA, TA, ML |
+| Appointment receipt card layout/colors, no clinic logo | `lib/whatsapp/receipt.tsx` | Green header, clinic name text only — no env var/setting for a logo image yet |
 
 ---
 
@@ -158,9 +182,16 @@ change here is reflected on the very next slot lookup.
 |---|---|
 | Rename the clinic in bot messages | `settings.CLINIC_NAME` via `/admin/settings` |
 | Add/remove a doctor | `/admin/doctors` |
+| Book an appointment for a walk-in patient | `/admin/appointments` → "New Appointment (walk-in)" |
 | Change a doctor's slot length | `/admin/doctors/[id]` → doctor details form |
 | Fix "doctor shows up but can't be booked" | Check `calendar_id` is set for that doctor |
 | Turn off tap-to-select menus (numbered text only) | `settings.ENABLE_INTERACTIVE_MENUS` via `/admin/settings` |
+| Switch Book Appointment to a native WhatsApp Flow form | Set up `WHATSAPP_FLOW_ID` + keypair env vars, then `settings.ENABLE_WHATSAPP_FLOW_BOOKING` via `/admin/settings` — see README's "WhatsApp Flows" section |
+| Turn on appointment reminders / auto-complete-past-appointments | Set `CRON_SECRET`, deploy with `vercel.json`'s cron config (or point any external scheduler at `/api/cron/reminders` / `/api/cron/auto-complete`), then the relevant toggle via `/admin/settings` — see README's "Scheduled jobs" section |
+| Turn on the after-hours auto-reply | `settings.ENABLE_AFTER_HOURS_REPLY` + `CLINIC_OPEN_TIME`/`CLINIC_CLOSE_TIME`/`CLINIC_WORKING_DAYS` via `/admin/settings` — no scheduled job needed, this one runs per-message |
+| Add a logo to the appointment receipt card | `settings.CLINIC_LOGO_URL` via `/admin/settings` — any publicly reachable image URL |
+| See/manage home sample collection requests | `/admin/home-collection` |
+| Turn off diagnostics/home sample collection entirely for a hospital that doesn't offer it | `settings.ENABLE_HOME_COLLECTION` via `/admin/settings` |
 | Rotate the WhatsApp access token | `WHATSAPP_ACCESS_TOKEN` env var + redeploy |
 | Change how long an admin stays logged in | Edit `SESSION_DURATION_MS` in `lib/auth/session.ts` (no UI/env var yet) |
 | Add a new language | Add its translations to `lib/whatsapp/localization.json`, add the code to `SUPPORTED_LANGUAGES` in `lib/patients.ts`, and add it to the `LANGUAGE_BY_CHOICE` map in `lib/whatsapp/patientFlow.ts` and the language menu in `lib/whatsapp/menus.ts` |

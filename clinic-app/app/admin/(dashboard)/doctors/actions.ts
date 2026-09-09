@@ -11,6 +11,7 @@ import {
   deactivateDoctorLeave
 } from "@/lib/doctors";
 import type { Weekday } from "@/lib/supabase/database.types";
+import { assertAdminRole } from "@/lib/auth/authorize";
 
 export interface FormState {
   error?: string;
@@ -20,6 +21,7 @@ export async function createDoctorAction(
   _prevState: FormState,
   formData: FormData
 ): Promise<FormState> {
+  await assertAdminRole(["ADMIN"]);
   const doctorCode = String(formData.get("doctorCode") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
   const clinicName = String(formData.get("clinicName") ?? "").trim();
@@ -62,6 +64,7 @@ export async function updateDoctorAction(
   _prevState: FormState,
   formData: FormData
 ): Promise<FormState> {
+  await assertAdminRole(["ADMIN"]);
   const name = String(formData.get("name") ?? "").trim();
   const clinicName = String(formData.get("clinicName") ?? "").trim();
   const calendarId = String(formData.get("calendarId") ?? "").trim();
@@ -100,6 +103,7 @@ export async function addAvailabilityAction(
   _prevState: FormState,
   formData: FormData
 ): Promise<FormState> {
+  await assertAdminRole(["ADMIN"]);
   const dayOfWeek = String(formData.get("dayOfWeek") ?? "") as Weekday;
   const startTime = String(formData.get("startTime") ?? "");
   const endTime = String(formData.get("endTime") ?? "");
@@ -119,6 +123,7 @@ export async function removeAvailabilityAction(
   doctorId: string,
   sessionId: string
 ): Promise<void> {
+  await assertAdminRole(["ADMIN"]);
   const supabase = getSupabaseServerClient();
   await removeDoctorAvailabilitySession(supabase, sessionId);
   revalidatePath(`/admin/doctors/${doctorId}`);
@@ -129,6 +134,7 @@ export async function addLeaveAction(
   _prevState: FormState,
   formData: FormData
 ): Promise<FormState> {
+  await assertAdminRole(["ADMIN"]);
   const leaveDate = String(formData.get("leaveDate") ?? "");
   const reason = String(formData.get("reason") ?? "");
 
@@ -144,6 +150,7 @@ export async function addLeaveAction(
 }
 
 export async function cancelLeaveAction(doctorId: string, leaveDate: string): Promise<void> {
+  await assertAdminRole(["ADMIN"]);
   const supabase = getSupabaseServerClient();
   await deactivateDoctorLeave(supabase, doctorId, leaveDate);
   revalidatePath(`/admin/doctors/${doctorId}`);

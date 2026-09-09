@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { setSetting } from "@/lib/settings";
+import { assertAdminRole } from "@/lib/auth/authorize";
 
 export interface FormState {
   error?: string;
@@ -14,12 +15,15 @@ const BOOLEAN_KEYS = [
   "ENABLE_DEBUG_LOG",
   "ENABLE_APPOINTMENT_REMINDERS",
   "ENABLE_INTERACTIVE_MENUS",
+  "ENABLE_WHATSAPP_FLOW_BOOKING",
   "AUTO_COMPLETE_PAST_APPOINTMENTS",
-  "ENABLE_AFTER_HOURS_REPLY"
+  "ENABLE_AFTER_HOURS_REPLY",
+  "ENABLE_HOME_COLLECTION"
 ];
 
 const TEXT_KEYS = [
   "CLINIC_NAME",
+  "CLINIC_LOGO_URL",
   "LOG_RETENTION",
   "LOG_MAX_ROWS",
   "LOG_MESSAGE_MAX_CHARS",
@@ -40,6 +44,7 @@ export async function updateSettingsAction(
   formData: FormData
 ): Promise<FormState> {
   try {
+    await assertAdminRole(["ADMIN"]);
     const supabase = getSupabaseServerClient();
 
     for (const key of TEXT_KEYS) {

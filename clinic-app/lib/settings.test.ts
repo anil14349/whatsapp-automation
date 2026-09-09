@@ -2,18 +2,20 @@ import { describe, expect, it } from "vitest";
 import { DORMANT_SETTING_KEYS } from "./settings";
 
 describe("DORMANT_SETTING_KEYS", () => {
-  it("does not include the two settings actually wired into the webhook route", () => {
-    // Regression guard: these two are read by app/api/whatsapp/webhook/route.ts
-    // (getSetting/getBooleanSetting). If either ever ends up flagged
-    // dormant by mistake, the admin UI would show a misleading "Not yet
-    // active" badge on a setting that really does work.
-    expect(DORMANT_SETTING_KEYS.has("CLINIC_NAME")).toBe(false);
-    expect(DORMANT_SETTING_KEYS.has("ENABLE_INTERACTIVE_MENUS")).toBe(false);
-  });
-
-  it("includes settings for features not yet ported (spot check)", () => {
-    expect(DORMANT_SETTING_KEYS.has("ENABLE_APPOINTMENT_REMINDERS")).toBe(true);
-    expect(DORMANT_SETTING_KEYS.has("ENABLE_AFTER_HOURS_REPLY")).toBe(true);
-    expect(DORMANT_SETTING_KEYS.has("HOME_COLLECTION_RADIUS_KM")).toBe(true);
+  it("is empty — every settings-table key seeded so far has real code behind it", () => {
+    // Regression guard for the specific keys that took the longest to
+    // get wired up (log retention/truncation was the last holdout —
+    // see lib/logCleanup.ts, lib/whatsapp/log.ts). If a future setting
+    // gets added ahead of its feature, add it here *and* to the Set in
+    // lib/settings.ts in the same change — this test intentionally
+    // fails loudly on an empty-Set assumption breaking, rather than
+    // silently accepting a new dormant key with no corresponding test
+    // update.
+    expect(DORMANT_SETTING_KEYS.size).toBe(0);
+    expect(DORMANT_SETTING_KEYS.has("LOG_RETENTION")).toBe(false);
+    expect(DORMANT_SETTING_KEYS.has("LOG_MAX_ROWS")).toBe(false);
+    expect(DORMANT_SETTING_KEYS.has("LOG_MESSAGE_MAX_CHARS")).toBe(false);
+    expect(DORMANT_SETTING_KEYS.has("ENABLE_INBOUND_LOG")).toBe(false);
+    expect(DORMANT_SETTING_KEYS.has("ENABLE_DEBUG_LOG")).toBe(false);
   });
 });

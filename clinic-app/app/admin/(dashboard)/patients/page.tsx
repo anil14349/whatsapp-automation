@@ -1,10 +1,12 @@
 import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { requireAdminRole } from "@/lib/auth/authorize";
 
 export default async function PatientsPage({
   searchParams
 }: {
   searchParams: Promise<{ q?: string }>;
 }) {
+  await requireAdminRole(["ADMIN", "RECEPTIONIST"]);
   const { q } = await searchParams;
   const supabase = getSupabaseServerClient();
 

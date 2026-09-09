@@ -103,6 +103,12 @@ export function SettingsForm({ settings }: { settings: Record<string, string> })
         <h2 className="text-sm font-semibold text-slate-900">Clinic</h2>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <TextField name="CLINIC_NAME" label="Clinic name" value={value("CLINIC_NAME", "ABC Clinic")} />
+          <TextField
+            name="CLINIC_LOGO_URL"
+            label="Logo URL (optional)"
+            value={value("CLINIC_LOGO_URL")}
+            placeholder="https://.../logo.png — shown on the appointment receipt card"
+          />
           <TextField name="CLINIC_WORKING_DAYS" label="Working days" value={value("CLINIC_WORKING_DAYS")} placeholder="Mon,Tue,Wed,Thu,Fri,Sat" />
           <TextField name="CLINIC_OPEN_TIME" label="Opens" value={value("CLINIC_OPEN_TIME")} placeholder="09:00" />
           <TextField name="CLINIC_CLOSE_TIME" label="Closes" value={value("CLINIC_CLOSE_TIME")} placeholder="18:00" />
@@ -140,6 +146,13 @@ export function SettingsForm({ settings }: { settings: Record<string, string> })
 
       <section>
         <h2 className="text-sm font-semibold text-slate-900">Home sample collection</h2>
+        <div className="mt-3 flex flex-col gap-3">
+          <ToggleField
+            name="ENABLE_HOME_COLLECTION"
+            label="Offer home sample collection to patients (turn off if this clinic doesn't do diagnostics/lab collection)"
+            checked={isOn("ENABLE_HOME_COLLECTION")}
+          />
+        </div>
         <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <TextField name="HOSPITAL_LATITUDE" label="Clinic latitude" value={value("HOSPITAL_LATITUDE")} />
           <TextField name="HOSPITAL_LONGITUDE" label="Clinic longitude" value={value("HOSPITAL_LONGITUDE")} />
@@ -151,6 +164,11 @@ export function SettingsForm({ settings }: { settings: Record<string, string> })
         <h2 className="text-sm font-semibold text-slate-900">Interactive menus &amp; logging</h2>
         <div className="mt-3 flex flex-col gap-3">
           <ToggleField name="ENABLE_INTERACTIVE_MENUS" label="Use tap-to-select WhatsApp menus (falls back to numbered text if off)" checked={isOn("ENABLE_INTERACTIVE_MENUS")} />
+          <ToggleField
+            name="ENABLE_WHATSAPP_FLOW_BOOKING"
+            label="Use a native WhatsApp Flow form for Book Appointment (needs WHATSAPP_FLOW_ID + a private key configured — see CONFIGURATION.md)"
+            checked={isOn("ENABLE_WHATSAPP_FLOW_BOOKING")}
+          />
           <ToggleField name="ENABLE_INBOUND_LOG" label="Log inbound messages" checked={isOn("ENABLE_INBOUND_LOG")} />
           <ToggleField name="ENABLE_DEBUG_LOG" label="Log outbound sends" checked={isOn("ENABLE_DEBUG_LOG")} />
         </div>

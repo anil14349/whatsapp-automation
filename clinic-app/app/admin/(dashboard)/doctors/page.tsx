@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { listDoctors } from "@/lib/doctors";
+import { requireAdminRole } from "@/lib/auth/authorize";
 import { NewDoctorForm } from "./NewDoctorForm";
 
 export default async function DoctorsPage() {
+  await requireAdminRole(["ADMIN"]);
   const supabase = getSupabaseServerClient();
   const doctors = await listDoctors(supabase);
 

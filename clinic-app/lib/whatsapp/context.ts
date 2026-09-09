@@ -4,6 +4,13 @@ import type { CalendarPort } from "@/lib/calendar/types";
 import type { MenuReply } from "./send";
 import { sendMenuReply, sendWhatsAppText } from "./send";
 import { localizeWhatsAppReply } from "./localize";
+import { logMessage } from "./log";
+
+/** A WhatsApp "Share Location" attachment, normalized. */
+export interface InboundLocation {
+  latitude: number;
+  longitude: number;
+}
 
 /** Everything a conversation-flow handler needs, gathered once per inbound message. */
 export interface FlowContext {
@@ -20,10 +27,9 @@ export interface FlowContext {
 
 /** Sends a plain text reply, localized to the session's language. */
 export async function reply(ctx: FlowContext, text: string): Promise<void> {
-  await sendWhatsAppText(
-    ctx.phone,
-    localizeWhatsAppReply(ctx.language, text, ctx.clinicName)
-  );
+  const localized = localizeWhatsAppReply(ctx.language, text, ctx.clinicName);
+  await sendWhatsAppText(ctx.phone, localized);
+  await logOutbound(ctx, localized);
 }
 
 /** Sends an interactive menu reply (or its text fallback), localized. */
@@ -32,10 +38,17 @@ export async function replyMenu(
   text: string,
   menu: MenuReply
 ): Promise<void> {
-  await sendMenuReply(
-    ctx.phone,
-    localizeWhatsAppReply(ctx.language, text, ctx.clinicName),
-    menu,
-    ctx.interactiveMenusEnabled
-  );
+  const localized = localizeWhatsAppReply(ctx.language, text, ctx.clinicName);
+  await sendMenuReply(ctx.phone, localized, menu, ctx.interactiveMenusEnabled);
+  await logOutbound(ctx, `${localized}\n[menu: ${menu.fallbackText}]`);
+}
+
+/** ENABLE_DEBUG_LOG-gated, truncated to LOG_MESSAGE_MAX_CHARS — both checked inside logMessage itself (lib/whatsapp/log.ts). */
+async function logOutbound(ctx: FlowContext, message: string): Promise<void> {
+  await logMessage(ctx.supabase, {
+    direction: "OUT",
+    phone: ctx.phone,
+    status: "SUCCESS",
+    message
+  });
 }
