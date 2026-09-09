@@ -117,6 +117,7 @@ what each role can do and where it's enforced.
 | `ENABLE_HOME_COLLECTION` | `TRUE` | Whether to offer Home Sample Collection at all | ✅ Active — hides the "Home Sample Collection" option from the WhatsApp More menu entirely (`getPatientMoreMenuSpec` in `lib/whatsapp/menus.ts`) and from the admin sidebar (`/admin/home-collection`) when off. For a hospital that doesn't do diagnostics/lab collection — turn this off instead of just leaving `HOSPITAL_LATITUDE`/`LONGITUDE` blank, which only bounces the patient back *after* they've already tapped the option |
 | `HOSPITAL_LATITUDE` / `HOSPITAL_LONGITUDE` | *(empty)* | Clinic location for the home-collection radius check | ✅ Active — `getHospitalLocation` (`lib/settings.ts`), used by `lib/whatsapp/patientFlow.ts`'s Home Sample Collection flow. Leave either blank and the flow tells patients it isn't set up yet, rather than silently treating (0, 0) as the clinic's location. Only relevant if `ENABLE_HOME_COLLECTION` is on |
 | `HOME_COLLECTION_RADIUS_KM` | `5` | Service radius for home collection | ✅ Active — `getHomeCollectionRadiusKm` (`lib/settings.ts`) |
+| `BROADCAST_SEND_CONCURRENCY` | `5` | How many WhatsApp sends `sendDoctorBroadcast` (`lib/broadcast.ts`) fires in parallel per batch, instead of fully sequentially, for the doctor-portal/admin "message every patient confirmed on a date" broadcast | ✅ Active — see "Doctor broadcast timeouts" below for why this exists |
 
 **Every setting above is now active** — `DORMANT_SETTING_KEYS` in
 `lib/settings.ts` is currently empty, and `/admin/settings` shows no
@@ -131,6 +132,59 @@ drift out of sync with what the code actually does.
 
 ---
 
+## Doctor broadcast timeouts
+
+`sendDoctorBroadcast` (`lib/broadcast.ts`) sends one WhatsApp message to
+every unique patient with a Confirmed appointment for a doctor on a
+given date — reachable from the WhatsApp Doctor Portal (`lib/whatsapp/doctorFlow.ts`'s
+`DOCTOR_BROADCAST_CONFIRM` state) and from `/admin/appointments`'s
+broadcast form (`app/admin/(dashboard)/appointments/actions.ts`'s
+`broadcastToDoctorPatientsAction`). A large confirmed-appointment list
+can take longer to send than either caller's serverless function is
+allowed to run, which — without the mitigations below — meant the
+request could be killed mid-broadcast with no completion count returned
+and no retry.
+
+Two independent mitigations, since the two callers have different
+constraints:
+
+- **Batched concurrency** (`BROADCAST_SEND_CONCURRENCY` setting above,
+  default 5): sends fire in parallel groups of this size instead of
+  fully sequentially, cutting wall-clock roughly by this factor. Applies
+  to both callers. Each recipient still gets its own try/catch and
+  `message_log` row — a failed send only fails that one recipient,
+  same as before.
+- **The WhatsApp webhook route** (`app/api/whatsapp/webhook/route.ts`)
+  defers the actual send loop into a Next.js `after()` callback from
+  `DOCTOR_BROADCAST_CONFIRM`, so the doctor gets an immediate "Broadcast
+  started" reply and the webhook's 200 OK goes back to Meta right away,
+  with a follow-up WhatsApp message once the broadcast actually
+  finishes (or fails). That callback still runs inside the same
+  invocation, so it's still bounded by the route's `export const
+  maxDuration = 60` — raise that if a clinic's patient volume still
+  isn't finishing in time.
+- **The admin appointments Server Action**
+  (`app/admin/(dashboard)/appointments/actions.ts`'s
+  `broadcastToDoctorPatientsAction`) has no equivalent `after()` split —
+  the admin UI shows the final sent/error counts on the same page load,
+  so it awaits the full broadcast synchronously. Its `export const
+  maxDuration = 60` lives on `app/admin/(dashboard)/appointments/page.tsx`
+  (the route segment that renders the form invoking it — a "use server"
+  actions file may only export async functions, not a `maxDuration`
+  constant) and is the only backstop there; raise it (or lower expected
+  patient-list sizes) if it isn't enough.
+
+Both `maxDuration` exports are capped by what your hosting plan actually
+allows (e.g. Vercel's Hobby plan enforces a lower ceiling than Pro) —
+check your platform's limits before raising either past 60s. There's no
+job queue or resumable-cursor pagination in this codebase for broadcasts
+(unlike, say, adding a new background worker) — if a clinic's patient
+volume ever outgrows what batching + `after()` + a higher `maxDuration`
+can cover, that's the next thing to build here, not a bigger
+`BROADCAST_SEND_CONCURRENCY` value.
+
+---
+
 ## Per-doctor configuration (`doctors` table, `/admin/doctors`)
 
 | Field | Controls | Notes |
@@ -140,6 +194,7 @@ drift out of sync with what the code actually does.
 | `appointment_duration_minutes` | Slot length used by the availability engine (`lib/scheduling/availability.ts`) | Changing it only affects future slot computations, not existing booked appointments |
 | `calendar_id` | Which Google Calendar to sync bookings to | **Leave blank and the doctor gets zero available slots at all** — `getAvailableSlotsForDoctor()` returns `[]` immediately if `calendar_id` is empty (see `lib/scheduling/slots.ts`). This is a real gotcha: a doctor added without a Calendar ID looks "available" in the UI but can never actually be booked via WhatsApp until one is set |
 | `whatsapp_phone` | Which inbound number routes to the Doctor Portal instead of the patient flow | Consumed by `findDoctorByWhatsAppPhone` (`lib/doctors.ts`), checked on every inbound message via `lib/whatsapp/router.ts`. Must match the number the doctor actually messages from, `active` must be `true` |
+| `email` / `password_hash` | Login credentials for the web Doctor Portal (`/doctor/login`) | Both nullable — a doctor has no web login until a clinic admin runs `scripts/set-doctor-password.mjs` for them. This is a second, independent way in alongside the existing WhatsApp Doctor Portal; `whatsapp_phone` and `email`/`password_hash` aren't linked to each other |
 | `active` | Whether the doctor appears in patient-facing doctor selection | `listDoctors(supabase, { activeOnly: true })` filters on this |
 
 ## Per-doctor availability & leaves

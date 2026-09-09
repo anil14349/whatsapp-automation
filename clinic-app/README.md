@@ -413,10 +413,12 @@ Then sign in at `/admin/login`.
 | `/admin` | Dashboard — today's/upcoming appointment counts, active doctor count |
 | `/admin/doctors` | List + create doctors — **ADMIN only** |
 | `/admin/doctors/[id]` | Edit a doctor's details, manage weekly availability sessions, manage upcoming leaves — **ADMIN only** |
-| `/admin/appointments` | Filterable list (doctor/date/status) with actions: mark Completed/No-Show, cancel. Also a "New Appointment (walk-in)" form for patients who come to the hospital directly instead of booking over WhatsApp — goes through the same `bookAppointment()` as every other booking path, so it shares the same slot-availability and double-booking guarantees |
+| `/admin/appointments` | Filterable list (doctor/date/status) with actions: mark Completed/No-Show, cancel. Also a "New Appointment (walk-in)" form for patients who come to the hospital directly instead of booking over WhatsApp — goes through the same `bookAppointment()` as every other booking path, so it shares the same slot-availability and double-booking guarantees. When a doctor+date filter is active, also offers a broadcast form (`broadcastToDoctorPatientsAction`) to WhatsApp-message every patient confirmed for that doctor/date |
+| `/admin/analytics` | Booking volume, no-show rate, and doctor utilization (`lib/analytics.ts`) |
 | `/admin/patients` | Read-only, searchable patient registry |
 | `/admin/home-collection` | Home sample collection requests, filterable by status, with a per-row status dropdown |
 | `/admin/settings` | Every configurable option from the `settings` table, grouped and editable as a real form — **ADMIN only** |
+| `/doctor/login`, `/doctor` | A separate self-service web portal for doctors (schedule, availability, leaves) — independent login (`doctors.email`/`password_hash`, set via `scripts/set-doctor-password.mjs`) alongside the existing WhatsApp Doctor Portal, not a replacement for it |
 
 ### Design notes
 
