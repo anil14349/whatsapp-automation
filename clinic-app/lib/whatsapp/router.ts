@@ -21,6 +21,35 @@ const GREETING_WORDS = new Set([
 ]);
 
 /**
+ * Doctor-flow states (lib/whatsapp/doctorFlow.ts) that treat the next
+ * inbound message as free-form text rather than a menu choice. The
+ * greeting-word shortcut below must not fire while a doctor is in one
+ * of these states — otherwise typing a leave reason, a start/end time,
+ * a custom reschedule/broadcast date, or a broadcast message that
+ * happens to equal or contain a greeting word (e.g. "hi") gets silently
+ * swallowed and the session reset to DOCTOR_MENU instead of being
+ * handled as the input that state expects. Includes
+ * DOCTOR_BROADCAST_DATE_CUSTOM/DOCTOR_BROADCAST_MESSAGE for the same
+ * reason — those states didn't exist when this guard was first written.
+ */
+const DOCTOR_FREE_TEXT_STATES = new Set([
+  "DOCTOR_AVAIL_START",
+  "DOCTOR_AVAIL_END",
+  "DOCTOR_LEAVE_DATE",
+  "DOCTOR_LEAVE_REASON",
+  "DOCTOR_LEAVE_RANGE_START",
+  "DOCTOR_LEAVE_RANGE_END",
+  "DOCTOR_LEAVE_RANGE_REASON",
+  "DOCTOR_RESCHEDULE_DATE_CUSTOM",
+  "DOCTOR_BROADCAST_DATE_CUSTOM",
+  "DOCTOR_BROADCAST_MESSAGE"
+]);
+
+export function isDoctorFreeTextEntryState(state: string | null | undefined): boolean {
+  return Boolean(state && DOCTOR_FREE_TEXT_STATES.has(state));
+}
+
+/**
  * Top-level message dispatch. Ports src/Controller_Router.gs's
  * handleWhatsAppGreeting + processWhatsAppTextMessage, including doctor
  * routing (findDoctorByWhatsAppPhone -> lib/whatsapp/doctorFlow.ts
@@ -39,7 +68,7 @@ export async function processInboundMessage(
   const doctor = await findDoctorByWhatsAppPhone(ctx.supabase, ctx.phone);
 
   if (doctor) {
-    if (GREETING_WORDS.has(normalizedMessage)) {
+    if (GREETING_WORDS.has(normalizedMessage) && !isDoctorFreeTextEntryState(session?.state)) {
       await sendDoctorMainMenu(ctx, doctor);
       return;
     }
