@@ -55,6 +55,8 @@ export interface Database {
           appointment_duration_minutes: number;
           active: boolean;
           specialization: string;
+          email: string | null;
+          password_hash: string | null;
           created_at: string;
           updated_at: string;
         };
