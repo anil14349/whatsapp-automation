@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerEnv } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { GoogleCalendar } from "@/lib/calendar/google";
 import { getSetting, getBooleanSetting } from "@/lib/settings";
 import { getSession } from "@/lib/sessions";
 import { extractInboundWhatsAppMessage } from "@/lib/whatsapp/inbound";
@@ -142,7 +141,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
       const ctx: FlowContext = {
         supabase,
-        calendar: new GoogleCalendar(),
         phone: senderPhone,
         senderName,
         clinicName,

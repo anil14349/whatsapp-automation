@@ -25,7 +25,6 @@ export async function createDoctorAction(
   const doctorCode = String(formData.get("doctorCode") ?? "").trim();
   const name = String(formData.get("name") ?? "").trim();
   const clinicName = String(formData.get("clinicName") ?? "").trim();
-  const calendarId = String(formData.get("calendarId") ?? "").trim();
   const whatsappPhone = String(formData.get("whatsappPhone") ?? "").trim();
   const specialization = String(formData.get("specialization") ?? "").trim();
   const durationMinutes = Number(formData.get("appointmentDurationMinutes") ?? 30);
@@ -45,7 +44,6 @@ export async function createDoctorAction(
       doctor_code: doctorCode,
       name,
       clinic_name: clinicName,
-      calendar_id: calendarId,
       whatsapp_phone: whatsappPhone,
       specialization,
       appointment_duration_minutes: durationMinutes,
@@ -67,7 +65,6 @@ export async function updateDoctorAction(
   await assertAdminRole(["ADMIN"]);
   const name = String(formData.get("name") ?? "").trim();
   const clinicName = String(formData.get("clinicName") ?? "").trim();
-  const calendarId = String(formData.get("calendarId") ?? "").trim();
   const whatsappPhone = String(formData.get("whatsappPhone") ?? "").trim();
   const specialization = String(formData.get("specialization") ?? "").trim();
   const durationMinutes = Number(formData.get("appointmentDurationMinutes") ?? 30);
@@ -83,7 +80,6 @@ export async function updateDoctorAction(
     await updateDoctor(supabase, doctorId, {
       name,
       clinic_name: clinicName,
-      calendar_id: calendarId,
       whatsapp_phone: whatsappPhone,
       specialization,
       appointment_duration_minutes: durationMinutes,

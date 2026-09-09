@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
-import type { CalendarPort } from "@/lib/calendar/types";
 import { getDoctorById, listDoctors } from "@/lib/doctors";
 import { getAvailableSlotsForDoctor } from "@/lib/scheduling/slots";
 import { bookAppointment } from "@/lib/appointments";
@@ -26,7 +25,6 @@ import { getSession, saveSession } from "@/lib/sessions";
 
 export interface FlowRequestContext {
   supabase: SupabaseClient<Database>;
-  calendar: CalendarPort;
   timezone: string;
   /** Set when triggering the flow: the patient's normalized WhatsApp number. */
   phone: string;
@@ -140,7 +138,7 @@ async function handleSelectDate(
     return expiredScreen(ctx);
   }
 
-  const slots = await getAvailableSlotsForDoctor(ctx.supabase, ctx.calendar, {
+  const slots = await getAvailableSlotsForDoctor(ctx.supabase, {
     doctor,
     dateString,
     timezone: ctx.timezone
@@ -185,7 +183,7 @@ async function handleSelectTime(
     return expiredScreen(ctx);
   }
 
-  const slots = await getAvailableSlotsForDoctor(ctx.supabase, ctx.calendar, {
+  const slots = await getAvailableSlotsForDoctor(ctx.supabase, {
     doctor,
     dateString: session.session_date,
     timezone: ctx.timezone
@@ -237,7 +235,7 @@ async function handleConfirm(
     };
   }
 
-  const result = await bookAppointment(ctx.supabase, ctx.calendar, {
+  const result = await bookAppointment(ctx.supabase, {
     doctorId: session.doctor_id,
     dateString: session.session_date,
     timeString: session.session_time,

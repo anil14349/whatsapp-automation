@@ -4,7 +4,6 @@ import type {
   AppointmentStatus,
   Database
 } from "@/lib/supabase/database.types";
-import type { CalendarPort } from "@/lib/calendar/types";
 import { getDoctorById } from "@/lib/doctors";
 import { getAvailableSlotsForDoctor } from "@/lib/scheduling/slots";
 import { registerPatientForBooking } from "@/lib/patients";
@@ -80,7 +79,6 @@ export function normalizeTimeInput(timeString: string): string | null {
 
 export async function bookAppointment(
   supabase: SupabaseClient<Database>,
-  calendar: CalendarPort,
   params: BookAppointmentParams
 ): Promise<AppointmentResult> {
   const { doctorId, dateString, patientName, timezone } = params;
@@ -111,20 +109,17 @@ export async function bookAppointment(
 
   const doctor = await getDoctorById(supabase, doctorId);
 
-  if (!doctor || !doctor.calendar_id) {
+  if (!doctor) {
     return { success: false, message: "Doctor not found." };
   }
 
   const startTime = combineDateAndTime(dateString, time24, timezone);
-  const endTime = new Date(
-    startTime.getTime() + doctor.appointment_duration_minutes * 60_000
-  );
 
   if (startTime.getTime() <= Date.now()) {
     return { success: false, message: "Appointment time must be in the future." };
   }
 
-  const availableSlots = await getAvailableSlotsForDoctor(supabase, calendar, {
+  const availableSlots = await getAvailableSlotsForDoctor(supabase, {
     doctor,
     dateString,
     timezone
@@ -167,22 +162,6 @@ export async function bookAppointment(
     params.patientLanguage
   );
 
-  let event;
-
-  try {
-    event = await calendar.createEvent(doctor.calendar_id, {
-      title: `Appointment - ${patientName}`,
-      start: startTime,
-      end: endTime,
-      description: `Doctor: ${doctor.name}\nPatient: ${patientName}`,
-      location: doctor.clinic_name
-    });
-  } catch (error) {
-    throw new Error(
-      `Failed to create Calendar event: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-
   const MAX_ATTEMPTS = 5;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -196,8 +175,7 @@ export async function bookAppointment(
         patient_phone: patientPhone,
         appointment_date: dateString,
         appointment_time: time24,
-        status: "Confirmed",
-        calendar_event_id: event.id
+        status: "Confirmed"
       })
       .select()
       .single();
@@ -215,16 +193,6 @@ export async function bookAppointment(
 
     if (isRetryableCollision && attempt < MAX_ATTEMPTS) {
       continue;
-    }
-
-    // Any other failure (including the double-booking / one-active-
-    // appointment constraints firing on a genuine race) rolls back the
-    // Calendar event so we never leave an orphaned event with no
-    // appointment record behind it.
-    try {
-      await calendar.deleteEvent(doctor.calendar_id, event.id);
-    } catch (rollbackError) {
-      console.error("Failed to roll back Calendar event after booking failure.", rollbackError);
     }
 
     if (error.code === UNIQUE_VIOLATION) {
@@ -288,7 +256,6 @@ function isInactiveStatus(status: AppointmentStatus): boolean {
 
 export async function cancelAppointment(
   supabase: SupabaseClient<Database>,
-  calendar: CalendarPort,
   appointmentId: string,
   options: CancelAppointmentOptions
 ): Promise<AppointmentResult> {
@@ -321,19 +288,6 @@ export async function cancelAppointment(
     };
   }
 
-  const doctor = await getDoctorById(supabase, appointment.doctor_id);
-
-  if (doctor?.calendar_id && appointment.calendar_event_id) {
-    try {
-      await calendar.deleteEvent(doctor.calendar_id, appointment.calendar_event_id);
-    } catch (calendarError) {
-      return {
-        success: false,
-        message: "Could not remove the Calendar event; appointment was not cancelled."
-      };
-    }
-  }
-
   const { data: updated, error: updateError } = await supabase
     .from("appointments")
     .update({ status: "Cancelled" })
@@ -359,7 +313,6 @@ export interface RescheduleAppointmentParams {
 
 export async function rescheduleAppointment(
   supabase: SupabaseClient<Database>,
-  calendar: CalendarPort,
   params: RescheduleAppointmentParams
 ): Promise<AppointmentResult> {
   const { data: appointment, error } = await supabase
@@ -402,21 +355,18 @@ export async function rescheduleAppointment(
 
   const doctor = await getDoctorById(supabase, appointment.doctor_id);
 
-  if (!doctor || !doctor.calendar_id) {
-    return { success: false, message: "Doctor calendar not found." };
+  if (!doctor) {
+    return { success: false, message: "Doctor not found." };
   }
 
   const newStartTime = combineDateAndTime(params.newDateString, time24, params.timezone);
-  const newEndTime = new Date(
-    newStartTime.getTime() + doctor.appointment_duration_minutes * 60_000
-  );
 
   const isSameSlot =
     params.newDateString === appointment.appointment_date &&
     time24 === appointment.appointment_time;
 
   if (!isSameSlot) {
-    const availableSlots = await getAvailableSlotsForDoctor(supabase, calendar, {
+    const availableSlots = await getAvailableSlotsForDoctor(supabase, {
       doctor,
       dateString: params.newDateString,
       timezone: params.timezone
@@ -431,40 +381,17 @@ export async function rescheduleAppointment(
     }
   }
 
-  let newEvent;
-
-  try {
-    newEvent = await calendar.createEvent(doctor.calendar_id, {
-      title: `Appointment - ${appointment.patient_name}`,
-      start: newStartTime,
-      end: newEndTime,
-      description: `Doctor: ${doctor.name}\nPatient: ${appointment.patient_name}`,
-      location: doctor.clinic_name
-    });
-  } catch (calendarError) {
-    return { success: false, message: "Unable to reserve the new Calendar slot." };
-  }
-
   const { data: updated, error: updateError } = await supabase
     .from("appointments")
     .update({
       appointment_date: params.newDateString,
-      appointment_time: time24,
-      calendar_event_id: newEvent.id
+      appointment_time: time24
     })
     .eq("id", params.appointmentId)
     .select()
     .single();
 
   if (updateError) {
-    // Roll back the newly created event since the row update failed —
-    // otherwise we'd leak a Calendar event with nothing pointing at it.
-    try {
-      await calendar.deleteEvent(doctor.calendar_id, newEvent.id);
-    } catch (rollbackError) {
-      console.error("Failed to roll back new Calendar event after reschedule failure.", rollbackError);
-    }
-
     if (updateError.code === UNIQUE_VIOLATION) {
       return {
         success: false,
@@ -473,19 +400,6 @@ export async function rescheduleAppointment(
     }
 
     return { success: false, message: "Unable to complete reschedule." };
-  }
-
-  // Old Calendar event is deleted only after the row update has
-  // succeeded — mirrors the ordering the Apps Script version settled on
-  // (see README: "Delete old event only after the sheet has been
-  // updated"), so a crash between these two steps leaves the *new*
-  // event as the source of truth, not a dangling old one with no record.
-  if (appointment.calendar_event_id) {
-    try {
-      await calendar.deleteEvent(doctor.calendar_id, appointment.calendar_event_id);
-    } catch (cleanupError) {
-      console.error("Failed to delete old Calendar event after reschedule.", cleanupError);
-    }
   }
 
   return { success: true, message: "Appointment rescheduled successfully.", appointment: updated };

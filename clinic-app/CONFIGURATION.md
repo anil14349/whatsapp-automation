@@ -43,17 +43,23 @@ Full list with descriptions: [`.env.example`](.env.example).
 | `WHATSAPP_VERIFY_TOKEN` | Yes | Must match Meta's webhook config exactly. **Fails closed** — `GET /api/whatsapp/webhook` rejects verification if this doesn't match, no fallback |
 | `WHATSAPP_WEBHOOK_POST_TOKEN` | Yes | Appended as `?token=...` on the callback URL. **Fails closed** — `POST /api/whatsapp/webhook` rejects every request without a matching token |
 
-### Google Calendar — `lib/calendar/google.ts`
+### Google Calendar — not required, kept for optional future use
 
-| Variable | Required | Notes |
-|---|---|---|
-| `GOOGLE_SERVICE_ACCOUNT_EMAIL` | Only if any doctor has a `calendar_id` set | Must be shared on each doctor's Google Calendar (see README "Deploying" step 2) |
-| `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` | Only if any doctor has a `calendar_id` set | Keep `\n` sequences literal, not real newlines, when pasting into an env var |
+Booking availability is computed directly from this system's own
+`doctor_availability`/`doctor_leaves`/`appointments` tables (see
+`lib/scheduling/slots.ts`), not from an external calendar — no Google
+Cloud service account or per-doctor calendar-sharing needed. The one
+tradeoff: an external commitment a doctor puts only on their personal
+calendar (a meeting, surgery, a day off never entered here as Leave)
+doesn't automatically block booking slots — log it as Leave instead
+(`/admin/doctors/[id]` or the Doctor Portal's "Manage Leaves").
 
-A doctor with a blank `calendar_id` simply gets no Calendar sync for
-their appointments — booking still works, just without an event created
-(`lib/scheduling/slots.ts` returns no slots at all if `calendar_id` is
-blank, actually — see note under "Per-doctor configuration" below).
+`lib/calendar/google.ts` (a real `CalendarPort` implementation) and
+`lib/calendar/types.ts`/`fake.ts` are kept in the codebase but not
+wired into any live code path — `GOOGLE_SERVICE_ACCOUNT_EMAIL`/
+`GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` can be left blank. See those files
+if you ever want to reintroduce syncing bookings to each doctor's own
+Google Calendar.
 
 ### WhatsApp Flows — `lib/whatsapp/flowCrypto.ts`, `app/api/whatsapp/flow/route.ts`
 
@@ -193,7 +199,7 @@ can cover, that's the next thing to build here, not a bigger
 | `doctor_code` | Human-readable ID (e.g. `D001`) | Immutable in the UI once set — used in WhatsApp doctor-selection payloads |
 | `name`, `specialization`, `clinic_name` | Display text shown to patients when picking a doctor | |
 | `appointment_duration_minutes` | Slot length used by the availability engine (`lib/scheduling/availability.ts`) | Changing it only affects future slot computations, not existing booked appointments |
-| `calendar_id` | Which Google Calendar to sync bookings to | **Leave blank and the doctor gets zero available slots at all** — `getAvailableSlotsForDoctor()` returns `[]` immediately if `calendar_id` is empty (see `lib/scheduling/slots.ts`). This is a real gotcha: a doctor added without a Calendar ID looks "available" in the UI but can never actually be booked via WhatsApp until one is set |
+| `calendar_id` | Unused — kept in the schema for optional future Google Calendar sync (see "Google Calendar" above), not read by any live code path | A doctor is immediately bookable with this blank; no setup gotcha here anymore |
 | `whatsapp_phone` | Which inbound number routes to the Doctor Portal instead of the patient flow | Consumed by `findDoctorByWhatsAppPhone` (`lib/doctors.ts`), checked on every inbound message via `lib/whatsapp/router.ts`. Must match the number the doctor actually messages from, `active` must be `true` |
 | `email` / `password_hash` | Login credentials for the web Doctor Portal (`/doctor/login`) | Both nullable — a doctor has no web login until a clinic admin runs `scripts/set-doctor-password.mjs` for them. This is a second, independent way in alongside the existing WhatsApp Doctor Portal; `whatsapp_phone` and `email`/`password_hash` aren't linked to each other |
 | `active` | Whether the doctor appears in patient-facing doctor selection | `listDoctors(supabase, { activeOnly: true })` filters on this |
@@ -240,7 +246,7 @@ change here is reflected on the very next slot lookup.
 | Add/remove a doctor | `/admin/doctors` |
 | Book an appointment for a walk-in patient | `/admin/appointments` → "New Appointment (walk-in)" |
 | Change a doctor's slot length | `/admin/doctors/[id]` → doctor details form |
-| Fix "doctor shows up but can't be booked" | Check `calendar_id` is set for that doctor |
+| Block booking slots for a doctor's non-clinic commitment (meeting, day off, etc.) | Log it as Leave — `/admin/doctors/[id]` or the WhatsApp/web Doctor Portal's "Manage Leaves" — it isn't picked up automatically from any external calendar |
 | Turn off tap-to-select menus (numbered text only) | `settings.ENABLE_INTERACTIVE_MENUS` via `/admin/settings` |
 | Switch Book Appointment to a native WhatsApp Flow form | Set up `WHATSAPP_FLOW_ID` + keypair env vars, then `settings.ENABLE_WHATSAPP_FLOW_BOOKING` via `/admin/settings` — see README's "WhatsApp Flows" section |
 | Turn on appointment reminders / auto-complete-past-appointments | Set `CRON_SECRET`, deploy with `vercel.json`'s cron config (or point any external scheduler at `/api/cron/reminders` / `/api/cron/auto-complete`), then the relevant toggle via `/admin/settings` — see README's "Scheduled jobs" section |

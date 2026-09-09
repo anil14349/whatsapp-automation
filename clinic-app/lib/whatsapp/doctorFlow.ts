@@ -209,7 +209,7 @@ export async function handleDoctorMessage(
       }
 
       if (normalizedMessage === "1" || normalizedMessage === "confirm_yes") {
-        const result = await cancelAppointment(ctx.supabase, ctx.calendar, session.appointment_id, {
+        const result = await cancelAppointment(ctx.supabase, session.appointment_id, {
           authorizedDoctorId: doctor.id
         });
 
@@ -282,7 +282,7 @@ export async function handleDoctorMessage(
         return returnDoctorToMenu(ctx);
       }
 
-      const slots = await getAvailableSlotsForDoctor(ctx.supabase, ctx.calendar, {
+      const slots = await getAvailableSlotsForDoctor(ctx.supabase, {
         doctor,
         dateString: session.session_date,
         timezone: ctx.timezone
@@ -322,7 +322,7 @@ export async function handleDoctorMessage(
       }
 
       if (normalizedMessage === "1" || normalizedMessage === "confirm_yes") {
-        const result = await rescheduleAppointment(ctx.supabase, ctx.calendar, {
+        const result = await rescheduleAppointment(ctx.supabase, {
           appointmentId: session.appointment_id,
           newDateString: session.session_date,
           newTimeString: session.session_time,
@@ -833,19 +833,29 @@ async function offerDoctorRescheduleSlots(
   doctor: Doctor,
   dateString: string
 ): Promise<boolean> {
-  const slots = await getAvailableSlotsForDoctor(ctx.supabase, ctx.calendar, {
+  const slots = await getAvailableSlotsForDoctor(ctx.supabase, {
     doctor,
     dateString,
     timezone: ctx.timezone
   });
 
-  await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_RESCHEDULE_TIME", session_date: dateString });
-
   if (slots.length === 0) {
-    await reply(ctx, `No available slots on ${dateString}. Please choose another date.`);
+    // Stay in DOCTOR_RESCHEDULE_DATE, not DOCTOR_RESCHEDULE_TIME — same
+    // fix as the patient-facing offerRescheduleSlotsForDate
+    // (lib/whatsapp/patientFlow.ts): the message below asks the doctor
+    // to pick another date, but DOCTOR_RESCHEDULE_TIME's handler expects
+    // a slot number, not a date. Re-showing the date menu gives them a
+    // valid next input instead of a bare prompt with no options.
+    await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_RESCHEDULE_DATE" });
+    await replyMenu(
+      ctx,
+      `No available slots on ${dateString}. Please choose another date:`,
+      getDateMenuSpec()
+    );
     return true;
   }
 
+  await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_RESCHEDULE_TIME", session_date: dateString });
   await replyMenu(ctx, "Available slots:\nPlease choose a new time.", getSlotSelectionMenuSpec(slots, ctx.timezone));
   return true;
 }

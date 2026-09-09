@@ -406,7 +406,7 @@ export async function handlePatientMessage(
       }
 
       if (normalizedMessage === "1" || normalizedMessage === "confirm_yes") {
-        const result = await cancelAppointment(ctx.supabase, ctx.calendar, session.appointment_id, {
+        const result = await cancelAppointment(ctx.supabase, session.appointment_id, {
           patientPhone: ctx.phone
         });
 
@@ -502,7 +502,7 @@ export async function handlePatientMessage(
         return expireFlow(ctx);
       }
 
-      const slots = await getAvailableSlotsForDoctor(ctx.supabase, ctx.calendar, {
+      const slots = await getAvailableSlotsForDoctor(ctx.supabase, {
         doctor,
         dateString: session.session_date,
         timezone: ctx.timezone
@@ -542,7 +542,7 @@ export async function handlePatientMessage(
       }
 
       if (normalizedMessage === "1" || normalizedMessage === "confirm_yes") {
-        const result = await rescheduleAppointment(ctx.supabase, ctx.calendar, {
+        const result = await rescheduleAppointment(ctx.supabase, {
           appointmentId: session.appointment_id,
           newDateString: session.session_date,
           newTimeString: session.session_time,
@@ -690,7 +690,7 @@ export async function handlePatientMessage(
         return expireBooking(ctx);
       }
 
-      const slots = await getAvailableSlotsForDoctor(ctx.supabase, ctx.calendar, {
+      const slots = await getAvailableSlotsForDoctor(ctx.supabase, {
         doctor,
         dateString: session.session_date,
         timezone: ctx.timezone
@@ -769,7 +769,7 @@ export async function handlePatientMessage(
 
       const patientName = session.patient_name || ctx.senderName || "Patient";
 
-      const result = await bookAppointment(ctx.supabase, ctx.calendar, {
+      const result = await bookAppointment(ctx.supabase, {
         doctorId: session.doctor_id,
         dateString: session.session_date,
         timeString: session.session_time,
@@ -912,7 +912,7 @@ async function offerSlotsForDate(
     return expireBooking(ctx);
   }
 
-  const slots = await getAvailableSlotsForDoctor(ctx.supabase, ctx.calendar, {
+  const slots = await getAvailableSlotsForDoctor(ctx.supabase, {
     doctor,
     dateString,
     timezone: ctx.timezone
@@ -991,7 +991,7 @@ async function offerRescheduleSlotsForDate(
     return expireFlow(ctx);
   }
 
-  const slots = await getAvailableSlotsForDoctor(ctx.supabase, ctx.calendar, {
+  const slots = await getAvailableSlotsForDoctor(ctx.supabase, {
     doctor,
     dateString,
     timezone: ctx.timezone

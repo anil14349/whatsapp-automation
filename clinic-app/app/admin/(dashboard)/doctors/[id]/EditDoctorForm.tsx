@@ -77,13 +77,6 @@ export function EditDoctorForm({ doctor }: { doctor: Doctor }) {
       </div>
 
       <div>
-        <label htmlFor="calendarId" className={labelClass}>
-          Google Calendar ID
-        </label>
-        <input id="calendarId" name="calendarId" defaultValue={doctor.calendar_id} className={inputClass} />
-      </div>
-
-      <div>
         <label htmlFor="clinicName" className={labelClass}>
           Clinic / location
         </label>

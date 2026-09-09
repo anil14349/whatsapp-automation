@@ -3,7 +3,6 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { GoogleCalendar } from "@/lib/calendar/google";
 import { cancelAppointment, markAppointmentStatus } from "@/lib/appointments";
 import { clearDoctorSession } from "@/lib/auth/doctorSession";
 import { assertDoctorSession } from "@/lib/auth/doctorAuthorize";
@@ -15,19 +14,18 @@ export async function logoutAction(): Promise<void> {
 
 /**
  * Cancellation goes through the same cancelAppointment() used by the
- * admin UI and the WhatsApp patient/doctor flows — same Calendar
- * cleanup, same status-transition rules — rather than a separate ad-hoc
- * doctor-portal-only code path that could drift from those rules over
- * time. `authorizedDoctorId` always comes from the caller's own session
+ * admin UI and the WhatsApp patient/doctor flows — same status-
+ * transition rules — rather than a separate ad-hoc doctor-portal-only
+ * code path that could drift from those rules over time.
+ * `authorizedDoctorId` always comes from the caller's own session
  * (never a client-supplied doctorId), so a doctor can only ever act on
  * their own appointments.
  */
 export async function doctorCancelAppointmentAction(appointmentId: string): Promise<void> {
   const session = await assertDoctorSession();
   const supabase = getSupabaseServerClient();
-  const calendar = new GoogleCalendar();
 
-  const result = await cancelAppointment(supabase, calendar, appointmentId, {
+  const result = await cancelAppointment(supabase, appointmentId, {
     authorizedDoctorId: session.doctorId
   });
 

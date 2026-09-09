@@ -72,13 +72,6 @@ export function NewDoctorForm() {
         <input id="whatsappPhone" name="whatsappPhone" placeholder="919876543210" className={inputClass} />
       </div>
 
-      <div>
-        <label htmlFor="calendarId" className={labelClass}>
-          Google Calendar ID
-        </label>
-        <input id="calendarId" name="calendarId" placeholder="doctor@group.calendar.google.com" className={inputClass} />
-      </div>
-
       <div className="sm:col-span-2">
         <label htmlFor="clinicName" className={labelClass}>
           Clinic / location

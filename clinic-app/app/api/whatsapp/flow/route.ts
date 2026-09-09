@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerEnv } from "@/lib/env";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { GoogleCalendar } from "@/lib/calendar/google";
 import {
   decryptFlowRequest,
   encryptFlowResponse,
@@ -96,7 +95,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const ctx: FlowRequestContext = {
     supabase: getSupabaseServerClient(),
-    calendar: new GoogleCalendar(),
     timezone: env.CLINIC_TIMEZONE,
     phone: flowToken
   };

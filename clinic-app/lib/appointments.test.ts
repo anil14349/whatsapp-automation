@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { bookAppointment, checkAppointmentOwnership, normalizeTimeInput } from "./appointments";
 import type { Appointment } from "./appointments";
-import { FakeCalendar } from "./calendar/fake";
 import { combineDateAndTime } from "./scheduling/dates";
 
 // bookAppointment's own duplicate-of-the-day pre-check and insert are
@@ -187,9 +186,8 @@ describe("bookAppointment — phone normalization", () => {
     // Existing row as it would have been stored by a prior WhatsApp
     // booking for this patient/date.
     const supabase = makeFakeSupabase({ patient_phone: "9876543210" });
-    const calendar = new FakeCalendar();
 
-    const result = await bookAppointment(supabase, calendar, {
+    const result = await bookAppointment(supabase, {
       doctorId: "doc-1",
       dateString: FIXED_DATE,
       timeString: FIXED_TIME,
@@ -204,9 +202,8 @@ describe("bookAppointment — phone normalization", () => {
 
   it("stores patient_phone normalized to the last 10 digits regardless of the input format", async () => {
     const supabase = makeFakeSupabase(null);
-    const calendar = new FakeCalendar();
 
-    const result = await bookAppointment(supabase, calendar, {
+    const result = await bookAppointment(supabase, {
       doctorId: "doc-1",
       dateString: FIXED_DATE,
       timeString: FIXED_TIME,
@@ -221,9 +218,8 @@ describe("bookAppointment — phone normalization", () => {
 
   it("rejects a blank/unusable phone number instead of booking with an empty patient_phone", async () => {
     const supabase = makeFakeSupabase(null);
-    const calendar = new FakeCalendar();
 
-    const result = await bookAppointment(supabase, calendar, {
+    const result = await bookAppointment(supabase, {
       doctorId: "doc-1",
       dateString: FIXED_DATE,
       timeString: FIXED_TIME,

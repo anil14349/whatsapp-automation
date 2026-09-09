@@ -2,7 +2,6 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { GoogleCalendar } from "@/lib/calendar/google";
 import { bookAppointment, cancelAppointment, markAppointmentStatus } from "@/lib/appointments";
 import { getDoctorById } from "@/lib/doctors";
 import { getAvailableSlotsForDoctor } from "@/lib/scheduling/slots";
@@ -13,10 +12,10 @@ import { sendDoctorBroadcast } from "@/lib/broadcast";
 
 /**
  * Admin cancellation goes through the same cancelAppointment() used by
- * the WhatsApp patient/doctor flows — same Calendar cleanup, same
- * status-transition rules (can't cancel an already-Completed/No-Show
- * appointment, etc.) — rather than a separate ad-hoc admin-only code
- * path that could drift from those rules over time.
+ * the WhatsApp patient/doctor flows — same status-transition rules
+ * (can't cancel an already-Completed/No-Show appointment, etc.) —
+ * rather than a separate ad-hoc admin-only code path that could drift
+ * from those rules over time.
  */
 export async function adminCancelAppointmentAction(
   appointmentId: string,
@@ -24,9 +23,8 @@ export async function adminCancelAppointmentAction(
 ): Promise<void> {
   await assertAdminRole(["ADMIN", "RECEPTIONIST"]);
   const supabase = getSupabaseServerClient();
-  const calendar = new GoogleCalendar();
 
-  const result = await cancelAppointment(supabase, calendar, appointmentId, {
+  const result = await cancelAppointment(supabase, appointmentId, {
     authorizedDoctorId: doctorId
   });
 
@@ -85,7 +83,7 @@ export async function getAvailableSlotsAction(
     return { slots: [], error: "Doctor not found." };
   }
 
-  const slots = await getAvailableSlotsForDoctor(supabase, new GoogleCalendar(), {
+  const slots = await getAvailableSlotsForDoctor(supabase, {
     doctor,
     dateString,
     timezone: env.CLINIC_TIMEZONE
@@ -110,9 +108,9 @@ export interface WalkInFormState {
  * bookAppointment() the WhatsApp flow and the native Flow form both use
  * (lib/appointments.ts) — same slot-availability re-check, same
  * one-active-appointment-per-patient-per-day and no-double-booking
- * database constraints, same patient upsert/registration and Calendar
- * sync — not a separate ad-hoc "just insert a row" path that could
- * drift from those rules or actually double-book a doctor.
+ * database constraints, same patient upsert/registration — not a
+ * separate ad-hoc "just insert a row" path that could drift from those
+ * rules or actually double-book a doctor.
  */
 export async function createWalkInAppointmentAction(
   _prevState: WalkInFormState,
@@ -146,9 +144,8 @@ export async function createWalkInAppointmentAction(
 
   const supabase = getSupabaseServerClient();
   const env = getServerEnv();
-  const calendar = new GoogleCalendar();
 
-  const result = await bookAppointment(supabase, calendar, {
+  const result = await bookAppointment(supabase, {
     doctorId,
     dateString,
     timeString: formatTimeLabel(slotDate, env.CLINIC_TIMEZONE),

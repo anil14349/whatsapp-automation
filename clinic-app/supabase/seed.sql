@@ -7,13 +7,12 @@
 -- against a real clinic's production database, since it inserts
 -- made-up patients/appointments.
 --
--- `calendar_id` below is a placeholder (not a real Google Calendar) —
--- booking through the WhatsApp bot still needs a real Google Calendar
--- ID shared with the service account (see README's "Deploying" step 2)
--- before slots will actually appear. This seed data is enough to make
--- the admin UI (doctors/appointments/patients lists) look populated
--- immediately after `npm run db:reset`, not enough on its own to fully
--- exercise live booking.
+-- No Google Calendar setup needed — booking availability is computed
+-- directly from doctor_availability/doctor_leaves/appointments (see
+-- lib/scheduling/slots.ts), so this seed data is enough on its own to
+-- fully exercise live booking through the WhatsApp bot immediately
+-- after `npm run db:reset`, not just to make the admin UI look
+-- populated.
 --
 -- No admin_users row is seeded here — password hashing needs Node's
 -- scrypt, which plain SQL can't produce a valid hash for inline. Run
@@ -21,11 +20,11 @@
 -- after seeding, same as a real deployment.
 -- ============================================================
 
-insert into doctors (id, doctor_code, name, clinic_name, calendar_id, whatsapp_phone, appointment_duration_minutes, active, specialization)
+insert into doctors (id, doctor_code, name, clinic_name, whatsapp_phone, appointment_duration_minutes, active, specialization)
 values
-    ('11111111-1111-1111-1111-111111111111', 'D001', 'Dr. Asha Rao', 'ABC Clinic — Main Branch', 'dr.asha.rao@example.com', '', 30, true, 'General Medicine'),
-    ('22222222-2222-2222-2222-222222222222', 'D002', 'Dr. Vikram Nair', 'ABC Clinic — Main Branch', 'dr.vikram.nair@example.com', '', 20, true, 'Pediatrics'),
-    ('33333333-3333-3333-3333-333333333333', 'D003', 'Dr. Priya Menon', 'ABC Clinic — Main Branch', 'dr.priya.menon@example.com', '', 30, false, 'Dermatology');
+    ('11111111-1111-1111-1111-111111111111', 'D001', 'Dr. Asha Rao', 'ABC Clinic — Main Branch', '', 30, true, 'General Medicine'),
+    ('22222222-2222-2222-2222-222222222222', 'D002', 'Dr. Vikram Nair', 'ABC Clinic — Main Branch', '', 20, true, 'Pediatrics'),
+    ('33333333-3333-3333-3333-333333333333', 'D003', 'Dr. Priya Menon', 'ABC Clinic — Main Branch', '', 30, false, 'Dermatology');
 
 -- Weekday recurring availability — Mon-Fri mornings for every doctor,
 -- plus evenings for the two active ones.

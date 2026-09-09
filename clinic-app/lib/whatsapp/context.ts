@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
-import type { CalendarPort } from "@/lib/calendar/types";
 import type { InteractiveMenuSpec, MenuReply } from "./send";
 import { sendMenuReply, sendWhatsAppImageByUrl, sendWhatsAppText } from "./send";
 import { localizeWhatsAppReply } from "./localize";
@@ -16,7 +15,6 @@ export interface InboundLocation {
 /** Everything a conversation-flow handler needs, gathered once per inbound message. */
 export interface FlowContext {
   supabase: SupabaseClient<Database>;
-  calendar: CalendarPort;
   phone: string;
   senderName: string;
   clinicName: string;

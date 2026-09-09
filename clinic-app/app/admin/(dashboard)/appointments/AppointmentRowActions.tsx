@@ -53,7 +53,7 @@ export function AppointmentRowActions({
         type="button"
         disabled={isPending}
         onClick={() => {
-          if (confirm("Cancel this appointment? This will remove the Calendar event.")) {
+          if (confirm("Cancel this appointment?")) {
             startTransition(() => {
               void adminCancelAppointmentAction(appointmentId, doctorId);
             });

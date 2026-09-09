@@ -32,8 +32,12 @@ vs. reserved for a not-yet-ported feature — see
   routes) and the admin UI (`/admin/...` pages).
 - **Supabase** (Postgres) — replaces every Google Sheet. Schema in
   [`supabase/migrations/`](supabase/migrations).
-- **Google Calendar API** (kept) — per-doctor calendar sync via a service
-  account, same behavior as the Apps Script version's `CalendarApp` calls.
+- **No Google Calendar dependency** — booking availability is computed
+  directly from this app's own `doctor_availability`/`doctor_leaves`/
+  `appointments` tables instead of an external calendar (unlike the
+  Apps Script version's `CalendarApp` calls). `lib/calendar/google.ts`
+  is kept as an unused `CalendarPort` implementation in case you want
+  to reintroduce per-doctor calendar sync later.
 - **Vitest** — unit tests for pure logic (phone/date parsing, availability
   computation, etc.), run without needing a database.
 
@@ -65,8 +69,9 @@ revisiting periodically (`npm audit`) as patched versions land upstream.
 
 2. **Environment variables**: copy `.env.example` to `.env.local` and fill
    in real values (WhatsApp Cloud API credentials are the same ones already
-   used by the Apps Script bot; Supabase URL/keys come from step 3 below;
-   Google service-account credentials are new — see below).
+   used by the Apps Script bot; Supabase URL/keys come from step 3 below).
+   No Google Calendar credentials needed — see `.env.example`'s note on
+   `GOOGLE_SERVICE_ACCOUNT_EMAIL`/`GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY`.
 
 3. **Local Supabase** (needs [Docker](https://docs.docker.com/get-docker/)
    and the [Supabase CLI](https://supabase.com/docs/guides/cli)):
@@ -84,27 +89,18 @@ revisiting periodically (`npm audit`) as patched versions land upstream.
    `npm run create-admin` (see "Receptionist/admin web UI" below) for
    that regardless.
 
-4. **Google Calendar service account** (only needed once you get to
-   booking flows that touch Calendar): create a Google Cloud service
-   account, enable the Calendar API, and **share each doctor's Google
-   Calendar** with the service account's email address (Calendar Settings
-   → "Share with specific people" → grant "Make changes to events"). This
-   mirrors how the Apps Script bot worked — it needed the *executing
-   Google account* to have access to each `calendar_id` in the `doctors`
-   table.
-
-5. **Run the dev server**:
+4. **Run the dev server**:
    ```bash
    npm run dev
    ```
 
-6. **Run tests**:
+5. **Run tests**:
    ```bash
    npm test          # single run
    npm run test:watch
    ```
 
-7. **Typecheck / lint / build** (same commands CI should run):
+6. **Typecheck / lint / build** (same commands CI should run):
    ```bash
    npm run typecheck
    npm run lint
@@ -122,8 +118,8 @@ revisiting periodically (`npm audit`) as patched versions land upstream.
 | `lib/patients.ts` | Model_Patients.gs | `upsertPatient` no longer needs `LockService` — `INSERT ... ON CONFLICT` is atomic by construction |
 | `lib/scheduling/dates.ts` | Date/time helpers scattered across Util_Common.gs/Model_Calendar.gs | Timezone-safe by construction (see the `combineDateAndTime`/`isoDateToWeekday` doc comments for the specific bug class this avoids) |
 | `lib/scheduling/availability.ts` | `getAvailableSlots`'s slot-math (Model_Calendar.gs) | Pure function, no I/O — fully unit-tested (18 tests) |
-| `lib/scheduling/slots.ts` | `getAvailableSlots`'s I/O (Model_Calendar.gs) | Wraps the pure function with real Supabase + Calendar reads |
-| `lib/calendar/` | `CalendarApp.*` calls throughout | Abstracted behind a `CalendarPort` interface — `google.ts` is the real Google Calendar implementation (untested here, no live credentials), `fake.ts` is an in-memory test double |
+| `lib/scheduling/slots.ts` | `getAvailableSlots`'s I/O (Model_Calendar.gs) | Wraps the pure function with a real Supabase read — busy intervals come from this system's own Confirmed `appointments`, not an external calendar (see "No Google Calendar dependency" above) |
+| `lib/calendar/` | `CalendarApp.*` calls throughout | Kept but **not wired into any live code path** — a `CalendarPort` interface, `google.ts`'s real Google Calendar implementation, and `fake.ts`'s in-memory test double, available if you want to reintroduce per-doctor calendar sync later |
 | `lib/appointments.ts` | `bookAppointment`/`cancelAppointment`/`rescheduleAppointment` (Model_Appointments.gs) | See below — the double-booking guarantee moved from application code to the database itself |
 
 ### Booking integrity: constraints, not just application checks
@@ -146,16 +142,15 @@ refuses the write rather than silently double-booking.
 
 ### What's tested vs. what isn't (yet)
 
-This environment has no live Supabase/Docker or Google Calendar
-credentials to test against (see Stage 1 notes above). Everything with
-real branching logic and no required I/O is unit-tested (settings
-parsing, date/time math, the slot-availability engine, time-string
-normalization, appointment-ownership authorization). The functions that
-orchestrate real Supabase + Calendar calls (`bookAppointment`,
-`cancelAppointment`, `rescheduleAppointment`, and everything in
-`lib/doctors.ts`/`lib/patients.ts`) are typechecked but **not yet
-exercised against a live database** — that's the first thing to verify
-once `npm run db:start` is available to you locally.
+This environment has no live Supabase/Docker credentials to test against
+(see Stage 1 notes above). Everything with real branching logic and no
+required I/O is unit-tested (settings parsing, date/time math, the
+slot-availability engine, time-string normalization, appointment-
+ownership authorization). The functions that orchestrate real Supabase
+calls (`bookAppointment`, `cancelAppointment`, `rescheduleAppointment`,
+and everything in `lib/doctors.ts`/`lib/patients.ts`) are typechecked
+but **not yet exercised against a live database** — that's the first
+thing to verify once `npm run db:start` is available to you locally.
 
 ---
 
@@ -178,13 +173,13 @@ once `npm run db:start` is available to you locally.
 users) or straight to the main menu (returning users) → Book Appointment
 → choose doctor → choose date (today/tomorrow/custom) → choose an
 available time slot → capture patient name (first-time bookers only) →
-confirm → **real booking against Postgres + Google Calendar**, with the
-same booking-integrity guarantees from stage 2.
+confirm → **real booking against Postgres**, with the same booking-
+integrity guarantees from stage 2.
 
 Also working end-to-end: **My Appointments** (paginated list of the
 patient's confirmed appointments, 7 per page) → pick one → **Cancel** or
 **Reschedule** (choose a new date/time, same availability engine as
-booking) → confirmed against Postgres + Calendar. The **"More" menu**
+booking) → confirmed against Postgres. The **"More" menu**
 (Cancel Appointment / Reschedule Appointment / Change Language) is the
 entry point for cancel/reschedule when the patient hasn't first opened
 My Appointments. See `lib/whatsapp/patientFlow.ts`'s
@@ -304,8 +299,8 @@ selection parsing, haversine distance, after-hours clinic-hours gating
 across timezones, and — the one actual runtime test in the whole
 rewrite — real PNG generation for the receipt card).
 The webhook route and the conversation flow handlers that orchestrate
-Supabase + WhatsApp Cloud API + Calendar calls are typechecked but not
-yet exercised against a live WhatsApp number/database — see "What's
+Supabase + WhatsApp Cloud API calls are typechecked but not yet
+exercised against a live WhatsApp number/database — see "What's
 tested vs. what isn't yet" under stage 2 above; the same caveat applies
 here.
 
@@ -423,7 +418,7 @@ Then sign in at `/admin/login`.
 ### Design notes
 
 - **Auth is hand-rolled, not Supabase Auth**: `admin_users` (password hashed with Node's built-in `scrypt`, no external dependency) + a signed HTTP-only session cookie (`lib/auth/session.ts`, HMAC-SHA256 keyed by `ADMIN_SESSION_SECRET`, verified with `timingSafeEqual`). Chose this over Supabase Auth because the admin console is a small, fixed set of clinic staff accounts, not end-user signup — didn't want to pull in Auth's email verification/magic-link/OAuth machinery for a need this simple. `supabase/config.toml` has `[auth] enabled = false` accordingly.
-- **Every mutation goes through Next.js Server Actions calling the same `lib/*.ts` functions the WhatsApp bot uses** (e.g. admin appointment cancellation calls the identical `cancelAppointment()` from stage 2, with the same Calendar cleanup and status-transition rules) — not a separate, parallel admin-only code path that could drift from the bot's rules over time.
+- **Every mutation goes through Next.js Server Actions calling the same `lib/*.ts` functions the WhatsApp bot uses** (e.g. admin appointment cancellation calls the identical `cancelAppointment()` from stage 2, with the same status-transition rules) — not a separate, parallel admin-only code path that could drift from the bot's rules over time.
 
 ### Admin/Receptionist roles
 
@@ -595,20 +590,7 @@ verified-working one; expect to debug the first real attempt.
    once against this project (see "First login" above) to create your
    first admin login.
 
-### 2. Set up Google Calendar access
-
-1. Create a Google Cloud project (or reuse one) and enable the
-   **Google Calendar API**.
-2. Create a **service account**, generate a JSON key for it.
-3. From the key JSON, take `client_email` →
-   `GOOGLE_SERVICE_ACCOUNT_EMAIL`, and `private_key` →
-   `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` (keep the `\n` sequences literal
-   when pasting into an env var — see `.env.example`'s comment).
-4. For **each doctor**, share their Google Calendar with the service
-   account's email address (Calendar → Settings → "Share with specific
-   people" → grant **"Make changes to events"**).
-
-### 3. Collect the rest of the environment variables
+### 2. Collect the environment variables
 
 Fill in every variable in [`.env.example`](.env.example) — same
 `WHATSAPP_ACCESS_TOKEN`/`WHATSAPP_PHONE_NUMBER_ID` as the Apps Script
@@ -621,16 +603,16 @@ the callback URL you give Meta). Generate `ADMIN_SESSION_SECRET` with:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-### 4a. Deploy to Vercel (simplest path)
+### 3a. Deploy to Vercel (simplest path)
 
 1. Import the repo into [Vercel](https://vercel.com), setting the
    **root directory** to `clinic-app` (this isn't the repo root).
-2. Add every variable from step 3 under Project Settings → Environment
+2. Add every variable from step 2 under Project Settings → Environment
    Variables.
 3. Deploy. Your webhook URL is
    `https://<your-vercel-domain>/api/whatsapp/webhook`.
 
-### 4b. Deploy as a Docker container (self-hosted / any container host)
+### 3b. Deploy as a Docker container (self-hosted / any container host)
 
 A [`Dockerfile`](Dockerfile) is included, using Next.js's
 [`output: "standalone"`](next.config.mjs) mode — a multi-stage build
@@ -646,7 +628,7 @@ or, for local convenience, `docker compose up --build` (see
 [`docker-compose.yml`](docker-compose.yml)). This runs the same image
 you'd deploy to Fly.io, Render, Cloud Run, a VPS, etc. — point whichever
 host at this `Dockerfile` and supply the same environment variables from
-step 3. Your webhook URL is `https://<your-host>/api/whatsapp/webhook`.
+step 2. Your webhook URL is `https://<your-host>/api/whatsapp/webhook`.
 
 One thing the Dockerfile deliberately does **not** do: it doesn't copy
 this repo's `.npmrc` into the build (that file sets `strict-ssl=false`,
@@ -654,7 +636,7 @@ a workaround for a broken CA bundle in the sandbox this project was
 first scaffolded in — not something that should silently disable TLS
 verification in your own build environment too).
 
-### 5. Configure Meta's WhatsApp webhook
+### 4. Configure Meta's WhatsApp webhook
 
 In [Meta for Developers](https://developers.facebook.com/) → your app →
 **WhatsApp → Configuration**:
@@ -665,13 +647,12 @@ In [Meta for Developers](https://developers.facebook.com/) → your app →
 3. Click **Verify and save**, then subscribe to the **`messages`**
    webhook field.
 
-### 6. Smoke test
+### 5. Smoke test
 
 - Send **Hi** from a WhatsApp number not yet in `patients` — expect the
   language menu (or main menu, if you've pre-set a language), and a new
   row appear in `message_log`.
-- Complete a full booking — expect a row in `appointments` and a new
-  event on the doctor's Google Calendar.
+- Complete a full booking — expect a row in `appointments`.
 - Log into `/admin` with the account from step 1.4 and confirm the
   booking shows up under Appointments.
 
@@ -702,7 +683,6 @@ lot of hospitals.)*
 | Resource | Shared across all hospitals? |
 |---|---|
 | This codebase / Docker image | **Yes** — build once, deploy the same image everywhere |
-| Google Cloud project + service account | **Can be shared** — Calendar access is granted per-*calendar* (each doctor shares their calendar with the service account's email), not per Google Cloud project, so one service account can serve every hospital's doctors |
 | Container registry | **Yes** — push one image, reference it from every hospital's deployment |
 | Supabase project (database) | **No — one per hospital**, full isolation |
 | WhatsApp Business phone number, access token, verify token, webhook post token | **No — one per hospital.** Meta issues a `phone_number_id` per number regardless of architecture, and each hospital's webhook subscription must point at *that hospital's* deployed URL, so this was never shareable either way |
