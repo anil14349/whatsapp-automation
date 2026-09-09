@@ -21,9 +21,13 @@ export async function adminCancelAppointmentAction(
   const supabase = getSupabaseServerClient();
   const calendar = new GoogleCalendar();
 
-  await cancelAppointment(supabase, calendar, appointmentId, {
+  const result = await cancelAppointment(supabase, calendar, appointmentId, {
     authorizedDoctorId: doctorId
   });
+
+  if (!result.success) {
+    throw new Error(result.message);
+  }
 
   revalidatePath("/admin/appointments");
 }
