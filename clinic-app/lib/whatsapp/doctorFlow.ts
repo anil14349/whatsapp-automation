@@ -223,7 +223,10 @@ export async function handleDoctorMessage(
 
         return returnDoctorToMenu(
           ctx,
-          result.success ? `Appointment cancelled.\n\n${result.message}` : `Unable to cancel: ${result.message}`
+          // result.message on success is already a complete sentence
+          // ("Appointment cancelled successfully.") — prefixing it with
+          // another "Appointment cancelled." said the same thing twice.
+          result.success ? result.message : `Unable to cancel: ${result.message}`
         );
       }
 

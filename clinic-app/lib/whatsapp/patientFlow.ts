@@ -53,13 +53,10 @@ import {
 /**
  * Patient conversation state machine. Ports src/Controller_PatientFlow.gs
  * (+ the appointment-list helpers in src/Controller_Shared.gs) — booking,
- * My Appointments, cancel, and reschedule.
- *
- * NOT yet ported in this stage: doctor selection pagination (doctor_prev/
- * doctor_next — this version lists all doctors in one screen, capped at
- * WhatsApp's 10-row list limit) and the shareable appointment receipt
- * card. Each follows the same pattern established here; see
- * clinic-app/README.md for what's tracked as remaining.
+ * My Appointments, cancel, and reschedule. Doctor-selection pagination
+ * (doctor_prev/doctor_next, BOOK_DOCTOR below) and the shareable
+ * appointment receipt card (sendAppointmentReceiptCard) are both
+ * implemented here too — see clinic-app/README.md for what's covered.
  */
 
 const LANGUAGE_BY_CHOICE: Record<string, string> = {
@@ -417,7 +414,10 @@ export async function handlePatientMessage(
 
         await replyMenu(
           ctx,
-          result.success ? `Appointment cancelled.\n\n${result.message}` : `Unable to cancel: ${result.message}`,
+          // result.message on success is already a complete sentence
+          // ("Appointment cancelled successfully.") — prefixing it with
+          // another "Appointment cancelled." said the same thing twice.
+          result.success ? result.message : `Unable to cancel: ${result.message}`,
           getMainMenuSpec()
         );
         return true;
@@ -918,18 +918,24 @@ async function offerSlotsForDate(
     timezone: ctx.timezone
   });
 
+  if (slots.length === 0) {
+    // Stay in BOOK_DATE, not BOOK_TIME — the message below asks the
+    // patient to pick another date, but BOOK_TIME's handler expects a
+    // slot number reply, not a date. Re-showing the date menu here (not
+    // just a bare text prompt) also gives them a valid next input.
+    await saveSession(ctx.supabase, ctx.phone, { state: "BOOK_DATE" });
+    await replyMenu(
+      ctx,
+      `Sorry, there are no available slots on ${dateString}.\n\nPlease choose another date:`,
+      getDateMenuSpec()
+    );
+    return true;
+  }
+
   await saveSession(ctx.supabase, ctx.phone, {
     state: "BOOK_TIME",
     session_date: dateString
   });
-
-  if (slots.length === 0) {
-    await reply(
-      ctx,
-      `Sorry, there are no available slots on ${dateString}.\n\nPlease choose another date.`
-    );
-    return true;
-  }
 
   await replyMenu(
     ctx,
@@ -991,18 +997,23 @@ async function offerRescheduleSlotsForDate(
     timezone: ctx.timezone
   });
 
+  if (slots.length === 0) {
+    // Stay in RESCHEDULE_DATE, not RESCHEDULE_TIME — same reasoning as
+    // offerSlotsForDate above: the message asks for another date, but
+    // RESCHEDULE_TIME's handler expects a slot number, not a date.
+    await saveSession(ctx.supabase, ctx.phone, { state: "RESCHEDULE_DATE" });
+    await replyMenu(
+      ctx,
+      `Sorry, there are no available slots on ${dateString}.\n\nPlease choose another date:`,
+      getDateMenuSpec()
+    );
+    return true;
+  }
+
   await saveSession(ctx.supabase, ctx.phone, {
     state: "RESCHEDULE_TIME",
     session_date: dateString
   });
-
-  if (slots.length === 0) {
-    await reply(
-      ctx,
-      `Sorry, there are no available slots on ${dateString}.\n\nPlease choose another date.`
-    );
-    return true;
-  }
 
   await replyMenu(
     ctx,
