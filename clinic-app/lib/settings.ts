@@ -154,6 +154,20 @@ export async function getHomeCollectionRadiusKm(
   return radius > 0 ? radius : 5;
 }
 
+/**
+ * Ported from getClinicWelcomeImageUrl in src/WhatsApp_Send.gs. Optional
+ * image sent alongside the greeting (see lib/whatsapp/router.ts) —
+ * blank/unset means "no welcome image", same as CLINIC_LOGO_URL's
+ * "no logo" default. Returns the raw setting text; validate with
+ * isRenderableLogoUrl (lib/whatsapp/receipt.tsx) before using it, same
+ * http(s)-only check the receipt card's logo uses.
+ */
+export async function getClinicWelcomeImageUrl(
+  supabase: SupabaseClient<Database>
+): Promise<string> {
+  return getSetting(supabase, "CLINIC_WELCOME_IMAGE_URL", "");
+}
+
 /** Upserts one setting — used by the admin UI's Settings page. */
 export async function setSetting(
   supabase: SupabaseClient<Database>,

@@ -109,6 +109,12 @@ export function SettingsForm({ settings }: { settings: Record<string, string> })
             value={value("CLINIC_LOGO_URL")}
             placeholder="https://.../logo.png — shown on the appointment receipt card"
           />
+          <TextField
+            name="CLINIC_WELCOME_IMAGE_URL"
+            label="Welcome image URL (optional)"
+            value={value("CLINIC_WELCOME_IMAGE_URL")}
+            placeholder="https://.../welcome.png — sent as the first message on a patient's greeting"
+          />
           <TextField name="CLINIC_WORKING_DAYS" label="Working days" value={value("CLINIC_WORKING_DAYS")} placeholder="Mon,Tue,Wed,Thu,Fri,Sat" />
           <TextField name="CLINIC_OPEN_TIME" label="Opens" value={value("CLINIC_OPEN_TIME")} placeholder="09:00" />
           <TextField name="CLINIC_CLOSE_TIME" label="Closes" value={value("CLINIC_CLOSE_TIME")} placeholder="18:00" />

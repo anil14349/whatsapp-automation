@@ -98,6 +98,7 @@ what each role can do and where it's enforced.
 | Key | Default | Controls | **Wired up?** |
 |---|---|---|---|
 | `CLINIC_NAME` | `ABC Clinic` | Substituted for every `{{CLINIC_NAME}}` placeholder in bot messages, and used for the browser tab title, the landing page (`/`), and both admin headers (`/admin/login`, the dashboard sidebar) via `getClinicNameSafe` (`lib/settings.ts`) | ✅ Active |
+| `CLINIC_WELCOME_IMAGE_URL` | *(empty)* | Optional image sent as the first message on a patient's greeting (before the language/main menu) | ✅ Active — `getClinicWelcomeImageUrl` (`lib/settings.ts`), sent by `lib/whatsapp/router.ts`'s `handleGreeting` via `sendWhatsAppImageByUrl` (`lib/whatsapp/send.ts` — fetched directly by WhatsApp via URL, no upload step, unlike the receipt card's image). Same http(s)-only validation as `CLINIC_LOGO_URL` (`isRenderableLogoUrl`); blank or invalid silently means "no welcome image", and a failed send never blocks the greeting |
 | `ENABLE_INTERACTIVE_MENUS` | `TRUE` | Tap-to-select WhatsApp menus vs. falling back to plain numbered text | ✅ Active |
 | `ENABLE_WHATSAPP_FLOW_BOOKING` | `FALSE` | Use a native WhatsApp Flow form for Book Appointment instead of the list/button conversation | ✅ Active, but requires `WHATSAPP_FLOW_ID` + a keypair configured (see env vars above) — falls back to the list/button flow if either is missing, even when this is `TRUE` |
 | `LOG_RETENTION` | `month` | How long `message_log` rows are kept | ✅ Active — `lib/logCleanup.ts`, invoked by the `/api/cron/log-cleanup` scheduled job (daily). REMINDER rows are exempt (they're the reminder scheduler's dedup ledger, not routine log volume) |
@@ -245,6 +246,7 @@ change here is reflected on the very next slot lookup.
 | Turn on appointment reminders / auto-complete-past-appointments | Set `CRON_SECRET`, deploy with `vercel.json`'s cron config (or point any external scheduler at `/api/cron/reminders` / `/api/cron/auto-complete`), then the relevant toggle via `/admin/settings` — see README's "Scheduled jobs" section |
 | Turn on the after-hours auto-reply | `settings.ENABLE_AFTER_HOURS_REPLY` + `CLINIC_OPEN_TIME`/`CLINIC_CLOSE_TIME`/`CLINIC_WORKING_DAYS` via `/admin/settings` — no scheduled job needed, this one runs per-message |
 | Add a logo to the appointment receipt card | `settings.CLINIC_LOGO_URL` via `/admin/settings` — any publicly reachable image URL |
+| Send a welcome image on a patient's first message | `settings.CLINIC_WELCOME_IMAGE_URL` via `/admin/settings` — any publicly reachable image URL |
 | See/manage home sample collection requests | `/admin/home-collection` |
 | Turn off diagnostics/home sample collection entirely for a hospital that doesn't offer it | `settings.ENABLE_HOME_COLLECTION` via `/admin/settings` |
 | Rotate the WhatsApp access token | `WHATSAPP_ACCESS_TOKEN` env var + redeploy |

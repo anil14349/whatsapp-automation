@@ -102,6 +102,27 @@ export async function sendWhatsAppImage(to: string, mediaId: string, caption: st
   });
 }
 
+/**
+ * Sends an image by public URL directly — WhatsApp fetches it itself,
+ * unlike sendWhatsAppImage's `id`, which requires uploading the bytes
+ * to WhatsApp's Media API first (see uploadWhatsAppMedia, used for the
+ * generated receipt PNG). For a fixed publicly-hosted image like the
+ * welcome image (CLINIC_WELCOME_IMAGE_URL), skipping the upload step
+ * is simpler and avoids fetching+re-uploading the same bytes on every
+ * send. Caller is responsible for validating `imageUrl` first (see
+ * isRenderableLogoUrl in lib/whatsapp/receipt.tsx) — WhatsApp returns
+ * an API error for an unfetchable link, which propagates from here.
+ */
+export async function sendWhatsAppImageByUrl(to: string, imageUrl: string, caption: string): Promise<void> {
+  await sendWhatsAppGraphPayload(to, {
+    messaging_product: "whatsapp",
+    recipient_type: "individual",
+    to,
+    type: "image",
+    image: { link: imageUrl, caption }
+  });
+}
+
 export async function sendWhatsAppText(to: string, messageText: string): Promise<void> {
   await sendWhatsAppGraphPayload(to, {
     messaging_product: "whatsapp",

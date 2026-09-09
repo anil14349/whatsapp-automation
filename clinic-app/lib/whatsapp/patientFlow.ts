@@ -19,12 +19,18 @@ import {
   formatTimeLabel,
   isValidISODate
 } from "@/lib/scheduling/dates";
-import { getBooleanSetting, getHomeCollectionRadiusKm, getHospitalLocation, getSetting } from "@/lib/settings";
+import {
+  getBooleanSetting,
+  getClinicWelcomeImageUrl,
+  getHomeCollectionRadiusKm,
+  getHospitalLocation,
+  getSetting
+} from "@/lib/settings";
 import { getServerEnv } from "@/lib/env";
 import { haversineDistanceKm } from "@/lib/scheduling/geo";
 import { createHomeCollectionRequest } from "@/lib/homeCollection";
 import { sendWhatsAppFlow, sendWhatsAppImage, uploadWhatsAppMedia } from "./send";
-import { generateAppointmentReceiptImageBuffer, type AppointmentReceiptDetails } from "./receipt";
+import { generateAppointmentReceiptImageBuffer, isRenderableLogoUrl, type AppointmentReceiptDetails } from "./receipt";
 import type { AppointmentListItem } from "./menus";
 import {
   buildAppointmentDetailMessage,
@@ -94,9 +100,19 @@ export async function handlePatientMessage(
 
       await registerPatientForBooking(ctx.supabase, ctx.phone, ctx.senderName, language);
 
+      // The welcome image (if CLINIC_WELCOME_IMAGE_URL is set) was
+      // already sent once with this same greeting as its caption, right
+      // before the language menu that led here (see
+      // lib/whatsapp/router.ts's handleGreeting) — don't resend it, and
+      // drop the redundant "Welcome" text so it isn't shown a third time
+      // in the same conversation (image caption, then here).
+      const welcomeImageConfigured = isRenderableLogoUrl(await getClinicWelcomeImageUrl(ctx.supabase));
+
       await replyMenu(
         { ...ctx, language },
-        "Welcome to {{CLINIC_NAME}}!\nPlease choose an option:",
+        welcomeImageConfigured
+          ? "How can we help you today?"
+          : "Welcome to {{CLINIC_NAME}}!\nPlease choose an option:",
         getMainMenuSpec()
       );
 

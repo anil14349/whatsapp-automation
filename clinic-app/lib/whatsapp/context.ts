@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 import type { CalendarPort } from "@/lib/calendar/types";
 import type { MenuReply } from "./send";
-import { sendMenuReply, sendWhatsAppText } from "./send";
+import { sendMenuReply, sendWhatsAppImageByUrl, sendWhatsAppText } from "./send";
 import { localizeWhatsAppReply } from "./localize";
 import { logMessage } from "./log";
 
@@ -41,6 +41,20 @@ export async function replyMenu(
   const localized = localizeWhatsAppReply(ctx.language, text, ctx.clinicName);
   await sendMenuReply(ctx.phone, localized, menu, ctx.interactiveMenusEnabled);
   await logOutbound(ctx, `${localized}\n[menu: ${menu.fallbackText}]`);
+}
+
+/**
+ * Sends an image by public URL, localized caption, logged like reply()/
+ * replyMenu(). Unlike those, does NOT swallow send failures itself —
+ * callers sending an optional/best-effort image (e.g. the greeting's
+ * welcome image, lib/whatsapp/router.ts) should wrap this in try/catch
+ * so an unfetchable or misconfigured URL never blocks the rest of the
+ * conversation flow.
+ */
+export async function replyImage(ctx: FlowContext, imageUrl: string, caption: string): Promise<void> {
+  const localized = localizeWhatsAppReply(ctx.language, caption, ctx.clinicName);
+  await sendWhatsAppImageByUrl(ctx.phone, imageUrl, localized);
+  await logOutbound(ctx, `[image] ${localized}`);
 }
 
 /** ENABLE_DEBUG_LOG-gated, truncated to LOG_MESSAGE_MAX_CHARS — both checked inside logMessage itself (lib/whatsapp/log.ts). */
