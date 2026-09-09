@@ -5,6 +5,7 @@ import { getServerEnv } from "@/lib/env";
 import { requireAdminRole } from "@/lib/auth/authorize";
 import type { AppointmentStatus } from "@/lib/supabase/database.types";
 import { AppointmentRowActions } from "./AppointmentRowActions";
+import { NewAppointmentForm } from "./NewAppointmentForm";
 
 const VALID_STATUSES: readonly AppointmentStatus[] = [
   "Confirmed",
@@ -71,7 +72,17 @@ export default async function AppointmentsPage({
         Showing upcoming appointments unless a specific date is chosen.
       </p>
 
-      <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
+      <section className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-sm font-semibold text-slate-900">New Appointment (walk-in)</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          For a patient who came to the hospital directly rather than booking over WhatsApp.
+        </p>
+        <div className="mt-4">
+          <NewAppointmentForm doctors={doctors.filter((d) => d.active)} />
+        </div>
+      </section>
+
+      <form className="mt-6 flex flex-wrap items-end gap-3" method="get">
         <div>
           <label className="mb-1 block text-xs font-medium text-slate-700">Doctor</label>
           <select

@@ -413,7 +413,7 @@ Then sign in at `/admin/login`.
 | `/admin` | Dashboard — today's/upcoming appointment counts, active doctor count |
 | `/admin/doctors` | List + create doctors — **ADMIN only** |
 | `/admin/doctors/[id]` | Edit a doctor's details, manage weekly availability sessions, manage upcoming leaves — **ADMIN only** |
-| `/admin/appointments` | Filterable list (doctor/date/status) with actions: mark Completed/No-Show, cancel |
+| `/admin/appointments` | Filterable list (doctor/date/status) with actions: mark Completed/No-Show, cancel. Also a "New Appointment (walk-in)" form for patients who come to the hospital directly instead of booking over WhatsApp — goes through the same `bookAppointment()` as every other booking path, so it shares the same slot-availability and double-booking guarantees |
 | `/admin/patients` | Read-only, searchable patient registry |
 | `/admin/home-collection` | Home sample collection requests, filterable by status, with a per-row status dropdown |
 | `/admin/settings` | Every configurable option from the `settings` table, grouped and editable as a real form — **ADMIN only** |

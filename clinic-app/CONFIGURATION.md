@@ -182,6 +182,7 @@ change here is reflected on the very next slot lookup.
 |---|---|
 | Rename the clinic in bot messages | `settings.CLINIC_NAME` via `/admin/settings` |
 | Add/remove a doctor | `/admin/doctors` |
+| Book an appointment for a walk-in patient | `/admin/appointments` → "New Appointment (walk-in)" |
 | Change a doctor's slot length | `/admin/doctors/[id]` → doctor details form |
 | Fix "doctor shows up but can't be booked" | Check `calendar_id` is set for that doctor |
 | Turn off tap-to-select menus (numbered text only) | `settings.ENABLE_INTERACTIVE_MENUS` via `/admin/settings` |
