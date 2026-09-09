@@ -17,6 +17,7 @@ import { LogoutButton } from "./LogoutButton";
 const NAV_ITEMS = [
   { href: "/admin", label: "Dashboard", roles: ["ADMIN", "RECEPTIONIST"] },
   { href: "/admin/appointments", label: "Appointments", roles: ["ADMIN", "RECEPTIONIST"] },
+  { href: "/admin/analytics", label: "Analytics", roles: ["ADMIN", "RECEPTIONIST"] },
   { href: "/admin/doctors", label: "Doctors", roles: ["ADMIN"] },
   { href: "/admin/patients", label: "Patients", roles: ["ADMIN", "RECEPTIONIST"] },
   { href: "/admin/home-collection", label: "Home Collection", roles: ["ADMIN", "RECEPTIONIST"] },

@@ -22,7 +22,7 @@ import { getBooleanSetting, getNumberSetting } from "@/lib/settings";
 export async function logMessage(
   supabase: SupabaseClient<Database>,
   entry: {
-    direction: "IN" | "OUT" | "ERROR" | "REMINDER";
+    direction: "IN" | "OUT" | "ERROR" | "REMINDER" | "BROADCAST";
     phone?: string;
     patientName?: string;
     status?: string;

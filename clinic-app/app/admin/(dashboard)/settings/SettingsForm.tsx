@@ -161,6 +161,21 @@ export function SettingsForm({ settings }: { settings: Record<string, string> })
       </section>
 
       <section>
+        <h2 className="text-sm font-semibold text-slate-900">Doctor broadcast</h2>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <TextField
+            name="BROADCAST_SEND_CONCURRENCY"
+            label="Parallel sends per batch"
+            value={value("BROADCAST_SEND_CONCURRENCY", "5")}
+            placeholder="5"
+          />
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          How many WhatsApp messages the doctor/admin broadcast (&quot;message every patient confirmed today&quot;) sends at once instead of one at a time. Higher finishes faster for large patient lists but sends more requests to the WhatsApp API concurrently.
+        </p>
+      </section>
+
+      <section>
         <h2 className="text-sm font-semibold text-slate-900">Interactive menus &amp; logging</h2>
         <div className="mt-3 flex flex-col gap-3">
           <ToggleField name="ENABLE_INTERACTIVE_MENUS" label="Use tap-to-select WhatsApp menus (falls back to numbered text if off)" checked={isOn("ENABLE_INTERACTIVE_MENUS")} />

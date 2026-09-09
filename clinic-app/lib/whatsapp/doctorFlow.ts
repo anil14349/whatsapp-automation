@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import type { FlowContext } from "./context";
 import { reply, replyMenu } from "./context";
 import { getSession, saveSession } from "@/lib/sessions";
@@ -18,6 +19,7 @@ import {
   normalizeTimeInput,
   rescheduleAppointment
 } from "@/lib/appointments";
+import { sendDoctorBroadcast } from "@/lib/broadcast";
 import { getAvailableSlotsForDoctor } from "@/lib/scheduling/slots";
 import { formatDateKey, formatTimeLabel, isValidISODate } from "@/lib/scheduling/dates";
 import { sendWhatsAppText } from "./send";
@@ -105,6 +107,12 @@ export async function handleDoctorMessage(
         const today = formatDateKey(new Date(), ctx.timezone);
         const leaves = await getDoctorUpcomingLeaves(ctx.supabase, doctor.id, today);
         await replyMenu(ctx, "Upcoming leave:", getDoctorLeaveMenuSpec(leaves));
+        return true;
+      }
+
+      if (normalizedMessage === "broadcast" || normalizedMessage === "5") {
+        await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_BROADCAST_DATE" });
+        await replyMenu(ctx, "Broadcast a message to every patient with a confirmed appointment on a date.\n\nChoose a date:", getDateMenuSpec());
         return true;
       }
 
@@ -601,6 +609,152 @@ export async function handleDoctorMessage(
       return returnDoctorToMenu(ctx, `Leave on ${selected.leave_date} cancelled.`);
     }
 
+    // --------------------------------------------------------------
+    // Broadcast to Patients: date -> free-text message -> confirm -> send.
+    // No equivalent in Controller_DoctorFlow.gs — this is a new feature,
+    // not a port. session_date holds the chosen broadcast date the same
+    // way it holds a "scratch" value elsewhere in this file (e.g. the
+    // leave-range states above); the session's `location` column (unused
+    // by any doctor-portal state — it's the patient home-collection
+    // flow's lat/lng scratch field) doubles as the scratch slot for the
+    // in-progress message text between DOCTOR_BROADCAST_MESSAGE and
+    // DOCTOR_BROADCAST_CONFIRM, rather than adding a migration for a
+    // dedicated column.
+    // --------------------------------------------------------------
+
+    case "DOCTOR_BROADCAST_DATE": {
+      const quickDate = resolveQuickDateChoice(normalizedMessage, ctx.timezone);
+
+      if (quickDate) {
+        await saveSession(ctx.supabase, ctx.phone, {
+          state: "DOCTOR_BROADCAST_MESSAGE",
+          session_date: quickDate
+        });
+        await reply(ctx, `Broadcasting for ${quickDate}. Please type the message to send.`);
+        return true;
+      }
+
+      if (normalizedMessage === "3") {
+        await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_BROADCAST_DATE_CUSTOM" });
+        await reply(ctx, "Please enter the date in YYYY-MM-DD format.");
+        return true;
+      }
+
+      await replyMenu(ctx, "Invalid option.", getDateMenuSpec());
+      return true;
+    }
+
+    case "DOCTOR_BROADCAST_DATE_CUSTOM": {
+      const typed = messageText.trim();
+
+      if (!isValidISODate(typed)) {
+        await reply(ctx, "That doesn't look like a valid date.\n\nPlease enter the date in YYYY-MM-DD format.");
+        return true;
+      }
+
+      await saveSession(ctx.supabase, ctx.phone, {
+        state: "DOCTOR_BROADCAST_MESSAGE",
+        session_date: typed
+      });
+      await reply(ctx, `Broadcasting for ${typed}. Please type the message to send.`);
+      return true;
+    }
+
+    case "DOCTOR_BROADCAST_MESSAGE": {
+      if (!session.session_date) {
+        return returnDoctorToMenu(ctx);
+      }
+
+      const broadcastMessage = messageText.trim();
+
+      if (!broadcastMessage) {
+        await reply(ctx, "Message can't be empty. Please type the message to send.");
+        return true;
+      }
+
+      const appointments = await getDoctorConfirmedAppointments(ctx.supabase, doctor.id, {
+        fromDate: session.session_date,
+        toDate: session.session_date
+      });
+      const recipientCount = new Set(appointments.map((a) => a.patient_phone)).size;
+
+      if (recipientCount === 0) {
+        return returnDoctorToMenu(ctx, `No confirmed appointments on ${session.session_date}. Broadcast cancelled.`);
+      }
+
+      await saveSession(ctx.supabase, ctx.phone, {
+        state: "DOCTOR_BROADCAST_CONFIRM",
+        location: broadcastMessage
+      });
+
+      await replyMenu(
+        ctx,
+        `Send this message to ${recipientCount} patient${recipientCount === 1 ? "" : "s"} confirmed on ${session.session_date}?\n\n"${broadcastMessage}"`,
+        getYesNoConfirmSpec()
+      );
+      return true;
+    }
+
+    case "DOCTOR_BROADCAST_CONFIRM": {
+      if (!session.session_date || !session.location) {
+        return returnDoctorToMenu(ctx);
+      }
+
+      if (normalizedMessage === "1" || normalizedMessage === "confirm_yes") {
+        // Fire-and-forget rather than awaiting sendDoctorBroadcast inline:
+        // its send loop (one HTTP call + one log write per recipient, see
+        // lib/broadcast.ts) can comfortably exceed this webhook request's
+        // lifetime for a doctor with a large confirmed-appointment list,
+        // and the route (app/api/whatsapp/webhook/route.ts) has no way to
+        // tell the doctor how many messages got out if it's killed
+        // mid-broadcast. after() lets this handler reply and return
+        // immediately while the actual sends continue in the background
+        // of the same invocation (still bounded by that route's
+        // maxDuration — raise it there if broadcasts still don't finish
+        // for this clinic's patient volumes) — the doctor gets an
+        // immediate ack now and a real completion count once it's done,
+        // instead of silence either way.
+        const doctorId = doctor.id;
+        const broadcastDate = session.session_date;
+        const broadcastMessage = session.location;
+        const timezone = ctx.timezone;
+
+        after(async () => {
+          try {
+            const result = await sendDoctorBroadcast(
+              ctx.supabase,
+              doctorId,
+              broadcastDate,
+              broadcastMessage,
+              timezone
+            );
+
+            await reply(
+              ctx,
+              `Broadcast for ${broadcastDate} done: sent to ${result.sent} patient${result.sent === 1 ? "" : "s"}${result.errors > 0 ? ` (${result.errors} failed)` : ""}.`
+            );
+          } catch (error) {
+            console.error("Doctor broadcast background send failed:", error);
+            await reply(ctx, "Broadcast failed to send. Please check message_log or try again.").catch(
+              (replyError) => console.error("Could not notify doctor of broadcast failure:", replyError)
+            );
+          }
+        });
+
+        return returnDoctorToMenu(
+          ctx,
+          `Broadcast started for ${broadcastDate}. You'll get a message here once it's done.`
+        );
+      }
+
+      if (normalizedMessage === "2" || normalizedMessage === "confirm_no") {
+        return returnDoctorToMenu(ctx, "Broadcast cancelled.");
+      }
+
+      await replyMenu(ctx, "Invalid option.", getYesNoConfirmSpec());
+      return true;
+    }
+
     default:
       return false;
   }
@@ -615,6 +769,7 @@ export async function sendDoctorMainMenu(ctx: FlowContext, doctor: Doctor): Prom
     appointment_id: null,
     session_date: "",
     session_time: "",
+    location: "",
     appointment_page: 0
   });
 
@@ -627,6 +782,7 @@ async function returnDoctorToMenu(ctx: FlowContext, message?: string): Promise<b
     appointment_id: null,
     session_date: "",
     session_time: "",
+    location: "",
     appointment_page: 0
   });
 

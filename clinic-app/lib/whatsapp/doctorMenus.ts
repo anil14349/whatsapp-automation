@@ -32,13 +32,14 @@ export const WEEKDAYS: Weekday[] = [
 export function getDoctorMainMenuSpec(): MenuReply {
   return {
     fallbackText:
-      "1️⃣ Today's Schedule\n2️⃣ Manage Appointments\n3️⃣ Manage Availability\n4️⃣ Manage Leaves",
+      "1️⃣ Today's Schedule\n2️⃣ Manage Appointments\n3️⃣ Manage Availability\n4️⃣ Manage Leaves\n5️⃣ Broadcast to Patients",
     interactive: buildInteractiveListSpec(
       [
         { id: "today_schedule", title: "Today's Schedule" },
         { id: "manage_appointments", title: "Manage Appointments" },
         { id: "manage_availability", title: "Manage Availability" },
-        { id: "manage_leaves", title: "Manage Leaves" }
+        { id: "manage_leaves", title: "Manage Leaves" },
+        { id: "broadcast", title: "Broadcast to Patients" }
       ],
       "Select option"
     )

@@ -20,6 +20,20 @@ import { sendWhatsAppText } from "@/lib/whatsapp/send";
  * disabled".
  */
 
+/**
+ * The Doctor Portal's broadcast confirmation (lib/whatsapp/doctorFlow.ts's
+ * DOCTOR_BROADCAST_CONFIRM state) defers its actual send loop into an
+ * after() callback so the reply below returns fast — but that callback
+ * still runs inside this same invocation and is still bounded by
+ * whatever maxDuration this route gets. The platform default without
+ * this export is far too short for a doctor with more than a handful of
+ * confirmed appointments that day. Raise this further (see
+ * CONFIGURATION.md's "Doctor broadcast timeouts" section) if a clinic's
+ * patient volume still isn't finishing broadcasts in time — bounded by
+ * whatever your hosting plan actually allows.
+ */
+export const maxDuration = 60;
+
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const params = request.nextUrl.searchParams;
   const mode = params.get("hub.mode");
