@@ -19,6 +19,7 @@ import { applyClinicNamePlaceholder } from "@/lib/whatsapp/localize";
  * behavior — a failed send still only fails that one recipient.
  */
 const DEFAULT_SEND_CONCURRENCY = 5;
+const MAX_SEND_CONCURRENCY = 15;
 
 /**
  * Bulk doctor-portal broadcast: one message to every patient with a
@@ -100,9 +101,12 @@ export async function sendDoctorBroadcast(
     errors: 0
   };
 
-  const concurrency = Math.max(
-    1,
-    Math.trunc(await getNumberSetting(supabase, "BROADCAST_SEND_CONCURRENCY", DEFAULT_SEND_CONCURRENCY))
+  const concurrency = Math.min(
+    MAX_SEND_CONCURRENCY,
+    Math.max(
+      1,
+      Math.trunc(await getNumberSetting(supabase, "BROADCAST_SEND_CONCURRENCY", DEFAULT_SEND_CONCURRENCY))
+    )
   );
 
   for (let i = 0; i < uniquePhones.length; i += concurrency) {
