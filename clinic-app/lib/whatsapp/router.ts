@@ -6,6 +6,7 @@ import { findDoctorByWhatsAppPhone } from "@/lib/doctors";
 import { buildAfterHoursMessage, getAfterHoursSettings, shouldBlockPatientForAfterHours } from "@/lib/afterHours";
 import { getClinicWelcomeImageUrl } from "@/lib/settings";
 import { getLanguageMenuSpec, getMainMenuSpec } from "./menus";
+import { getLanguageMenuFromDb, getMainMenuFromDb } from "./dbMenus";
 import { handlePatientMessage } from "./patientFlow";
 import { handleDoctorMessage, sendDoctorMainMenu } from "./doctorFlow";
 import { isRenderableLogoUrl } from "./receipt";
@@ -159,10 +160,15 @@ async function handleGreeting(
     // Skip the redundant "Welcome to {{CLINIC_NAME}}!" text when the
     // image (with the same greeting as its caption) was just shown —
     // showing it twice in a row reads as a glitch, not a warm welcome.
+    const mainMenu = await getMainMenuFromDb(
+      greetingCtx.supabase,
+      greetingCtx.clinicId,
+      savedLanguage
+    );
     await replyMenu(
       greetingCtx,
       imageSent ? "How can we help you today?" : "Welcome to {{CLINIC_NAME}}!",
-      getMainMenuSpec()
+      mainMenu
     );
 
     return;
@@ -184,7 +190,8 @@ async function handleGreeting(
   });
 
   await maybeSendWelcomeImage(ctx);
-  await replyMenu(ctx, "Welcome to {{CLINIC_NAME}}!", getLanguageMenuSpec());
+  const languageMenu = await getLanguageMenuFromDb(ctx.supabase, ctx.clinicId, "EN");
+  await replyMenu(ctx, "Welcome to {{CLINIC_NAME}}!", languageMenu);
 }
 
 /**

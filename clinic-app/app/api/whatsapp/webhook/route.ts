@@ -139,11 +139,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         getSession(supabase, senderPhone)
       ]);
 
+      // Get clinic ID from environment or query database
+      // For now, use environment variable; can be enhanced for multi-clinic
+      let clinicId = process.env.NEXT_PUBLIC_CLINIC_ID;
+
       const ctx: FlowContext = {
         supabase,
         phone: senderPhone,
         senderName,
         clinicName,
+        clinicId,
         interactiveMenusEnabled,
         timezone: env.CLINIC_TIMEZONE,
         language: session?.language || "EN"

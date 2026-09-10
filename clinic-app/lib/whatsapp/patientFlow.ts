@@ -49,6 +49,12 @@ import {
   parseSlotSelectionId,
   resolveTypedSlotSelection
 } from "./menus";
+import {
+  getLanguageMenuFromDb,
+  getMainMenuFromDb,
+  getDateMenuFromDb,
+  getDoctorSelectionMenuFromDb
+} from "./dbMenus";
 
 /**
  * Patient conversation state machine. Ports src/Controller_PatientFlow.gs
@@ -105,12 +111,15 @@ export async function handlePatientMessage(
       // in the same conversation (image caption, then here).
       const welcomeImageConfigured = isRenderableLogoUrl(await getClinicWelcomeImageUrl(ctx.supabase));
 
+      // Load main menu from database (with fallback to hardcoded)
+      const mainMenuFromDb = await getMainMenuFromDb(ctx.supabase, ctx.clinicId, language);
+
       await replyMenu(
         { ...ctx, language },
         welcomeImageConfigured
           ? "How can we help you today?"
           : "Welcome to {{CLINIC_NAME}}!\nPlease choose an option:",
-        getMainMenuSpec()
+        mainMenuFromDb
       );
 
       return true;
@@ -140,7 +149,8 @@ export async function handlePatientMessage(
         return true;
       }
 
-      await replyMenu(ctx, "Invalid option.", getMainMenuSpec());
+      const mainMenuForInvalid = await getMainMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
+      await replyMenu(ctx, "Invalid option.", mainMenuForInvalid);
       return true;
     }
 
@@ -165,7 +175,8 @@ export async function handlePatientMessage(
 
       if (normalizedMessage === "change_language" || normalizedMessage === "3") {
         await saveSession(ctx.supabase, ctx.phone, { state: "LANGUAGE_SELECT" });
-        await replyMenu(ctx, "Select your language:", getLanguageMenuSpec());
+        const languageMenuForChange = await getLanguageMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
+        await replyMenu(ctx, "Select your language:", languageMenuForChange);
         return true;
       }
 
@@ -226,10 +237,11 @@ export async function handlePatientMessage(
         location: `${location.latitude},${location.longitude}`
       });
 
+      const dateMenuForCollection = await getDateMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
       await replyMenu(
         ctx,
         `You're within ${radiusKm} km — home sample collection is available!\n\nChoose a preferred date:`,
-        getDateMenuSpec()
+        dateMenuForCollection
       );
       return true;
     }
@@ -597,7 +609,8 @@ export async function handlePatientMessage(
           normalizedMessage === "doctor_prev" ? Math.max(currentPage - 1, 0) : currentPage + 1;
 
         await saveSession(ctx.supabase, ctx.phone, { list_page: nextPage });
-        await replyMenu(ctx, "Select a doctor:", getDoctorSelectionMenuSpec(doctors, nextPage));
+        const doctorMenuForPage = await getDoctorSelectionMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language, doctors, nextPage);
+        await replyMenu(ctx, "Select a doctor:", doctorMenuForPage);
         return true;
       }
 
@@ -617,10 +630,11 @@ export async function handlePatientMessage(
         : null;
 
       if (!doctor) {
+        const doctorMenuForInvalid = await getDoctorSelectionMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language, doctors, currentPage);
         await replyMenu(
           ctx,
           "Please choose a valid doctor.",
-          getDoctorSelectionMenuSpec(doctors, currentPage)
+          doctorMenuForInvalid
         );
         return true;
       }

@@ -18,6 +18,7 @@ export interface FlowContext {
   phone: string;
   senderName: string;
   clinicName: string;
+  clinicId?: string; // Optional: used for database-driven configuration
   interactiveMenusEnabled: boolean;
   timezone: string;
   /** The patient's session language ("EN" if none set yet). */
