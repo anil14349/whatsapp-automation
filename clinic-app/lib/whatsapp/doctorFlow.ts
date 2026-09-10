@@ -48,6 +48,12 @@ import {
   parseSlotSelectionId,
   resolveTypedSlotSelection
 } from "./menus";
+import {
+  getDoctorMainMenuFromDb,
+  getDoctorAppointmentActionFromDb,
+  getDoctorLeaveMenuFromDb,
+  getDateMenuFromDb
+} from "./dbMenus";
 
 /**
  * Doctor Portal conversation state machine. Ports src/Controller_DoctorFlow.gs
@@ -87,7 +93,8 @@ export async function handleDoctorMessage(
                 .map((a) => `${formatAppointmentTime(a, ctx.timezone)} — ${a.patient_name}`)
                 .join("\n");
 
-        await replyMenu(ctx, `Today's schedule:\n\n${summary}`, getDoctorMainMenuSpec());
+        const mainMenuForToday = await getDoctorMainMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
+        await replyMenu(ctx, `Today's schedule:\n\n${summary}`, mainMenuForToday);
         return true;
       }
 
@@ -106,17 +113,25 @@ export async function handleDoctorMessage(
         await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_LEAVE_MENU" });
         const today = formatDateKey(new Date(), ctx.timezone);
         const leaves = await getDoctorUpcomingLeaves(ctx.supabase, doctor.id, today);
-        await replyMenu(ctx, "Upcoming leave:", getDoctorLeaveMenuSpec(leaves));
+        const leaveMenuForDoc = await getDoctorLeaveMenuFromDb(
+          ctx.supabase,
+          ctx.clinicId,
+          ctx.language,
+          leaves.length === 0 ? "No upcoming leave dates." : leaves.map((l) => `${l.leave_date}${l.reason ? ` (${l.reason})` : ""}`).join("\n")
+        );
+        await replyMenu(ctx, "Upcoming leave:", leaveMenuForDoc);
         return true;
       }
 
       if (normalizedMessage === "broadcast" || normalizedMessage === "5") {
         await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_BROADCAST_DATE" });
-        await replyMenu(ctx, "Broadcast a message to every patient with a confirmed appointment on a date.\n\nChoose a date:", getDateMenuSpec());
+        const dateMenuForBroadcast = await getDateMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
+        await replyMenu(ctx, "Broadcast a message to every patient with a confirmed appointment on a date.\n\nChoose a date:", dateMenuForBroadcast);
         return true;
       }
 
-      await replyMenu(ctx, "Invalid option.", getDoctorMainMenuSpec());
+      const mainMenuForInvalid = await getDoctorMainMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
+      await replyMenu(ctx, "Invalid option.", mainMenuForInvalid);
       return true;
     }
 
@@ -158,10 +173,11 @@ export async function handleDoctorMessage(
           appointment_id: chosenAppointment.id
         });
 
+        const apptActionMenu = await getDoctorAppointmentActionFromDb(ctx.supabase, ctx.clinicId, ctx.language);
         await replyMenu(
           ctx,
           buildDoctorAppointmentDetailMessage(chosenItem),
-          getDoctorAppointmentActionSpec()
+          apptActionMenu
         );
         return true;
       }
@@ -191,7 +207,8 @@ export async function handleDoctorMessage(
 
       if (normalizedMessage === "reschedule_appointment" || normalizedMessage === "4") {
         await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_RESCHEDULE_DATE" });
-        await replyMenu(ctx, "Choose a new date:", getDateMenuSpec());
+        const dateMenuForReschedule = await getDateMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
+        await replyMenu(ctx, "Choose a new date:", dateMenuForReschedule);
         return true;
       }
 
@@ -199,7 +216,8 @@ export async function handleDoctorMessage(
         return returnDoctorToMenu(ctx);
       }
 
-      await replyMenu(ctx, "Invalid option.", getDoctorAppointmentActionSpec());
+      const apptActionForInvalid = await getDoctorAppointmentActionFromDb(ctx.supabase, ctx.clinicId, ctx.language);
+      await replyMenu(ctx, "Invalid option.", apptActionForInvalid);
       return true;
     }
 
@@ -255,7 +273,8 @@ export async function handleDoctorMessage(
         return true;
       }
 
-      await replyMenu(ctx, "Invalid option.", getDateMenuSpec());
+      const dateMenuForRescheduleInvalid = await getDateMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
+      await replyMenu(ctx, "Invalid option.", dateMenuForRescheduleInvalid);
       return true;
     }
 
@@ -495,9 +514,15 @@ export async function handleDoctorMessage(
         return returnDoctorToMenu(ctx);
       }
 
-      const today = formatDateKey(new Date(), ctx.timezone);
-      const leaves = await getDoctorUpcomingLeaves(ctx.supabase, doctor.id, today);
-      await replyMenu(ctx, "Invalid option.", getDoctorLeaveMenuSpec(leaves));
+      const todayForLeaves = formatDateKey(new Date(), ctx.timezone);
+      const leavesForInvalid = await getDoctorUpcomingLeaves(ctx.supabase, doctor.id, todayForLeaves);
+      const leaveMenuForInvalid = await getDoctorLeaveMenuFromDb(
+        ctx.supabase,
+        ctx.clinicId,
+        ctx.language,
+        leavesForInvalid.length === 0 ? "No upcoming leave dates." : leavesForInvalid.map((l) => `${l.leave_date}${l.reason ? ` (${l.reason})` : ""}`).join("\n")
+      );
+      await replyMenu(ctx, "Invalid option.", leaveMenuForInvalid);
       return true;
     }
 
@@ -643,7 +668,8 @@ export async function handleDoctorMessage(
         return true;
       }
 
-      await replyMenu(ctx, "Invalid option.", getDateMenuSpec());
+      const dateMenuForBroadcastInvalid = await getDateMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
+      await replyMenu(ctx, "Invalid option.", dateMenuForBroadcastInvalid);
       return true;
     }
 
@@ -776,7 +802,8 @@ export async function sendDoctorMainMenu(ctx: FlowContext, doctor: Doctor): Prom
     appointment_page: 0
   });
 
-  await replyMenu(ctx, `Welcome, ${doctor.name}.`, getDoctorMainMenuSpec());
+  const mainMenuForWelcome = await getDoctorMainMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
+  await replyMenu(ctx, `Welcome, ${doctor.name}.`, mainMenuForWelcome);
 }
 
 async function returnDoctorToMenu(ctx: FlowContext, message?: string): Promise<boolean> {
@@ -789,7 +816,8 @@ async function returnDoctorToMenu(ctx: FlowContext, message?: string): Promise<b
     appointment_page: 0
   });
 
-  await replyMenu(ctx, message ?? "Main menu:", getDoctorMainMenuSpec());
+  const mainMenuForReturn = await getDoctorMainMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
+  await replyMenu(ctx, message ?? "Main menu:", mainMenuForReturn);
   return true;
 }
 
@@ -847,10 +875,11 @@ async function offerDoctorRescheduleSlots(
     // a slot number, not a date. Re-showing the date menu gives them a
     // valid next input instead of a bare prompt with no options.
     await saveSession(ctx.supabase, ctx.phone, { state: "DOCTOR_RESCHEDULE_DATE" });
+    const dateMenuForNoSlots = await getDateMenuFromDb(ctx.supabase, ctx.clinicId, ctx.language);
     await replyMenu(
       ctx,
       `No available slots on ${dateString}. Please choose another date:`,
-      getDateMenuSpec()
+      dateMenuForNoSlots
     );
     return true;
   }

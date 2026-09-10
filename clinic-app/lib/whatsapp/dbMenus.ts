@@ -214,3 +214,157 @@ export async function getDoctorSelectionMenuFromDb(
     interactive: buildInteractiveListSpec(rows, "Select doctor")
   };
 }
+
+/**
+ * DOCTOR PORTAL MENUS
+ */
+
+/**
+ * Load doctor main menu from database with fallback
+ */
+export async function getDoctorMainMenuFromDb(
+  supabase: SupabaseClient<Database>,
+  clinicId: string | undefined,
+  language: string
+): Promise<MenuReply> {
+  if (!clinicId) {
+    return getDoctorMainMenuFallback();
+  }
+
+  try {
+    const dbMenu = await getMenu(supabase, clinicId, "DOCTOR_MAIN_MENU", language);
+
+    if (dbMenu?.options && dbMenu.options.length > 0) {
+      const rows: MenuRow[] = dbMenu.options.map((opt: any) => ({
+        id: String(opt.id),
+        title: opt.label,
+        description: opt.description
+      }));
+
+      return {
+        fallbackText: dbMenu.options.map((opt: any) => `${opt.id}. ${opt.label}`).join("\n"),
+        interactive: buildInteractiveListSpec(rows, "Select option")
+      };
+    }
+  } catch (error) {
+    console.warn("Failed to load DOCTOR_MAIN_MENU from database, using fallback", error);
+  }
+
+  return getDoctorMainMenuFallback();
+}
+
+function getDoctorMainMenuFallback(): MenuReply {
+  return {
+    fallbackText: "1. Today's Schedule\n2. Manage Appointments\n3. Manage Availability\n4. Manage Leaves\n5. Broadcast to Patients",
+    interactive: buildInteractiveListSpec(
+      [
+        { id: "today_schedule", title: "Today's Schedule" },
+        { id: "manage_appointments", title: "Manage Appointments" },
+        { id: "manage_availability", title: "Manage Availability" },
+        { id: "manage_leaves", title: "Manage Leaves" },
+        { id: "broadcast", title: "Broadcast to Patients" }
+      ],
+      "Select option"
+    )
+  };
+}
+
+/**
+ * Load doctor appointment action menu from database with fallback
+ */
+export async function getDoctorAppointmentActionFromDb(
+  supabase: SupabaseClient<Database>,
+  clinicId: string | undefined,
+  language: string
+): Promise<MenuReply> {
+  if (!clinicId) {
+    return getDoctorAppointmentActionFallback();
+  }
+
+  try {
+    const dbMenu = await getMenu(supabase, clinicId, "DOCTOR_APPOINTMENT_ACTION", language);
+
+    if (dbMenu?.options && dbMenu.options.length > 0) {
+      const rows: MenuRow[] = dbMenu.options.map((opt: any) => ({
+        id: String(opt.id),
+        title: opt.label,
+        description: opt.description
+      }));
+
+      return {
+        fallbackText: dbMenu.options.map((opt: any) => `${opt.id}. ${opt.label}`).join("\n"),
+        interactive: buildInteractiveListSpec(rows, "Select action")
+      };
+    }
+  } catch (error) {
+    console.warn("Failed to load DOCTOR_APPOINTMENT_ACTION from database, using fallback", error);
+  }
+
+  return getDoctorAppointmentActionFallback();
+}
+
+function getDoctorAppointmentActionFallback(): MenuReply {
+  return {
+    fallbackText: "1. Mark Completed\n2. Mark No-Show\n3. Cancel\n4. Reschedule\n0. Main Menu",
+    interactive: buildInteractiveListSpec(
+      [
+        { id: "mark_completed", title: "Mark Completed" },
+        { id: "mark_no_show", title: "Mark No-Show" },
+        { id: "cancel_appointment", title: "Cancel Appointment" },
+        { id: "reschedule_appointment", title: "Reschedule" },
+        { id: "nav_main_menu", title: "Main Menu" }
+      ],
+      "Select action"
+    )
+  };
+}
+
+/**
+ * Load doctor leave menu from database with fallback
+ */
+export async function getDoctorLeaveMenuFromDb(
+  supabase: SupabaseClient<Database>,
+  clinicId: string | undefined,
+  language: string,
+  summary: string
+): Promise<MenuReply> {
+  if (!clinicId) {
+    return getDoctorLeaveMenuFallback(summary);
+  }
+
+  try {
+    const dbMenu = await getMenu(supabase, clinicId, "DOCTOR_LEAVE_MENU", language);
+
+    if (dbMenu?.options && dbMenu.options.length > 0) {
+      const rows: MenuRow[] = dbMenu.options.map((opt: any) => ({
+        id: String(opt.id),
+        title: opt.label,
+        description: opt.description
+      }));
+
+      return {
+        fallbackText: `${summary}\n\n${dbMenu.options.map((opt: any) => `${opt.id}. ${opt.label}`).join("\n")}`,
+        interactive: buildInteractiveListSpec(rows, "Select option")
+      };
+    }
+  } catch (error) {
+    console.warn("Failed to load DOCTOR_LEAVE_MENU from database, using fallback", error);
+  }
+
+  return getDoctorLeaveMenuFallback(summary);
+}
+
+function getDoctorLeaveMenuFallback(summary: string): MenuReply {
+  return {
+    fallbackText: `${summary}\n\n1. Add Leave (single day)\n2. Add Leave (date range)\n3. Cancel a Leave\n0. Main Menu`,
+    interactive: buildInteractiveListSpec(
+      [
+        { id: "add_leave_single", title: "Add Leave (Single Day)" },
+        { id: "add_leave_range", title: "Add Leave (Date Range)" },
+        { id: "cancel_leave", title: "Cancel a Leave" },
+        { id: "nav_main_menu", title: "Main Menu" }
+      ],
+      "Select option"
+    )
+  };
+}
