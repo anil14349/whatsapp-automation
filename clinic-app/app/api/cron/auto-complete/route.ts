@@ -1,31 +1,86 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getServerEnv } from "@/lib/env";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { isAuthorizedCronRequest } from "@/lib/cronAuth";
-import { autoCompletePastAppointments } from "@/lib/autoComplete";
-
 /**
- * Scheduled job: auto-mark past Confirmed appointments Completed
- * (lib/autoComplete.ts). Configured to run hourly in vercel.json — this
- * one has no tight eligibility window to protect the way reminders do
- * (AUTO_COMPLETE_HOURS_AFTER is typically several hours), so a coarser
- * cadence than the reminders job is fine.
+ * Auto-Complete Cron Job
+ *
+ * POST /api/cron/auto-complete
+ *
+ * Automatically mark past appointments as completed.
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
-  if (!isAuthorizedCronRequest(request)) {
-    return new NextResponse("Unauthorized", { status: 401 });
+
+import { NextRequest, NextResponse } from "next/server";
+import { getSupabaseServerClient } from "@/lib/supabase/server";
+
+export const maxDuration = 60;
+
+export async function POST(request: NextRequest): Promise<NextResponse> {
+  const supabase = getSupabaseServerClient();
+  const clinicId = request.headers.get("X-Clinic-ID");
+
+  if (!clinicId) {
+    return NextResponse.json(
+      { success: false, error: "Missing X-Clinic-ID header" },
+      { status: 400 }
+    );
   }
 
-  const env = getServerEnv();
-  const supabase = getSupabaseServerClient();
-
   try {
-    const result = await autoCompletePastAppointments(supabase, env.CLINIC_TIMEZONE);
-    return NextResponse.json(result);
+    // Get past appointments that are still "Confirmed"
+    const now = new Date();
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+
+    const { data: appointments, error: apptError } = await supabase
+      .from("appointments")
+      .select("id, appointment_date")
+      .eq("clinic_id", clinicId)
+      .eq("status", "Confirmed")
+      .lt("appointment_date", twoHoursAgo.toISOString().split("T")[0]);
+
+    if (apptError) {
+      console.error("Failed to fetch appointments:", apptError);
+      return NextResponse.json(
+        { success: false, error: "Failed to fetch appointments" },
+        { status: 500 }
+      );
+    }
+
+    const appointmentIds = (appointments || []).map((a: any) => a.id);
+
+    if (appointmentIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        appointments_completed: 0,
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const { error: updateError } = await supabase
+      .from("appointments")
+      .update({ status: "Completed", updated_at: new Date().toISOString() })
+      .in("id", appointmentIds);
+
+    if (updateError) {
+      console.error("Failed to update appointments:", updateError);
+      return NextResponse.json(
+        { success: false, error: "Failed to update appointments" },
+        { status: 500 }
+      );
+    }
+
+    console.log(`Auto-completed ${appointmentIds.length} appointments`);
+
+    return NextResponse.json({
+      success: true,
+      appointments_completed: appointmentIds.length,
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
-    console.error("autoCompletePastAppointments cron job failed:", error);
+    console.error("Auto-complete job error:", error);
+
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unknown error" },
+      {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        appointments_completed: 0
+      },
       { status: 500 }
     );
   }
