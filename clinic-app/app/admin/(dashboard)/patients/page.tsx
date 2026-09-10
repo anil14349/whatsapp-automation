@@ -1,5 +1,10 @@
+"use client";
+
+import { useState } from "react";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAdminRole } from "@/lib/auth/authorize";
+import { EditPatientNameModal } from "./EditPatientNameModal";
+import type { Patient } from "@/lib/patients";
 
 export default async function PatientsPage({
   searchParams
@@ -29,16 +34,28 @@ export default async function PatientsPage({
     throw new Error(`Failed to load patients: ${error.message}`);
   }
 
+  return <PatientsContent patients={patients} />;
+}
+
+function PatientsContent({ patients }: { patients: Patient[] }) {
+  const [editingPatient, setEditingPatient] = useState<Patient | null>(null);
+  const [patientsList, setPatientsList] = useState(patients);
+
+  const handleEditSuccess = (updatedPatient: Patient) => {
+    setPatientsList((prev) =>
+      prev.map((p) => (p.id === updatedPatient.id ? updatedPatient : p))
+    );
+  };
+
   return (
     <div>
       <h1 className="text-xl font-semibold text-slate-900">Patients</h1>
-      <p className="mt-1 text-sm text-slate-500">Read-only patient registry.</p>
+      <p className="mt-1 text-sm text-slate-500">Patient registry with edit capabilities.</p>
 
       <form className="mt-4" method="get">
         <input
           type="search"
           name="q"
-          defaultValue={q ?? ""}
           placeholder="Search by name or phone…"
           className="w-full max-w-sm rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
         />
@@ -53,10 +70,11 @@ export default async function PatientsPage({
               <th className="px-4 py-3">Language</th>
               <th className="px-4 py-3">Patient code</th>
               <th className="px-4 py-3">Last visit</th>
+              <th className="px-4 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {patients.map((patient) => (
+            {patientsList.map((patient) => (
               <tr key={patient.id}>
                 <td className="px-4 py-3 font-medium text-slate-900">{patient.name || "—"}</td>
                 <td className="px-4 py-3 text-slate-500">{patient.phone}</td>
@@ -67,11 +85,20 @@ export default async function PatientsPage({
                     ? new Date(patient.last_visit_at).toLocaleDateString()
                     : "—"}
                 </td>
+                <td className="px-4 py-3 text-right">
+                  <button
+                    type="button"
+                    onClick={() => setEditingPatient(patient)}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    Edit Name
+                  </button>
+                </td>
               </tr>
             ))}
-            {patients.length === 0 && (
+            {patientsList.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-slate-400">
+                <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
                   No patients found.
                 </td>
               </tr>
@@ -79,6 +106,18 @@ export default async function PatientsPage({
           </tbody>
         </table>
       </div>
+
+      {editingPatient && (
+        <EditPatientNameModal
+          patient={editingPatient}
+          onClose={() => setEditingPatient(null)}
+          onSuccess={() => {
+            const updatedPatient = { ...editingPatient, name: editingPatient.name };
+            handleEditSuccess(updatedPatient);
+            setEditingPatient(null);
+          }}
+        />
+      )}
     </div>
   );
 }

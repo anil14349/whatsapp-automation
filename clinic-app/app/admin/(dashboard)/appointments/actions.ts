@@ -2,13 +2,21 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import { bookAppointment, cancelAppointment, markAppointmentStatus } from "@/lib/appointments";
+import {
+  bookAppointment,
+  cancelAppointment,
+  markAppointmentStatus,
+  updateAppointmentTime,
+  updateAppointmentDateTime,
+  changeAppointmentDoctor
+} from "@/lib/appointments";
 import { getDoctorById } from "@/lib/doctors";
 import { getAvailableSlotsForDoctor } from "@/lib/scheduling/slots";
 import { formatTimeLabel } from "@/lib/scheduling/dates";
 import { getServerEnv } from "@/lib/env";
 import { assertAdminRole } from "@/lib/auth/authorize";
 import { sendDoctorBroadcast } from "@/lib/broadcast";
+import { updatePatientName } from "@/lib/patients";
 
 /**
  * Admin cancellation goes through the same cancelAppointment() used by
@@ -213,4 +221,108 @@ export async function broadcastToDoctorPatientsAction(
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Failed to send broadcast." };
   }
+}
+
+/**
+ * Edit appointment time (same date, different slot)
+ */
+export async function editAppointmentTimeAction(
+  appointmentId: string,
+  doctorId: string,
+  newTimeString: string
+): Promise<{ success?: boolean; message: string }> {
+  await assertAdminRole(["ADMIN", "RECEPTIONIST"]);
+  const supabase = getSupabaseServerClient();
+  const env = getServerEnv();
+
+  const result = await updateAppointmentTime(
+    supabase,
+    appointmentId,
+    doctorId,
+    newTimeString,
+    env.CLINIC_TIMEZONE
+  );
+
+  if (result.success) {
+    revalidatePath("/admin/appointments");
+  }
+
+  return { success: result.success, message: result.message };
+}
+
+/**
+ * Edit appointment date and/or time
+ */
+export async function editAppointmentDateTimeAction(
+  appointmentId: string,
+  doctorId: string,
+  newDateString: string,
+  newTimeString: string
+): Promise<{ success?: boolean; message: string }> {
+  await assertAdminRole(["ADMIN", "RECEPTIONIST"]);
+  const supabase = getSupabaseServerClient();
+  const env = getServerEnv();
+
+  const result = await updateAppointmentDateTime(
+    supabase,
+    appointmentId,
+    doctorId,
+    newDateString,
+    newTimeString,
+    env.CLINIC_TIMEZONE
+  );
+
+  if (result.success) {
+    revalidatePath("/admin/appointments");
+  }
+
+  return { success: result.success, message: result.message };
+}
+
+/**
+ * Change appointment doctor
+ */
+export async function editAppointmentDoctorAction(
+  appointmentId: string,
+  oldDoctorId: string,
+  newDoctorId: string,
+  newTimeString: string
+): Promise<{ success?: boolean; message: string }> {
+  await assertAdminRole(["ADMIN", "RECEPTIONIST"]);
+  const supabase = getSupabaseServerClient();
+  const env = getServerEnv();
+
+  const result = await changeAppointmentDoctor(
+    supabase,
+    appointmentId,
+    oldDoctorId,
+    newDoctorId,
+    newTimeString,
+    env.CLINIC_TIMEZONE
+  );
+
+  if (result.success) {
+    revalidatePath("/admin/appointments");
+  }
+
+  return { success: result.success, message: result.message };
+}
+
+/**
+ * Edit patient name
+ */
+export async function editPatientNameAction(
+  patientId: string,
+  newName: string
+): Promise<{ success?: boolean; message: string }> {
+  await assertAdminRole(["ADMIN", "RECEPTIONIST"]);
+  const supabase = getSupabaseServerClient();
+
+  const result = await updatePatientName(supabase, patientId, newName);
+
+  if (result.success) {
+    revalidatePath("/admin/patients");
+  }
+
+  return { success: result.success, message: result.message };
 }

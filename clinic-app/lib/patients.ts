@@ -187,3 +187,43 @@ export async function patientNeedsNameCapture(
   const patient = await findPatientByPhone(supabase, phone);
   return !patient || !isValidPatientName(patient.name);
 }
+
+/**
+ * Update patient name (for receptionist corrections).
+ */
+export async function updatePatientName(
+  supabase: SupabaseClient<Database>,
+  patientId: string,
+  newName: string
+): Promise<{ success: boolean; message: string; patient?: Patient }> {
+  if (!isValidPatientName(newName)) {
+    return { success: false, message: "Patient name must be at least 2 characters." };
+  }
+
+  const { data: patient, error: fetchError } = await supabase
+    .from("patients")
+    .select("*")
+    .eq("id", patientId)
+    .single();
+
+  if (fetchError || !patient) {
+    return { success: false, message: "Patient not found." };
+  }
+
+  const { data: updated, error: updateError } = await supabase
+    .from("patients")
+    .update({ name: newName })
+    .eq("id", patientId)
+    .select()
+    .single();
+
+  if (updateError) {
+    return { success: false, message: `Failed to update patient name: ${updateError.message}` };
+  }
+
+  return {
+    success: true,
+    message: "Patient name updated successfully.",
+    patient: updated
+  };
+}

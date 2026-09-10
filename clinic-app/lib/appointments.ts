@@ -497,3 +497,326 @@ export async function getDoctorConfirmedAppointments(
 
   return data;
 }
+
+/**
+ * Edit appointment time (same date, different time slot).
+ * Validates the new time slot is available before updating.
+ */
+export async function updateAppointmentTime(
+  supabase: SupabaseClient<Database>,
+  appointmentId: string,
+  doctorId: string,
+  newTimeString: string,
+  timezone: string
+): Promise<AppointmentResult> {
+  // Get current appointment
+  const { data: currentAppt, error: fetchError } = await supabase
+    .from("appointments")
+    .select("*")
+    .eq("id", appointmentId)
+    .single();
+
+  if (fetchError || !currentAppt) {
+    return { success: false, message: "Appointment not found." };
+  }
+
+  if (currentAppt.status !== "Confirmed") {
+    return { success: false, message: "Can only edit time for Confirmed appointments." };
+  }
+
+  if (currentAppt.doctor_id !== doctorId) {
+    return { success: false, message: "Doctor mismatch." };
+  }
+
+  // Normalize time
+  const normalizedTime = normalizeTimeInput(newTimeString);
+  if (!normalizedTime) {
+    return { success: false, message: "Invalid time format. Use HH:MM or HH:MM AM/PM." };
+  }
+
+  // Check availability for new time
+  const doctor = await getDoctorById(supabase, doctorId);
+  if (!doctor) {
+    return { success: false, message: "Doctor not found." };
+  }
+
+  const availableSlots = await getAvailableSlotsForDoctor(supabase, {
+    doctor,
+    dateString: currentAppt.appointment_date,
+    timezone
+  });
+
+  const newSlotDateTime = combineDateAndTime(currentAppt.appointment_date, normalizedTime, timezone);
+  const isAvailable = availableSlots.some(
+    (slot) => slot.toISOString() === newSlotDateTime.toISOString()
+  );
+
+  if (!isAvailable) {
+    return { success: false, message: "Time slot is no longer available." };
+  }
+
+  // Update appointment
+  const { error: updateError } = await supabase
+    .from("appointments")
+    .update({ appointment_time: normalizedTime })
+    .eq("id", appointmentId);
+
+  if (updateError) {
+    return { success: false, message: `Failed to update appointment: ${updateError.message}` };
+  }
+
+  // Log change
+  await logAuditEvent(supabase, {
+    appointmentId,
+    action: "TIME_UPDATED",
+    oldValue: currentAppt.appointment_time,
+    newValue: normalizedTime
+  });
+
+  return { success: true, message: "Appointment time updated successfully." };
+}
+
+/**
+ * Edit appointment date and/or time.
+ * Validates the new slot is available before updating.
+ */
+export async function updateAppointmentDateTime(
+  supabase: SupabaseClient<Database>,
+  appointmentId: string,
+  doctorId: string,
+  newDateString: string,
+  newTimeString: string,
+  timezone: string
+): Promise<AppointmentResult> {
+  // Get current appointment
+  const { data: currentAppt, error: fetchError } = await supabase
+    .from("appointments")
+    .select("*")
+    .eq("id", appointmentId)
+    .single();
+
+  if (fetchError || !currentAppt) {
+    return { success: false, message: "Appointment not found." };
+  }
+
+  if (currentAppt.status !== "Confirmed") {
+    return { success: false, message: "Can only edit date/time for Confirmed appointments." };
+  }
+
+  if (currentAppt.doctor_id !== doctorId) {
+    return { success: false, message: "Doctor mismatch." };
+  }
+
+  // Validate date
+  if (!isValidISODate(newDateString)) {
+    return { success: false, message: "Invalid date format. Use YYYY-MM-DD." };
+  }
+
+  // Check date is not in the past
+  const newDate = new Date(newDateString);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (newDate < today) {
+    return { success: false, message: "Cannot schedule appointment in the past." };
+  }
+
+  // Normalize time
+  const normalizedTime = normalizeTimeInput(newTimeString);
+  if (!normalizedTime) {
+    return { success: false, message: "Invalid time format. Use HH:MM or HH:MM AM/PM." };
+  }
+
+  // Check availability for new date/time
+  const doctor = await getDoctorById(supabase, doctorId);
+  if (!doctor) {
+    return { success: false, message: "Doctor not found." };
+  }
+
+  const availableSlots = await getAvailableSlotsForDoctor(supabase, {
+    doctor,
+    dateString: newDateString,
+    timezone
+  });
+
+  const newSlotDateTime = combineDateAndTime(newDateString, normalizedTime, timezone);
+  const isAvailable = availableSlots.some(
+    (slot) => slot.toISOString() === newSlotDateTime.toISOString()
+  );
+
+  if (!isAvailable) {
+    return { success: false, message: "Time slot is not available for the selected date." };
+  }
+
+  // Check one-active-per-patient-per-day constraint for new date
+  const { data: existingAppts } = await supabase
+    .from("appointments")
+    .select("id")
+    .eq("patient_id", currentAppt.patient_id)
+    .eq("appointment_date", newDateString)
+    .eq("status", "Confirmed")
+    .neq("id", appointmentId);
+
+  if (existingAppts && existingAppts.length > 0) {
+    return {
+      success: false,
+      message: "Patient already has an appointment on this date."
+    };
+  }
+
+  // Update appointment
+  const { error: updateError } = await supabase
+    .from("appointments")
+    .update({
+      appointment_date: newDateString,
+      appointment_time: normalizedTime
+    })
+    .eq("id", appointmentId);
+
+  if (updateError) {
+    return { success: false, message: `Failed to update appointment: ${updateError.message}` };
+  }
+
+  // Log changes
+  if (currentAppt.appointment_date !== newDateString) {
+    await logAuditEvent(supabase, {
+      appointmentId,
+      action: "DATE_UPDATED",
+      oldValue: currentAppt.appointment_date,
+      newValue: newDateString
+    });
+  }
+
+  if (currentAppt.appointment_time !== normalizedTime) {
+    await logAuditEvent(supabase, {
+      appointmentId,
+      action: "TIME_UPDATED",
+      oldValue: currentAppt.appointment_time,
+      newValue: normalizedTime
+    });
+  }
+
+  return { success: true, message: "Appointment updated successfully." };
+}
+
+/**
+ * Change appointment doctor (to different specialist).
+ * Validates new doctor/time slot is available.
+ */
+export async function changeAppointmentDoctor(
+  supabase: SupabaseClient<Database>,
+  appointmentId: string,
+  oldDoctorId: string,
+  newDoctorId: string,
+  newTimeString: string,
+  timezone: string
+): Promise<AppointmentResult> {
+  // Get current appointment
+  const { data: currentAppt, error: fetchError } = await supabase
+    .from("appointments")
+    .select("*")
+    .eq("id", appointmentId)
+    .single();
+
+  if (fetchError || !currentAppt) {
+    return { success: false, message: "Appointment not found." };
+  }
+
+  if (currentAppt.status !== "Confirmed") {
+    return { success: false, message: "Can only change doctor for Confirmed appointments." };
+  }
+
+  if (currentAppt.doctor_id !== oldDoctorId) {
+    return { success: false, message: "Doctor mismatch." };
+  }
+
+  // Validate new doctor exists
+  const newDoctor = await getDoctorById(supabase, newDoctorId);
+  if (!newDoctor) {
+    return { success: false, message: "New doctor not found." };
+  }
+
+  // Normalize time
+  const normalizedTime = normalizeTimeInput(newTimeString);
+  if (!normalizedTime) {
+    return { success: false, message: "Invalid time format. Use HH:MM or HH:MM AM/PM." };
+  }
+
+  // Check availability for new doctor/time
+  const availableSlots = await getAvailableSlotsForDoctor(supabase, {
+    doctor: newDoctor,
+    dateString: currentAppt.appointment_date,
+    timezone
+  });
+
+  const newSlotDateTime = combineDateAndTime(currentAppt.appointment_date, normalizedTime, timezone);
+  const isAvailable = availableSlots.some(
+    (slot) => slot.toISOString() === newSlotDateTime.toISOString()
+  );
+
+  if (!isAvailable) {
+    return {
+      success: false,
+      message: "Time slot is not available for the selected doctor."
+    };
+  }
+
+  // Update appointment
+  const { error: updateError } = await supabase
+    .from("appointments")
+    .update({
+      doctor_id: newDoctorId,
+      appointment_time: normalizedTime
+    })
+    .eq("id", appointmentId);
+
+  if (updateError) {
+    return { success: false, message: `Failed to update appointment: ${updateError.message}` };
+  }
+
+  // Log changes
+  await logAuditEvent(supabase, {
+    appointmentId,
+    action: "DOCTOR_CHANGED",
+    oldValue: oldDoctorId,
+    newValue: newDoctorId
+  });
+
+  if (currentAppt.appointment_time !== normalizedTime) {
+    await logAuditEvent(supabase, {
+      appointmentId,
+      action: "TIME_UPDATED",
+      oldValue: currentAppt.appointment_time,
+      newValue: normalizedTime
+    });
+  }
+
+  return { success: true, message: "Appointment doctor changed successfully." };
+}
+
+/**
+ * Log audit event for appointment changes (for compliance/tracking).
+ */
+async function logAuditEvent(
+  supabase: SupabaseClient<Database>,
+  event: {
+    appointmentId: string;
+    action: string;
+    oldValue: string;
+    newValue: string;
+  }
+): Promise<void> {
+  // Log to message_log with special marker
+  await supabase.from("message_log").insert({
+    sender_phone: "SYSTEM",
+    message_type: "AUDIT",
+    message_content: JSON.stringify({
+      type: "appointment_edit",
+      appointmentId: event.appointmentId,
+      action: event.action,
+      oldValue: event.oldValue,
+      newValue: event.newValue,
+      timestamp: new Date().toISOString()
+    }),
+    received_at: new Date().toISOString()
+  });
+}

@@ -48,6 +48,7 @@ export default async function AppointmentsPage({
   const env = getServerEnv();
 
   const doctors = await listDoctors(supabase);
+  const activeDoctors = doctors.filter((d) => d.active);
 
   let query = supabase
     .from("appointments")
@@ -176,7 +177,12 @@ export default async function AppointmentsPage({
                   <StatusBadge status={appt.status} />
                 </td>
                 <td className="px-4 py-3 text-right">
-                  <AppointmentRowActions appointmentId={appt.id} doctorId={appt.doctor_id} status={appt.status} />
+                  <AppointmentRowActions
+                    appointment={appt}
+                    doctor={doctorsById.get(appt.doctor_id)!}
+                    allDoctors={activeDoctors}
+                    onRefresh={() => {}}
+                  />
                 </td>
               </tr>
             ))}
