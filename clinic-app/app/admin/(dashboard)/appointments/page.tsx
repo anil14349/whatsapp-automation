@@ -47,10 +47,16 @@ function parseStatusFilter(value: string | undefined): AppointmentStatus | null 
  */
 export const maxDuration = 60;
 
+type ViewType = "today" | "future" | "history";
+
+function isValidViewType(value: string | undefined): value is ViewType {
+  return ["today", "future", "history"].includes(value ?? "");
+}
+
 export default async function AppointmentsPage({
   searchParams
 }: {
-  searchParams: Promise<{ doctorId?: string; date?: string; status?: string }>;
+  searchParams: Promise<{ doctorId?: string; date?: string; status?: string; view?: string }>;
 }) {
   await requireAdminRole(["ADMIN", "RECEPTIONIST"]);
   const filters = await searchParams;
@@ -59,6 +65,13 @@ export default async function AppointmentsPage({
 
   const doctors = await listDoctors(supabase);
   const activeDoctors = doctors.filter((d) => d.active);
+
+  const today = formatDateKey(new Date(), env.CLINIC_TIMEZONE);
+  const tomorrow = formatDateKey(new Date(Date.now() + 86400000), env.CLINIC_TIMEZONE);
+  const thirtyDaysAgo = formatDateKey(new Date(Date.now() - 30 * 86400000), env.CLINIC_TIMEZONE);
+
+  // Determine view type (default: today)
+  const viewType: ViewType = isValidViewType(filters.view) ? filters.view : "today";
 
   let query = supabase
     .from("appointments")
@@ -71,12 +84,26 @@ export default async function AppointmentsPage({
     query = query.eq("doctor_id", filters.doctorId);
   }
 
+  // Apply view filter
   if (filters.date) {
+    // Custom date filter takes precedence
     query = query.eq("appointment_date", filters.date);
   } else {
-    // Default view: today onward, so the list isn't dominated by old
-    // history — an explicit date filter (including a past date) opts out.
-    query = query.gte("appointment_date", formatDateKey(new Date(), env.CLINIC_TIMEZONE));
+    // View-based filtering
+    switch (viewType) {
+      case "today":
+        // Show only today's appointments
+        query = query.eq("appointment_date", today);
+        break;
+      case "future":
+        // Show tomorrow onwards (next 30 days)
+        query = query.gte("appointment_date", tomorrow).lte("appointment_date", formatDateKey(new Date(Date.now() + 30 * 86400000), env.CLINIC_TIMEZONE));
+        break;
+      case "history":
+        // Show past 30 days
+        query = query.gte("appointment_date", thirtyDaysAgo).lt("appointment_date", today);
+        break;
+    }
   }
 
   const statusFilter = parseStatusFilter(filters.status);
@@ -97,8 +124,57 @@ export default async function AppointmentsPage({
     <div>
       <h1 className="text-xl font-semibold text-slate-900">Appointments</h1>
       <p className="mt-1 text-sm text-slate-500">
-        Showing upcoming appointments unless a specific date is chosen.
+        {viewType === "today" && "Showing today's appointments"}
+        {viewType === "future" && "Showing upcoming appointments (next 30 days)"}
+        {viewType === "history" && "Showing past appointments (last 30 days)"}
+        {filters.date && " • Custom date filter applied"}
       </p>
+
+      {/* View Filter Buttons */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <a
+          href={`?${new URLSearchParams({
+            ...filters,
+            view: "today",
+            date: "",
+          }).toString()}`}
+          className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+            viewType === "today"
+              ? "bg-blue-600 text-white"
+              : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+          }`}
+        >
+          📅 Today
+        </a>
+        <a
+          href={`?${new URLSearchParams({
+            ...filters,
+            view: "future",
+            date: "",
+          }).toString()}`}
+          className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+            viewType === "future"
+              ? "bg-blue-600 text-white"
+              : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+          }`}
+        >
+          🔮 Future
+        </a>
+        <a
+          href={`?${new URLSearchParams({
+            ...filters,
+            view: "history",
+            date: "",
+          }).toString()}`}
+          className={`px-4 py-2 rounded-lg font-medium text-sm transition-colors ${
+            viewType === "history"
+              ? "bg-blue-600 text-white"
+              : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+          }`}
+        >
+          📜 History
+        </a>
+      </div>
 
       <section className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-sm font-semibold text-slate-900">New Appointment (walk-in)</h2>
