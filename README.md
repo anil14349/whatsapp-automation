@@ -10,6 +10,39 @@ This branch (`rewrite/supabase-backend`) also contains a ground-up rewrite of th
 
 ---
 
+## 📚 Documentation
+
+### Trigger Configuration System
+
+Complete reference for the database-driven trigger configuration system that powers WhatsApp menus, templates, settings, and scheduled cron jobs.
+
+**→ [TRIGGER_DOCUMENTATION_INDEX.md](./TRIGGER_DOCUMENTATION_INDEX.md)** — Start here for navigation by role/task  
+**→ [clinic-app/TRIGGER_SYSTEM.md](./clinic-app/TRIGGER_SYSTEM.md)** — Master reference guide (1000+ lines)
+
+Includes:
+- Non-technical admin UI (menus, templates, settings, cron jobs)
+- Developer API reference (all functions & endpoints)
+- Cron job setup & external scheduler integration (Vercel, AWS, GitHub Actions)
+- A/B testing & analytics tracking
+- Multi-clinic support with row-level security
+- WhatsApp Flows (native in-chat forms)
+
+### Admin User Management
+
+Complete guide to managing admin users, resetting passwords, and configuring admin access.
+
+**→ [clinic-app/ADMIN_USER_MANAGEMENT.md](./clinic-app/ADMIN_USER_MANAGEMENT.md)** — Admin user guide (500+ lines)
+
+Includes:
+- Dashboard UI for creating/managing admins
+- Password reset (3 options: UI, script, manual)
+- User roles (ADMIN vs RECEPTIONIST)
+- Admin limits (configurable, default 10)
+- Scripts for emergency password reset
+- Security & best practices
+
+---
+
 ## Apps Script files
 
 There are two equivalent ways to source the production code — pick **one**, don't bind both:

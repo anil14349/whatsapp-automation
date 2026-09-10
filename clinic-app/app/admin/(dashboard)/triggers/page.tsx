@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Tab } from "@headlessui/react";
+import { BrandedCard } from "@/app/admin/(dashboard)/components/branded";
 import { TriggerMenusManager } from "./TriggerMenusManager";
 import { TriggerTemplatesManager } from "./TriggerTemplatesManager";
 import { TriggerSettingsManager } from "./TriggerSettingsManager";
@@ -56,13 +57,13 @@ export default function TriggersPage() {
         </Tab.Group>
       </div>
 
-      <div className="mt-8 rounded-lg border border-blue-200 bg-blue-50 p-4">
+      <BrandedCard className="mt-8 border-blue-200 bg-blue-50">
         <h3 className="text-sm font-semibold text-blue-900">💡 Tip</h3>
         <p className="mt-1 text-sm text-blue-700">
           Changes to menus and templates are cached for 1 hour. To immediately see changes, manually refresh
           the cache in settings or wait for automatic expiration.
         </p>
-      </div>
+      </BrandedCard>
     </div>
   );
 }

@@ -8,6 +8,15 @@ import {
   getDoctorUtilization,
   getNoShowRate
 } from "@/lib/analytics";
+import {
+  BrandedInput,
+  BrandedButton,
+  BrandedCard,
+  BrandedTable,
+  BrandedTableHeader,
+  BrandedTableRow,
+  BrandedTableCell
+} from "@/app/admin/(dashboard)/components/branded";
 
 const DEFAULT_RANGE_DAYS = 30;
 // Hard ceiling on how wide a range the date filter form will accept —
@@ -19,10 +28,10 @@ const MAX_RANGE_DAYS = 366;
 
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <BrandedCard>
       <p className="text-sm text-slate-500">{label}</p>
       <p className="mt-1 text-3xl font-semibold text-slate-900">{value}</p>
-    </div>
+    </BrandedCard>
   );
 }
 
@@ -100,33 +109,28 @@ export default async function AnalyticsPage({
         Booking volume, no-show rate, and doctor utilization for the selected date range.
       </p>
 
-      <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">From</label>
-          <input
+      <form className="mt-4 flex flex-wrap items-end gap-4" method="get">
+        <div className="flex-1 min-w-fit">
+          <BrandedInput
+            label="From"
             type="date"
             name="from"
             defaultValue={fromDate}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
           />
         </div>
 
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">To</label>
-          <input
+        <div className="flex-1 min-w-fit">
+          <BrandedInput
+            label="To"
             type="date"
             name="to"
             defaultValue={toDate}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
           />
         </div>
 
-        <button
-          type="submit"
-          className="rounded-md bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
-        >
+        <BrandedButton type="submit" variant="primary">
           Filter
-        </button>
+        </BrandedButton>
       </form>
 
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -135,9 +139,8 @@ export default async function AnalyticsPage({
         <StatCard label="Doctors reporting" value={utilization.length} />
       </div>
 
-      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Booking volume by day</h2>
-        <p className="mt-0.5 text-xs text-slate-500">Includes appointments of every status.</p>
+      <BrandedCard title="Booking volume by day" className="mt-6">
+        <p className="text-xs text-slate-500">Includes appointments of every status.</p>
 
         <div className="mt-4 flex h-40 items-end gap-1 overflow-x-auto">
           {bookingVolume.map((day) => (
@@ -160,48 +163,46 @@ export default async function AnalyticsPage({
           <span>{fromDate}</span>
           <span>{toDate}</span>
         </div>
-      </div>
+      </BrandedCard>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Doctor</th>
-              <th className="px-4 py-3">No-show rate</th>
-              <th className="px-4 py-3">Completed</th>
-              <th className="px-4 py-3">No-shows</th>
-              <th className="px-4 py-3">Utilization</th>
-              <th className="px-4 py-3">Booked</th>
-              <th className="px-4 py-3">Capacity</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
+      <div className="mt-6">
+        <BrandedTable>
+          <BrandedTableHeader>
+            <BrandedTableCell>Doctor</BrandedTableCell>
+            <BrandedTableCell>No-show rate</BrandedTableCell>
+            <BrandedTableCell>Completed</BrandedTableCell>
+            <BrandedTableCell>No-shows</BrandedTableCell>
+            <BrandedTableCell>Utilization</BrandedTableCell>
+            <BrandedTableCell>Booked</BrandedTableCell>
+            <BrandedTableCell>Capacity</BrandedTableCell>
+          </BrandedTableHeader>
+          <tbody>
             {utilization.map((doctor) => {
               const noShowStats = noShow.byDoctor.find((row) => row.doctorId === doctor.doctorId);
 
               return (
-                <tr key={doctor.doctorId}>
-                  <td className="px-4 py-3 text-slate-700">{doctor.doctorName}</td>
-                  <td className="px-4 py-3 text-slate-700">
+                <BrandedTableRow key={doctor.doctorId}>
+                  <BrandedTableCell>{doctor.doctorName}</BrandedTableCell>
+                  <BrandedTableCell>
                     {formatPercent(noShowStats?.rate ?? null)}
-                  </td>
-                  <td className="px-4 py-3 text-slate-500">{noShowStats?.completed ?? 0}</td>
-                  <td className="px-4 py-3 text-slate-500">{noShowStats?.noShow ?? 0}</td>
-                  <td className="px-4 py-3 text-slate-700">{formatPercent(doctor.utilization)}</td>
-                  <td className="px-4 py-3 text-slate-500">{doctor.booked}</td>
-                  <td className="px-4 py-3 text-slate-500">{doctor.capacity}</td>
-                </tr>
+                  </BrandedTableCell>
+                  <BrandedTableCell>{noShowStats?.completed ?? 0}</BrandedTableCell>
+                  <BrandedTableCell>{noShowStats?.noShow ?? 0}</BrandedTableCell>
+                  <BrandedTableCell>{formatPercent(doctor.utilization)}</BrandedTableCell>
+                  <BrandedTableCell>{doctor.booked}</BrandedTableCell>
+                  <BrandedTableCell>{doctor.capacity}</BrandedTableCell>
+                </BrandedTableRow>
               );
             })}
             {utilization.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+              <BrandedTableRow>
+                <BrandedTableCell colSpan={7} className="text-center py-6">
                   No doctors to report on.
-                </td>
-              </tr>
+                </BrandedTableCell>
+              </BrandedTableRow>
             )}
           </tbody>
-        </table>
+        </BrandedTable>
       </div>
     </div>
   );

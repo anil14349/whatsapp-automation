@@ -7,19 +7,20 @@ import {
   getAvailableSlotsAction,
   type WalkInFormState
 } from "./actions";
+import { BrandedButton, BrandedSelect, BrandedInput } from "@/app/admin/(dashboard)/components/branded";
 
 const initialState: WalkInFormState = {};
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button
+    <BrandedButton
       type="submit"
       disabled={pending}
-      className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+      variant="primary"
     >
       {pending ? "Booking…" : "Book Appointment"}
-    </button>
+    </BrandedButton>
   );
 }
 
@@ -75,73 +76,63 @@ export function NewAppointmentForm({
   }, [state.success]);
 
   return (
-    <form ref={formRef} action={formAction} className="flex flex-wrap items-end gap-3">
-      <div>
-        <label className="mb-1 block text-xs font-medium text-slate-700">Doctor</label>
-        <select
+    <form ref={formRef} action={formAction} className="flex flex-wrap items-end gap-4">
+      <div className="flex-1 min-w-fit">
+        <BrandedSelect
+          label="Doctor"
           name="doctorId"
           value={doctorId}
           onChange={(e) => setDoctorId(e.target.value)}
           required
-          className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-        >
-          <option value="">Select doctor…</option>
-          {doctors.map((doctor) => (
-            <option key={doctor.id} value={doctor.id}>
-              {doctor.name}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "", label: "Select doctor…" },
+            ...doctors.map((doctor) => ({ value: doctor.id, label: doctor.name }))
+          ]}
+        />
       </div>
 
-      <div>
-        <label className="mb-1 block text-xs font-medium text-slate-700">Date</label>
-        <input
+      <div className="flex-1 min-w-fit">
+        <BrandedInput
+          label="Date"
           type="date"
           name="date"
           value={date}
           onChange={(e) => setDate(e.target.value)}
           required
-          className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
         />
       </div>
 
-      <div>
-        <label className="mb-1 block text-xs font-medium text-slate-700">Time</label>
-        <select
+      <div className="flex-1 min-w-fit">
+        <BrandedSelect
+          label="Time"
           name="slot"
           required
           disabled={!doctorId || isPending}
-          className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm disabled:opacity-50"
-        >
-          <option value="">
-            {isPending ? "Loading…" : slots.length === 0 ? "No slots available" : "Select time…"}
-          </option>
-          {slots.map((slot) => (
-            <option key={slot.value} value={slot.value}>
-              {slot.label}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label className="mb-1 block text-xs font-medium text-slate-700">Patient name</label>
-        <input
-          type="text"
-          name="patientName"
-          required
-          className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+          options={[
+            {
+              value: "",
+              label: isPending ? "Loading…" : slots.length === 0 ? "No slots available" : "Select time…"
+            },
+            ...slots
+          ]}
         />
       </div>
 
-      <div>
-        <label className="mb-1 block text-xs font-medium text-slate-700">Patient phone</label>
-        <input
+      <div className="flex-1 min-w-fit">
+        <BrandedInput
+          label="Patient name"
+          type="text"
+          name="patientName"
+          required
+        />
+      </div>
+
+      <div className="flex-1 min-w-fit">
+        <BrandedInput
+          label="Patient phone"
           type="tel"
           name="patientPhone"
           required
-          className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
         />
       </div>
 

@@ -3,22 +3,20 @@
 import { useFormState, useFormStatus } from "react-dom";
 import { DORMANT_SETTING_KEYS } from "@/lib/settings";
 import { updateSettingsAction, type FormState } from "./actions";
+import { BrandedButton, BrandedInput, BrandedBadge } from "@/app/admin/(dashboard)/components/branded";
 
 const initialState: FormState = {};
-const inputClass =
-  "w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
-const labelClass = "mb-1 block text-sm font-medium text-slate-700";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button
+    <BrandedButton
       type="submit"
       disabled={pending}
-      className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+      variant="primary"
     >
       {pending ? "Saving…" : "Save settings"}
-    </button>
+    </BrandedButton>
   );
 }
 
@@ -31,12 +29,14 @@ function SubmitButton() {
  */
 function DormantBadge() {
   return (
-    <span
+    <BrandedBadge
+      variant="warning"
+      size="sm"
+      className="ml-2"
       title="Saved, but no bot feature reads this setting yet — see CONFIGURATION.md"
-      className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700"
     >
       Not yet active
-    </span>
+    </BrandedBadge>
   );
 }
 
@@ -79,11 +79,16 @@ function TextField({
 }) {
   return (
     <div>
-      <label htmlFor={name} className={labelClass}>
-        {label}
+      <div className="mb-1 flex items-center">
+        <span className="text-sm font-medium text-slate-700">{label}</span>
         {DORMANT_SETTING_KEYS.has(name) && <DormantBadge />}
-      </label>
-      <input id={name} name={name} defaultValue={value} placeholder={placeholder} className={inputClass} />
+      </div>
+      <BrandedInput
+        id={name}
+        name={name}
+        defaultValue={value}
+        placeholder={placeholder}
+      />
     </div>
   );
 }

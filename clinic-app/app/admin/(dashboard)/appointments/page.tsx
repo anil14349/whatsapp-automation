@@ -7,6 +7,16 @@ import type { AppointmentStatus } from "@/lib/supabase/database.types";
 import { AppointmentRowActions } from "./AppointmentRowActions";
 import { NewAppointmentForm } from "./NewAppointmentForm";
 import { BroadcastForm } from "./BroadcastForm";
+import {
+  BrandedButton,
+  BrandedSelect,
+  BrandedInput,
+  BrandedBadge,
+  BrandedTable,
+  BrandedTableHeader,
+  BrandedTableRow,
+  BrandedTableCell
+} from "@/app/admin/(dashboard)/components/branded";
 
 const VALID_STATUSES: readonly AppointmentStatus[] = [
   "Confirmed",
@@ -100,101 +110,91 @@ export default async function AppointmentsPage({
         </div>
       </section>
 
-      <form className="mt-6 flex flex-wrap items-end gap-3" method="get">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">Doctor</label>
-          <select
+      <form className="mt-6 flex flex-wrap items-end gap-4" method="get">
+        <div className="flex-1 min-w-fit">
+          <BrandedSelect
+            label="Doctor"
             name="doctorId"
             defaultValue={filters.doctorId ?? ""}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-          >
-            <option value="">All doctors</option>
-            {doctors.map((doctor) => (
-              <option key={doctor.id} value={doctor.id}>
-                {doctor.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">Date</label>
-          <input
-            type="date"
-            name="date"
-            defaultValue={filters.date ?? ""}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
+            options={[
+              { value: "", label: "All doctors" },
+              ...doctors.map((doctor) => ({ value: doctor.id, label: doctor.name }))
+            ]}
           />
         </div>
 
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">Status</label>
-          <select
-            name="status"
-            defaultValue={filters.status ?? ""}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-          >
-            <option value="">All statuses</option>
-            <option value="Confirmed">Confirmed</option>
-            <option value="Completed">Completed</option>
-            <option value="No-Show">No-Show</option>
-            <option value="Cancelled">Cancelled</option>
-          </select>
+        <div className="flex-1 min-w-fit">
+          <BrandedInput
+            label="Date"
+            type="date"
+            name="date"
+            defaultValue={filters.date ?? ""}
+          />
         </div>
 
-        <button
-          type="submit"
-          className="rounded-md bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
-        >
+        <div className="flex-1 min-w-fit">
+          <BrandedSelect
+            label="Status"
+            name="status"
+            defaultValue={filters.status ?? ""}
+            options={[
+              { value: "", label: "All statuses" },
+              { value: "Confirmed", label: "Confirmed" },
+              { value: "Completed", label: "Completed" },
+              { value: "No-Show", label: "No-Show" },
+              { value: "Cancelled", label: "Cancelled" }
+            ]}
+          />
+        </div>
+
+        <BrandedButton type="submit" variant="primary">
           Filter
-        </button>
+        </BrandedButton>
       </form>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Time</th>
-              <th className="px-4 py-3">Doctor</th>
-              <th className="px-4 py-3">Patient</th>
-              <th className="px-4 py-3">Phone</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
+      <div className="mt-6">
+        <BrandedTable>
+          <BrandedTableHeader>
+            <BrandedTableCell>Date</BrandedTableCell>
+            <BrandedTableCell>Time</BrandedTableCell>
+            <BrandedTableCell>Doctor</BrandedTableCell>
+            <BrandedTableCell>Patient</BrandedTableCell>
+            <BrandedTableCell>Phone</BrandedTableCell>
+            <BrandedTableCell>Status</BrandedTableCell>
+            <BrandedTableCell />
+          </BrandedTableHeader>
+          <tbody>
             {appointments.map((appt) => (
-              <tr key={appt.id}>
-                <td className="px-4 py-3 text-slate-700">{appt.appointment_date}</td>
-                <td className="px-4 py-3 text-slate-700">{appt.appointment_time.slice(0, 5)}</td>
-                <td className="px-4 py-3 text-slate-700">
+              <BrandedTableRow key={appt.id}>
+                <BrandedTableCell>{appt.appointment_date}</BrandedTableCell>
+                <BrandedTableCell>{appt.appointment_time.slice(0, 5)}</BrandedTableCell>
+                <BrandedTableCell>
                   {doctorsById.get(appt.doctor_id)?.name ?? "—"}
-                </td>
-                <td className="px-4 py-3 text-slate-700">{appt.patient_name}</td>
-                <td className="px-4 py-3 text-slate-500">{appt.patient_phone}</td>
-                <td className="px-4 py-3">
+                </BrandedTableCell>
+                <BrandedTableCell>{appt.patient_name}</BrandedTableCell>
+                <BrandedTableCell>{appt.patient_phone}</BrandedTableCell>
+                <BrandedTableCell>
                   <StatusBadge status={appt.status} />
-                </td>
-                <td className="px-4 py-3 text-right">
+                </BrandedTableCell>
+                <BrandedTableCell className="text-right">
                   <AppointmentRowActions
                     appointment={appt}
                     doctor={doctorsById.get(appt.doctor_id)!}
                     allDoctors={activeDoctors}
                     onRefresh={() => {}}
                   />
-                </td>
-              </tr>
+                </BrandedTableCell>
+              </BrandedTableRow>
             ))}
             {appointments.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+              <BrandedTableRow>
+                <BrandedTableCell colSpan={7} className="text-center py-6">
                   No appointments match these filters.
-                </td>
-              </tr>
+                </BrandedTableCell>
+              </BrandedTableRow>
             )}
           </tbody>
-        </table>
+        </BrandedTable>
       </div>
 
       {filters.doctorId && filters.date && (
@@ -205,16 +205,16 @@ export default async function AppointmentsPage({
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    Confirmed: "bg-blue-100 text-blue-700",
-    Completed: "bg-green-100 text-green-700",
-    "No-Show": "bg-amber-100 text-amber-700",
-    Cancelled: "bg-slate-100 text-slate-500"
+  const variantMap: Record<string, "info" | "success" | "warning" | "danger" | "default"> = {
+    Confirmed: "info",
+    Completed: "success",
+    "No-Show": "warning",
+    Cancelled: "danger"
   };
 
   return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${styles[status] ?? "bg-slate-100 text-slate-500"}`}>
+    <BrandedBadge variant={variantMap[status] ?? "default"} size="sm">
       {status}
-    </span>
+    </BrandedBadge>
   );
 }

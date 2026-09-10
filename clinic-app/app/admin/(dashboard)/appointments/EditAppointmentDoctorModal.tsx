@@ -4,6 +4,7 @@ import { useTransition, useState } from "react";
 import { editAppointmentDoctorAction, getAvailableSlotsAction } from "./actions";
 import type { Appointment } from "@/lib/appointments";
 import type { Doctor } from "@/lib/doctors";
+import { BrandedButton, BrandedInput, BrandedSelect } from "@/app/admin/(dashboard)/components/branded";
 
 interface EditAppointmentDoctorModalProps {
   appointment: Appointment;
@@ -80,45 +81,34 @@ export function EditAppointmentDoctorModal({
         </p>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Date</label>
-            <input
-              type="text"
-              value={appointment.appointment_date}
-              disabled
-              className="mt-1 w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500"
-            />
-          </div>
+          <BrandedInput
+            label="Date"
+            type="text"
+            value={appointment.appointment_date}
+            disabled
+          />
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Current Time</label>
-            <input
-              type="text"
-              value={appointment.appointment_time}
-              disabled
-              className="mt-1 w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500"
-            />
-          </div>
+          <BrandedInput
+            label="Current Time"
+            type="text"
+            value={appointment.appointment_time}
+            disabled
+          />
 
-          <div>
-            <label htmlFor="doctor" className="block text-sm font-medium text-slate-700">
-              Select New Doctor
-            </label>
-            <select
-              id="doctor"
-              name="doctor"
-              value={selectedDoctorId}
-              onChange={(e) => handleDoctorChange(e.target.value)}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            >
-              <option value="">Select a doctor...</option>
-              {allDoctors.map((doc) => (
-                <option key={doc.id} value={doc.id}>
-                  {doc.name} - {doc.specialization}
-                </option>
-              ))}
-            </select>
-          </div>
+          <BrandedSelect
+            label="Select New Doctor"
+            id="doctor"
+            name="doctor"
+            value={selectedDoctorId}
+            onChange={(e) => handleDoctorChange(e.target.value)}
+            options={[
+              { value: "", label: "Select a doctor..." },
+              ...allDoctors.map((doc) => ({
+                value: doc.id,
+                label: `${doc.name} - ${doc.specialization}`
+              }))
+            ]}
+          />
 
           <div>
             <label htmlFor="time" className="block text-sm font-medium text-slate-700">
@@ -127,19 +117,15 @@ export function EditAppointmentDoctorModal({
             {loadingSlots ? (
               <div className="mt-2 text-sm text-slate-500">Loading available times...</div>
             ) : availableSlots.length > 0 ? (
-              <select
+              <BrandedSelect
                 id="time"
                 name="time"
                 defaultValue=""
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              >
-                <option value="">Select a time...</option>
-                {availableSlots.map((slot) => (
-                  <option key={slot.value} value={slot.value}>
-                    {slot.label}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "Select a time..." },
+                  ...availableSlots
+                ]}
+              />
             ) : selectedDoctorId && selectedDoctorId !== currentDoctor.id ? (
               <div className="mt-2 rounded-md bg-amber-50 p-3 text-sm text-amber-600">
                 No available slots for this doctor on this date
@@ -150,21 +136,21 @@ export function EditAppointmentDoctorModal({
           {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>}
 
           <div className="flex justify-end gap-3 pt-4">
-            <button
+            <BrandedButton
               type="button"
               onClick={onClose}
               disabled={isPending}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              variant="secondary"
             >
               Cancel
-            </button>
-            <button
+            </BrandedButton>
+            <BrandedButton
               type="submit"
               disabled={isPending || availableSlots.length === 0}
-              className="rounded-md bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+              variant="primary"
             >
               {isPending ? "Reassigning..." : "Reassign Doctor"}
-            </button>
+            </BrandedButton>
           </div>
         </form>
       </div>

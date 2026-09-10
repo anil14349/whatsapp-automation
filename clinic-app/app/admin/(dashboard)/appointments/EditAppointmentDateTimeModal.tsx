@@ -4,6 +4,7 @@ import { useTransition, useState } from "react";
 import { editAppointmentDateTimeAction, getAvailableSlotsAction } from "./actions";
 import type { Appointment } from "@/lib/appointments";
 import type { Doctor } from "@/lib/doctors";
+import { BrandedButton, BrandedInput, BrandedSelect } from "@/app/admin/(dashboard)/components/branded";
 
 interface EditAppointmentDateTimeModalProps {
   appointment: Appointment;
@@ -86,41 +87,30 @@ export function EditAppointmentDateTimeModal({
         <p className="mt-1 text-sm text-slate-500">Change date and/or time</p>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Doctor</label>
-            <input
-              type="text"
-              value={doctor.name}
-              disabled
-              className="mt-1 w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500"
-            />
-          </div>
+          <BrandedInput
+            label="Doctor"
+            type="text"
+            value={doctor.name}
+            disabled
+          />
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Current Schedule</label>
-            <input
-              type="text"
-              value={`${appointment.appointment_date} ${appointment.appointment_time}`}
-              disabled
-              className="mt-1 w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500"
-            />
-          </div>
+          <BrandedInput
+            label="Current Schedule"
+            type="text"
+            value={`${appointment.appointment_date} ${appointment.appointment_time}`}
+            disabled
+          />
 
-          <div>
-            <label htmlFor="date" className="block text-sm font-medium text-slate-700">
-              New Date
-            </label>
-            <input
-              id="date"
-              type="date"
-              name="date"
-              value={selectedDate}
-              onChange={(e) => handleDateChange(e.target.value)}
-              min={minDate}
-              max={maxDateStr}
-              className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-            />
-          </div>
+          <BrandedInput
+            label="New Date"
+            id="date"
+            type="date"
+            name="date"
+            value={selectedDate}
+            onChange={(e) => handleDateChange(e.target.value)}
+            min={minDate}
+            max={maxDateStr}
+          />
 
           <div>
             <label htmlFor="time" className="block text-sm font-medium text-slate-700">
@@ -129,19 +119,15 @@ export function EditAppointmentDateTimeModal({
             {loadingSlots ? (
               <div className="mt-2 text-sm text-slate-500">Loading available times...</div>
             ) : availableSlots.length > 0 ? (
-              <select
+              <BrandedSelect
                 id="time"
                 name="time"
                 defaultValue=""
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              >
-                <option value="">Select a time...</option>
-                {availableSlots.map((slot) => (
-                  <option key={slot.value} value={slot.value}>
-                    {slot.label}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "Select a time..." },
+                  ...availableSlots
+                ]}
+              />
             ) : (
               <div className="mt-2 rounded-md bg-amber-50 p-3 text-sm text-amber-600">
                 No available slots for this date
@@ -152,21 +138,21 @@ export function EditAppointmentDateTimeModal({
           {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>}
 
           <div className="flex justify-end gap-3 pt-4">
-            <button
+            <BrandedButton
               type="button"
               onClick={onClose}
               disabled={isPending}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              variant="secondary"
             >
               Cancel
-            </button>
-            <button
+            </BrandedButton>
+            <BrandedButton
               type="submit"
               disabled={isPending || availableSlots.length === 0}
-              className="rounded-md bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+              variant="primary"
             >
               {isPending ? "Updating..." : "Reschedule"}
-            </button>
+            </BrandedButton>
           </div>
         </form>
       </div>

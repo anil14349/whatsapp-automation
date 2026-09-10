@@ -3,6 +3,7 @@ import { listDoctors } from "@/lib/doctors";
 import { formatDateKey } from "@/lib/scheduling/dates";
 import { getServerEnv } from "@/lib/env";
 import { requireAdminRole } from "@/lib/auth/authorize";
+import { BrandedCard } from "@/app/admin/(dashboard)/components/branded";
 
 async function getDashboardStats() {
   const supabase = getSupabaseServerClient();
@@ -32,10 +33,10 @@ async function getDashboardStats() {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <BrandedCard>
       <p className="text-sm text-slate-500">{label}</p>
       <p className="mt-1 text-3xl font-semibold text-slate-900">{value}</p>
-    </div>
+    </BrandedCard>
   );
 }
 

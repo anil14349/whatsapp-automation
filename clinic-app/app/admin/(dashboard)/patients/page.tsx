@@ -5,6 +5,14 @@ import { getSupabaseServerClient } from "@/lib/supabase/server";
 import { requireAdminRole } from "@/lib/auth/authorize";
 import { EditPatientNameModal } from "./EditPatientNameModal";
 import type { Patient } from "@/lib/patients";
+import {
+  BrandedInput,
+  BrandedButton,
+  BrandedTable,
+  BrandedTableHeader,
+  BrandedTableRow,
+  BrandedTableCell
+} from "@/app/admin/(dashboard)/components/branded";
 
 export default async function PatientsPage({
   searchParams
@@ -53,58 +61,57 @@ function PatientsContent({ patients }: { patients: Patient[] }) {
       <p className="mt-1 text-sm text-slate-500">Patient registry with edit capabilities.</p>
 
       <form className="mt-4" method="get">
-        <input
-          type="search"
-          name="q"
-          placeholder="Search by name or phone…"
-          className="w-full max-w-sm rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-        />
+        <div className="max-w-sm">
+          <BrandedInput
+            type="search"
+            name="q"
+            placeholder="Search by name or phone…"
+          />
+        </div>
       </form>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Phone</th>
-              <th className="px-4 py-3">Language</th>
-              <th className="px-4 py-3">Patient code</th>
-              <th className="px-4 py-3">Last visit</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
+      <div className="mt-6">
+        <BrandedTable>
+          <BrandedTableHeader>
+            <BrandedTableCell>Name</BrandedTableCell>
+            <BrandedTableCell>Phone</BrandedTableCell>
+            <BrandedTableCell>Language</BrandedTableCell>
+            <BrandedTableCell>Patient code</BrandedTableCell>
+            <BrandedTableCell>Last visit</BrandedTableCell>
+            <BrandedTableCell />
+          </BrandedTableHeader>
+          <tbody>
             {patientsList.map((patient) => (
-              <tr key={patient.id}>
-                <td className="px-4 py-3 font-medium text-slate-900">{patient.name || "—"}</td>
-                <td className="px-4 py-3 text-slate-500">{patient.phone}</td>
-                <td className="px-4 py-3 text-slate-500">{patient.language}</td>
-                <td className="px-4 py-3 text-slate-500">{patient.patient_code}</td>
-                <td className="px-4 py-3 text-slate-500">
+              <BrandedTableRow key={patient.id}>
+                <BrandedTableCell className="font-medium">{patient.name || "—"}</BrandedTableCell>
+                <BrandedTableCell>{patient.phone}</BrandedTableCell>
+                <BrandedTableCell>{patient.language}</BrandedTableCell>
+                <BrandedTableCell>{patient.patient_code}</BrandedTableCell>
+                <BrandedTableCell>
                   {patient.last_visit_at
                     ? new Date(patient.last_visit_at).toLocaleDateString()
                     : "—"}
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <button
-                    type="button"
+                </BrandedTableCell>
+                <BrandedTableCell className="text-right">
+                  <BrandedButton
+                    size="sm"
+                    variant="primary"
                     onClick={() => setEditingPatient(patient)}
-                    className="text-xs font-medium text-blue-600 hover:text-blue-700"
                   >
                     Edit Name
-                  </button>
-                </td>
-              </tr>
+                  </BrandedButton>
+                </BrandedTableCell>
+              </BrandedTableRow>
             ))}
             {patientsList.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-slate-400">
+              <BrandedTableRow>
+                <BrandedTableCell colSpan={6} className="text-center py-6">
                   No patients found.
-                </td>
-              </tr>
+                </BrandedTableCell>
+              </BrandedTableRow>
             )}
           </tbody>
-        </table>
+        </BrandedTable>
       </div>
 
       {editingPatient && (

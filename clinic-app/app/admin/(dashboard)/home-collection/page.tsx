@@ -3,6 +3,14 @@ import { listHomeCollectionRequests } from "@/lib/homeCollection";
 import { HOME_COLLECTION_STATUSES } from "@/lib/homeCollectionStatus";
 import { requireAdminRole } from "@/lib/auth/authorize";
 import { HomeCollectionRowActions } from "./HomeCollectionRowActions";
+import {
+  BrandedSelect,
+  BrandedButton,
+  BrandedTable,
+  BrandedTableHeader,
+  BrandedTableRow,
+  BrandedTableCell
+} from "@/app/admin/(dashboard)/components/branded";
 
 export default async function HomeCollectionPage({
   searchParams
@@ -26,71 +34,65 @@ export default async function HomeCollectionPage({
         exact visit time, then update its status here.
       </p>
 
-      <form className="mt-4 flex flex-wrap items-end gap-3" method="get">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">Status</label>
-          <select
+      <form className="mt-4 flex flex-wrap items-end gap-4" method="get">
+        <div className="flex-1 min-w-fit">
+          <BrandedSelect
+            label="Status"
             name="status"
             defaultValue={status ?? ""}
-            className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm"
-          >
-            <option value="">All statuses</option>
-            {HOME_COLLECTION_STATUSES.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "All statuses" },
+              ...HOME_COLLECTION_STATUSES.map((option) => ({
+                value: option,
+                label: option
+              }))
+            ]}
+          />
         </div>
 
-        <button
-          type="submit"
-          className="rounded-md bg-brand-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
-        >
+        <BrandedButton type="submit" variant="primary">
           Filter
-        </button>
+        </BrandedButton>
       </form>
 
-      <div className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Requested</th>
-              <th className="px-4 py-3">Patient</th>
-              <th className="px-4 py-3">Phone</th>
-              <th className="px-4 py-3">Preferred date</th>
-              <th className="px-4 py-3">Time window</th>
-              <th className="px-4 py-3">Distance</th>
-              <th className="px-4 py-3">Status</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
+      <div className="mt-6">
+        <BrandedTable>
+          <BrandedTableHeader>
+            <BrandedTableCell>Requested</BrandedTableCell>
+            <BrandedTableCell>Patient</BrandedTableCell>
+            <BrandedTableCell>Phone</BrandedTableCell>
+            <BrandedTableCell>Preferred date</BrandedTableCell>
+            <BrandedTableCell>Time window</BrandedTableCell>
+            <BrandedTableCell>Distance</BrandedTableCell>
+            <BrandedTableCell>Status</BrandedTableCell>
+          </BrandedTableHeader>
+          <tbody>
             {requests.map((request) => (
-              <tr key={request.id}>
-                <td className="px-4 py-3 text-slate-500">
+              <BrandedTableRow key={request.id}>
+                <BrandedTableCell>
                   {new Date(request.created_at).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-3 font-medium text-slate-900">
+                </BrandedTableCell>
+                <BrandedTableCell className="font-medium">
                   {request.patient_name || "—"}
-                </td>
-                <td className="px-4 py-3 text-slate-500">{request.phone}</td>
-                <td className="px-4 py-3 text-slate-700">{request.preferred_date}</td>
-                <td className="px-4 py-3 text-slate-700">{request.time_window}</td>
-                <td className="px-4 py-3 text-slate-500">{request.distance_km} km</td>
-                <td className="px-4 py-3">
+                </BrandedTableCell>
+                <BrandedTableCell>{request.phone}</BrandedTableCell>
+                <BrandedTableCell>{request.preferred_date}</BrandedTableCell>
+                <BrandedTableCell>{request.time_window}</BrandedTableCell>
+                <BrandedTableCell>{request.distance_km} km</BrandedTableCell>
+                <BrandedTableCell>
                   <HomeCollectionRowActions requestId={request.id} status={request.status} />
-                </td>
-              </tr>
+                </BrandedTableCell>
+              </BrandedTableRow>
             ))}
             {requests.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-slate-400">
+              <BrandedTableRow>
+                <BrandedTableCell colSpan={7} className="text-center py-6">
                   No home collection requests match this filter.
-                </td>
-              </tr>
+                </BrandedTableCell>
+              </BrandedTableRow>
             )}
           </tbody>
-        </table>
+        </BrandedTable>
       </div>
     </div>
   );

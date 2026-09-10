@@ -3,21 +3,20 @@
 import { useEffect, useRef } from "react";
 import { useFormState, useFormStatus } from "react-dom";
 import { resetDoctorPasswordAction, type ResetPasswordFormState } from "../actions";
+import { BrandedButton, BrandedInput } from "@/app/admin/(dashboard)/components/branded";
 
 const initialState: ResetPasswordFormState = {};
-const inputClass =
-  "w-full rounded-md border border-slate-300 px-2.5 py-1.5 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500";
 
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <button
+    <BrandedButton
       type="submit"
       disabled={pending}
-      className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+      variant="primary"
     >
       {pending ? "Saving…" : "Set password"}
-    </button>
+    </BrandedButton>
   );
 }
 
@@ -47,34 +46,29 @@ export function ResetDoctorPasswordForm({
       </p>
 
       <form ref={formRef} action={formAction} className="mt-4 flex max-w-sm flex-col gap-3">
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">Email</label>
-          <input
-            type="email"
-            name="email"
-            required
-            defaultValue={email ?? ""}
-            className={inputClass}
-          />
-        </div>
+        <BrandedInput
+          label="Email"
+          type="email"
+          name="email"
+          required
+          defaultValue={email ?? ""}
+        />
 
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">New password</label>
-          <input type="password" name="password" required minLength={8} className={inputClass} />
-        </div>
+        <BrandedInput
+          label="New password"
+          type="password"
+          name="password"
+          required
+          minLength={8}
+        />
 
-        <div>
-          <label className="mb-1 block text-xs font-medium text-slate-700">
-            Confirm new password
-          </label>
-          <input
-            type="password"
-            name="confirmPassword"
-            required
-            minLength={8}
-            className={inputClass}
-          />
-        </div>
+        <BrandedInput
+          label="Confirm new password"
+          type="password"
+          name="confirmPassword"
+          required
+          minLength={8}
+        />
 
         <div className="flex items-center gap-3">
           <SubmitButton />

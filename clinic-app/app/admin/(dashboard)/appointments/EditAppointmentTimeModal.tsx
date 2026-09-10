@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { editAppointmentTimeAction, getAvailableSlotsAction } from "./actions";
 import type { Appointment } from "@/lib/appointments";
 import type { Doctor } from "@/lib/doctors";
+import { BrandedButton, BrandedInput, BrandedSelect } from "@/app/admin/(dashboard)/components/branded";
 
 interface EditAppointmentTimeModalProps {
   appointment: Appointment;
@@ -65,85 +66,73 @@ export function EditAppointmentTimeModal({
         </p>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Doctor</label>
-            <input
-              type="text"
-              value={doctor.name}
-              disabled
-              className="mt-1 w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500"
-            />
-          </div>
+          <BrandedInput
+            label="Doctor"
+            type="text"
+            value={doctor.name}
+            disabled
+          />
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Date</label>
-            <input
-              type="text"
-              value={appointment.appointment_date}
-              disabled
-              className="mt-1 w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500"
-            />
-          </div>
+          <BrandedInput
+            label="Date"
+            type="text"
+            value={appointment.appointment_date}
+            disabled
+          />
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Current Time</label>
-            <input
-              type="text"
-              value={appointment.appointment_time}
-              disabled
-              className="mt-1 w-full rounded-md border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-500"
-            />
-          </div>
+          <BrandedInput
+            label="Current Time"
+            type="text"
+            value={appointment.appointment_time}
+            disabled
+          />
 
           <div>
             <label htmlFor="time" className="block text-sm font-medium text-slate-700">
               New Time
             </label>
             {availableSlots.length === 0 && (
-              <button
+              <BrandedButton
                 type="button"
                 onClick={handleLoadSlots}
                 disabled={slots}
-                className="mt-2 mb-2 rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-600 hover:bg-slate-200 disabled:opacity-50"
+                variant="secondary"
+                className="mt-2 mb-2"
               >
                 {slots ? "Loading..." : "Load Available Times"}
-              </button>
+              </BrandedButton>
             )}
             {availableSlots.length > 0 && (
-              <select
+              <BrandedSelect
                 id="time"
                 name="time"
                 defaultValue=""
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              >
-                <option value="">Select a time...</option>
-                {availableSlots.map((slot) => (
-                  <option key={slot.value} value={slot.value}>
-                    {slot.label}
-                  </option>
-                ))}
-              </select>
+                options={[
+                  { value: "", label: "Select a time..." },
+                  ...availableSlots
+                ]}
+              />
             )}
           </div>
 
           {error && <div className="rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>}
 
           <div className="flex justify-end gap-3 pt-4">
-            <button
+            <BrandedButton
               type="button"
               onClick={onClose}
               disabled={isPending}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+              variant="secondary"
             >
               Cancel
-            </button>
-            <button
+            </BrandedButton>
+            <BrandedButton
               type="submit"
               disabled={isPending}
-              className="rounded-md bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+              variant="primary"
             >
               {isPending ? "Updating..." : "Update Time"}
-            </button>
+            </BrandedButton>
           </div>
         </form>
       </div>

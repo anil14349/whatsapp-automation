@@ -4,6 +4,7 @@ import { getDoctorAvailability, getDoctorById, getDoctorUpcomingLeaves } from "@
 import { formatDateKey } from "@/lib/scheduling/dates";
 import { getServerEnv } from "@/lib/env";
 import { requireAdminRole } from "@/lib/auth/authorize";
+import { BrandedCard } from "@/app/admin/(dashboard)/components/branded";
 import { EditDoctorForm } from "./EditDoctorForm";
 import { AvailabilityManager } from "./AvailabilityManager";
 import { LeavesManager } from "./LeavesManager";
@@ -35,33 +36,21 @@ export default async function DoctorDetailPage({
       <h1 className="text-xl font-semibold text-slate-900">{doctor.name}</h1>
       <p className="mt-1 text-sm text-slate-500">Doctor code: {doctor.doctor_code}</p>
 
-      <section className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Doctor details</h2>
-        <div className="mt-4">
-          <EditDoctorForm doctor={doctor} />
-        </div>
-      </section>
+      <BrandedCard title="Doctor details" className="mt-6">
+        <EditDoctorForm doctor={doctor} />
+      </BrandedCard>
 
-      <section className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Doctor Portal login</h2>
-        <div className="mt-4">
-          <ResetDoctorPasswordForm doctorId={doctor.id} email={doctor.email} />
-        </div>
-      </section>
+      <BrandedCard title="Doctor Portal login" className="mt-6">
+        <ResetDoctorPasswordForm doctorId={doctor.id} email={doctor.email} />
+      </BrandedCard>
 
-      <section className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Weekly availability</h2>
-        <div className="mt-4">
-          <AvailabilityManager doctorId={doctor.id} sessions={availability} />
-        </div>
-      </section>
+      <BrandedCard title="Weekly availability" className="mt-6">
+        <AvailabilityManager doctorId={doctor.id} sessions={availability} />
+      </BrandedCard>
 
-      <section className="mt-6 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-900">Upcoming leaves</h2>
-        <div className="mt-4">
-          <LeavesManager doctorId={doctor.id} leaves={leaves} />
-        </div>
-      </section>
+      <BrandedCard title="Upcoming leaves" className="mt-6">
+        <LeavesManager doctorId={doctor.id} leaves={leaves} />
+      </BrandedCard>
     </div>
   );
 }
