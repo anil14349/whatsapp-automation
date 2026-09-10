@@ -17,6 +17,12 @@ import { getServerEnv } from "@/lib/env";
 import { assertAdminRole } from "@/lib/auth/authorize";
 import { sendDoctorBroadcast } from "@/lib/broadcast";
 import { updatePatientName } from "@/lib/patients";
+import {
+  notifyAppointmentTimeChanged,
+  notifyAppointmentRescheduled,
+  notifyDoctorChanged,
+  logNotificationAttempt
+} from "@/lib/notifications";
 
 /**
  * Admin cancellation goes through the same cancelAppointment() used by
@@ -235,6 +241,13 @@ export async function editAppointmentTimeAction(
   const supabase = getSupabaseServerClient();
   const env = getServerEnv();
 
+  // Get current appointment details for notification
+  const { data: currentApt } = await supabase
+    .from("appointments")
+    .select("*")
+    .eq("id", appointmentId)
+    .single();
+
   const result = await updateAppointmentTime(
     supabase,
     appointmentId,
@@ -243,7 +256,30 @@ export async function editAppointmentTimeAction(
     env.CLINIC_TIMEZONE
   );
 
-  if (result.success) {
+  if (result.success && currentApt) {
+    // Send WhatsApp notification to patient
+    const doctor = await getDoctorById(supabase, doctorId);
+    if (doctor && currentApt.patient_phone) {
+      const notifyResult = await notifyAppointmentTimeChanged({
+        patientPhone: currentApt.patient_phone,
+        patientName: currentApt.patient_name || "Patient",
+        doctorName: doctor.name,
+        oldTime: currentApt.appointment_time,
+        newTime: newTimeString,
+        appointmentDate: currentApt.appointment_date,
+        appointmentCode: currentApt.appointment_code
+      });
+
+      // Log notification attempt
+      await logNotificationAttempt(supabase, {
+        patientPhone: currentApt.patient_phone,
+        appointmentId,
+        notificationType: "TIME_CHANGED",
+        success: notifyResult.success,
+        error: notifyResult.success ? undefined : notifyResult.message
+      });
+    }
+
     revalidatePath("/admin/appointments");
   }
 
@@ -263,6 +299,13 @@ export async function editAppointmentDateTimeAction(
   const supabase = getSupabaseServerClient();
   const env = getServerEnv();
 
+  // Get current appointment details for notification
+  const { data: currentApt } = await supabase
+    .from("appointments")
+    .select("*")
+    .eq("id", appointmentId)
+    .single();
+
   const result = await updateAppointmentDateTime(
     supabase,
     appointmentId,
@@ -272,7 +315,31 @@ export async function editAppointmentDateTimeAction(
     env.CLINIC_TIMEZONE
   );
 
-  if (result.success) {
+  if (result.success && currentApt) {
+    // Send WhatsApp notification to patient
+    const doctor = await getDoctorById(supabase, doctorId);
+    if (doctor && currentApt.patient_phone) {
+      const notifyResult = await notifyAppointmentRescheduled({
+        patientPhone: currentApt.patient_phone,
+        patientName: currentApt.patient_name || "Patient",
+        doctorName: doctor.name,
+        oldDate: currentApt.appointment_date,
+        oldTime: currentApt.appointment_time,
+        newDate: newDateString,
+        newTime: newTimeString,
+        appointmentCode: currentApt.appointment_code
+      });
+
+      // Log notification attempt
+      await logNotificationAttempt(supabase, {
+        patientPhone: currentApt.patient_phone,
+        appointmentId,
+        notificationType: "RESCHEDULED",
+        success: notifyResult.success,
+        error: notifyResult.success ? undefined : notifyResult.message
+      });
+    }
+
     revalidatePath("/admin/appointments");
   }
 
@@ -292,6 +359,13 @@ export async function editAppointmentDoctorAction(
   const supabase = getSupabaseServerClient();
   const env = getServerEnv();
 
+  // Get current appointment details for notification
+  const { data: currentApt } = await supabase
+    .from("appointments")
+    .select("*")
+    .eq("id", appointmentId)
+    .single();
+
   const result = await changeAppointmentDoctor(
     supabase,
     appointmentId,
@@ -301,7 +375,33 @@ export async function editAppointmentDoctorAction(
     env.CLINIC_TIMEZONE
   );
 
-  if (result.success) {
+  if (result.success && currentApt) {
+    // Send WhatsApp notification to patient
+    const oldDoctor = await getDoctorById(supabase, oldDoctorId);
+    const newDoctor = await getDoctorById(supabase, newDoctorId);
+
+    if (oldDoctor && newDoctor && currentApt.patient_phone) {
+      const notifyResult = await notifyDoctorChanged({
+        patientPhone: currentApt.patient_phone,
+        patientName: currentApt.patient_name || "Patient",
+        oldDoctorName: oldDoctor.name,
+        newDoctorName: newDoctor.name,
+        newDoctorSpecialization: newDoctor.specialization,
+        appointmentDate: currentApt.appointment_date,
+        appointmentTime: newTimeString,
+        appointmentCode: currentApt.appointment_code
+      });
+
+      // Log notification attempt
+      await logNotificationAttempt(supabase, {
+        patientPhone: currentApt.patient_phone,
+        appointmentId,
+        notificationType: "DOCTOR_CHANGED",
+        success: notifyResult.success,
+        error: notifyResult.success ? undefined : notifyResult.message
+      });
+    }
+
     revalidatePath("/admin/appointments");
   }
 
