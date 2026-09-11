@@ -41,6 +41,16 @@ export async function processIncomingMessage(
     const text = getMessageText(message);
     const patientPhone = normalizePhoneNumber(message.from);
 
+    // Validate phone number was normalized successfully
+    if (!patientPhone || patientPhone.trim() === "") {
+      console.error("Invalid phone number after normalization:", { from: message.from, normalized: patientPhone });
+      return {
+        success: false,
+        action: "patient_creation_failed",
+        error: "Invalid phone number format"
+      };
+    }
+
     // Find or create patient
     let patient;
     try {

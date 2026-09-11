@@ -41,6 +41,12 @@ export function extractStatusUpdates(payload: any): WhatsAppStatusUpdate[] {
     }
 
     for (const status of value.statuses) {
+      // Validate required fields
+      if (!status.id || !status.status) {
+        console.error("Missing required status fields:", { id: status.id, status: status.status });
+        continue; // Skip this status update
+      }
+
       // Validate timestamp is numeric and positive
       if (typeof status.timestamp !== 'number' || status.timestamp <= 0) {
         console.error("Invalid timestamp in status update:", status.id, status.timestamp);

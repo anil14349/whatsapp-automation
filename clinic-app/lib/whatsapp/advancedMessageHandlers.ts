@@ -46,6 +46,14 @@ async function createPatientRequest(
   requestType: string,
   requestText: string
 ): Promise<{ success: boolean; error?: string }> {
+  // Validate all required parameters
+  if (!clinicId || !patientId || !patientPhone || !requestText?.trim()) {
+    return {
+      success: false,
+      error: "Missing required parameters for patient request"
+    };
+  }
+
   // Validate request type
   if (!isValidRequestType(requestType)) {
     return {
