@@ -93,10 +93,11 @@ function bookAppointment(
     const doctor =
         getDoctorRecord(doctorId);
 
-    if (
-        !doctor ||
-        !doctor.calendarId
-    ) {
+    // ========================================================
+    // DOCTOR VALIDATION (with null checks)
+    // ========================================================
+
+    if (!doctor) {
 
         return {
             success: false,
@@ -104,8 +105,39 @@ function bookAppointment(
         };
     }
 
-    const doctorName = doctor.doctorName;
-    const clinicName = doctor.clinicName;
+    if (!doctor.calendarId) {
+
+        return {
+            success: false,
+            message:
+                "Doctor calendar is not configured."
+        };
+    }
+
+    const doctorName =
+        doctor.doctorName || "";
+
+    if (!doctorName) {
+
+        return {
+            success: false,
+            message:
+                "Doctor name is missing in system."
+        };
+    }
+
+    const clinicName =
+        doctor.clinicName || "";
+
+    if (!clinicName) {
+
+        return {
+            success: false,
+            message:
+                "Clinic name is missing in system."
+        };
+    }
+
     const calendarId = doctor.calendarId;
 
     // ----------------------------------------------------------
@@ -214,6 +246,30 @@ function bookAppointment(
             formattedRequestedTime
         )
     ) {
+
+        return {
+            success: false,
+            message:
+                "Time slot is not available."
+        };
+    }
+
+    // ========================================================
+    // TOCTOU PROTECTION: Check slot reservation
+    // ========================================================
+    // Prevent two patients from booking the same slot
+    // if another patient reserved it between our availability check
+    // and actual booking attempt.
+
+    const slotReservationCheck =
+        isSlotReservedByOther(
+            doctorId,
+            dateString,
+            formattedRequestedTime,
+            patientPhone
+        );
+
+    if (slotReservationCheck.isReserved) {
 
         return {
             success: false,
@@ -383,6 +439,29 @@ function bookAppointment(
         if (lock.hasLock()) {
             lock.releaseLock();
         }
+    }
+
+    // ----------------------------------------------------------
+    // TOCTOU CLEANUP: Clear slot reservation
+    // ----------------------------------------------------------
+    // Remove patient's slot reservation now that booking is confirmed.
+    // If cleanup fails, log but don't fail the entire booking.
+
+    try {
+
+        clearSlotReservation(
+            doctorId,
+            dateString,
+            formattedRequestedTime,
+            patientPhone
+        );
+
+    } catch (cleanupError) {
+
+        Logger.log(
+            "Warning: Failed to clear slot reservation: " +
+            cleanupError.message
+        );
     }
 
     // ----------------------------------------------------------
@@ -872,28 +951,62 @@ function rescheduleAppointment(
     }
 
     // ----------------------------------------------------------
-    // Find doctor
+    // Find doctor (with null checks)
     // ----------------------------------------------------------
 
     const doctor =
         getDoctorRecord(doctorId);
 
-    if (
-        !doctor ||
-        !doctor.calendarId
-    ) {
+    if (!doctor) {
 
         return {
 
             success: false,
 
             message:
-                "Doctor calendar not found."
+                "Doctor not found."
         };
     }
 
-    const doctorName = doctor.doctorName;
-    const clinicName = doctor.clinicName;
+    if (!doctor.calendarId) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Doctor calendar not configured."
+        };
+    }
+
+    const doctorName =
+        doctor.doctorName || "";
+
+    if (!doctorName) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Doctor name is missing in system."
+        };
+    }
+
+    const clinicName =
+        doctor.clinicName || "";
+
+    if (!clinicName) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Clinic name is missing in system."
+        };
+    }
+
     const calendarId = doctor.calendarId;
 
     const calendar =

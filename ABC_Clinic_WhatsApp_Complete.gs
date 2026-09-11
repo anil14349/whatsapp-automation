@@ -5521,10 +5521,11 @@ function bookAppointment(
     const doctor =
         getDoctorRecord(doctorId);
 
-    if (
-        !doctor ||
-        !doctor.calendarId
-    ) {
+    // ========================================================
+    // DOCTOR VALIDATION (with null checks)
+    // ========================================================
+
+    if (!doctor) {
 
         return {
             success: false,
@@ -5532,8 +5533,39 @@ function bookAppointment(
         };
     }
 
-    const doctorName = doctor.doctorName;
-    const clinicName = doctor.clinicName;
+    if (!doctor.calendarId) {
+
+        return {
+            success: false,
+            message:
+                "Doctor calendar is not configured."
+        };
+    }
+
+    const doctorName =
+        doctor.doctorName || "";
+
+    if (!doctorName) {
+
+        return {
+            success: false,
+            message:
+                "Doctor name is missing in system."
+        };
+    }
+
+    const clinicName =
+        doctor.clinicName || "";
+
+    if (!clinicName) {
+
+        return {
+            success: false,
+            message:
+                "Clinic name is missing in system."
+        };
+    }
+
     const calendarId = doctor.calendarId;
 
     // ----------------------------------------------------------
@@ -5642,6 +5674,30 @@ function bookAppointment(
             formattedRequestedTime
         )
     ) {
+
+        return {
+            success: false,
+            message:
+                "Time slot is not available."
+        };
+    }
+
+    // ========================================================
+    // TOCTOU PROTECTION: Check slot reservation
+    // ========================================================
+    // Prevent two patients from booking the same slot
+    // if another patient reserved it between our availability check
+    // and actual booking attempt.
+
+    const slotReservationCheck =
+        isSlotReservedByOther(
+            doctorId,
+            dateString,
+            formattedRequestedTime,
+            patientPhone
+        );
+
+    if (slotReservationCheck.isReserved) {
 
         return {
             success: false,
@@ -5811,6 +5867,29 @@ function bookAppointment(
         if (lock.hasLock()) {
             lock.releaseLock();
         }
+    }
+
+    // ----------------------------------------------------------
+    // TOCTOU CLEANUP: Clear slot reservation
+    // ----------------------------------------------------------
+    // Remove patient's slot reservation now that booking is confirmed.
+    // If cleanup fails, log but don't fail the entire booking.
+
+    try {
+
+        clearSlotReservation(
+            doctorId,
+            dateString,
+            formattedRequestedTime,
+            patientPhone
+        );
+
+    } catch (cleanupError) {
+
+        Logger.log(
+            "Warning: Failed to clear slot reservation: " +
+            cleanupError.message
+        );
     }
 
     // ----------------------------------------------------------
@@ -6298,28 +6377,62 @@ function rescheduleAppointment(
     }
 
     // ----------------------------------------------------------
-    // Find doctor
+    // Find doctor (with null checks)
     // ----------------------------------------------------------
 
     const doctor =
         getDoctorRecord(doctorId);
 
-    if (
-        !doctor ||
-        !doctor.calendarId
-    ) {
+    if (!doctor) {
 
         return {
 
             success: false,
 
             message:
-                "Doctor calendar not found."
+                "Doctor not found."
         };
     }
 
-    const doctorName = doctor.doctorName;
-    const clinicName = doctor.clinicName;
+    if (!doctor.calendarId) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Doctor calendar not configured."
+        };
+    }
+
+    const doctorName =
+        doctor.doctorName || "";
+
+    if (!doctorName) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Doctor name is missing in system."
+        };
+    }
+
+    const clinicName =
+        doctor.clinicName || "";
+
+    if (!clinicName) {
+
+        return {
+
+            success: false,
+
+            message:
+                "Clinic name is missing in system."
+        };
+    }
+
     const calendarId = doctor.calendarId;
 
     const calendar =
@@ -19141,6 +19254,251 @@ function removeDailyArchiveTask() {
         message:
             "Removed " + removedCount + " daily archive trigger(s)"
     };
+}
+
+
+function ensureSlotReservationSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName("Slot_Reservations");
+
+    if (!sheet) {
+
+        sheet = ss.insertSheet("Slot_Reservations");
+
+        sheet.appendRow([
+            "Doctor ID",
+            "Date",
+            "Time",
+            "Patient Phone",
+            "Reserved At",
+            "Expires At"
+        ]);
+
+        // Hide this operational sheet
+        sheet.hideSheet();
+    }
+
+    return sheet;
+}
+
+
+function reserveSlot(
+    doctorId,
+    dateString,
+    timeString,
+    patientPhone
+) {
+
+    if (
+        !doctorId || !dateString ||
+        !timeString || !patientPhone
+    ) {
+
+        return { reserved: false };
+    }
+
+    const sheet =
+        ensureSlotReservationSheet();
+
+    const now = new Date();
+    const expiresAt =
+        new Date(now.getTime() + (10 * 60 * 1000)); // 10-minute TTL
+
+    sheet.appendRow([
+        String(doctorId).trim(),
+        String(dateString).trim(),
+        String(timeString).trim(),
+        String(patientPhone).trim(),
+        now,
+        expiresAt
+    ]);
+
+    return {
+        reserved: true,
+        expiresAt: expiresAt
+    };
+}
+
+
+function isSlotReservedByOther(
+    doctorId,
+    dateString,
+    timeString,
+    patientPhone
+) {
+
+    if (
+        !doctorId || !dateString ||
+        !timeString || !patientPhone
+    ) {
+
+        return { isReserved: false };
+    }
+
+    const sheet =
+        ensureSlotReservationSheet();
+
+    const data = sheet.getDataRange().getValues();
+    const now = new Date();
+    const normalizedPhone =
+        String(patientPhone).trim();
+    const normalizedDoctor =
+        String(doctorId).trim();
+    const normalizedDate =
+        String(dateString).trim();
+    const normalizedTime =
+        String(timeString).trim();
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const reservedDoctor =
+            String(data[i][0] || "").trim();
+
+        const reservedDate =
+            String(data[i][1] || "").trim();
+
+        const reservedTime =
+            String(data[i][2] || "").trim();
+
+        const reservedPhone =
+            String(data[i][3] || "").trim();
+
+        const expiresAt =
+            new Date(data[i][5]);
+
+        // Skip expired reservations
+        if (now > expiresAt) {
+            continue;
+        }
+
+        // Check if this slot matches and belongs to someone else
+        if (
+            reservedDoctor === normalizedDoctor &&
+            reservedDate === normalizedDate &&
+            reservedTime === normalizedTime &&
+            reservedPhone !== normalizedPhone
+        ) {
+
+            return {
+                isReserved: true,
+                reservedByPhone: reservedPhone
+            };
+        }
+    }
+
+    return { isReserved: false };
+}
+
+
+function clearSlotReservation(
+    doctorId,
+    dateString,
+    timeString,
+    patientPhone
+) {
+
+    if (
+        !doctorId || !dateString ||
+        !timeString || !patientPhone
+    ) {
+
+        return false;
+    }
+
+    const sheet =
+        ensureSlotReservationSheet();
+
+    const data = sheet.getDataRange().getValues();
+    const normalizedPhone =
+        String(patientPhone).trim();
+    const normalizedDoctor =
+        String(doctorId).trim();
+    const normalizedDate =
+        String(dateString).trim();
+    const normalizedTime =
+        String(timeString).trim();
+
+    // Delete in reverse order to avoid row number shifts
+    const rowsToDelete = [];
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const reservedDoctor =
+            String(data[i][0] || "").trim();
+
+        const reservedDate =
+            String(data[i][1] || "").trim();
+
+        const reservedTime =
+            String(data[i][2] || "").trim();
+
+        const reservedPhone =
+            String(data[i][3] || "").trim();
+
+        if (
+            reservedDoctor === normalizedDoctor &&
+            reservedDate === normalizedDate &&
+            reservedTime === normalizedTime &&
+            reservedPhone === normalizedPhone
+        ) {
+
+            rowsToDelete.push(i + 1);
+        }
+    }
+
+    for (
+        let j = rowsToDelete.length - 1;
+        j >= 0;
+        j--
+    ) {
+
+        sheet.deleteRow(rowsToDelete[j]);
+    }
+
+    return rowsToDelete.length > 0;
+}
+
+
+function cleanupExpiredSlotReservations() {
+
+    const sheet =
+        ensureSlotReservationSheet();
+
+    const data = sheet.getDataRange().getValues();
+    const now = new Date();
+    const rowsToDelete = [];
+
+    for (
+        let i = data.length - 1;
+        i >= 1;
+        i--
+    ) {
+
+        const expiresAt = new Date(data[i][5]);
+
+        if (now > expiresAt) {
+            rowsToDelete.push(i + 1);
+        }
+    }
+
+    // Delete in reverse order
+    for (const row of rowsToDelete) {
+        sheet.deleteRow(row);
+    }
+
+    return rowsToDelete.length;
 }
 
 
