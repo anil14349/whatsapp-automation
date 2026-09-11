@@ -185,9 +185,17 @@ CREATE POLICY "Users can view their clinic's booking requests"
     SELECT clinic_id FROM admin_users WHERE user_id = auth.uid()
   ));
 
-CREATE POLICY "System can insert booking requests"
+CREATE POLICY "Webhook system can insert booking requests"
   ON booking_requests FOR INSERT
-  WITH CHECK (clinic_id IS NOT NULL);
+  WITH CHECK (
+    clinic_id IS NOT NULL
+    AND (auth.role() = 'service_role' OR
+         clinic_id IN (
+           SELECT DISTINCT clinic_id FROM admin_users
+           WHERE user_id = auth.uid()
+         )
+    )
+  );
 
 -- RLS Policies for patient_requests
 CREATE POLICY "Users can view their clinic's patient requests"
