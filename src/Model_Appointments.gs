@@ -383,6 +383,18 @@ function bookAppointment(
                 ? patientRecord.patientId
                 : "";
 
+        // ========================================================
+        // CREATE CALENDAR EVENT FIRST
+        // ========================================================
+        // Verify calendar event creation succeeds before appending
+        // sheet row to avoid orphaned records on failure
+
+        const eventId = event.getId();
+
+        if (!eventId) {
+            throw new Error("Calendar event creation failed - no event ID returned");
+        }
+
         appointmentSheet.appendRow([
 
             appointmentId,
@@ -407,7 +419,7 @@ function bookAppointment(
 
             "Confirmed",
 
-            event.getId(),
+            eventId,
 
             patientId
 
@@ -415,18 +427,23 @@ function bookAppointment(
 
     } catch (error) {
 
+        // ========================================================
+        // CLEANUP ON ERROR
+        // ========================================================
+        // Delete calendar event if sheet append failed
+
         if (event) {
             try {
                 event.deleteEvent();
             } catch (deleteError) {
-                console.error(
-                    "Failed to roll back appointment event after booking failure.",
-                    deleteError
+                Logger.log(
+                    "Failed to roll back appointment event after booking failure: " +
+                    deleteError.message
                 );
             }
         }
 
-        console.error(
+        Logger.log(
             "Booking failed; calendar event was rolled back.",
             error
         );
@@ -517,7 +534,18 @@ function cancelAppointment(
     const lock =
         LockService.getScriptLock();
 
-    if (!lock.tryLock(30000)) {
+    // Retry with exponential backoff: 5s, 10s, 15s
+    const timeouts = [5000, 10000, 15000];
+    let lockAcquired = false;
+    for (let attempt = 0; attempt < timeouts.length; attempt++) {
+        if (lock.tryLock(timeouts[attempt])) {
+            lockAcquired = true;
+            break;
+        }
+        Logger.log("Lock attempt " + (attempt + 1) + " failed, retrying...");
+    }
+
+    if (!lockAcquired) {
 
         return {
             success: false,
@@ -550,6 +578,11 @@ function cancelAppointment(
             i >= 1;
             i--
         ) {
+
+            // Verify row has required columns before accessing
+            if (!appointmentData[i] || appointmentData[i].length < 9) {
+                continue;
+            }
 
             const rowAppointmentId =
                 String(appointmentData[i][0]);
@@ -1258,7 +1291,7 @@ function rescheduleAppointment(
             try {
                 newEvent.deleteEvent();
             } catch (deleteError) {
-                console.error(
+                Logger.log(
                     "Failed to roll back newly created reschedule event.",
                     deleteError
                 );
@@ -1321,14 +1354,14 @@ function rescheduleAppointment(
                         );
                 }
             } catch (restoreError) {
-                console.error(
+                Logger.log(
                     "Failed to restore original event during reschedule rollback.",
                     restoreError
                 );
             }
         }
 
-        console.error(
+        Logger.log(
             "Reschedule failed; original appointment was restored.",
             error
         );

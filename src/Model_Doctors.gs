@@ -1065,7 +1065,15 @@ function getDoctors() {
 
 
 
+// Module-level cache for getDoctorRecord within execution scope
+let __doctorRecordCache = {};
+
 function getDoctorRecord(doctorId) {
+
+    // Return cached result if already fetched in this execution
+    if (__doctorRecordCache[doctorId]) {
+        return __doctorRecordCache[doctorId];
+    }
 
     const ss =
         SpreadsheetApp.getActiveSpreadsheet();
@@ -1094,7 +1102,7 @@ function getDoctorRecord(doctorId) {
             target
         ) {
 
-            return {
+            const record = {
                 doctorId:
                     String(data[i][0]).trim(),
                 doctorName:
@@ -1110,6 +1118,8 @@ function getDoctorRecord(doctorId) {
                 specialization:
                     String(data[i][7] || "").trim()
             };
+            __doctorRecordCache[doctorId] = record;
+            return record;
         }
     }
 
@@ -2196,10 +2206,14 @@ function getDoctorNextAppointment(doctorId) {
 function findDoctorByWhatsAppPhone(phone) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet()
         .getSheetByName("Doctors");
-    if (!sheet) return null;
+    if (!sheet) {
+        return { found: false, error: "sheet_error" };
+    }
 
     const target = normalizeWhatsAppPhone(phone);
-    if (!target) return null;
+    if (!target) {
+        return { found: false, error: "invalid_phone" };
+    }
 
     const data = sheet.getDataRange().getValues();
 
@@ -2226,12 +2240,13 @@ function findDoctorByWhatsAppPhone(phone) {
             normalizeWhatsAppPhone(whatsappPhone) === target
         ) {
             return {
+                found: true,
                 doctorId: doctorId,
                 doctorName: doctorName
             };
         }
     }
-    return null;
+    return { found: false, error: "not_found" };
 }
 
 

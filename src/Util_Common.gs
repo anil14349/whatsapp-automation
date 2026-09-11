@@ -80,9 +80,21 @@ function normalizeWhatsAppPhone(phone) {
     const digits =
         String(phone || "").replace(/\D/g, "");
 
-    return digits.length > 10
+    // ========================================================
+    // VALIDATE RESULT LENGTH
+    // ========================================================
+    // Must be exactly 10 digits after normalization
+
+    const result = digits.length > 10
         ? digits.slice(-10)
         : digits;
+
+    // Reject if not exactly 10 digits (invalid input)
+    if (result.length !== 10) {
+        return "";
+    }
+
+    return result;
 }
 
 

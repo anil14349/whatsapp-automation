@@ -394,10 +394,16 @@ function saveWhatsAppSession(
             const row =
                 existing.row;
 
-            const current =
+            const values =
                 sheet
                     .getRange(row, 1, 1, 15)
-                    .getValues()[0];
+                    .getValues();
+
+            if (!values || values.length === 0) {
+                throw new Error("Unable to read session row: " + row);
+            }
+
+            const current = values[0];
 
             sheet
                 .getRange(row, 1, 1, 15)

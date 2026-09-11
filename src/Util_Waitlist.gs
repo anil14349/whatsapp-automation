@@ -119,6 +119,14 @@ function getWaitlistForSlot(
         String(time).trim();
 
     // ========================================================
+    // OPTIMIZATION NOTE: Composite Index Opportunity
+    // ========================================================
+    // Currently performs O(n) full-sheet scan on every slot availability check.
+    // Consider building composite key index (doctorId+date+time) in memory
+    // or adding Google Sheets index to Waitlist sheet columns for faster lookups.
+    // With 10K+ rows, this scan becomes noticeable performance bottleneck.
+
+    // ========================================================
     // SCAN FORWARD FOR FIFO ORDER
     // ========================================================
     // Must scan forward to maintain FIFO (first in queue first)
@@ -346,6 +354,7 @@ function getPatientWaitlistEntries(patientPhone) {
     const data = sheet.getDataRange().getValues();
 
     const entries = [];
+    const doctorCache = {};  // Cache doctor records to avoid repeated lookups
 
     for (
         let i = 1;
@@ -364,8 +373,11 @@ function getPatientWaitlistEntries(patientPhone) {
             status === "WAITING"
         ) {
 
-            const doctor =
-                getDoctorRecord(data[i][1]);
+            const doctorId = String(data[i][1] || "").trim();
+            if (!doctorCache[doctorId]) {
+                doctorCache[doctorId] = getDoctorRecord(doctorId);
+            }
+            const doctor = doctorCache[doctorId];
 
             entries.push({
                 waitlistId: data[i][0],

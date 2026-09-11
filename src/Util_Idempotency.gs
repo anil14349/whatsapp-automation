@@ -6,6 +6,9 @@
 // ============================================================
 
 
+// Ensure message deduplication sheet exists; does NOT cleanup expired rows
+// TODO: Add weekly cleanup trigger to call cleanupExpiredDeduplicationRecords()
+// to prevent unbounded Message_Deduplication sheet growth (expired messages accumulate)
 function ensureIdempotencySheet() {
 
     const ss = SpreadsheetApp.getActiveSpreadsheet();

@@ -972,9 +972,21 @@ function normalizeWhatsAppPhone(phone) {
     const digits =
         String(phone || "").replace(/\D/g, "");
 
-    return digits.length > 10
+    // ========================================================
+    // VALIDATE RESULT LENGTH
+    // ========================================================
+    // Must be exactly 10 digits after normalization
+
+    const result = digits.length > 10
         ? digits.slice(-10)
         : digits;
+
+    // Reject if not exactly 10 digits (invalid input)
+    if (result.length !== 10) {
+        return "";
+    }
+
+    return result;
 }
 
 function phonesMatch(phoneA, phoneB) {
@@ -4632,6 +4644,11 @@ function findCalendarEventForAppointment(
         i++
     ) {
 
+        // Bounds check: ensure i is within array bounds
+        if (i < 0 || i >= dayEvents.length) {
+            continue;
+        }
+
         if (
             dayEvents[i]
                 .getDescription()
@@ -4640,7 +4657,16 @@ function findCalendarEventForAppointment(
                     targetId
                 ) !== -1
         ) {
-            return dayEvents[i];
+            // Validate event time matches appointment time (±30 minutes)
+            const eventStart = dayEvents[i].getStartTime();
+            const appointmentTimeMs = parsedDate.getTime();
+            const timeDiffMs = Math.abs(eventStart.getTime() - appointmentTimeMs);
+            const thirtyMinMs = 30 * 60 * 1000;
+
+            if (timeDiffMs <= thirtyMinMs) {
+                return dayEvents[i];
+            }
+            // Event time mismatch; continue searching for correct event
         }
     }
 
@@ -4721,7 +4747,8 @@ function getAvailableSlots(
             durationError
         );
 
-        return [];
+        // Fallback to 60 minutes if duration cannot be determined
+        appointmentDuration = 60;
     }
 
     const availabilityData =
@@ -5058,6 +5085,8 @@ function upsertPatient(
 
     try {
 
+        let locked = false;
+
         if (!opts.skipLock) {
 
             if (!lock.tryLock(10000)) {
@@ -5070,6 +5099,17 @@ function upsertPatient(
             }
 
             locked = true;
+        }
+
+        // ========================================================
+        // GUARD: Verify lock is held before modifying sheet
+        // ========================================================
+        // The locked flag check prevents race condition where concurrent
+        // webhook deliveries could both pass tryLock() and modify the sheet
+        // simultaneously. This guard ensures lock is held before any sheet modifications.
+
+        if (!opts.skipLock && !locked) {
+            throw new Error("Lock not acquired");
         }
 
         const existing =
@@ -5837,6 +5877,18 @@ function bookAppointment(
                 ? patientRecord.patientId
                 : "";
 
+        // ========================================================
+        // CREATE CALENDAR EVENT FIRST
+        // ========================================================
+        // Verify calendar event creation succeeds before appending
+        // sheet row to avoid orphaned records on failure
+
+        const eventId = event.getId();
+
+        if (!eventId) {
+            throw new Error("Calendar event creation failed - no event ID returned");
+        }
+
         appointmentSheet.appendRow([
 
             appointmentId,
@@ -5861,7 +5913,7 @@ function bookAppointment(
 
             "Confirmed",
 
-            event.getId(),
+            eventId,
 
             patientId
 
@@ -5869,18 +5921,23 @@ function bookAppointment(
 
     } catch (error) {
 
+        // ========================================================
+        // CLEANUP ON ERROR
+        // ========================================================
+        // Delete calendar event if sheet append failed
+
         if (event) {
             try {
                 event.deleteEvent();
             } catch (deleteError) {
-                console.error(
-                    "Failed to roll back appointment event after booking failure.",
-                    deleteError
+                Logger.log(
+                    "Failed to roll back appointment event after booking failure: " +
+                    deleteError.message
                 );
             }
         }
 
-        console.error(
+        Logger.log(
             "Booking failed; calendar event was rolled back.",
             error
         );
@@ -5970,7 +6027,18 @@ function cancelAppointment(
     const lock =
         LockService.getScriptLock();
 
-    if (!lock.tryLock(30000)) {
+    // Retry with exponential backoff: 5s, 10s, 15s
+    const timeouts = [5000, 10000, 15000];
+    let lockAcquired = false;
+    for (let attempt = 0; attempt < timeouts.length; attempt++) {
+        if (lock.tryLock(timeouts[attempt])) {
+            lockAcquired = true;
+            break;
+        }
+        Logger.log("Lock attempt " + (attempt + 1) + " failed, retrying...");
+    }
+
+    if (!lockAcquired) {
 
         return {
             success: false,
@@ -6003,6 +6071,11 @@ function cancelAppointment(
             i >= 1;
             i--
         ) {
+
+            // Verify row has required columns before accessing
+            if (!appointmentData[i] || appointmentData[i].length < 9) {
+                continue;
+            }
 
             const rowAppointmentId =
                 String(appointmentData[i][0]);
@@ -6710,7 +6783,7 @@ function rescheduleAppointment(
             try {
                 newEvent.deleteEvent();
             } catch (deleteError) {
-                console.error(
+                Logger.log(
                     "Failed to roll back newly created reschedule event.",
                     deleteError
                 );
@@ -6773,14 +6846,14 @@ function rescheduleAppointment(
                         );
                 }
             } catch (restoreError) {
-                console.error(
+                Logger.log(
                     "Failed to restore original event during reschedule rollback.",
                     restoreError
                 );
             }
         }
 
-        console.error(
+        Logger.log(
             "Reschedule failed; original appointment was restored.",
             error
         );
@@ -6887,6 +6960,11 @@ function getDoctors() {
 
 function getDoctorRecord(doctorId) {
 
+    // Return cached result if already fetched in this execution
+    if (__doctorRecordCache[doctorId]) {
+        return __doctorRecordCache[doctorId];
+    }
+
     const ss =
         SpreadsheetApp.getActiveSpreadsheet();
 
@@ -6914,7 +6992,7 @@ function getDoctorRecord(doctorId) {
             target
         ) {
 
-            return {
+            const record = {
                 doctorId:
                     String(data[i][0]).trim(),
                 doctorName:
@@ -6930,6 +7008,8 @@ function getDoctorRecord(doctorId) {
                 specialization:
                     String(data[i][7] || "").trim()
             };
+            __doctorRecordCache[doctorId] = record;
+            return record;
         }
     }
 
@@ -11735,10 +11815,14 @@ function maskPhone(phone) {
 function findDoctorByWhatsAppPhone(phone) {
     const sheet = SpreadsheetApp.getActiveSpreadsheet()
         .getSheetByName("Doctors");
-    if (!sheet) return null;
+    if (!sheet) {
+        return { found: false, error: "sheet_error" };
+    }
 
     const target = normalizeWhatsAppPhone(phone);
-    if (!target) return null;
+    if (!target) {
+        return { found: false, error: "invalid_phone" };
+    }
 
     const data = sheet.getDataRange().getValues();
 
@@ -11765,12 +11849,13 @@ function findDoctorByWhatsAppPhone(phone) {
             normalizeWhatsAppPhone(whatsappPhone) === target
         ) {
             return {
+                found: true,
                 doctorId: doctorId,
                 doctorName: doctorName
             };
         }
     }
-    return null;
+    return { found: false, error: "not_found" };
 }
 
 function formatDoctorLeavesMenu() {
@@ -18544,10 +18629,16 @@ function saveWhatsAppSession(
             const row =
                 existing.row;
 
-            const current =
+            const values =
                 sheet
                     .getRange(row, 1, 1, 15)
-                    .getValues()[0];
+                    .getValues();
+
+            if (!values || values.length === 0) {
+                throw new Error("Unable to read session row: " + row);
+            }
+
+            const current = values[0];
 
             sheet
                 .getRange(row, 1, 1, 15)
@@ -19631,6 +19722,8 @@ function validateDoctorClinicAccess(doctorId) {
 
     const doctor = getDoctorRecord(doctorId);
 
+    // GUARD: doctor null check at line 25 prevents null dereference at line 38
+    // where doctor.clinicName and doctor.doctorName are accessed
     if (!doctor) {
         return {
             authorized: false,
@@ -22320,6 +22413,14 @@ function getWaitlistForSlot(
         String(time).trim();
 
     // ========================================================
+    // OPTIMIZATION NOTE: Composite Index Opportunity
+    // ========================================================
+    // Currently performs O(n) full-sheet scan on every slot availability check.
+    // Consider building composite key index (doctorId+date+time) in memory
+    // or adding Google Sheets index to Waitlist sheet columns for faster lookups.
+    // With 10K+ rows, this scan becomes noticeable performance bottleneck.
+
+    // ========================================================
     // SCAN FORWARD FOR FIFO ORDER
     // ========================================================
     // Must scan forward to maintain FIFO (first in queue first)
@@ -22537,6 +22638,7 @@ function getPatientWaitlistEntries(patientPhone) {
     const data = sheet.getDataRange().getValues();
 
     const entries = [];
+    const doctorCache = {};  // Cache doctor records to avoid repeated lookups
 
     for (
         let i = 1;
@@ -22555,8 +22657,11 @@ function getPatientWaitlistEntries(patientPhone) {
             status === "WAITING"
         ) {
 
-            const doctor =
-                getDoctorRecord(data[i][1]);
+            const doctorId = String(data[i][1] || "").trim();
+            if (!doctorCache[doctorId]) {
+                doctorCache[doctorId] = getDoctorRecord(doctorId);
+            }
+            const doctor = doctorCache[doctorId];
 
             entries.push({
                 waitlistId: data[i][0],

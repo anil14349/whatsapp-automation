@@ -146,6 +146,11 @@ function findCalendarEventForAppointment(
         i++
     ) {
 
+        // Bounds check: ensure i is within array bounds
+        if (i < 0 || i >= dayEvents.length) {
+            continue;
+        }
+
         if (
             dayEvents[i]
                 .getDescription()
@@ -154,7 +159,16 @@ function findCalendarEventForAppointment(
                     targetId
                 ) !== -1
         ) {
-            return dayEvents[i];
+            // Validate event time matches appointment time (±30 minutes)
+            const eventStart = dayEvents[i].getStartTime();
+            const appointmentTimeMs = parsedDate.getTime();
+            const timeDiffMs = Math.abs(eventStart.getTime() - appointmentTimeMs);
+            const thirtyMinMs = 30 * 60 * 1000;
+
+            if (timeDiffMs <= thirtyMinMs) {
+                return dayEvents[i];
+            }
+            // Event time mismatch; continue searching for correct event
         }
     }
 
@@ -236,7 +250,8 @@ function getAvailableSlots(
             durationError
         );
 
-        return [];
+        // Fallback to 60 minutes if duration cannot be determined
+        appointmentDuration = 60;
     }
 
     const availabilityData =

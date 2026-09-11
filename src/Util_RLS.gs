@@ -22,6 +22,8 @@ function validateDoctorClinicAccess(doctorId) {
 
     const doctor = getDoctorRecord(doctorId);
 
+    // GUARD: doctor null check at line 25 prevents null dereference at line 38
+    // where doctor.clinicName and doctor.doctorName are accessed
     if (!doctor) {
         return {
             authorized: false,

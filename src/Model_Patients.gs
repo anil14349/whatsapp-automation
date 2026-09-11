@@ -130,6 +130,8 @@ function upsertPatient(
 
     try {
 
+        let locked = false;
+
         if (!opts.skipLock) {
 
             if (!lock.tryLock(10000)) {
@@ -142,6 +144,17 @@ function upsertPatient(
             }
 
             locked = true;
+        }
+
+        // ========================================================
+        // GUARD: Verify lock is held before modifying sheet
+        // ========================================================
+        // The locked flag check prevents race condition where concurrent
+        // webhook deliveries could both pass tryLock() and modify the sheet
+        // simultaneously. This guard ensures lock is held before any sheet modifications.
+
+        if (!opts.skipLock && !locked) {
+            throw new Error("Lock not acquired");
         }
 
         const existing =

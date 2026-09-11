@@ -6,6 +6,9 @@
 
 
 
+// Ensure slot reservation sheet exists; does NOT cleanup expired rows
+// TODO: Add weekly cleanup trigger to call cleanupExpiredSlotReservations()
+// to prevent unbounded sheet growth (expired reservations accumulate over time)
 function ensureSlotReservationSheet() {
 
     const ss =
