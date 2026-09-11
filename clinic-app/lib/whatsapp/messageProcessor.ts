@@ -17,6 +17,18 @@ export interface MessageProcessingResult {
   error?: string;
 }
 
+// Pre-compiled advanced message patterns - created once at module load
+const ADVANCED_PATTERNS = [
+  MESSAGE_PATTERNS.LAB,
+  MESSAGE_PATTERNS.RESULTS,
+  MESSAGE_PATTERNS.PRESCRIPTION,
+  MESSAGE_PATTERNS.BILLING,
+  MESSAGE_PATTERNS.DOCTOR,
+  MESSAGE_PATTERNS.RESCHEDULE,
+  MESSAGE_PATTERNS.STATUS,
+  MESSAGE_PATTERNS.FEEDBACK
+] as const;
+
 /**
  * Process incoming WhatsApp message
  */
@@ -55,10 +67,10 @@ export async function processIncomingMessage(
     try {
       await supabase
         .from("patients")
-        .update({ last_activity_at: new Date().toISOString() })
+        .update({ last_visit_at: new Date().toISOString() })
         .eq("id", patient.id);
     } catch (error) {
-      console.warn("Failed to update patient last_activity_at:", error);
+      console.warn("Failed to update patient last_visit_at:", error);
       // Don't fail the message processing for this
     }
 
@@ -71,18 +83,7 @@ export async function processIncomingMessage(
     const lowerText = text.toLowerCase();
 
     // Try advanced handlers first using pre-compiled patterns (better performance)
-    const advancedPatterns = [
-      MESSAGE_PATTERNS.LAB,
-      MESSAGE_PATTERNS.RESULTS,
-      MESSAGE_PATTERNS.PRESCRIPTION,
-      MESSAGE_PATTERNS.BILLING,
-      MESSAGE_PATTERNS.DOCTOR,
-      MESSAGE_PATTERNS.RESCHEDULE,
-      MESSAGE_PATTERNS.STATUS,
-      MESSAGE_PATTERNS.FEEDBACK
-    ];
-
-    if (advancedPatterns.some(pattern => matchesPattern(lowerText, pattern))) {
+    if (ADVANCED_PATTERNS.some(pattern => matchesPattern(lowerText, pattern))) {
       const advancedResult = await routeAdvancedMessage(supabase, clinicId, message, patient, text);
       if (advancedResult.success) {
         return advancedResult;

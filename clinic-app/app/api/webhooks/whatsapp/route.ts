@@ -212,8 +212,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Wait for all processing to complete (with timeout) and track results
+    let timedOut = false;
     const timeoutPromise = new Promise<PromiseSettledResult<void>[]>((resolve) => {
       setTimeout(() => {
+        timedOut = true;
         console.warn("Message processing timeout - responding to webhook anyway");
         resolve([]);
       }, 30000); // 30 second timeout
@@ -230,11 +232,22 @@ export async function POST(request: NextRequest) {
 
     // Mark webhook with appropriate status
     if (webhookEventId) {
+      let status = "processed";
+      let message: string | undefined;
+
+      if (timedOut) {
+        status = "failed";
+        message = "Webhook processing timeout (> 30s)";
+      } else if (failedCount > 0) {
+        status = "failed";
+        message = `${failedCount}/${results?.length || 0} messages failed`;
+      }
+
       await updateWebhookEventStatus(
         supabase,
         webhookEventId,
-        failedCount > 0 ? "failed" : "processed",
-        failedCount > 0 ? `${failedCount}/${results?.length || 0} messages failed` : undefined
+        status,
+        message
       );
     }
 

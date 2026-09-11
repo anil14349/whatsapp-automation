@@ -4,6 +4,7 @@
  */
 
 import { createClient } from "@supabase/supabase-js";
+import { queryWithTimeout } from "@/lib/supabase/withTimeout";
 
 export interface WhatsAppStatusUpdate {
   id: string; // WhatsApp message ID
@@ -72,13 +73,17 @@ export async function processStatusUpdate(
   statusUpdate: WhatsAppStatusUpdate
 ): Promise<StatusProcessingResult> {
   try {
-    // Find the message by WhatsApp message ID
-    const { data: message, error: findError } = await supabase
-      .from("messages")
-      .select("*")
-      .eq("whatsapp_message_id", statusUpdate.id)
-      .eq("clinic_id", clinicId)
-      .single();
+    // Find the message by WhatsApp message ID with timeout protection
+    const { data: message, error: findError } = await queryWithTimeout(
+      supabase
+        .from("messages")
+        .select("*")
+        .eq("whatsapp_message_id", statusUpdate.id)
+        .eq("clinic_id", clinicId)
+        .single(),
+      5000,
+      `Find message ${statusUpdate.id}`
+    );
 
     if (findError || !message) {
       // Message not found - could be from another clinic or system message

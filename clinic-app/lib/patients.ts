@@ -217,10 +217,16 @@ export async function findOrCreatePatient(
 
     // Create new patient using idempotent upsert
     // This prevents race conditions when multiple webhooks arrive simultaneously
+    // Validate name is provided and not empty/whitespace
+    const validName = name?.trim();
+    if (!validName) {
+      console.warn("Creating patient without name (will need update):", { phone });
+    }
+
     const result = await upsertPatient(
       supabase,
       phone,
-      name || "Unknown",
+      validName || "",
       "EN",
       { updateLastVisit: true }
     );
