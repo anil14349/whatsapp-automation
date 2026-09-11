@@ -1738,16 +1738,22 @@ function validateFutureISODate(typedDate) {
 
     const todayStart =
         new Date(
-            Utilities.formatDate(
-                new Date(),
-                TIMEZONE,
-                "yyyy-MM-dd"
-            ) + "T00:00:00+05:30"
+            buildISODatetimeWithTimezone(
+                Utilities.formatDate(
+                    new Date(),
+                    TIMEZONE,
+                    "yyyy-MM-dd"
+                ),
+                "00:00"
+            )
         );
 
     const requestedDate =
         new Date(
-            typedDate + "T00:00:00+05:30"
+            buildISODatetimeWithTimezone(
+                typedDate,
+                "00:00"
+            )
         );
 
     if (

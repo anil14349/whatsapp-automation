@@ -22,6 +22,7 @@ const SRC_FILES = [
     "src/Util_Idempotency.gs",
     "src/Util_Maintenance.gs",
     "src/Util_SlotReservation.gs",
+    "src/Util_RLS.gs",
     "src/Logging.gs",
     "src/Model_Reminders.gs",
     "src/Model_AppointmentStatus.gs",

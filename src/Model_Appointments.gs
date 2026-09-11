@@ -173,7 +173,10 @@ function bookAppointment(
 
     const startTime =
         new Date(
-            `${dateString}T${time24}:00+05:30`
+            buildISODatetimeWithTimezone(
+                dateString,
+                time24
+            )
         );
 
     if (isNaN(startTime.getTime())) {
@@ -1058,7 +1061,10 @@ function rescheduleAppointment(
 
     const newStartTime =
         new Date(
-            `${newDateString}T${newTime24}:00+05:30`
+            buildISODatetimeWithTimezone(
+                newDateString,
+                newTime24
+            )
         );
 
     if (
@@ -2238,7 +2244,12 @@ function formatReceiptDate(isoDate) {
 
     try {
         return Utilities.formatDate(
-            new Date(value + "T00:00:00+05:30"),
+            new Date(
+                buildISODatetimeWithTimezone(
+                    value,
+                    "00:00"
+                )
+            ),
             TIMEZONE,
             "EEEE, dd MMMM yyyy"
         );

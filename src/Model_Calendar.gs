@@ -169,7 +169,10 @@ function getAvailableSlots(
 
     const date =
         new Date(
-            `${dateString}T00:00:00+05:30`
+            buildISODatetimeWithTimezone(
+                dateString,
+                "00:00"
+            )
         );
 
     if (!isValidISODate(dateString)) {

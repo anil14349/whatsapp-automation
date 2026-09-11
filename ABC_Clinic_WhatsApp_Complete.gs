@@ -1863,7 +1863,10 @@ function formatAppointmentDisplayDate(value) {
     if (iso) {
         return Utilities.formatDate(
             new Date(
-                iso + "T00:00:00+05:30"
+                buildISODatetimeWithTimezone(
+                    iso,
+                    "00:00"
+                )
             ),
             TIMEZONE,
             "dd-MMM-yyyy"
@@ -3219,7 +3222,10 @@ function isValidISODate(dateString) {
 
     const date =
         new Date(
-            `${value}T00:00:00+05:30`
+            buildISODatetimeWithTimezone(
+                value,
+                "00:00"
+            )
         );
 
     if (isNaN(date.getTime())) {
@@ -3328,7 +3334,10 @@ function formatAppointmentSheetDate(value) {
     if (iso) {
         return Utilities.formatDate(
             new Date(
-                iso + "T00:00:00+05:30"
+                buildISODatetimeWithTimezone(
+                    iso,
+                    "00:00"
+                )
             ),
             TIMEZONE,
             "dd-MMM-yyyy"
@@ -3488,7 +3497,10 @@ function parseAppointmentSheetDateTime(
 
     const dateTime =
         new Date(
-            iso + "T" + time24 + ":00+05:30"
+            buildISODatetimeWithTimezone(
+                iso,
+                time24
+            )
         );
 
     return isNaN(dateTime.getTime())
@@ -3702,7 +3714,12 @@ function compareAvailabilityTimes(
 ) {
 
     const sampleDate =
-        new Date("2026-01-01T00:00:00+05:30");
+        new Date(
+            buildISODatetimeWithTimezone(
+                "2026-01-01",
+                "00:00"
+            )
+        );
 
     const start =
         parseAvailabilityTimeValue(
@@ -4202,12 +4219,18 @@ function addDoctorLeaveRange(
 
     const cursor =
         new Date(
-            startDate + "T00:00:00+05:30"
+            buildISODatetimeWithTimezone(
+                startDate,
+                "00:00"
+            )
         );
 
     const end =
         new Date(
-            endDate + "T00:00:00+05:30"
+            buildISODatetimeWithTimezone(
+                endDate,
+                "00:00"
+            )
         );
 
     while (cursor.getTime() <= end.getTime()) {
@@ -4631,7 +4654,10 @@ function getAvailableSlots(
 
     const date =
         new Date(
-            `${dateString}T00:00:00+05:30`
+            buildISODatetimeWithTimezone(
+                dateString,
+                "00:00"
+            )
         );
 
     if (!isValidISODate(dateString)) {
@@ -5601,7 +5627,10 @@ function bookAppointment(
 
     const startTime =
         new Date(
-            `${dateString}T${time24}:00+05:30`
+            buildISODatetimeWithTimezone(
+                dateString,
+                time24
+            )
         );
 
     if (isNaN(startTime.getTime())) {
@@ -6484,7 +6513,10 @@ function rescheduleAppointment(
 
     const newStartTime =
         new Date(
-            `${newDateString}T${newTime24}:00+05:30`
+            buildISODatetimeWithTimezone(
+                newDateString,
+                newTime24
+            )
         );
 
     if (
@@ -7588,7 +7620,10 @@ function getDoctorScheduleForDate(
     const targetDate =
         Utilities.formatDate(
             new Date(
-                `${dateString}T00:00:00+05:30`
+                buildISODatetimeWithTimezone(
+                    dateString,
+                    "00:00"
+                )
             ),
             TIMEZONE,
             "dd-MMM-yyyy"
@@ -7847,7 +7882,10 @@ function getDoctorWeeklySchedule(
         // Explicit Monday supplied
         monday =
             new Date(
-                `${weekStartString}T00:00:00+05:30`
+                buildISODatetimeWithTimezone(
+                    weekStartString,
+                    "00:00"
+                )
             );
 
     } else {
@@ -8592,7 +8630,10 @@ function parseAppointmentDateTime(
 
     const dateTime =
         new Date(
-            iso + "T" + time24 + ":00+05:30"
+            buildISODatetimeWithTimezone(
+                iso,
+                time24
+            )
         );
 
     return isNaN(dateTime.getTime())
@@ -9685,7 +9726,10 @@ function formatWhatsAppDisplayDate(isoDate) {
 
     return Utilities.formatDate(
         new Date(
-            isoDate + "T00:00:00+05:30"
+            buildISODatetimeWithTimezone(
+                isoDate,
+                "00:00"
+            )
         ),
         TIMEZONE,
         "dd-MMM-yyyy"
@@ -12054,16 +12098,22 @@ function validateFutureISODate(typedDate) {
 
     const todayStart =
         new Date(
-            Utilities.formatDate(
-                new Date(),
-                TIMEZONE,
-                "yyyy-MM-dd"
-            ) + "T00:00:00+05:30"
+            buildISODatetimeWithTimezone(
+                Utilities.formatDate(
+                    new Date(),
+                    TIMEZONE,
+                    "yyyy-MM-dd"
+                ),
+                "00:00"
+            )
         );
 
     const requestedDate =
         new Date(
-            typedDate + "T00:00:00+05:30"
+            buildISODatetimeWithTimezone(
+                typedDate,
+                "00:00"
+            )
         );
 
     if (
@@ -18774,6 +18824,52 @@ function getHomeCollectionRadiusKm() {
 }
 
 
+function getTimezoneOffsetString() {
+
+    const now = new Date();
+
+    const utcDate =
+        new Date(now.getTime() +
+        now.getTimezoneOffset() * 60000);
+
+    const tzDate =
+        new Date(
+            Utilities.formatDate(now, TIMEZONE, "yyyy-MM-dd'T'HH:mm:ss")
+        );
+
+    const diffMs =
+        tzDate.getTime() - utcDate.getTime();
+
+    const diffMins = Math.round(diffMs / 60000);
+    const hours = Math.floor(Math.abs(diffMins) / 60);
+    const mins = Math.abs(diffMins) % 60;
+
+    const sign = diffMins >= 0 ? "+" : "-";
+
+    return (
+        sign +
+        String(hours).padStart(2, "0") + ":" +
+        String(mins).padStart(2, "0")
+    );
+}
+
+
+function buildISODatetimeWithTimezone(dateString, timeString) {
+
+    if (!dateString) {
+        return "";
+    }
+
+    const tzOffset = getTimezoneOffsetString();
+
+    if (!timeString) {
+        return dateString + "T00:00:00" + tzOffset;
+    }
+
+    return dateString + "T" + timeString + ":00" + tzOffset;
+}
+
+
 function haversineDistanceKm(
     lat1,
     lng1,
@@ -19502,6 +19598,211 @@ function cleanupExpiredSlotReservations() {
 }
 
 
+function validateDoctorClinicAccess(doctorId) {
+
+    if (!doctorId) {
+        return {
+            authorized: false,
+            reason: "Doctor ID is required"
+        };
+    }
+
+    const doctor = getDoctorRecord(doctorId);
+
+    if (!doctor) {
+        return {
+            authorized: false,
+            reason: "Doctor not found"
+        };
+    }
+
+    // Doctor exists (clinic isolation is per-sheet instance)
+    // The Google Sheet itself is clinic-specific; all doctors in the
+    // sheet belong to the same clinic. No clinic ID column needed.
+
+    return {
+        authorized: true,
+        clinicName: doctor.clinicName || "",
+        doctorName: doctor.doctorName || ""
+    };
+}
+
+
+function validateAppointmentClinicAccess(appointmentId) {
+
+    if (!appointmentId) {
+        return {
+            authorized: false,
+            reason: "Appointment ID is required"
+        };
+    }
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+        return {
+            authorized: false,
+            reason: "Appointments sheet not found"
+        };
+    }
+
+    const data = sheet.getDataRange().getValues();
+
+    // Find appointment (scan backwards for efficiency)
+    for (let i = data.length - 1; i >= 1; i--) {
+
+        const rowAppointmentId =
+            String(data[i][0] || "").trim();
+
+        if (rowAppointmentId !== String(appointmentId).trim()) {
+            continue;
+        }
+
+        // Found appointment
+        const doctorId =
+            String(data[i][3] || "").trim();
+
+        if (!doctorId) {
+            return {
+                authorized: false,
+                reason: "Appointment has no doctor assigned"
+            };
+        }
+
+        // Validate doctor belongs to clinic
+        const doctorAccess =
+            validateDoctorClinicAccess(doctorId);
+
+        return {
+            authorized: doctorAccess.authorized,
+            doctorId: doctorId,
+            clinicName: doctorAccess.clinicName,
+            reason: doctorAccess.reason
+        };
+    }
+
+    return {
+        authorized: false,
+        reason: "Appointment not found"
+    };
+}
+
+
+function validatePatientDataAccess(appointmentId, patientPhone) {
+
+    if (!appointmentId || !patientPhone) {
+        return {
+            authorized: false,
+            reason: "Appointment ID and patient phone required"
+        };
+    }
+
+    // Verify appointment exists and belongs to patient
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+        return {
+            authorized: false,
+            reason: "Appointments sheet not found"
+        };
+    }
+
+    const data = sheet.getDataRange().getValues();
+
+    for (let i = data.length - 1; i >= 1; i--) {
+
+        const rowAppointmentId =
+            String(data[i][0] || "").trim();
+
+        if (
+            rowAppointmentId !==
+            String(appointmentId).trim()
+        ) {
+            continue;
+        }
+
+        // Found appointment — verify patient ownership
+        const rowPhone =
+            String(data[i][5] || "").trim();
+
+        const authorized =
+            phonesMatch(rowPhone, patientPhone);
+
+        return {
+            authorized: authorized,
+            patientPhone: rowPhone,
+            reason: authorized
+                ? ""
+                : "Patient phone does not match appointment"
+        };
+    }
+
+    return {
+        authorized: false,
+        reason: "Appointment not found"
+    };
+}
+
+
+function logRLSViolation(
+    violationType,
+    attemptedId,
+    requestorType,
+    requestorId,
+    reason
+) {
+
+    try {
+
+        const ss =
+            SpreadsheetApp.getActiveSpreadsheet();
+
+        let logSheet =
+            ss.getSheetByName("RLS_Violations");
+
+        if (!logSheet) {
+
+            logSheet = ss.insertSheet("RLS_Violations");
+
+            logSheet.appendRow([
+                "Timestamp",
+                "Violation Type",
+                "Attempted ID",
+                "Requestor Type",
+                "Requestor ID",
+                "Reason"
+            ]);
+
+            logSheet.hideSheet();
+        }
+
+        logSheet.appendRow([
+            new Date(),
+            violationType,
+            attemptedId,
+            requestorType,
+            requestorId,
+            reason
+        ]);
+
+    } catch (error) {
+
+        Logger.log(
+            "Failed to log RLS violation: " +
+            error.message
+        );
+    }
+}
+
+
 function appendWhatsAppLogEntry(
     ss,
     entry
@@ -20078,7 +20379,12 @@ function formatReceiptDate(isoDate) {
 
     try {
         return Utilities.formatDate(
-            new Date(value + "T00:00:00+05:30"),
+            new Date(
+                buildISODatetimeWithTimezone(
+                    value,
+                    "00:00"
+                )
+            ),
             TIMEZONE,
             "EEEE, dd MMMM yyyy"
         );

@@ -206,7 +206,12 @@ function compareAvailabilityTimes(
 ) {
 
     const sampleDate =
-        new Date("2026-01-01T00:00:00+05:30");
+        new Date(
+            buildISODatetimeWithTimezone(
+                "2026-01-01",
+                "00:00"
+            )
+        );
 
     const start =
         parseAvailabilityTimeValue(
@@ -715,12 +720,18 @@ function addDoctorLeaveRange(
 
     const cursor =
         new Date(
-            startDate + "T00:00:00+05:30"
+            buildISODatetimeWithTimezone(
+                startDate,
+                "00:00"
+            )
         );
 
     const end =
         new Date(
-            endDate + "T00:00:00+05:30"
+            buildISODatetimeWithTimezone(
+                endDate,
+                "00:00"
+            )
         );
 
     while (cursor.getTime() <= end.getTime()) {
@@ -1331,7 +1342,10 @@ function getDoctorScheduleForDate(
     const targetDate =
         Utilities.formatDate(
             new Date(
-                `${dateString}T00:00:00+05:30`
+                buildISODatetimeWithTimezone(
+                    dateString,
+                    "00:00"
+                )
             ),
             TIMEZONE,
             "dd-MMM-yyyy"
@@ -1591,7 +1605,10 @@ function getDoctorWeeklySchedule(
         // Explicit Monday supplied
         monday =
             new Date(
-                `${weekStartString}T00:00:00+05:30`
+                buildISODatetimeWithTimezone(
+                    weekStartString,
+                    "00:00"
+                )
             );
 
     } else {

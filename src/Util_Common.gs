@@ -5,6 +5,62 @@
 // ============================================================
 
 
+
+// ========================================================
+// TIMEZONE HELPERS
+// ========================================================
+// Get the ISO 8601 offset string for the configured TIMEZONE
+// e.g., "Asia/Kolkata" → "+05:30"
+function getTimezoneOffsetString() {
+
+    const now = new Date();
+
+    const utcDate =
+        new Date(now.getTime() +
+        now.getTimezoneOffset() * 60000);
+
+    const tzDate =
+        new Date(
+            Utilities.formatDate(now, TIMEZONE, "yyyy-MM-dd'T'HH:mm:ss")
+        );
+
+    const diffMs =
+        tzDate.getTime() - utcDate.getTime();
+
+    const diffMins = Math.round(diffMs / 60000);
+    const hours = Math.floor(Math.abs(diffMins) / 60);
+    const mins = Math.abs(diffMins) % 60;
+
+    const sign = diffMins >= 0 ? "+" : "-";
+
+    return (
+        sign +
+        String(hours).padStart(2, "0") + ":" +
+        String(mins).padStart(2, "0")
+    );
+}
+
+
+// Build ISO 8601 datetime string with configured timezone offset
+// e.g., buildISODatetimeWithTimezone("2026-09-12", "14:30")
+//       → "2026-09-12T14:30:00+05:30"
+function buildISODatetimeWithTimezone(dateString, timeString) {
+
+    if (!dateString) {
+        return "";
+    }
+
+    const tzOffset = getTimezoneOffsetString();
+
+    if (!timeString) {
+        return dateString + "T00:00:00" + tzOffset;
+    }
+
+    return dateString + "T" + timeString + ":00" + tzOffset;
+}
+
+
+
 function normalizeWhatsAppPhone(phone) {
 
     const digits =
@@ -78,7 +134,10 @@ function formatAppointmentDisplayDate(value) {
     if (iso) {
         return Utilities.formatDate(
             new Date(
-                iso + "T00:00:00+05:30"
+                buildISODatetimeWithTimezone(
+                    iso,
+                    "00:00"
+                )
             ),
             TIMEZONE,
             "dd-MMM-yyyy"
@@ -223,7 +282,10 @@ function isValidISODate(dateString) {
 
     const date =
         new Date(
-            `${value}T00:00:00+05:30`
+            buildISODatetimeWithTimezone(
+                value,
+                "00:00"
+            )
         );
 
     if (isNaN(date.getTime())) {
@@ -334,7 +396,10 @@ function formatAppointmentSheetDate(value) {
     if (iso) {
         return Utilities.formatDate(
             new Date(
-                iso + "T00:00:00+05:30"
+                buildISODatetimeWithTimezone(
+                    iso,
+                    "00:00"
+                )
             ),
             TIMEZONE,
             "dd-MMM-yyyy"
@@ -499,7 +564,10 @@ function parseAppointmentSheetDateTime(
 
     const dateTime =
         new Date(
-            iso + "T" + time24 + ":00+05:30"
+            buildISODatetimeWithTimezone(
+                iso,
+                time24
+            )
         );
 
     return isNaN(dateTime.getTime())
@@ -573,7 +641,10 @@ function parseAppointmentDateTime(
 
     const dateTime =
         new Date(
-            iso + "T" + time24 + ":00+05:30"
+            buildISODatetimeWithTimezone(
+                iso,
+                time24
+            )
         );
 
     return isNaN(dateTime.getTime())
