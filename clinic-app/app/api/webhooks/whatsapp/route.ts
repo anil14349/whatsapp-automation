@@ -252,7 +252,8 @@ export async function POST(request: NextRequest) {
     }
 
     const processingTime = Date.now() - startTime;
-    console.log(`Webhook processed successfully in ${processingTime}ms`);
+    const statusMessage = failedCount > 0 || timedOut ? "failed" : "successfully";
+    console.log(`Webhook processed ${statusMessage} in ${processingTime}ms (status: ${failedCount > 0 || timedOut ? "failed" : "processed"})`);
 
     // Return success
     return NextResponse.json(

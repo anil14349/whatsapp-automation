@@ -115,7 +115,9 @@ export async function processStatusUpdate(
       case "failed":
         updateData.failed_at = new Date(statusUpdate.timestamp * 1000).toISOString();
         if (statusUpdate.error) {
-          updateData.error_message = `${statusUpdate.error.title}: ${statusUpdate.error.message}`;
+          const title = statusUpdate.error.title || "Unknown error";
+          const msg = statusUpdate.error.message || "";
+          updateData.error_message = msg ? `${title}: ${msg}` : title;
         }
         break;
     }
