@@ -22169,6 +22169,980 @@ function getAppointmentNotes(appointmentId) {
 }
 
 
+function ensureWaitlistSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName("Waitlist");
+
+    if (!sheet) {
+
+        sheet = ss.insertSheet("Waitlist");
+
+        sheet.appendRow([
+            "Waitlist ID",
+            "Doctor ID",
+            "Preferred Date",
+            "Preferred Time",
+            "Patient Phone",
+            "Patient Name",
+            "Added On",
+            "Status",
+            "Notified At",
+            "Booked Appointment ID"
+        ]);
+
+        sheet.hideSheet();
+    }
+
+    return sheet;
+}
+
+
+function addToWaitlist(
+    doctorId,
+    preferredDate,
+    preferredTime,
+    patientPhone,
+    patientName
+) {
+
+    if (
+        !doctorId || !preferredDate ||
+        !preferredTime || !patientPhone
+    ) {
+
+        return {
+            success: false,
+            message: "Missing required fields"
+        };
+    }
+
+    const sheet = ensureWaitlistSheet();
+
+    const waitlistId =
+        "WL_" +
+        Utilities.getUuid()
+            .substring(0, 8)
+            .toUpperCase();
+
+    sheet.appendRow([
+        waitlistId,
+        String(doctorId).trim(),
+        String(preferredDate).trim(),
+        String(preferredTime).trim(),
+        String(patientPhone).trim(),
+        String(patientName || "").trim(),
+        new Date(),
+        "WAITING",
+        "",
+        ""
+    ]);
+
+    return {
+        success: true,
+        waitlistId: waitlistId,
+        message:
+            "Added to waitlist. We'll notify you when " +
+            preferredTime + " becomes available."
+    };
+}
+
+
+function getWaitlistForSlot(
+    doctorId,
+    date,
+    time
+) {
+
+    if (!doctorId || !date || !time) {
+        return [];
+    }
+
+    const sheet = ensureWaitlistSheet();
+
+    const data = sheet.getDataRange().getValues();
+
+    const waiting = [];
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const wlDoctor =
+            String(data[i][1] || "").trim();
+
+        const wlDate =
+            String(data[i][2] || "").trim();
+
+        const wlTime =
+            String(data[i][3] || "").trim();
+
+        const wlStatus =
+            String(data[i][7] || "").trim();
+
+        if (
+            wlDoctor === String(doctorId).trim() &&
+            wlDate === String(date).trim() &&
+            wlTime === String(time).trim() &&
+            wlStatus === "WAITING"
+        ) {
+
+            waiting.push({
+                row: i + 1,
+                waitlistId: data[i][0],
+                phone: data[i][4],
+                name: data[i][5],
+                addedOn: data[i][6]
+            });
+        }
+    }
+
+    return waiting;
+}
+
+
+function notifyNextWaitlistedPatient(
+    doctorId,
+    date,
+    time
+) {
+
+    if (!doctorId || !date || !time) {
+
+        return {
+            notified: false,
+            message: "Invalid slot information"
+        };
+    }
+
+    // Get waitlist (FIFO order)
+    const waiting = getWaitlistForSlot(
+        doctorId,
+        date,
+        time
+    );
+
+    if (waiting.length === 0) {
+
+        return {
+            notified: false,
+            message: "No one on waitlist for this slot"
+        };
+    }
+
+    // Get first person on waitlist
+    const nextPatient = waiting[0];
+
+    const doctor = getDoctorRecord(doctorId);
+
+    const doctorName =
+        doctor && doctor.doctorName
+            ? doctor.doctorName
+            : "Our doctor";
+
+    const message =
+        "🎉 *Great News!*\n\n" +
+        "A slot with Dr. " + doctorName + " is " +
+        "now available!\n\n" +
+        "📅 " + date + "\n" +
+        "🕐 " + time + "\n\n" +
+        "Reply *YES* to book this appointment " +
+        "or *NO* to stay on waitlist.";
+
+    try {
+
+        sendWhatsAppTextMessage(
+            nextPatient.phone,
+            message
+        );
+
+        // Mark as notified
+        const sheet = ensureWaitlistSheet();
+
+        sheet.getRange(nextPatient.row, 8).setValue(
+            "NOTIFIED"
+        );
+
+        sheet.getRange(nextPatient.row, 9).setValue(
+            new Date()
+        );
+
+        Logger.log(
+            "Notified waitlist patient: " +
+            nextPatient.phone
+        );
+
+        return {
+            notified: true,
+            patientPhone: nextPatient.phone,
+            patientName: nextPatient.name,
+            message: "Notification sent to: " +
+                nextPatient.name
+        };
+
+    } catch (error) {
+
+        Logger.log(
+            "Failed to notify waitlist patient: " +
+            error.message
+        );
+
+        return {
+            notified: false,
+            message: "Failed to send notification"
+        };
+    }
+}
+
+
+function recordWaitlistBooking(
+    waitlistId,
+    appointmentId
+) {
+
+    if (!waitlistId || !appointmentId) {
+        return false;
+    }
+
+    const sheet = ensureWaitlistSheet();
+
+    const data = sheet.getDataRange().getValues();
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        if (
+            String(data[i][0] || "").trim() ===
+            String(waitlistId).trim()
+        ) {
+
+            sheet.getRange(i + 1, 8).setValue("BOOKED");
+            sheet.getRange(i + 1, 10).setValue(
+                String(appointmentId).trim()
+            );
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+function removeFromWaitlist(waitlistId) {
+
+    if (!waitlistId) {
+        return false;
+    }
+
+    const sheet = ensureWaitlistSheet();
+
+    const data = sheet.getDataRange().getValues();
+
+    // Delete in reverse to preserve row numbers
+    for (
+        let i = data.length - 1;
+        i >= 1;
+        i--
+    ) {
+
+        if (
+            String(data[i][0] || "").trim() ===
+            String(waitlistId).trim()
+        ) {
+
+            sheet.deleteRow(i + 1);
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+function getPatientWaitlistEntries(patientPhone) {
+
+    if (!patientPhone) {
+        return [];
+    }
+
+    const sheet = ensureWaitlistSheet();
+
+    const data = sheet.getDataRange().getValues();
+
+    const entries = [];
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const phone =
+            String(data[i][4] || "").trim();
+
+        const status =
+            String(data[i][7] || "").trim();
+
+        if (
+            phonesMatch(phone, patientPhone) &&
+            status === "WAITING"
+        ) {
+
+            const doctor =
+                getDoctorRecord(data[i][1]);
+
+            entries.push({
+                waitlistId: data[i][0],
+                doctorName:
+                    doctor && doctor.doctorName
+                        ? doctor.doctorName
+                        : "Unknown",
+                date: data[i][2],
+                time: data[i][3],
+                addedOn: data[i][6]
+            });
+        }
+    }
+
+    return entries;
+}
+
+
+function ensureNotificationPrefColumns() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("WhatsApp_Sessions");
+
+    if (!sheet) {
+        return false;
+    }
+
+    const headers =
+        sheet.getRange(1, 1, 1, 20).getValues()[0];
+
+    const headerMap = {};
+    for (let i = 0; i < headers.length; i++) {
+        headerMap[String(headers[i]).trim().toLowerCase()] =
+            i + 1;
+    }
+
+    // Check if column exists (assuming Location is col 15)
+    // Add new columns after existing ones
+
+    if (!headerMap["notification_enabled"]) {
+        sheet.getRange(1, 16).setValue("Notifications Enabled");
+    }
+
+    if (!headerMap["notification_channel"]) {
+        sheet.getRange(1, 17).setValue("Notification Channel");
+    }
+
+    if (!headerMap["quiet_hours_start"]) {
+        sheet.getRange(1, 18).setValue("Quiet Hours Start");
+    }
+
+    if (!headerMap["quiet_hours_end"]) {
+        sheet.getRange(1, 19).setValue("Quiet Hours End");
+    }
+
+    return true;
+}
+
+
+function getNotificationPreferences(patientPhone) {
+
+    if (!patientPhone) {
+
+        return {
+            enabled: true,
+            channel: "whatsapp",
+            quietHoursStart: "",
+            quietHoursEnd: ""
+        };
+    }
+
+    const session =
+        getWhatsAppSession(patientPhone);
+
+    if (!session) {
+
+        return {
+            enabled: true,
+            channel: "whatsapp",
+            quietHoursStart: "",
+            quietHoursEnd: ""
+        };
+    }
+
+    // For now, return defaults
+    // In future, would read from sheet columns 16-19
+
+    return {
+        enabled: true,
+        channel: "whatsapp",
+        quietHoursStart: "",
+        quietHoursEnd: ""
+    };
+}
+
+
+function setNotificationPreferences(
+    patientPhone,
+    enabled,
+    channel,
+    quietHoursStart,
+    quietHoursEnd
+) {
+
+    if (!patientPhone) {
+        return false;
+    }
+
+    // Validate channel
+    const validChannels = [
+        "whatsapp",
+        "sms",
+        "both",
+        "none"
+    ];
+
+    if (
+        channel &&
+        validChannels.indexOf(
+            String(channel).toLowerCase()
+        ) === -1
+    ) {
+
+        return false;
+    }
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("WhatsApp_Sessions");
+
+    if (!sheet) {
+        return false;
+    }
+
+    const data = sheet.getDataRange().getValues();
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        if (
+            !phonesMatch(data[i][0], patientPhone)
+        ) {
+            continue;
+        }
+
+        // Update columns 16-19
+        sheet.getRange(i + 1, 16).setValue(
+            enabled ? "YES" : "NO"
+        );
+
+        if (channel) {
+            sheet.getRange(i + 1, 17).setValue(
+                String(channel).toLowerCase()
+            );
+        }
+
+        if (quietHoursStart) {
+            sheet.getRange(i + 1, 18).setValue(
+                quietHoursStart
+            );
+        }
+
+        if (quietHoursEnd) {
+            sheet.getRange(i + 1, 19).setValue(
+                quietHoursEnd
+            );
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+
+function shouldSendNotification(
+    patientPhone,
+    notificationType
+) {
+
+    if (!patientPhone) {
+        return true;
+    }
+
+    const prefs =
+        getNotificationPreferences(patientPhone);
+
+    // Check if notifications disabled
+    if (!prefs.enabled) {
+        return false;
+    }
+
+    // Check quiet hours
+    if (
+        prefs.quietHoursStart &&
+        prefs.quietHoursEnd
+    ) {
+
+        const now = new Date();
+        const currentHour =
+            Utilities.formatDate(now, TIMEZONE, "HH:mm");
+
+        if (
+            currentHour >= prefs.quietHoursStart &&
+            currentHour <= prefs.quietHoursEnd
+        ) {
+
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+function buildNotificationPreferencesMenu() {
+
+    return {
+        title: "🔔 Notification Settings",
+        rows: [
+            {
+                id: "notif_enable",
+                title: "Enable Notifications",
+                description: "Get appointment reminders"
+            },
+            {
+                id: "notif_disable",
+                title: "Disable Notifications",
+                description: "Don't send me reminders"
+            },
+            {
+                id: "notif_channel",
+                title: "Notification Channel",
+                description: "Choose WhatsApp or SMS"
+            },
+            {
+                id: "notif_quiet",
+                title: "Set Quiet Hours",
+                description: "Don't notify between times"
+            },
+            {
+                id: "notif_view",
+                title: "View My Preferences",
+                description: "See current settings"
+            }
+        ]
+    };
+}
+
+
+function formatPreferencesMessage(patientPhone) {
+
+    const prefs =
+        getNotificationPreferences(patientPhone);
+
+    let message =
+        "🔔 *Your Notification Settings*\n\n";
+
+    message +=
+        "Notifications: " +
+        (prefs.enabled ? "✅ Enabled" : "❌ Disabled") +
+        "\n";
+
+    message +=
+        "Channel: " + prefs.channel.toUpperCase() + "\n";
+
+    if (
+        prefs.quietHoursStart &&
+        prefs.quietHoursEnd
+    ) {
+
+        message +=
+            "Quiet Hours: " +
+            prefs.quietHoursStart + " - " +
+            prefs.quietHoursEnd + "\n";
+
+    } else {
+
+        message +=
+            "Quiet Hours: None set\n";
+    }
+
+    return message;
+}
+
+
+function ensureFeedbackSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName("Feedback");
+
+    if (!sheet) {
+
+        sheet = ss.insertSheet("Feedback");
+
+        sheet.appendRow([
+            "Appointment ID",
+            "Patient Phone",
+            "Patient Name",
+            "Doctor Name",
+            "Rating",
+            "Comments",
+            "Submitted At",
+            "Status"
+        ]);
+
+        sheet.hideSheet();
+    }
+
+    return sheet;
+}
+
+
+function sendFeedbackSurvey(
+    appointmentId,
+    patientPhone,
+    patientName,
+    doctorName
+) {
+
+    if (
+        !appointmentId || !patientPhone ||
+        !doctorName
+    ) {
+
+        return {
+            success: false,
+            message: "Missing required information"
+        };
+    }
+
+    const message =
+        "⭐ *We'd love your feedback!*\n\n" +
+        "How was your experience with " +
+        "Dr. " + doctorName + "?\n\n" +
+        "Please rate 1-5 stars:\n" +
+        "1️⃣ Poor\n" +
+        "2️⃣ Fair\n" +
+        "3️⃣ Good\n" +
+        "4️⃣ Very Good\n" +
+        "5️⃣ Excellent\n\n" +
+        "(Just reply with the number)";
+
+    try {
+
+        sendWhatsAppTextMessage(
+            patientPhone,
+            message
+        );
+
+        // Queue for feedback tracking
+        const sheet = ensureFeedbackSheet();
+
+        sheet.appendRow([
+            String(appointmentId).trim(),
+            String(patientPhone).trim(),
+            String(patientName || "").trim(),
+            String(doctorName).trim(),
+            "",
+            "",
+            new Date(),
+            "PENDING"
+        ]);
+
+        return {
+            success: true,
+            message: "Feedback survey sent"
+        };
+
+    } catch (error) {
+
+        Logger.log(
+            "Failed to send feedback: " +
+            error.message
+        );
+
+        return {
+            success: false,
+            message: "Failed to send feedback"
+        };
+    }
+}
+
+
+function recordFeedbackRating(
+    appointmentId,
+    patientPhone,
+    rating
+) {
+
+    if (
+        !appointmentId || !patientPhone ||
+        !rating
+    ) {
+
+        return false;
+    }
+
+    const ratingNum = Number(rating);
+
+    if (ratingNum < 1 || ratingNum > 5) {
+        return false;
+    }
+
+    const sheet = ensureFeedbackSheet();
+
+    const data = sheet.getDataRange().getValues();
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        if (
+            String(data[i][0] || "").trim() ===
+            String(appointmentId).trim() &&
+            phonesMatch(data[i][1], patientPhone)
+        ) {
+
+            sheet.getRange(i + 1, 5).setValue(
+                ratingNum
+            );
+
+            sheet.getRange(i + 1, 8).setValue(
+                "RATED"
+            );
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+function recordFeedbackWithComments(
+    appointmentId,
+    patientPhone,
+    rating,
+    comments
+) {
+
+    if (
+        !appointmentId || !patientPhone ||
+        !rating
+    ) {
+
+        return false;
+    }
+
+    const ratingNum = Number(rating);
+
+    if (ratingNum < 1 || ratingNum > 5) {
+        return false;
+    }
+
+    const sheet = ensureFeedbackSheet();
+
+    const data = sheet.getDataRange().getValues();
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        if (
+            String(data[i][0] || "").trim() ===
+            String(appointmentId).trim() &&
+            phonesMatch(data[i][1], patientPhone)
+        ) {
+
+            sheet.getRange(i + 1, 5).setValue(
+                ratingNum
+            );
+
+            if (comments) {
+                sheet.getRange(i + 1, 6).setValue(
+                    String(comments).trim()
+                );
+            }
+
+            sheet.getRange(i + 1, 8).setValue(
+                "COMPLETE"
+            );
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+function getDoctorAverageRating(doctorId) {
+
+    if (!doctorId) {
+        return null;
+    }
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Feedback");
+
+    if (!sheet) {
+        return null;
+    }
+
+    const data = sheet.getDataRange().getValues();
+
+    let totalRating = 0;
+    let count = 0;
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const doctorName =
+            String(data[i][3] || "").trim();
+
+        const rating = Number(data[i][4] || 0);
+
+        const doctor =
+            getDoctorRecord(doctorId);
+
+        if (
+            doctor &&
+            doctor.doctorName === doctorName &&
+            rating > 0
+        ) {
+
+            totalRating += rating;
+            count++;
+        }
+    }
+
+    if (count === 0) {
+        return null;
+    }
+
+    const avgRating = (totalRating / count).toFixed(1);
+
+    return {
+        rating: Number(avgRating),
+        count: count
+    };
+}
+
+
+function getDoctorRecentFeedback(doctorId, limit) {
+
+    if (!doctorId) {
+        return [];
+    }
+
+    const feedbackLimit = limit || 5;
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Feedback");
+
+    if (!sheet) {
+        return [];
+    }
+
+    const data = sheet.getDataRange().getValues();
+
+    const feedback = [];
+
+    const doctor = getDoctorRecord(doctorId);
+
+    if (!doctor) {
+        return [];
+    }
+
+    // Scan backwards for most recent
+    for (
+        let i = data.length - 1;
+        i >= 1 && feedback.length < feedbackLimit;
+        i--
+    ) {
+
+        const doctorName =
+            String(data[i][3] || "").trim();
+
+        const rating = Number(data[i][4] || 0);
+
+        const comments =
+            String(data[i][5] || "").trim();
+
+        if (
+            doctorName === doctor.doctorName &&
+            rating > 0
+        ) {
+
+            feedback.push({
+                rating: rating,
+                comments: comments,
+                submittedAt: data[i][6]
+            });
+        }
+    }
+
+    return feedback;
+}
+
+
+function formatDoctorFeedbackMessage(doctorId) {
+
+    const avgRating = getDoctorAverageRating(doctorId);
+
+    if (!avgRating) {
+        return "";
+    }
+
+    const stars =
+        "⭐".repeat(Math.round(avgRating.rating));
+
+    return (
+        stars + " " +
+        avgRating.rating +
+        " (" + avgRating.count + " reviews)\n"
+    );
+}
+
+
 function appendWhatsAppLogEntry(
     ss,
     entry
