@@ -18826,6 +18826,16 @@ function getHomeCollectionRadiusKm() {
 
 function getTimezoneOffsetString() {
 
+    // ========================================================
+    // CACHING: Return cached offset if available
+    // ========================================================
+    // Timezone offset is constant for script lifetime;
+    // avoid recomputation on every datetime build
+
+    if (__cachedTimezoneOffset !== null) {
+        return __cachedTimezoneOffset;
+    }
+
     const now = new Date();
 
     const utcDate =
@@ -18846,11 +18856,12 @@ function getTimezoneOffsetString() {
 
     const sign = diffMins >= 0 ? "+" : "-";
 
-    return (
+    __cachedTimezoneOffset =
         sign +
         String(hours).padStart(2, "0") + ":" +
-        String(mins).padStart(2, "0")
-    );
+        String(mins).padStart(2, "0");
+
+    return __cachedTimezoneOffset;
 }
 
 
@@ -19199,11 +19210,13 @@ function archivePreviousDayAppointments() {
     // DELETE ARCHIVED ROWS
     // ========================================================
     // Delete in reverse order to avoid row number shifts
+    // When deleting row N, all rows below shift up, so delete
+    // from highest row number to lowest
 
     for (
-        let j = 0;
-        j < rowsToArchive.length;
-        j++
+        let j = rowsToArchive.length - 1;
+        j >= 0;
+        j--
     ) {
 
         appointmentSheet.deleteRow(
@@ -19449,10 +19462,17 @@ function isSlotReservedByOther(
     const normalizedTime =
         String(timeString).trim();
 
+    // ========================================================
+    // OPTIMIZATION: Scan from end backwards
+    // ========================================================
+    // Most recent reservations are at end; can often find match
+    // without scanning entire sheet. Also reduces iterations for
+    // mostly-recent-reservations common case
+
     for (
-        let i = 1;
-        i < data.length;
-        i++
+        let i = data.length - 1;
+        i >= 1;
+        i--
     ) {
 
         const reservedDoctor =
@@ -20586,9 +20606,6 @@ function bulkRescheduleAppointments(
         };
     }
 
-    const appointmentData =
-        sheet.getDataRange().getValues();
-
     const lock =
         LockService.getScriptLock();
 
@@ -20609,6 +20626,15 @@ function bulkRescheduleAppointments(
     }
 
     try {
+
+        // ========================================================
+        // LOAD SHEET DATA AFTER LOCK
+        // ========================================================
+        // Read sheet only after lock acquired to prevent stale reads
+        // from concurrent modifications
+
+        const appointmentData =
+            sheet.getDataRange().getValues();
 
         let updated = 0;
         let failed = 0;
@@ -20743,9 +20769,6 @@ function bulkCancelAppointments(
         };
     }
 
-    const appointmentData =
-        sheet.getDataRange().getValues();
-
     const lock =
         LockService.getScriptLock();
 
@@ -20766,6 +20789,14 @@ function bulkCancelAppointments(
     }
 
     try {
+
+        // ========================================================
+        // LOAD SHEET DATA AFTER LOCK
+        // ========================================================
+        // Read sheet only after lock acquired to prevent stale reads
+
+        const appointmentData =
+            sheet.getDataRange().getValues();
 
         let cancelled = 0;
         const notificationQueue = [];
@@ -21744,6 +21775,50 @@ function formatSlotsForWhatsApp(doctorId) {
 }
 
 
+function buildSlotIndex(slots) {
+
+    if (!slots || Object.keys(slots).length === 0) {
+        return [];
+    }
+
+    const index = [];
+
+    for (
+        const dateString in slots
+    ) {
+
+        if (!slots.hasOwnProperty(dateString)) {
+            continue;
+        }
+
+        const daySlots = slots[dateString];
+
+        const dayName =
+            Utilities.formatDate(
+                new Date(dateString + "T00:00:00"),
+                TIMEZONE,
+                "EEE, MMM d"
+            );
+
+        for (
+            let i = 0;
+            i < daySlots.length;
+            i++
+        ) {
+
+            index.push({
+                id: String(index.length + 1),
+                date: dateString,
+                time: daySlots[i],
+                dayName: dayName
+            });
+        }
+    }
+
+    return index;
+}
+
+
 function buildQuickBookingMenu(doctorId) {
 
     const slots = getSlotsByDoctor(doctorId);
@@ -21759,43 +21834,21 @@ function buildQuickBookingMenu(doctorId) {
         };
     }
 
-    const menuRows = [];
-    let rowId = 1;
+    // ========================================================
+    // USE SHARED SLOT INDEXING
+    // ========================================================
+    // Reuse buildSlotIndex to avoid duplicating iteration logic
 
-    for (
-        const dateString in slots
-    ) {
+    const slotIndex = buildSlotIndex(slots);
 
-        if (!slots.hasOwnProperty(dateString)) {
-            continue;
-        }
+    const menuRows = slotIndex.map(function (slot) {
 
-        const daySlots = slots[dateString];
-
-        for (
-            let i = 0;
-            i < daySlots.length;
-            i++
-        ) {
-
-            const time = daySlots[i];
-
-            const dayName =
-                Utilities.formatDate(
-                    new Date(dateString + "T00:00:00"),
-                    TIMEZONE,
-                    "EEE, MMM d"
-                );
-
-            menuRows.push({
-                id: String(rowId),
-                title: dayName + " @ " + time,
-                description: "Book this slot"
-            });
-
-            rowId++;
-        }
-    }
+        return {
+            id: slot.id,
+            title: slot.dayName + " @ " + slot.time,
+            description: "Book this slot"
+        };
+    });
 
     return {
         success: true,
@@ -21823,48 +21876,19 @@ function quickBookAppointment(
         };
     }
 
-    // Find the selected slot
-    let selectedSlotIndex = 0;
-    let selectedDate = "";
-    let selectedTime = "";
-    let slotFound = false;
+    // ========================================================
+    // USE SHARED SLOT INDEXING
+    // ========================================================
+    // Reuse buildSlotIndex to find the selected slot
 
-    for (
-        const dateString in slots
-    ) {
+    const slotIndex = buildSlotIndex(slots);
 
-        if (!slots.hasOwnProperty(dateString)) {
-            continue;
-        }
+    const selectedSlot = slotIndex.find(function (slot) {
 
-        const daySlots = slots[dateString];
+        return String(slot.id) === String(slotSelection).trim();
+    });
 
-        for (
-            let i = 0;
-            i < daySlots.length;
-            i++
-        ) {
-
-            selectedSlotIndex++;
-
-            if (
-                String(selectedSlotIndex) ===
-                String(slotSelection).trim()
-            ) {
-
-                selectedDate = dateString;
-                selectedTime = daySlots[i];
-                slotFound = true;
-                break;
-            }
-        }
-
-        if (slotFound) {
-            break;
-        }
-    }
-
-    if (!slotFound) {
+    if (!selectedSlot) {
 
         return {
             success: false,
@@ -21876,8 +21900,8 @@ function quickBookAppointment(
     // Book the appointment directly
     return bookAppointment(
         doctorId,
-        selectedDate,
-        selectedTime,
+        selectedSlot.date,
+        selectedSlot.time,
         patientName,
         patientPhone,
         patientLanguage
@@ -22267,6 +22291,21 @@ function getWaitlistForSlot(
 
     const waiting = [];
 
+    const normalizedDoctor =
+        String(doctorId).trim();
+
+    const normalizedDate =
+        String(date).trim();
+
+    const normalizedTime =
+        String(time).trim();
+
+    // ========================================================
+    // SCAN FORWARD FOR FIFO ORDER
+    // ========================================================
+    // Must scan forward to maintain FIFO (first in queue first)
+    // but exit early once we have >0 matches (likely only 1-3 people)
+
     for (
         let i = 1;
         i < data.length;
@@ -22286,9 +22325,9 @@ function getWaitlistForSlot(
             String(data[i][7] || "").trim();
 
         if (
-            wlDoctor === String(doctorId).trim() &&
-            wlDate === String(date).trim() &&
-            wlTime === String(time).trim() &&
+            wlDoctor === normalizedDoctor &&
+            wlDate === normalizedDate &&
+            wlTime === normalizedTime &&
             wlStatus === "WAITING"
         ) {
 
@@ -23026,6 +23065,22 @@ function getDoctorAverageRating(doctorId) {
     let totalRating = 0;
     let count = 0;
 
+    // ========================================================
+    // GET DOCTOR ONCE (outside loop)
+    // ========================================================
+    // getDoctorRecord loads entire Doctors sheet;
+    // fetch once instead of per-feedback-row to avoid O(n²)
+
+    const doctor =
+        getDoctorRecord(doctorId);
+
+    if (!doctor) {
+        return null;
+    }
+
+    const doctorNameToMatch =
+        doctor.doctorName;
+
     for (
         let i = 1;
         i < data.length;
@@ -23037,12 +23092,8 @@ function getDoctorAverageRating(doctorId) {
 
         const rating = Number(data[i][4] || 0);
 
-        const doctor =
-            getDoctorRecord(doctorId);
-
         if (
-            doctor &&
-            doctor.doctorName === doctorName &&
+            doctorName === doctorNameToMatch &&
             rating > 0
         ) {
 

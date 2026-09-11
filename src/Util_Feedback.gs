@@ -247,6 +247,22 @@ function getDoctorAverageRating(doctorId) {
     let totalRating = 0;
     let count = 0;
 
+    // ========================================================
+    // GET DOCTOR ONCE (outside loop)
+    // ========================================================
+    // getDoctorRecord loads entire Doctors sheet;
+    // fetch once instead of per-feedback-row to avoid O(n²)
+
+    const doctor =
+        getDoctorRecord(doctorId);
+
+    if (!doctor) {
+        return null;
+    }
+
+    const doctorNameToMatch =
+        doctor.doctorName;
+
     for (
         let i = 1;
         i < data.length;
@@ -258,12 +274,8 @@ function getDoctorAverageRating(doctorId) {
 
         const rating = Number(data[i][4] || 0);
 
-        const doctor =
-            getDoctorRecord(doctorId);
-
         if (
-            doctor &&
-            doctor.doctorName === doctorName &&
+            doctorName === doctorNameToMatch &&
             rating > 0
         ) {
 

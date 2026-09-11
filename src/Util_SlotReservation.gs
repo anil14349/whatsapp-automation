@@ -108,10 +108,17 @@ function isSlotReservedByOther(
     const normalizedTime =
         String(timeString).trim();
 
+    // ========================================================
+    // OPTIMIZATION: Scan from end backwards
+    // ========================================================
+    // Most recent reservations are at end; can often find match
+    // without scanning entire sheet. Also reduces iterations for
+    // mostly-recent-reservations common case
+
     for (
-        let i = 1;
-        i < data.length;
-        i++
+        let i = data.length - 1;
+        i >= 1;
+        i--
     ) {
 
         const reservedDoctor =

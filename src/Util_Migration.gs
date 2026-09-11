@@ -39,9 +39,6 @@ function bulkRescheduleAppointments(
         };
     }
 
-    const appointmentData =
-        sheet.getDataRange().getValues();
-
     const lock =
         LockService.getScriptLock();
 
@@ -62,6 +59,15 @@ function bulkRescheduleAppointments(
     }
 
     try {
+
+        // ========================================================
+        // LOAD SHEET DATA AFTER LOCK
+        // ========================================================
+        // Read sheet only after lock acquired to prevent stale reads
+        // from concurrent modifications
+
+        const appointmentData =
+            sheet.getDataRange().getValues();
 
         let updated = 0;
         let failed = 0;
@@ -199,9 +205,6 @@ function bulkCancelAppointments(
         };
     }
 
-    const appointmentData =
-        sheet.getDataRange().getValues();
-
     const lock =
         LockService.getScriptLock();
 
@@ -222,6 +225,14 @@ function bulkCancelAppointments(
     }
 
     try {
+
+        // ========================================================
+        // LOAD SHEET DATA AFTER LOCK
+        // ========================================================
+        // Read sheet only after lock acquired to prevent stale reads
+
+        const appointmentData =
+            sheet.getDataRange().getValues();
 
         let cancelled = 0;
         const notificationQueue = [];

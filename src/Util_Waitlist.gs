@@ -109,6 +109,21 @@ function getWaitlistForSlot(
 
     const waiting = [];
 
+    const normalizedDoctor =
+        String(doctorId).trim();
+
+    const normalizedDate =
+        String(date).trim();
+
+    const normalizedTime =
+        String(time).trim();
+
+    // ========================================================
+    // SCAN FORWARD FOR FIFO ORDER
+    // ========================================================
+    // Must scan forward to maintain FIFO (first in queue first)
+    // but exit early once we have >0 matches (likely only 1-3 people)
+
     for (
         let i = 1;
         i < data.length;
@@ -128,9 +143,9 @@ function getWaitlistForSlot(
             String(data[i][7] || "").trim();
 
         if (
-            wlDoctor === String(doctorId).trim() &&
-            wlDate === String(date).trim() &&
-            wlTime === String(time).trim() &&
+            wlDoctor === normalizedDoctor &&
+            wlDate === normalizedDate &&
+            wlTime === normalizedTime &&
             wlStatus === "WAITING"
         ) {
 

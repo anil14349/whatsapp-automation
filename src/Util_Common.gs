@@ -11,7 +11,20 @@
 // ========================================================
 // Get the ISO 8601 offset string for the configured TIMEZONE
 // e.g., "Asia/Kolkata" → "+05:30"
+// CACHED: Timezone offset doesn't change during script execution
+let __cachedTimezoneOffset = null;
+
 function getTimezoneOffsetString() {
+
+    // ========================================================
+    // CACHING: Return cached offset if available
+    // ========================================================
+    // Timezone offset is constant for script lifetime;
+    // avoid recomputation on every datetime build
+
+    if (__cachedTimezoneOffset !== null) {
+        return __cachedTimezoneOffset;
+    }
 
     const now = new Date();
 
@@ -33,11 +46,12 @@ function getTimezoneOffsetString() {
 
     const sign = diffMins >= 0 ? "+" : "-";
 
-    return (
+    __cachedTimezoneOffset =
         sign +
         String(hours).padStart(2, "0") + ":" +
-        String(mins).padStart(2, "0")
-    );
+        String(mins).padStart(2, "0");
+
+    return __cachedTimezoneOffset;
 }
 
 

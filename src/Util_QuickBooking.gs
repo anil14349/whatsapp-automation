@@ -121,6 +121,56 @@ function formatSlotsForWhatsApp(doctorId) {
 
 
 
+// ========================================================
+// SHARED SLOT INDEXING
+// ========================================================
+// Build indexed list of slots to avoid code duplication
+// Returns: [{id, date, time, dayName}, ...]
+function buildSlotIndex(slots) {
+
+    if (!slots || Object.keys(slots).length === 0) {
+        return [];
+    }
+
+    const index = [];
+
+    for (
+        const dateString in slots
+    ) {
+
+        if (!slots.hasOwnProperty(dateString)) {
+            continue;
+        }
+
+        const daySlots = slots[dateString];
+
+        const dayName =
+            Utilities.formatDate(
+                new Date(dateString + "T00:00:00"),
+                TIMEZONE,
+                "EEE, MMM d"
+            );
+
+        for (
+            let i = 0;
+            i < daySlots.length;
+            i++
+        ) {
+
+            index.push({
+                id: String(index.length + 1),
+                date: dateString,
+                time: daySlots[i],
+                dayName: dayName
+            });
+        }
+    }
+
+    return index;
+}
+
+
+
 // Create quick booking menu (slot selection)
 function buildQuickBookingMenu(doctorId) {
 
@@ -137,43 +187,21 @@ function buildQuickBookingMenu(doctorId) {
         };
     }
 
-    const menuRows = [];
-    let rowId = 1;
+    // ========================================================
+    // USE SHARED SLOT INDEXING
+    // ========================================================
+    // Reuse buildSlotIndex to avoid duplicating iteration logic
 
-    for (
-        const dateString in slots
-    ) {
+    const slotIndex = buildSlotIndex(slots);
 
-        if (!slots.hasOwnProperty(dateString)) {
-            continue;
-        }
+    const menuRows = slotIndex.map(function (slot) {
 
-        const daySlots = slots[dateString];
-
-        for (
-            let i = 0;
-            i < daySlots.length;
-            i++
-        ) {
-
-            const time = daySlots[i];
-
-            const dayName =
-                Utilities.formatDate(
-                    new Date(dateString + "T00:00:00"),
-                    TIMEZONE,
-                    "EEE, MMM d"
-                );
-
-            menuRows.push({
-                id: String(rowId),
-                title: dayName + " @ " + time,
-                description: "Book this slot"
-            });
-
-            rowId++;
-        }
-    }
+        return {
+            id: slot.id,
+            title: slot.dayName + " @ " + slot.time,
+            description: "Book this slot"
+        };
+    });
 
     return {
         success: true,
@@ -203,48 +231,19 @@ function quickBookAppointment(
         };
     }
 
-    // Find the selected slot
-    let selectedSlotIndex = 0;
-    let selectedDate = "";
-    let selectedTime = "";
-    let slotFound = false;
+    // ========================================================
+    // USE SHARED SLOT INDEXING
+    // ========================================================
+    // Reuse buildSlotIndex to find the selected slot
 
-    for (
-        const dateString in slots
-    ) {
+    const slotIndex = buildSlotIndex(slots);
 
-        if (!slots.hasOwnProperty(dateString)) {
-            continue;
-        }
+    const selectedSlot = slotIndex.find(function (slot) {
 
-        const daySlots = slots[dateString];
+        return String(slot.id) === String(slotSelection).trim();
+    });
 
-        for (
-            let i = 0;
-            i < daySlots.length;
-            i++
-        ) {
-
-            selectedSlotIndex++;
-
-            if (
-                String(selectedSlotIndex) ===
-                String(slotSelection).trim()
-            ) {
-
-                selectedDate = dateString;
-                selectedTime = daySlots[i];
-                slotFound = true;
-                break;
-            }
-        }
-
-        if (slotFound) {
-            break;
-        }
-    }
-
-    if (!slotFound) {
+    if (!selectedSlot) {
 
         return {
             success: false,
@@ -256,8 +255,8 @@ function quickBookAppointment(
     // Book the appointment directly
     return bookAppointment(
         doctorId,
-        selectedDate,
-        selectedTime,
+        selectedSlot.date,
+        selectedSlot.time,
         patientName,
         patientPhone,
         patientLanguage
