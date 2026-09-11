@@ -21381,6 +21381,794 @@ function generateRLSAuditReport(
 }
 
 
+function ensureDoctorProfileColumns() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Doctors");
+
+    if (!sheet) {
+        return false;
+    }
+
+    const headers =
+        sheet.getRange(1, 1, 1, 20).getValues()[0];
+
+    const headerMap = {};
+    for (let i = 0; i < headers.length; i++) {
+        headerMap[String(headers[i]).trim().toLowerCase()] =
+            i + 1;
+    }
+
+    // Ensure columns exist
+    const columnsNeeded = {
+        "specialty": 7,
+        "qualifications": 8,
+        "yearsexperience": 9,
+        "languages": 10,
+        "rating": 11,
+        "reviewcount": 12
+    };
+
+    let maxCol = Math.max(...Object.values(columnsNeeded));
+
+    // Add headers if missing
+    if (!headerMap["specialty"]) {
+        sheet.getRange(1, 7).setValue("Specialty");
+    }
+
+    if (!headerMap["qualifications"]) {
+        sheet.getRange(1, 8).setValue("Qualifications");
+    }
+
+    if (!headerMap["yearsexperience"]) {
+        sheet.getRange(1, 9).setValue("Years Experience");
+    }
+
+    if (!headerMap["languages"]) {
+        sheet.getRange(1, 10).setValue("Languages");
+    }
+
+    if (!headerMap["rating"]) {
+        sheet.getRange(1, 11).setValue("Rating");
+    }
+
+    if (!headerMap["reviewcount"]) {
+        sheet.getRange(1, 12).setValue("Review Count");
+    }
+
+    return true;
+}
+
+
+function getDoctorProfile(doctorId) {
+
+    const doctor = getDoctorRecord(doctorId);
+
+    if (!doctor) {
+        return null;
+    }
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Doctors");
+
+    if (!sheet) {
+        return doctor;
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        if (
+            String(data[i][0]).trim() ===
+            String(doctorId).trim()
+        ) {
+
+            return {
+                ...doctor,
+                specialty:
+                    String(data[i][6] || "").trim(),
+
+                qualifications:
+                    String(data[i][7] || "").trim(),
+
+                yearsExperience:
+                    Number(data[i][8] || 0),
+
+                languages:
+                    String(data[i][9] || "").trim(),
+
+                rating:
+                    Number(data[i][10] || 0),
+
+                reviewCount:
+                    Number(data[i][11] || 0)
+            };
+        }
+    }
+
+    return doctor;
+}
+
+
+function formatDoctorProfileMessage(doctorId, includeSlots) {
+
+    const doctor = getDoctorProfile(doctorId);
+
+    if (!doctor) {
+        return "Doctor not found.";
+    }
+
+    let message =
+        "👨‍⚕️ *" + doctor.doctorName + "*\n";
+
+    if (doctor.specialty) {
+        message += "📋 " + doctor.specialty + "\n";
+    }
+
+    if (doctor.qualifications) {
+        message +=
+            "🎓 " + doctor.qualifications + "\n";
+    }
+
+    if (doctor.yearsExperience > 0) {
+        message +=
+            "📅 " + doctor.yearsExperience +
+            " years experience\n";
+    }
+
+    if (doctor.languages) {
+        message +=
+            "🗣️ " + doctor.languages + "\n";
+    }
+
+    if (
+        doctor.rating > 0 &&
+        doctor.reviewCount > 0
+    ) {
+
+        const stars =
+            "⭐".repeat(
+                Math.round(doctor.rating)
+            );
+
+        message +=
+            stars + " " +
+            doctor.rating.toFixed(1) +
+            " (" + doctor.reviewCount +
+            " reviews)\n";
+    }
+
+    if (includeSlots) {
+        message += "\n📅 *Available Slots*\n";
+    }
+
+    return message;
+}
+
+
+function getAllDoctorProfiles() {
+
+    const doctors = getDoctors();
+    const profiles = [];
+
+    for (
+        let i = 0;
+        i < doctors.length;
+        i++
+    ) {
+
+        const profile =
+            getDoctorProfile(doctors[i].doctorId);
+
+        if (profile) {
+            profiles.push(profile);
+        }
+    }
+
+    return profiles;
+}
+
+
+function buildDoctorSelectionWithProfiles() {
+
+    const doctors = getAllDoctorProfiles();
+
+    if (doctors.length === 0) {
+        return null;
+    }
+
+    const menuItems = [];
+
+    for (
+        let i = 0;
+        i < doctors.length;
+        i++
+    ) {
+
+        const doc = doctors[i];
+
+        let title =
+            doc.doctorName || "Unknown";
+
+        if (doc.specialty) {
+            title += " - " + doc.specialty;
+        }
+
+        let description =
+            doc.qualifications || "";
+
+        if (
+            doc.yearsExperience > 0
+        ) {
+
+            if (description) {
+                description += " | ";
+            }
+
+            description +=
+                doc.yearsExperience +
+                " years";
+        }
+
+        menuItems.push({
+            id: String(doc.doctorId || i + 1),
+            title: title,
+            description: description
+        });
+    }
+
+    return menuItems;
+}
+
+
+function getSlotsByDoctor(doctorId) {
+
+    const slots = {};
+
+    // Get current + next 7 days
+    const today = new Date();
+
+    for (
+        let dayOffset = 0;
+        dayOffset < 7;
+        dayOffset++
+    ) {
+
+        const date = new Date(today);
+        date.setDate(date.getDate() + dayOffset);
+
+        const dateString =
+            Utilities.formatDate(
+                date,
+                TIMEZONE,
+                "yyyy-MM-dd"
+            );
+
+        const availableSlots =
+            getAvailableSlots(
+                doctorId,
+                dateString
+            );
+
+        if (
+            availableSlots &&
+            availableSlots.length > 0
+        ) {
+
+            slots[dateString] =
+                availableSlots;
+        }
+    }
+
+    return slots;
+}
+
+
+function formatSlotsForWhatsApp(doctorId) {
+
+    const slots = getSlotsByDoctor(doctorId);
+
+    if (
+        !slots ||
+        Object.keys(slots).length === 0
+    ) {
+
+        return "No available slots.";
+    }
+
+    let message =
+        "📅 *Available Slots* (Next 7 Days)\n\n";
+
+    let slotCount = 1;
+    const slotMap = {}; // id → {date, time}
+
+    for (
+        const dateString in slots
+    ) {
+
+        if (!slots.hasOwnProperty(dateString)) {
+            continue;
+        }
+
+        const dayName =
+            Utilities.formatDate(
+                new Date(dateString + "T00:00:00"),
+                TIMEZONE,
+                "EEE, MMM d"
+            );
+
+        message += "*" + dayName + "*\n";
+
+        const daySlots = slots[dateString];
+
+        for (
+            let i = 0;
+            i < daySlots.length;
+            i++
+        ) {
+
+            const slotId = String(slotCount);
+            const time = daySlots[i];
+
+            slotMap[slotId] = {
+                date: dateString,
+                time: time
+            };
+
+            message +=
+                slotId + ". " + time + "\n";
+
+            slotCount++;
+        }
+
+        message += "\n";
+    }
+
+    return {
+        message: message,
+        slotMap: slotMap,
+        totalSlots: slotCount - 1
+    };
+}
+
+
+function buildQuickBookingMenu(doctorId) {
+
+    const slots = getSlotsByDoctor(doctorId);
+
+    if (
+        !slots ||
+        Object.keys(slots).length === 0
+    ) {
+
+        return {
+            success: false,
+            message: "No available slots for this doctor."
+        };
+    }
+
+    const menuRows = [];
+    let rowId = 1;
+
+    for (
+        const dateString in slots
+    ) {
+
+        if (!slots.hasOwnProperty(dateString)) {
+            continue;
+        }
+
+        const daySlots = slots[dateString];
+
+        for (
+            let i = 0;
+            i < daySlots.length;
+            i++
+        ) {
+
+            const time = daySlots[i];
+
+            const dayName =
+                Utilities.formatDate(
+                    new Date(dateString + "T00:00:00"),
+                    TIMEZONE,
+                    "EEE, MMM d"
+                );
+
+            menuRows.push({
+                id: String(rowId),
+                title: dayName + " @ " + time,
+                description: "Book this slot"
+            });
+
+            rowId++;
+        }
+    }
+
+    return {
+        success: true,
+        rows: menuRows,
+        rowCount: menuRows.length
+    };
+}
+
+
+function quickBookAppointment(
+    doctorId,
+    patientPhone,
+    patientName,
+    patientLanguage,
+    slotSelection
+) {
+
+    const slots = getSlotsByDoctor(doctorId);
+
+    if (!slots) {
+
+        return {
+            success: false,
+            message: "No available slots."
+        };
+    }
+
+    // Find the selected slot
+    let selectedSlotIndex = 0;
+    let selectedDate = "";
+    let selectedTime = "";
+    let slotFound = false;
+
+    for (
+        const dateString in slots
+    ) {
+
+        if (!slots.hasOwnProperty(dateString)) {
+            continue;
+        }
+
+        const daySlots = slots[dateString];
+
+        for (
+            let i = 0;
+            i < daySlots.length;
+            i++
+        ) {
+
+            selectedSlotIndex++;
+
+            if (
+                String(selectedSlotIndex) ===
+                String(slotSelection).trim()
+            ) {
+
+                selectedDate = dateString;
+                selectedTime = daySlots[i];
+                slotFound = true;
+                break;
+            }
+        }
+
+        if (slotFound) {
+            break;
+        }
+    }
+
+    if (!slotFound) {
+
+        return {
+            success: false,
+            message:
+                "Invalid slot selection."
+        };
+    }
+
+    // Book the appointment directly
+    return bookAppointment(
+        doctorId,
+        selectedDate,
+        selectedTime,
+        patientName,
+        patientPhone,
+        patientLanguage
+    );
+}
+
+
+function getPatientAppointmentHistory(patientPhone) {
+
+    if (!patientPhone) {
+        return {
+            appointments: [],
+            count: 0
+        };
+    }
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+
+        return {
+            appointments: [],
+            count: 0
+        };
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const history = [];
+
+    // Scan backwards (most recent first)
+    for (
+        let i = data.length - 1;
+        i >= 1;
+        i--
+    ) {
+
+        const phone =
+            String(data[i][5] || "").trim();
+
+        const status =
+            String(data[i][6] || "").trim();
+
+        // Only include completed appointments
+        if (
+            !phonesMatch(phone, patientPhone) ||
+            (
+                status.toUpperCase() !== "COMPLETED" &&
+                status.toUpperCase() !== "NO-SHOW"
+            )
+        ) {
+            continue;
+        }
+
+        const appointmentDate =
+            String(data[i][1] || "").trim();
+
+        const appointmentTime =
+            String(data[i][2] || "").trim();
+
+        const doctorId =
+            String(data[i][3] || "").trim();
+
+        const doctor =
+            getDoctorRecord(doctorId);
+
+        const doctorName =
+            doctor && doctor.doctorName
+                ? doctor.doctorName
+                : "Unknown Doctor";
+
+        history.push({
+            date: appointmentDate,
+            time: appointmentTime,
+            doctor: doctorName,
+            doctorId: doctorId,
+            status: status
+        });
+
+        // Limit to last 5 appointments
+        if (history.length >= 5) {
+            break;
+        }
+    }
+
+    return {
+        appointments: history,
+        count: history.length
+    };
+}
+
+
+function formatPatientHistoryMessage(patientPhone) {
+
+    const history =
+        getPatientAppointmentHistory(patientPhone);
+
+    if (
+        !history ||
+        history.count === 0
+    ) {
+
+        return null;
+    }
+
+    let message =
+        "📋 *Your Recent Appointments*\n\n";
+
+    for (
+        let i = 0;
+        i < history.appointments.length;
+        i++
+    ) {
+
+        const appt = history.appointments[i];
+
+        message +=
+            (i + 1) + ". " +
+            appt.date + " @ " +
+            appt.time + "\n" +
+            "   Dr. " + appt.doctor + "\n" +
+            "   Status: " + appt.status + "\n\n";
+    }
+
+    return message;
+}
+
+
+function getLastAppointmentSummary(
+    patientPhone,
+    doctorId
+) {
+
+    if (!patientPhone || !doctorId) {
+        return null;
+    }
+
+    const history =
+        getPatientAppointmentHistory(patientPhone);
+
+    if (!history || history.count === 0) {
+        return null;
+    }
+
+    // Find last appointment with this doctor
+    for (
+        let i = 0;
+        i < history.appointments.length;
+        i++
+    ) {
+
+        const appt = history.appointments[i];
+
+        if (appt.doctorId === doctorId) {
+
+            return {
+                date: appt.date,
+                time: appt.time,
+                doctor: appt.doctor,
+                status: appt.status,
+                message:
+                    "Last visit: " + appt.date +
+                    " with Dr. " + appt.doctor
+            };
+        }
+    }
+
+    return null;
+}
+
+
+function showPatientHistoryBeforeBooking(
+    patientPhone,
+    doctorId
+) {
+
+    let message = "";
+
+    // Show recent appointments
+    const historyMsg =
+        formatPatientHistoryMessage(patientPhone);
+
+    if (historyMsg) {
+        message += historyMsg + "\n";
+    }
+
+    // Show last visit with this doctor
+    const lastVisit =
+        getLastAppointmentSummary(
+            patientPhone,
+            doctorId
+        );
+
+    if (lastVisit) {
+
+        message +=
+            "📅 *Last Visit with this Doctor*\n" +
+            lastVisit.date + " @ " +
+            lastVisit.time + "\n";
+    }
+
+    return message || null;
+}
+
+
+function addAppointmentNotes(
+    appointmentId,
+    notes
+) {
+
+    if (!appointmentId || !notes) {
+        return false;
+    }
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let notesSheet =
+        ss.getSheetByName("Appointment_Notes");
+
+    if (!notesSheet) {
+
+        notesSheet = ss.insertSheet("Appointment_Notes");
+
+        notesSheet.appendRow([
+            "Appointment ID",
+            "Date",
+            "Doctor Notes",
+            "Created At"
+        ]);
+
+        notesSheet.hideSheet();
+    }
+
+    const date = new Date();
+
+    notesSheet.appendRow([
+        String(appointmentId).trim(),
+        Utilities.formatDate(date, TIMEZONE, "yyyy-MM-dd HH:mm:ss"),
+        String(notes).trim(),
+        date
+    ]);
+
+    return true;
+}
+
+
+function getAppointmentNotes(appointmentId) {
+
+    if (!appointmentId) {
+        return null;
+    }
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointment_Notes");
+
+    if (!sheet) {
+        return null;
+    }
+
+    const data = sheet.getDataRange().getValues();
+
+    for (
+        let i = data.length - 1;
+        i >= 1;
+        i--
+    ) {
+
+        if (
+            String(data[i][0] || "").trim() ===
+            String(appointmentId).trim()
+        ) {
+
+            return {
+                appointmentId: appointmentId,
+                notes: String(data[i][2] || ""),
+                createdAt: data[i][3]
+            };
+        }
+    }
+
+    return null;
+}
+
+
 function appendWhatsAppLogEntry(
     ss,
     entry
