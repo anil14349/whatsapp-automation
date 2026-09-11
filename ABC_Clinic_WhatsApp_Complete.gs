@@ -19803,6 +19803,1584 @@ function logRLSViolation(
 }
 
 
+function ensureAppointmentRemindersSheet() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    let sheet =
+        ss.getSheetByName("Reminder_Queue");
+
+    if (!sheet) {
+
+        sheet = ss.insertSheet("Reminder_Queue");
+
+        sheet.appendRow([
+            "Appointment ID",
+            "Patient Phone",
+            "Patient Name",
+            "Doctor Name",
+            "Appointment Date",
+            "Appointment Time",
+            "Reminder Type",
+            "Scheduled For",
+            "Sent At",
+            "Status",
+            "Message ID"
+        ]);
+
+        sheet.hideSheet();
+    }
+
+    return sheet;
+}
+
+
+function queueAppointmentReminder(
+    appointmentId,
+    patientPhone,
+    patientName,
+    doctorName,
+    appointmentDate,
+    appointmentTime,
+    reminderType
+) {
+
+    if (
+        !appointmentId || !patientPhone ||
+        !patientName || !appointmentDate ||
+        !appointmentTime || !reminderType
+    ) {
+
+        return false;
+    }
+
+    const sheet =
+        ensureAppointmentRemindersSheet();
+
+    let scheduledFor = null;
+
+    if (reminderType === "24h") {
+
+        // Schedule for 24 hours before appointment
+        const appointmentDateTime =
+            parseAppointmentSheetDateTime(
+                appointmentDate,
+                appointmentTime
+            );
+
+        scheduledFor =
+            new Date(
+                appointmentDateTime.getTime() -
+                (24 * 60 * 60 * 1000)
+            );
+
+    } else if (reminderType === "1h") {
+
+        // Schedule for 1 hour before appointment
+        const appointmentDateTime =
+            parseAppointmentSheetDateTime(
+                appointmentDate,
+                appointmentTime
+            );
+
+        scheduledFor =
+            new Date(
+                appointmentDateTime.getTime() -
+                (60 * 60 * 1000)
+            );
+
+    } else {
+
+        return false;
+    }
+
+    sheet.appendRow([
+        String(appointmentId).trim(),
+        String(patientPhone).trim(),
+        String(patientName || "").trim(),
+        String(doctorName || "").trim(),
+        String(appointmentDate).trim(),
+        String(appointmentTime).trim(),
+        reminderType,
+        scheduledFor,
+        "",
+        "PENDING",
+        ""
+    ]);
+
+    return true;
+}
+
+
+function processDueReminders() {
+
+    const sheet =
+        ensureAppointmentRemindersSheet();
+
+    if (!sheet) {
+
+        return {
+            processed: 0,
+            sent: 0,
+            failed: 0
+        };
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const now = new Date();
+    let sent = 0;
+    let failed = 0;
+    const rowsToUpdate = [];
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const status =
+            String(data[i][9] || "").trim();
+
+        if (status !== "PENDING") {
+            continue;
+        }
+
+        const scheduledFor =
+            new Date(data[i][7]);
+
+        if (now < scheduledFor) {
+            continue;
+        }
+
+        // ====================================================
+        // Send Reminder
+        // ====================================================
+
+        const appointmentId =
+            String(data[i][0] || "").trim();
+
+        const patientPhone =
+            String(data[i][1] || "").trim();
+
+        const patientName =
+            String(data[i][2] || "").trim();
+
+        const doctorName =
+            String(data[i][3] || "").trim();
+
+        const appointmentDate =
+            String(data[i][4] || "").trim();
+
+        const appointmentTime =
+            String(data[i][5] || "").trim();
+
+        const reminderType =
+            String(data[i][6] || "").trim();
+
+        const message =
+            buildReminderMessage(
+                patientName,
+                doctorName,
+                appointmentDate,
+                appointmentTime,
+                reminderType
+            );
+
+        try {
+
+            const result =
+                sendWhatsAppTextMessage(
+                    patientPhone,
+                    message
+                );
+
+            if (result && result.success) {
+
+                rowsToUpdate.push({
+                    row: i + 1,
+                    status: "SENT",
+                    messageId:
+                        result.messageId || ""
+                });
+
+                sent++;
+
+            } else {
+
+                rowsToUpdate.push({
+                    row: i + 1,
+                    status: "FAILED",
+                    messageId: ""
+                });
+
+                failed++;
+            }
+
+        } catch (error) {
+
+            Logger.log(
+                "Failed to send reminder for " +
+                appointmentId + ": " +
+                error.message
+            );
+
+            rowsToUpdate.push({
+                row: i + 1,
+                status: "ERROR",
+                messageId: ""
+            });
+
+            failed++;
+        }
+    }
+
+    // ====================================================
+    // Update Sheet
+    // ====================================================
+
+    for (
+        let j = 0;
+        j < rowsToUpdate.length;
+        j++
+    ) {
+
+        const update = rowsToUpdate[j];
+
+        sheet.getRange(update.row, 9).setValue(
+            new Date()
+        );
+
+        sheet.getRange(update.row, 10).setValue(
+            update.status
+        );
+
+        if (update.messageId) {
+
+            sheet.getRange(update.row, 11).setValue(
+                update.messageId
+            );
+        }
+    }
+
+    Logger.log(
+        "processDueReminders: Processed " +
+        rowsToUpdate.length + " reminders (" +
+        sent + " sent, " + failed + " failed)"
+    );
+
+    return {
+        processed: rowsToUpdate.length,
+        sent: sent,
+        failed: failed
+    };
+}
+
+
+function buildReminderMessage(
+    patientName,
+    doctorName,
+    appointmentDate,
+    appointmentTime,
+    reminderType
+) {
+
+    const clinicName =
+        getClinicName();
+
+    const name = patientName || "Patient";
+
+    if (reminderType === "24h") {
+
+        return (
+            "🔔 *Appointment Reminder*\n\n" +
+            "Hi " + name + ",\n\n" +
+            "This is a reminder about your " +
+            "appointment with Dr. " + doctorName +
+            " at " + clinicName + ".\n\n" +
+            "📅 Date: " + appointmentDate + "\n" +
+            "🕐 Time: " + appointmentTime + "\n\n" +
+            "Please arrive 10 minutes early. " +
+            "Reply with any questions.\n\n" +
+            "Thank you!"
+        );
+
+    } else if (reminderType === "1h") {
+
+        return (
+            "⏰ *Appointment in 1 Hour*\n\n" +
+            "Hi " + name + ",\n\n" +
+            "Your appointment with Dr. " +
+            doctorName + " is in 1 hour!\n\n" +
+            "🕐 Time: " + appointmentTime + "\n" +
+            "📍 Location: " + clinicName + "\n\n" +
+            "If you need to reschedule, " +
+            "please let us know now.\n\n" +
+            "See you soon!"
+        );
+
+    } else {
+
+        return (
+            "Your appointment is scheduled for " +
+            appointmentDate + " at " +
+            appointmentTime + " with Dr. " +
+            doctorName
+        );
+    }
+}
+
+
+function createRemindersSchedule(
+    hourOfDay,
+    minuteOfHour
+) {
+
+    const hour = hourOfDay || 0;
+    const minute = minuteOfHour || 0;
+
+    if (
+        hour < 0 || hour > 23 ||
+        minute < 0 || minute > 59
+    ) {
+
+        return {
+            success: false,
+            message:
+                "Invalid time: hour 0-23, minute 0-59"
+        };
+    }
+
+    // Remove existing trigger
+    const existingTriggers =
+        ScriptApp.getProjectTriggers();
+
+    for (
+        let i = 0;
+        i < existingTriggers.length;
+        i++
+    ) {
+
+        const trigger = existingTriggers[i];
+
+        if (
+            trigger.getHandlerFunction() ===
+            "processDueReminders"
+        ) {
+
+            ScriptApp.deleteTrigger(trigger);
+        }
+    }
+
+    // Create new trigger
+    ScriptApp.newTrigger("processDueReminders")
+        .timeBased()
+        .atHour(hour)
+        .everyDays(1)
+        .create();
+
+    Logger.log(
+        "createRemindersSchedule: Trigger created at " +
+        String(hour).padStart(2, "0") + ":" +
+        String(minute).padStart(2, "0")
+    );
+
+    return {
+        success: true,
+        message:
+            "Reminders scheduled at " +
+            String(hour).padStart(2, "0") + ":" +
+            String(minute).padStart(2, "0")
+    };
+}
+
+
+function removeRemindersSchedule() {
+
+    const existingTriggers =
+        ScriptApp.getProjectTriggers();
+
+    let removed = 0;
+
+    for (
+        let i = 0;
+        i < existingTriggers.length;
+        i++
+    ) {
+
+        const trigger = existingTriggers[i];
+
+        if (
+            trigger.getHandlerFunction() ===
+            "processDueReminders"
+        ) {
+
+            ScriptApp.deleteTrigger(trigger);
+            removed++;
+        }
+    }
+
+    return {
+        success: true,
+        message:
+            "Removed " + removed + " reminder trigger(s)"
+    };
+}
+
+
+function exportAppointmentsToCSV(
+    filterStatus,
+    filterDoctorId,
+    filterFromDate,
+    filterToDate
+) {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+
+        return {
+            success: false,
+            message: "Appointments sheet not found"
+        };
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const csvLines = [];
+
+    // Header
+    csvLines.push([
+        "Appointment ID",
+        "Date",
+        "Time",
+        "Doctor ID",
+        "Patient Name",
+        "Phone",
+        "Status",
+        "Calendar Event ID",
+        "Patient ID"
+    ].map(escapeCSVField).join(","));
+
+    let exportedCount = 0;
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const appointmentDate =
+            String(data[i][1] || "").trim();
+
+        const status =
+            String(data[i][6] || "").trim();
+
+        const doctorId =
+            String(data[i][3] || "").trim();
+
+        // ====================================================
+        // Apply Filters
+        // ====================================================
+
+        if (
+            filterStatus &&
+            status.toUpperCase() !==
+            String(filterStatus).toUpperCase()
+        ) {
+            continue;
+        }
+
+        if (
+            filterDoctorId &&
+            doctorId !== String(filterDoctorId).trim()
+        ) {
+            continue;
+        }
+
+        if (filterFromDate && appointmentDate) {
+
+            if (appointmentDate < filterFromDate) {
+                continue;
+            }
+        }
+
+        if (filterToDate && appointmentDate) {
+
+            if (appointmentDate > filterToDate) {
+                continue;
+            }
+        }
+
+        // ====================================================
+        // Add Row
+        // ====================================================
+
+        csvLines.push([
+            String(data[i][0] || ""),
+            String(data[i][1] || ""),
+            String(data[i][2] || ""),
+            String(data[i][3] || ""),
+            String(data[i][4] || ""),
+            String(data[i][5] || ""),
+            String(data[i][6] || ""),
+            String(data[i][7] || ""),
+            String(data[i][8] || "")
+        ].map(escapeCSVField).join(","));
+
+        exportedCount++;
+    }
+
+    const csv = csvLines.join("\n");
+
+    return {
+        success: true,
+        csv: csv,
+        rowCount: exportedCount,
+        exportedAt: new Date()
+    };
+}
+
+
+function createFullBackup() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const timestamp =
+        Utilities.formatDate(
+            new Date(),
+            TIMEZONE,
+            "yyyy-MM-dd_HH-mm-ss"
+        );
+
+    const backupFolderName =
+        "Clinic_Backup_" + timestamp;
+
+    try {
+
+        // Create backup folder
+        const backupFolder =
+            DriveApp.createFolder(backupFolderName);
+
+        const fileCount = 0;
+
+        // ====================================================
+        // Export Appointments
+        // ====================================================
+
+        const appointmentsExport =
+            exportAppointmentsToCSV();
+
+        if (appointmentsExport.success) {
+
+            backupFolder.createFile(
+                "Appointments_" + timestamp + ".csv",
+                appointmentsExport.csv,
+                MimeType.PLAIN_TEXT
+            );
+
+            fileCount++;
+        }
+
+        // ====================================================
+        // Export Doctors
+        // ====================================================
+
+        const doctorsExport =
+            exportDoctorsToCSV();
+
+        if (doctorsExport.success) {
+
+            backupFolder.createFile(
+                "Doctors_" + timestamp + ".csv",
+                doctorsExport.csv,
+                MimeType.PLAIN_TEXT
+            );
+
+            fileCount++;
+        }
+
+        // ====================================================
+        // Export Patients
+        // ====================================================
+
+        const patientsExport =
+            exportPatientsToCSV();
+
+        if (patientsExport.success) {
+
+            backupFolder.createFile(
+                "Patients_" + timestamp + ".csv",
+                patientsExport.csv,
+                MimeType.PLAIN_TEXT
+            );
+
+            fileCount++;
+        }
+
+        Logger.log(
+            "createFullBackup: Created backup with " +
+            fileCount + " files in " +
+            backupFolderName
+        );
+
+        return {
+            success: true,
+            folderId: backupFolder.getId(),
+            folderName: backupFolderName,
+            fileCount: fileCount,
+            createdAt: new Date()
+        };
+
+    } catch (error) {
+
+        Logger.log(
+            "createFullBackup failed: " +
+            error.message
+        );
+
+        return {
+            success: false,
+            message: error.message
+        };
+    }
+}
+
+
+function exportDoctorsToCSV() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Doctors");
+
+    if (!sheet) {
+
+        return {
+            success: false,
+            message: "Doctors sheet not found"
+        };
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const csvLines = [];
+
+    // Use first row as header
+    if (data.length > 0) {
+
+        csvLines.push(
+            data[0].map(escapeCSVField).join(",")
+        );
+    }
+
+    for (let i = 1; i < data.length; i++) {
+
+        csvLines.push(
+            data[i].map(escapeCSVField).join(",")
+        );
+    }
+
+    return {
+        success: true,
+        csv: csvLines.join("\n"),
+        rowCount: data.length - 1
+    };
+}
+
+
+function exportPatientsToCSV() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Patients");
+
+    if (!sheet) {
+
+        return {
+            success: false,
+            message: "Patients sheet not found"
+        };
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const csvLines = [];
+
+    if (data.length > 0) {
+
+        csvLines.push(
+            data[0].map(escapeCSVField).join(",")
+        );
+    }
+
+    for (let i = 1; i < data.length; i++) {
+
+        csvLines.push(
+            data[i].map(escapeCSVField).join(",")
+        );
+    }
+
+    return {
+        success: true,
+        csv: csvLines.join("\n"),
+        rowCount: data.length - 1
+    };
+}
+
+
+function escapeCSVField(field) {
+
+    const value = String(field || "");
+
+    if (
+        value.indexOf(",") > -1 ||
+        value.indexOf("\"") > -1 ||
+        value.indexOf("\n") > -1
+    ) {
+
+        return "\"" +
+            value.replace(/"/g, "\"\"") +
+            "\"";
+
+    }
+
+    return value;
+}
+
+
+function bulkRescheduleAppointments(
+    filterDoctorId,
+    filterFromDate,
+    filterToDate,
+    newDoctorId,
+    newDate,
+    updateReason
+) {
+
+    if (!newDoctorId && !newDate) {
+
+        return {
+            success: false,
+            message:
+                "Either newDoctorId or newDate is required"
+        };
+    }
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+
+        return {
+            success: false,
+            message: "Appointments sheet not found"
+        };
+    }
+
+    const appointmentData =
+        sheet.getDataRange().getValues();
+
+    const lock =
+        LockService.getScriptLock();
+
+    let lockAcquired = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (lock.tryLock(5000)) {
+            lockAcquired = true;
+            break;
+        }
+    }
+
+    if (!lockAcquired) {
+
+        return {
+            success: false,
+            message: "Could not acquire lock"
+        };
+    }
+
+    try {
+
+        let updated = 0;
+        let failed = 0;
+
+        // ====================================================
+        // Process Appointments
+        // ====================================================
+
+        for (
+            let i = 1;
+            i < appointmentData.length;
+            i++
+        ) {
+
+            const appointmentId =
+                String(appointmentData[i][0] || "");
+
+            const doctorId =
+                String(appointmentData[i][3] || "").trim();
+
+            const appointmentDate =
+                String(appointmentData[i][1] || "").trim();
+
+            // ====================================================
+            // Apply Filters
+            // ====================================================
+
+            if (
+                filterDoctorId &&
+                doctorId !==
+                String(filterDoctorId).trim()
+            ) {
+                continue;
+            }
+
+            if (
+                filterFromDate &&
+                appointmentDate < filterFromDate
+            ) {
+                continue;
+            }
+
+            if (
+                filterToDate &&
+                appointmentDate > filterToDate
+            ) {
+                continue;
+            }
+
+            // ====================================================
+            // Update Appointment
+            // ====================================================
+
+            try {
+
+                const updateDoc = {};
+
+                if (newDoctorId) {
+                    updateDoc.doctorId = newDoctorId;
+                }
+
+                if (newDate) {
+                    updateDoc.date = newDate;
+                }
+
+                // Note: This is a simplified update
+                // Full implementation would handle calendar sync
+
+                if (newDoctorId) {
+                    sheet.getRange(i + 1, 4).setValue(
+                        newDoctorId
+                    );
+                }
+
+                if (newDate) {
+                    sheet.getRange(i + 1, 2).setValue(
+                        newDate
+                    );
+                }
+
+                updated++;
+
+            } catch (error) {
+
+                Logger.log(
+                    "Failed to update " + appointmentId +
+                    ": " + error.message
+                );
+
+                failed++;
+            }
+        }
+
+        Logger.log(
+            "bulkRescheduleAppointments: " +
+            updated + " updated, " + failed + " failed"
+        );
+
+        return {
+            success: true,
+            updated: updated,
+            failed: failed
+        };
+
+    } finally {
+
+        if (lock.hasLock()) {
+            lock.releaseLock();
+        }
+    }
+}
+
+
+function bulkCancelAppointments(
+    filterDoctorId,
+    filterFromDate,
+    filterToDate,
+    cancelReason
+) {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+
+        return {
+            success: false,
+            message: "Appointments sheet not found"
+        };
+    }
+
+    const appointmentData =
+        sheet.getDataRange().getValues();
+
+    const lock =
+        LockService.getScriptLock();
+
+    let lockAcquired = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (lock.tryLock(5000)) {
+            lockAcquired = true;
+            break;
+        }
+    }
+
+    if (!lockAcquired) {
+
+        return {
+            success: false,
+            message: "Could not acquire lock"
+        };
+    }
+
+    try {
+
+        let cancelled = 0;
+        const notificationQueue = [];
+
+        // Scan backwards to collect matching appointments
+        for (
+            let i = appointmentData.length - 1;
+            i >= 1;
+            i--
+        ) {
+
+            const appointmentId =
+                String(appointmentData[i][0] || "");
+
+            const doctorId =
+                String(appointmentData[i][3] || "").trim();
+
+            const appointmentDate =
+                String(appointmentData[i][1] || "").trim();
+
+            const status =
+                String(appointmentData[i][6] || "").trim();
+
+            // Skip if already cancelled
+            if (
+                status.toUpperCase() ===
+                "CANCELLED"
+            ) {
+                continue;
+            }
+
+            // Apply filters
+            if (
+                filterDoctorId &&
+                doctorId !==
+                String(filterDoctorId).trim()
+            ) {
+                continue;
+            }
+
+            if (
+                filterFromDate &&
+                appointmentDate < filterFromDate
+            ) {
+                continue;
+            }
+
+            if (
+                filterToDate &&
+                appointmentDate > filterToDate
+            ) {
+                continue;
+            }
+
+            // Cancel appointment
+            sheet.getRange(i + 1, 7).setValue(
+                "Cancelled"
+            );
+
+            cancelled++;
+
+            // Queue notification
+            notificationQueue.push({
+                appointmentId: appointmentId,
+                phone: appointmentData[i][5],
+                patientName: appointmentData[i][4],
+                reason: cancelReason || "Appointment cancelled"
+            });
+        }
+
+        // Send notifications
+        for (
+            let j = 0;
+            j < notificationQueue.length;
+            j++
+        ) {
+
+            const notification = notificationQueue[j];
+
+            try {
+
+                sendWhatsAppTextMessage(
+                    notification.phone,
+                    "❌ *Appointment Cancelled*\n\n" +
+                    "Hi " + notification.patientName + ",\n\n" +
+                    "Your appointment has been cancelled.\n" +
+                    "Reason: " + notification.reason + "\n\n" +
+                    "Please contact us to reschedule.\n" +
+                    "We apologize for the inconvenience."
+                );
+
+            } catch (error) {
+
+                Logger.log(
+                    "Failed to notify " +
+                    notification.phone + ": " +
+                    error.message
+                );
+            }
+        }
+
+        Logger.log(
+            "bulkCancelAppointments: Cancelled " +
+            cancelled + " appointments"
+        );
+
+        return {
+            success: true,
+            cancelled: cancelled,
+            notificationsSent: notificationQueue.length
+        };
+
+    } finally {
+
+        if (lock.hasLock()) {
+            lock.releaseLock();
+        }
+    }
+}
+
+
+function deleteCompletedAppointments(
+    olderThanDays
+) {
+
+    const daysAgo = olderThanDays || 90;
+
+    if (daysAgo < 1) {
+
+        return {
+            success: false,
+            message: "olderThanDays must be >= 1"
+        };
+    }
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+
+        return {
+            success: false,
+            message: "Appointments sheet not found"
+        };
+    }
+
+    const appointmentData =
+        sheet.getDataRange().getValues();
+
+    const cutoffDate = new Date();
+    cutoffDate.setDate(
+        cutoffDate.getDate() - daysAgo
+    );
+
+    const cutoffDateString =
+        Utilities.formatDate(
+            cutoffDate,
+            TIMEZONE,
+            "yyyy-MM-dd"
+        );
+
+    const lock =
+        LockService.getScriptLock();
+
+    let lockAcquired = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (lock.tryLock(5000)) {
+            lockAcquired = true;
+            break;
+        }
+    }
+
+    if (!lockAcquired) {
+
+        return {
+            success: false,
+            message: "Could not acquire lock"
+        };
+    }
+
+    try {
+
+        let deleted = 0;
+        const rowsToDelete = [];
+
+        // Scan backwards
+        for (
+            let i = appointmentData.length - 1;
+            i >= 1;
+            i--
+        ) {
+
+            const appointmentDate =
+                String(appointmentData[i][1] || "").trim();
+
+            const status =
+                String(appointmentData[i][6] || "").trim();
+
+            // Only delete if completed/no-show
+            if (
+                status.toUpperCase() !== "COMPLETED" &&
+                status.toUpperCase() !== "NO-SHOW" &&
+                status.toUpperCase() !== "NOSHOW"
+            ) {
+                continue;
+            }
+
+            // Only delete if old enough
+            if (appointmentDate >= cutoffDateString) {
+                continue;
+            }
+
+            rowsToDelete.push(i + 1);
+        }
+
+        // Delete in reverse order
+        for (const row of rowsToDelete) {
+
+            sheet.deleteRow(row);
+            deleted++;
+        }
+
+        Logger.log(
+            "deleteCompletedAppointments: Deleted " +
+            deleted + " appointments older than " +
+            daysAgo + " days"
+        );
+
+        return {
+            success: true,
+            deleted: deleted
+        };
+
+    } finally {
+
+        if (lock.hasLock()) {
+            lock.releaseLock();
+        }
+    }
+}
+
+
+function cancelAppointmentWithRLSAudit(
+    appointmentId,
+    patientPhone,
+    options,
+    requestorType,
+    requestorId
+) {
+
+    // ========================================================
+    // RLS VALIDATION
+    // ========================================================
+
+    const rlsCheck =
+        validateAppointmentClinicAccess(
+            appointmentId
+        );
+
+    if (!rlsCheck.authorized) {
+
+        logRLSViolation(
+            "CANCEL_ATTEMPT",
+            appointmentId,
+            requestorType,
+            requestorId,
+            rlsCheck.reason
+        );
+
+        return {
+            success: false,
+            message:
+                "Unauthorized: Unable to access appointment"
+        };
+    }
+
+    // Verify patient if patient-initiated
+    if (
+        requestorType === "PATIENT"
+    ) {
+
+        const patientAccess =
+            validatePatientDataAccess(
+                appointmentId,
+                patientPhone
+            );
+
+        if (!patientAccess.authorized) {
+
+            logRLSViolation(
+                "CANCEL_UNAUTHORIZED",
+                appointmentId,
+                requestorType,
+                requestorId,
+                patientAccess.reason
+            );
+
+            return {
+                success: false,
+                message:
+                    "You can only cancel your own appointments"
+            };
+        }
+    }
+
+    // ========================================================
+    // PROCEED WITH CANCELLATION
+    // ========================================================
+
+    const result =
+        cancelAppointment(
+            appointmentId,
+            patientPhone,
+            options
+        );
+
+    if (result.success) {
+
+        Logger.log(
+            "RLS Audit: Appointment " +
+            appointmentId + " cancelled by " +
+            requestorType + " (" + requestorId + ")"
+        );
+    }
+
+    return result;
+}
+
+
+function rescheduleAppointmentWithRLSAudit(
+    appointmentId,
+    patientPhone,
+    newDate,
+    newTime,
+    options,
+    requestorType,
+    requestorId
+) {
+
+    // ========================================================
+    // RLS VALIDATION
+    // ========================================================
+
+    const rlsCheck =
+        validateAppointmentClinicAccess(
+            appointmentId
+        );
+
+    if (!rlsCheck.authorized) {
+
+        logRLSViolation(
+            "RESCHEDULE_ATTEMPT",
+            appointmentId,
+            requestorType,
+            requestorId,
+            rlsCheck.reason
+        );
+
+        return {
+            success: false,
+            message:
+                "Unauthorized: Unable to access appointment"
+        };
+    }
+
+    // Verify patient if patient-initiated
+    if (
+        requestorType === "PATIENT"
+    ) {
+
+        const patientAccess =
+            validatePatientDataAccess(
+                appointmentId,
+                patientPhone
+            );
+
+        if (!patientAccess.authorized) {
+
+            logRLSViolation(
+                "RESCHEDULE_UNAUTHORIZED",
+                appointmentId,
+                requestorType,
+                requestorId,
+                patientAccess.reason
+            );
+
+            return {
+                success: false,
+                message:
+                    "You can only reschedule your own appointments"
+            };
+        }
+    }
+
+    // ========================================================
+    // PROCEED WITH RESCHEDULE
+    // ========================================================
+
+    const result =
+        rescheduleAppointment(
+            appointmentId,
+            patientPhone,
+            newDate,
+            newTime,
+            options
+        );
+
+    if (result.success) {
+
+        Logger.log(
+            "RLS Audit: Appointment " +
+            appointmentId + " rescheduled by " +
+            requestorType + " (" + requestorId + ")"
+        );
+    }
+
+    return result;
+}
+
+
+function getPatientAppointmentsWithRLSAudit(
+    patientPhone,
+    requestorType,
+    requestorId
+) {
+
+    // ========================================================
+    // RLS VALIDATION
+    // ========================================================
+
+    // Patient can only view own appointments
+    if (requestorType === "PATIENT") {
+
+        // Patients can only see their own phone
+        if (requestorId !== patientPhone) {
+
+            logRLSViolation(
+                "VIEW_APPOINTMENTS",
+                "PATIENT:" + requestorId,
+                requestorType,
+                requestorId,
+                "Attempted to view another patient's appointments"
+            );
+
+            return {
+                success: false,
+                message: "Unauthorized"
+            };
+        }
+    }
+
+    // Doctors can view any patient
+    if (
+        requestorType === "DOCTOR"
+    ) {
+
+        const doctorAccess =
+            validateDoctorClinicAccess(
+                requestorId
+            );
+
+        if (!doctorAccess.authorized) {
+
+            logRLSViolation(
+                "VIEW_APPOINTMENTS",
+                "PATIENT:" + patientPhone,
+                requestorType,
+                requestorId,
+                "Doctor not found in clinic"
+            );
+
+            return {
+                success: false,
+                message: "Unauthorized"
+            };
+        }
+    }
+
+    // ========================================================
+    // PROCEED WITH VIEW
+    // ========================================================
+
+    try {
+
+        const appointments =
+            getMyAppointments(patientPhone);
+
+        Logger.log(
+            "RLS Audit: " + requestorType + " (" +
+            requestorId + ") viewed appointments for " +
+            patientPhone
+        );
+
+        return {
+            success: true,
+            appointments: appointments
+        };
+
+    } catch (error) {
+
+        Logger.log(
+            "Error retrieving appointments: " +
+            error.message
+        );
+
+        return {
+            success: false,
+            message: "Unable to retrieve appointments"
+        };
+    }
+}
+
+
+function generateRLSAuditReport(
+    fromDate,
+    toDate
+) {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("RLS_Violations");
+
+    if (!sheet) {
+
+        return {
+            success: false,
+            message: "No RLS violations recorded"
+        };
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const report = [];
+
+    report.push(
+        "RLS Violation Audit Report"
+    );
+
+    report.push(
+        "Generated: " +
+        Utilities.formatDate(
+            new Date(),
+            TIMEZONE,
+            "yyyy-MM-dd HH:mm:ss"
+        )
+    );
+
+    report.push("");
+    report.push("Total Violations: " + (data.length - 1));
+    report.push("");
+    report.push("Details:");
+    report.push("");
+
+    let filteredCount = 0;
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const timestamp =
+            String(data[i][0] || "");
+
+        const violationType =
+            String(data[i][1] || "");
+
+        const attemptedId =
+            String(data[i][2] || "");
+
+        const requestorType =
+            String(data[i][3] || "");
+
+        const requestorId =
+            String(data[i][4] || "");
+
+        const reason =
+            String(data[i][5] || "");
+
+        // Apply date filters if provided
+        if (fromDate && timestamp < fromDate) {
+            continue;
+        }
+
+        if (toDate && timestamp > toDate) {
+            continue;
+        }
+
+        filteredCount++;
+
+        report.push(
+            filteredCount + ". " +
+            "[" + timestamp + "] " +
+            violationType + " - " +
+            requestorType + " (" + requestorId + ") " +
+            "attempted " + attemptedId + ": " +
+            reason
+        );
+    }
+
+    report.push("");
+    report.push("End of Report");
+
+    return {
+        success: true,
+        report: report.join("\n"),
+        violationCount: filteredCount
+    };
+}
+
+
 function appendWhatsAppLogEntry(
     ss,
     entry
