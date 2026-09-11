@@ -189,6 +189,50 @@ export async function patientNeedsNameCapture(
 }
 
 /**
+ * Find or create patient for webhook usage.
+ * Uses idempotent upsert to prevent race conditions.
+ */
+export async function findOrCreatePatient(
+  supabase: SupabaseClient<Database>,
+  clinicId: string,
+  phone: string,
+  name?: string
+): Promise<Patient | null> {
+  try {
+    // First try to find existing patient by phone
+    const existing = await findPatientByPhone(supabase, phone);
+
+    if (existing) {
+      // Update last_visit_at to track activity
+      const now = new Date().toISOString();
+      const { data: updated } = await supabase
+        .from("patients")
+        .update({ last_visit_at: now })
+        .eq("id", existing.id)
+        .select()
+        .single();
+
+      return updated || existing;
+    }
+
+    // Create new patient using idempotent upsert
+    // This prevents race conditions when multiple webhooks arrive simultaneously
+    const result = await upsertPatient(
+      supabase,
+      phone,
+      name || "Unknown",
+      "EN",
+      { updateLastVisit: true }
+    );
+
+    return result.patient;
+  } catch (error) {
+    console.error("Error in findOrCreatePatient:", error);
+    return null;
+  }
+}
+
+/**
  * Update patient name (for receptionist corrections).
  */
 export async function updatePatientName(

@@ -8,6 +8,7 @@ import { WhatsAppMessage, getMessageText, normalizePhoneNumber } from "./webhook
 import { findOrCreatePatient } from "@/lib/patients";
 import { sendWhatsAppMessage } from "@/lib/whatsapp/send";
 import { routeAdvancedMessage } from "@/lib/whatsapp/advancedMessageHandlers";
+import { MESSAGE_PATTERNS, matchesPattern } from "./messagePatterns";
 
 export interface MessageProcessingResult {
   success: boolean;
@@ -29,14 +30,36 @@ export async function processIncomingMessage(
     const patientPhone = normalizePhoneNumber(message.from);
 
     // Find or create patient
-    const patient = await findOrCreatePatient(supabase, clinicId, patientPhone);
-
-    if (!patient) {
+    let patient;
+    try {
+      patient = await findOrCreatePatient(supabase, clinicId, patientPhone);
+    } catch (error) {
+      console.error("Error in patient lookup/creation:", error, { clinicId, patientPhone });
       return {
         success: false,
         action: "patient_creation_failed",
-        error: "Could not create or find patient"
+        error: error instanceof Error ? error.message : "Unknown error during patient lookup"
       };
+    }
+
+    if (!patient) {
+      console.error("Patient lookup returned null", { clinicId, patientPhone });
+      return {
+        success: false,
+        action: "patient_creation_failed",
+        error: "Patient lookup returned no data"
+      };
+    }
+
+    // Update patient's last activity timestamp
+    try {
+      await supabase
+        .from("patients")
+        .update({ last_activity_at: new Date().toISOString() })
+        .eq("id", patient.id);
+    } catch (error) {
+      console.warn("Failed to update patient last_activity_at:", error);
+      // Don't fail the message processing for this
     }
 
     // Route message based on content
@@ -45,13 +68,21 @@ export async function processIncomingMessage(
       return handleMediaMessage(supabase, clinicId, message, patient);
     }
 
-    // Check for specific keywords/intents
     const lowerText = text.toLowerCase();
 
-    // Try advanced handlers first (lab, prescription, results, billing, etc.)
-    if (
-      lowerText.match(/lab|collect|sample|blood|test|result|report|prescription|medicine|drug|bill|invoice|doctor|specialist|reschedule|change|status|when|time|feedback|complaint|suggest|issue|problem/i)
-    ) {
+    // Try advanced handlers first using pre-compiled patterns (better performance)
+    const advancedPatterns = [
+      MESSAGE_PATTERNS.LAB,
+      MESSAGE_PATTERNS.RESULTS,
+      MESSAGE_PATTERNS.PRESCRIPTION,
+      MESSAGE_PATTERNS.BILLING,
+      MESSAGE_PATTERNS.DOCTOR,
+      MESSAGE_PATTERNS.RESCHEDULE,
+      MESSAGE_PATTERNS.STATUS,
+      MESSAGE_PATTERNS.FEEDBACK
+    ];
+
+    if (advancedPatterns.some(pattern => matchesPattern(lowerText, pattern))) {
       const advancedResult = await routeAdvancedMessage(supabase, clinicId, message, patient, text);
       if (advancedResult.success) {
         return advancedResult;
@@ -59,11 +90,8 @@ export async function processIncomingMessage(
       // If advanced handler didn't match, continue to basic routing
     }
 
-    // Fall back to basic booking/confirmation/cancellation handlers
-    if (
-      lowerText.includes("book") ||
-      lowerText.includes("appointment")
-    ) {
+    // Fall back to basic booking/confirmation/cancellation handlers using pre-compiled patterns
+    if (matchesPattern(lowerText, MESSAGE_PATTERNS.BOOKING)) {
       return await handleBookingRequest(
         supabase,
         clinicId,
@@ -73,11 +101,11 @@ export async function processIncomingMessage(
       );
     }
 
-    if (lowerText.includes("confirm") || lowerText.includes("yes")) {
+    if (matchesPattern(lowerText, MESSAGE_PATTERNS.CONFIRMATION)) {
       return await handleConfirmation(supabase, clinicId, message, patient);
     }
 
-    if (lowerText.includes("cancel")) {
+    if (matchesPattern(lowerText, MESSAGE_PATTERNS.CANCELLATION)) {
       return await handleCancellation(supabase, clinicId, message, patient);
     }
 
@@ -261,12 +289,17 @@ async function handleCancellation(
   patient: any
 ): Promise<MessageProcessingResult> {
   // Find upcoming appointments for this patient
+  // Use UTC date for proper timezone handling
+  const today = new Date();
+  const utcToday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const todayDateString = utcToday.toISOString().split("T")[0];
+
   const { data: appointments } = await supabase
     .from("appointments")
     .select("*")
     .eq("patient_phone", message.from)
     .eq("status", "Confirmed")
-    .gt("appointment_date", new Date().toISOString().split("T")[0])
+    .gte("appointment_date", todayDateString)
     .limit(1);
 
   if (!appointments || appointments.length === 0) {

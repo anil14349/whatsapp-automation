@@ -127,6 +127,16 @@ CREATE TABLE IF NOT EXISTS patient_requests (
 CREATE INDEX IF NOT EXISTS idx_messages_clinic_id ON messages(clinic_id);
 CREATE INDEX IF NOT EXISTS idx_messages_whatsapp_message_id ON messages(whatsapp_message_id);
 CREATE INDEX IF NOT EXISTS idx_messages_patient_phone ON messages(patient_phone);
+-- Add UNIQUE constraint to prevent duplicate webhooks from creating duplicate records
+ALTER TABLE messages
+ADD CONSTRAINT messages_clinic_whatsapp_id_unique
+UNIQUE(clinic_id, whatsapp_message_id);
+
+-- Add CHECK constraint on message direction
+ALTER TABLE messages
+ADD CONSTRAINT check_message_direction
+CHECK (direction IN ('to_patient', 'from_patient'));
+
 CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status);
 CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
 
@@ -156,9 +166,17 @@ CREATE POLICY "Users can view their clinic's messages"
     SELECT clinic_id FROM admin_users WHERE user_id = auth.uid()
   ));
 
-CREATE POLICY "System can insert webhook messages"
+CREATE POLICY "Webhook system can insert messages"
   ON messages FOR INSERT
-  WITH CHECK (clinic_id IS NOT NULL);
+  WITH CHECK (
+    clinic_id IS NOT NULL
+    AND (auth.role() = 'service_role' OR
+         clinic_id IN (
+           SELECT DISTINCT clinic_id FROM admin_users
+           WHERE user_id = auth.uid()
+         )
+    )
+  );
 
 -- RLS Policies for booking_requests
 CREATE POLICY "Users can view their clinic's booking requests"
@@ -178,9 +196,17 @@ CREATE POLICY "Users can view their clinic's patient requests"
     SELECT clinic_id FROM admin_users WHERE user_id = auth.uid()
   ));
 
-CREATE POLICY "System can insert patient requests"
+CREATE POLICY "Webhook system can insert patient requests"
   ON patient_requests FOR INSERT
-  WITH CHECK (clinic_id IS NOT NULL);
+  WITH CHECK (
+    clinic_id IS NOT NULL
+    AND (auth.role() = 'service_role' OR
+         clinic_id IN (
+           SELECT DISTINCT clinic_id FROM admin_users
+           WHERE user_id = auth.uid()
+         )
+    )
+  );
 
 CREATE POLICY "Admins can update patient requests"
   ON patient_requests FOR UPDATE

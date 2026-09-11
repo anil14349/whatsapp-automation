@@ -14,6 +14,67 @@ export interface MessageProcessingResult {
   error?: string;
 }
 
+// Valid request types - enforced at type level and runtime
+const VALID_REQUEST_TYPES = [
+  "lab_collection",
+  "prescription",
+  "results",
+  "bill",
+  "feedback",
+  "reschedule",
+  "status",
+  "doctor_info"
+] as const;
+
+export type RequestType = typeof VALID_REQUEST_TYPES[number];
+
+/**
+ * Type guard to validate request type
+ */
+function isValidRequestType(type: string): type is RequestType {
+  return (VALID_REQUEST_TYPES as readonly string[]).includes(type);
+}
+
+/**
+ * Helper function to create patient request with validation
+ */
+async function createPatientRequest(
+  supabase: ReturnType<typeof createClient>,
+  clinicId: string,
+  patientId: string,
+  patientPhone: string,
+  requestType: string,
+  requestText: string
+): Promise<{ success: boolean; error?: string }> {
+  // Validate request type
+  if (!isValidRequestType(requestType)) {
+    return {
+      success: false,
+      error: `Invalid request type: ${requestType}`
+    };
+  }
+
+  try {
+    const { error } = await supabase.from("patient_requests").insert({
+      clinic_id: clinicId,
+      patient_id: patientId,
+      patient_phone: patientPhone,
+      request_type: requestType,
+      request_text: requestText,
+      status: "pending"
+    });
+
+    if (error) throw error;
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error"
+    };
+  }
+}
+
 /**
  * Handle lab/sample collection requests
  * Examples: "Can I do home sample collection?", "Book lab collection"
@@ -26,17 +87,23 @@ export async function handleLabCollectionRequest(
   text: string
 ): Promise<MessageProcessingResult> {
   try {
-    // Create patient request
-    const { error } = await supabase.from("patient_requests").insert({
-      clinic_id: clinicId,
-      patient_id: patient.id,
-      patient_phone: message.from,
-      request_type: "lab_collection",
-      request_text: text,
-      status: "pending"
-    });
+    // Create patient request with validation
+    const createResult = await createPatientRequest(
+      supabase,
+      clinicId,
+      patient.id,
+      message.from,
+      "lab_collection",
+      text
+    );
 
-    if (error) throw error;
+    if (!createResult.success) {
+      return {
+        success: false,
+        action: "lab_collection_failed",
+        error: createResult.error
+      };
+    }
 
     await sendWhatsAppMessage(
       supabase,

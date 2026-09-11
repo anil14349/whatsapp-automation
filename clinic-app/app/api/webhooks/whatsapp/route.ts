@@ -91,8 +91,16 @@ export async function POST(request: NextRequest) {
 
     // Verify webhook signature
     const verifyToken = process.env.WHATSAPP_VERIFY_TOKEN;
-    if (!verifyToken || !verifyWhatsAppSignature(rawBody, signature, verifyToken)) {
-      console.error("Webhook signature verification failed");
+    try {
+      if (!verifyToken || !verifyWhatsAppSignature(rawBody, signature, verifyToken)) {
+        console.error("Webhook signature verification failed");
+        return NextResponse.json(
+          { error: "Invalid signature" },
+          { status: 403 }
+        );
+      }
+    } catch (error) {
+      console.error("Signature verification error:", error);
       return NextResponse.json(
         { error: "Invalid signature" },
         { status: 403 }
@@ -124,6 +132,16 @@ export async function POST(request: NextRequest) {
 
     const webhookEventId = eventData?.id;
 
+    // Validate clinic configuration FIRST
+    const clinicId = process.env.CLINIC_ID;
+    if (!clinicId) {
+      console.error("CLINIC_ID environment variable not configured");
+      return NextResponse.json(
+        { error: "Webhook not properly configured for this instance" },
+        { status: 500 }
+      );
+    }
+
     // Extract messages and statuses
     const messages = extractMessages(payload);
     const statuses = extractStatuses(payload);
@@ -134,15 +152,6 @@ export async function POST(request: NextRequest) {
     const processingPromises: Promise<void>[] = [];
 
     for (const message of messages) {
-      // Determine clinic from WhatsApp phone number
-      // In production, you'd look this up in a clinic_whatsapp_numbers table
-      // For now, assume clinic_id from config
-      const clinicId = process.env.CLINIC_ID; // or look up from database
-
-      if (!clinicId) {
-        console.error("No clinic configured for this webhook");
-        continue;
-      }
 
       // Add message processing to queue
       processingPromises.push(
@@ -179,49 +188,54 @@ export async function POST(request: NextRequest) {
 
     // Process statuses using the enhanced status processor
     if (statuses.length > 0) {
-      const clinicId = process.env.CLINIC_ID;
+      processingPromises.push(
+        (async () => {
+          try {
+            const statusResults = await processStatusUpdates(
+              supabase,
+              clinicId,
+              payload
+            );
 
-      if (clinicId) {
-        processingPromises.push(
-          (async () => {
-            try {
-              const statusResults = await processStatusUpdates(
-                supabase,
-                clinicId,
-                payload
-              );
-
-              // Log any failed status updates
-              const failedStatuses = statusResults.filter(r => !r.success);
-              if (failedStatuses.length > 0) {
-                console.warn(`${failedStatuses.length} status updates failed:`, failedStatuses);
-              }
-
-              console.log(`Processed ${statusResults.length} status updates`);
-            } catch (error) {
-              console.error("Error processing status updates:", error);
+            // Log any failed status updates
+            const failedStatuses = statusResults.filter(r => !r.success);
+            if (failedStatuses.length > 0) {
+              console.warn(`${failedStatuses.length} status updates failed:`, failedStatuses);
             }
-          })()
-        );
-      }
+
+            console.log(`Processed ${statusResults.length} status updates`);
+          } catch (error) {
+            console.error("Error processing status updates:", error);
+          }
+        })()
+      );
     }
 
-    // Wait for all processing to complete (with timeout)
-    const timeoutPromise = new Promise<void>((resolve) => {
+    // Wait for all processing to complete (with timeout) and track results
+    const timeoutPromise = new Promise<PromiseSettledResult<void>[]>((resolve) => {
       setTimeout(() => {
         console.warn("Message processing timeout - responding to webhook anyway");
-        resolve();
+        resolve([]);
       }, 30000); // 30 second timeout
     });
 
-    await Promise.race([
-      Promise.all(processingPromises),
+    const results = await Promise.race([
+      Promise.allSettled(processingPromises),
       timeoutPromise
     ]);
 
-    // Mark webhook as processed
+    // Determine final webhook status based on results
+    const failedCount = results?.filter(r => r.status === 'rejected').length || 0;
+    const successCount = results?.filter(r => r.status === 'fulfilled').length || 0;
+
+    // Mark webhook with appropriate status
     if (webhookEventId) {
-      await updateWebhookEventStatus(supabase, webhookEventId, "processed");
+      await updateWebhookEventStatus(
+        supabase,
+        webhookEventId,
+        failedCount > 0 ? "failed" : "processed",
+        failedCount > 0 ? `${failedCount}/${results?.length || 0} messages failed` : undefined
+      );
     }
 
     const processingTime = Date.now() - startTime;

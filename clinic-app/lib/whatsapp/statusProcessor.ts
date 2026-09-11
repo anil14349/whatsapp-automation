@@ -40,6 +40,12 @@ export function extractStatusUpdates(payload: any): WhatsAppStatusUpdate[] {
     }
 
     for (const status of value.statuses) {
+      // Validate timestamp is numeric and positive
+      if (typeof status.timestamp !== 'number' || status.timestamp <= 0) {
+        console.error("Invalid timestamp in status update:", status.id, status.timestamp);
+        continue; // Skip this status update
+      }
+
       const statusUpdate: WhatsAppStatusUpdate = {
         id: status.id,
         status: status.status,
@@ -120,6 +126,22 @@ export async function processStatusUpdate(
       throw updateError;
     }
 
+    // Log status change to audit trail
+    try {
+      await supabase.from("message_status_audit").insert({
+        clinic_id: clinicId,
+        message_id: message.id,
+        old_status: message.status,
+        new_status: statusUpdate.status,
+        actor: "webhook",
+        actor_id: null,
+        changed_at: new Date().toISOString()
+      });
+    } catch (auditError) {
+      console.warn("Failed to log message status audit:", auditError);
+      // Don't fail the status update for audit logging failure
+    }
+
     // Update analytics
     await updateDeliveryStats(supabase, clinicId, statusUpdate.status);
 
@@ -181,13 +203,17 @@ async function updateDeliveryStats(
     }
 
     if (!existingStats) {
-      // Create new stats record
-      const newStats: any = {
+      // Create new stats record - initialize all fields to 0
+      const newStats = {
         clinic_id: clinicId,
         date: today,
+        total_sent: 0,
+        total_delivered: 0,
+        total_read: 0,
+        total_failed: 0,
       };
 
-      // Set count based on status
+      // Increment count based on status
       switch (status) {
         case "sent":
           newStats.total_sent = 1;
