@@ -19209,14 +19209,16 @@ function archivePreviousDayAppointments() {
     // ========================================================
     // DELETE ARCHIVED ROWS
     // ========================================================
-    // Delete in reverse order to avoid row number shifts
-    // When deleting row N, all rows below shift up, so delete
-    // from highest row number to lowest
+    // Delete in forward order (HIGH to LOW row numbers)
+    // rowsToArchive is in descending order from backward collection loop:
+    // if rows 7, 12, 17 matched → array is [17, 12, 7]
+    // Forward iteration: delete 17 (highest), then 12, then 7 (lowest)
+    // This avoids row number shifts when deleting
 
     for (
-        let j = rowsToArchive.length - 1;
-        j >= 0;
-        j--
+        let j = 0;
+        j < rowsToArchive.length;
+        j++
     ) {
 
         appointmentSheet.deleteRow(
