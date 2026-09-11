@@ -21478,12 +21478,6 @@ function ensureDoctorProfileColumns() {
 
 function getDoctorProfile(doctorId) {
 
-    const doctor = getDoctorRecord(doctorId);
-
-    if (!doctor) {
-        return null;
-    }
-
     const ss =
         SpreadsheetApp.getActiveSpreadsheet();
 
@@ -21491,8 +21485,14 @@ function getDoctorProfile(doctorId) {
         ss.getSheetByName("Doctors");
 
     if (!sheet) {
-        return doctor;
+        return null;
     }
+
+    // ========================================================
+    // LOAD SHEET ONCE
+    // ========================================================
+    // Search sheet for doctor and build complete profile
+    // (avoids redundant getDoctorRecord call which loads sheet again)
 
     const data =
         sheet.getDataRange().getValues();
@@ -21509,7 +21509,24 @@ function getDoctorProfile(doctorId) {
         ) {
 
             return {
-                ...doctor,
+                doctorId:
+                    String(data[i][0]).trim(),
+
+                doctorName:
+                    String(data[i][1] || "").trim(),
+
+                phone:
+                    String(data[i][2] || "").trim(),
+
+                clinicName:
+                    String(data[i][3] || "").trim(),
+
+                calendarId:
+                    String(data[i][4] || "").trim(),
+
+                qualificationId:
+                    String(data[i][5] || "").trim(),
+
                 specialty:
                     String(data[i][6] || "").trim(),
 
@@ -21531,7 +21548,7 @@ function getDoctorProfile(doctorId) {
         }
     }
 
-    return doctor;
+    return null;
 }
 
 
