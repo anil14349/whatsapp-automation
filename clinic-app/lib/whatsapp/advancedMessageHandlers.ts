@@ -155,15 +155,19 @@ export async function handleResultsRequest(
       response = `Hi ${patient.name}! 👋\n\nI couldn't find any recent tests associated with your account.\n\nCould you provide the test date or type? Our team will look it up for you! 🔍`;
     }
 
-    // Log request
-    await supabase.from("patient_requests").insert({
-      clinic_id: clinicId,
-      patient_id: patient.id,
-      patient_phone: message.from,
-      request_type: "results",
-      request_text: text,
-      status: "acknowledged"
-    });
+    // Log request with validation
+    const createResult = await createPatientRequest(
+      supabase,
+      clinicId,
+      patient.id,
+      message.from,
+      "results",
+      text
+    );
+    if (!createResult.success) {
+      console.error("Failed to create results request:", createResult.error);
+      // Continue anyway - still send response
+    }
 
     await sendWhatsAppMessage(supabase, clinicId, message.from, response);
 
@@ -193,17 +197,19 @@ export async function handlePrescriptionRequest(
   text: string
 ): Promise<MessageProcessingResult> {
   try {
-    // Log request
-    const { error } = await supabase.from("patient_requests").insert({
-      clinic_id: clinicId,
-      patient_id: patient.id,
-      patient_phone: message.from,
-      request_type: "prescription",
-      request_text: text,
-      status: "pending"
-    });
+    // Log request with validation
+    const createResult = await createPatientRequest(
+      supabase,
+      clinicId,
+      patient.id,
+      message.from,
+      "prescription",
+      text
+    );
 
-    if (error) throw error;
+    if (!createResult.success) {
+      throw new Error(createResult.error);
+    }
 
     await sendWhatsAppMessage(
       supabase,
@@ -238,17 +244,19 @@ export async function handleBillingRequest(
   text: string
 ): Promise<MessageProcessingResult> {
   try {
-    // Log request
-    const { error } = await supabase.from("patient_requests").insert({
-      clinic_id: clinicId,
-      patient_id: patient.id,
-      patient_phone: message.from,
-      request_type: "bill",
-      request_text: text,
-      status: "pending"
-    });
+    // Log request with validation
+    const createResult = await createPatientRequest(
+      supabase,
+      clinicId,
+      patient.id,
+      message.from,
+      "bill",
+      text
+    );
 
-    if (error) throw error;
+    if (!createResult.success) {
+      throw new Error(createResult.error);
+    }
 
     await sendWhatsAppMessage(
       supabase,
@@ -362,15 +370,19 @@ export async function handleRescheduleRequest(
       };
     }
 
-    // Log request
-    await supabase.from("patient_requests").insert({
-      clinic_id: clinicId,
-      patient_id: patient.id,
-      patient_phone: message.from,
-      request_type: "reschedule",
-      request_text: text,
-      status: "pending"
-    });
+    // Log request with validation
+    const createResult = await createPatientRequest(
+      supabase,
+      clinicId,
+      patient.id,
+      message.from,
+      "reschedule",
+      text
+    );
+    if (!createResult.success) {
+      console.error("Failed to create reschedule request:", createResult.error);
+      // Continue anyway - still send response
+    }
 
     const appt = appointments[0];
     await sendWhatsAppMessage(
@@ -471,17 +483,19 @@ export async function handleFeedbackRequest(
   text: string
 ): Promise<MessageProcessingResult> {
   try {
-    // Log request
-    const { error } = await supabase.from("patient_requests").insert({
-      clinic_id: clinicId,
-      patient_id: patient.id,
-      patient_phone: message.from,
-      request_type: "feedback",
-      request_text: text,
-      status: "acknowledged"
-    });
+    // Log request with validation
+    const createResult = await createPatientRequest(
+      supabase,
+      clinicId,
+      patient.id,
+      message.from,
+      "feedback",
+      text
+    );
 
-    if (error) throw error;
+    if (!createResult.success) {
+      throw new Error(createResult.error);
+    }
 
     await sendWhatsAppMessage(
       supabase,

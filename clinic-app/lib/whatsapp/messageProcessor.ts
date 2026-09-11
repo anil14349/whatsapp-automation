@@ -110,11 +110,11 @@ export async function processIncomingMessage(
       return await handleCancellation(supabase, clinicId, message, patient);
     }
 
-    if (lowerText.includes("help") || lowerText.includes("menu")) {
+    if (matchesPattern(lowerText, MESSAGE_PATTERNS.HELP)) {
       return await handleHelpRequest(supabase, clinicId, message, patient);
     }
 
-    // Default: Send help menu
+    // Default: Send help menu (catches unmatched messages)
     return await handleHelpRequest(supabase, clinicId, message, patient);
   } catch (error) {
     console.error("Error processing WhatsApp message:", error);
