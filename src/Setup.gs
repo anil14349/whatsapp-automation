@@ -310,8 +310,18 @@ function uploadWhatsAppMediaFromDriveFile(driveFileId) {
         );
     }
 
-    const result =
-        JSON.parse(responseBody);
+    let result;
+    try {
+        result =
+            JSON.parse(responseBody);
+    } catch (parseError) {
+        throw new Error(
+            "Failed to parse WhatsApp media upload response: " +
+            parseError.message +
+            " | Response: " +
+            responseBody.substring(0, 200)
+        );
+    }
 
     Logger.log(
         "Uploaded '" +

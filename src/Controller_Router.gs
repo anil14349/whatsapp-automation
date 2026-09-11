@@ -275,6 +275,24 @@ if (
     )
 ) {
 
+    // ========================================================
+    // PREVENT NAVIGATION AWAY FROM PROTECTED BOOKING STATES
+    // ========================================================
+    // Users cannot abandon multi-step booking flows mid-process
+
+    if (isStateProtectedFromNavigation(session.state)) {
+
+        sendCustomDateEntryMenuReply(
+            ss,
+            senderPhone,
+            "⚠️ You're in the middle of completing a request.\n\n" +
+            "Please finish your booking or selection first, " +
+            "then you can go back to the main menu."
+        );
+
+        return true;
+    }
+
     if (session.role === "DOCTOR") {
 
         returnDoctorToMenu(
@@ -339,6 +357,24 @@ if (
     )
 ) {
 
+    // ========================================================
+    // PREVENT GOING BACK FROM PROTECTED BOOKING STATES
+    // ========================================================
+    // Users cannot abandon multi-step booking flows by pressing back
+
+    if (isStateProtectedFromNavigation(session.state)) {
+
+        sendCustomDateEntryMenuReply(
+            ss,
+            senderPhone,
+            "⚠️ You're in the middle of completing a request.\n\n" +
+            "Please finish your booking or selection first, " +
+            "then you can go back."
+        );
+
+        return true;
+    }
+
     if (session.role === "DOCTOR") {
 
         goBackInDoctorWhatsAppFlow(
@@ -371,7 +407,8 @@ function processWhatsAppTextMessage(
     senderPhone,
     senderName,
     messageText,
-    location
+    location,
+    messageType
 ) {
 
     const normalizedMessage =
@@ -381,6 +418,23 @@ function processWhatsAppTextMessage(
 
     const session =
         getWhatsAppSession(senderPhone);
+
+    // ========================================================
+    // ENFORCE TAPPABLE-ONLY OPTIONS
+    // ========================================================
+    // Reject plain text input if current state only accepts interactive options
+
+    if (shouldRejectPlainTextInput(messageType, session)) {
+
+        sendCustomDateEntryMenuReply(
+            ss,
+            senderPhone,
+            "👆 Please use the tappable options (buttons/lists) to navigate. " +
+            "Text input is not allowed in this menu."
+        );
+
+        return;
+    }
 
     if (
         handleAfterHoursPatientGate(

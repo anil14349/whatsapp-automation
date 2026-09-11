@@ -244,16 +244,35 @@ function doPost(e) {
         messageId =
             String(message.id || "");
 
-        if (
-            messageId &&
-            !tryBeginWhatsAppMessageProcessing(
-                messageId
-            )
-        ) {
-            return webhookOkResponse();
-        }
+        // ========================================================
+        // PERSISTENT IDEMPOTENCY CHECK
+        // ========================================================
+        // Use sheet-based deduplication instead of cache (which expires)
+        // to prevent duplicate processing after 5+ minutes
 
-        processingStarted = !!messageId;
+        if (messageId) {
+            const idempotencyCheck =
+                checkMessageIdempotency(messageId);
+
+            if (
+                idempotencyCheck.isProcessed &&
+                !idempotencyCheck.isExpired
+            ) {
+                // Message already processed recently
+                Logger.log(
+                    "Message " + messageId +
+                    " already processed; ignoring duplicate"
+                );
+                return webhookOkResponse();
+            }
+
+            // Record that we're processing this message
+            recordMessageProcessing(
+                messageId,
+                senderPhone
+            );
+            processingStarted = true;
+        }
 
         const senderPhone =
             String(message.from);
@@ -344,7 +363,8 @@ function doPost(e) {
                     senderPhone,
                     senderName,
                     messageText,
-                    inboundLocation
+                    inboundLocation,
+                    messageType
                 );
 
             } finally {
@@ -507,17 +527,13 @@ function markWhatsAppMessageProcessed(messageId) {
         return;
     }
 
-    const cache =
-        CacheService.getScriptCache();
+    // ========================================================
+    // PERSISTENT DEDUPLICATION
+    // ========================================================
+    // Record successful processing in sheet instead of cache
+    // to ensure dedup survives cache expiration (7-day window)
 
-    const key =
-        "WA_PROCESSED_" + messageId;
-
-    cache.put(
-        key,
-        "1",
-        21600
-    );
+    markMessageProcessed(messageId, "SUCCESS");
 }
 
 
@@ -527,9 +543,11 @@ function isWhatsAppMessageProcessing(messageId) {
         return false;
     }
 
-    return !!CacheService.getScriptCache().get(
-        "WA_PROCESSING_" + messageId
-    );
+    // Check persistent deduplication
+    const idempotency = checkMessageIdempotency(messageId);
+    return idempotency.isProcessed &&
+           idempotency.status === "PROCESSING" &&
+           !idempotency.isExpired;
 }
 
 
@@ -575,11 +593,11 @@ function tryBeginWhatsAppMessageProcessing(messageId) {
 
         Logger.log(
             "tryBeginWhatsAppMessageProcessing: could not acquire lock " +
-            "for messageId=" + messageId + " after retries; proceeding " +
-            "without the atomic guard rather than dropping the message."
+            "for messageId=" + messageId + " after " + 2 + " retries; " +
+            "rejecting message to prevent concurrent processing."
         );
 
-        return true;
+        return false;
     }
 
     try {

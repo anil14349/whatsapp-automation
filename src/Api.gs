@@ -15,6 +15,10 @@ function api(
     data
 ) {
 
+    if (!data || typeof data !== "object") {
+        data = {};
+    }
+
     switch (action) {
 
         // --------------------------------------------------------
@@ -32,6 +36,13 @@ function api(
 
         case "getAvailableSlots":
 
+            if (!data.doctorId || !data.date) {
+                return {
+                    success: false,
+                    message: "Missing required parameters: doctorId and date"
+                };
+            }
+
             return getAvailableSlots(
                 data.doctorId,
                 data.date
@@ -43,6 +54,14 @@ function api(
         // --------------------------------------------------------
 
         case "book":
+
+            if (!data.doctorId || !data.date || !data.time ||
+                !data.patientName || !data.patientPhone) {
+                return {
+                    success: false,
+                    message: "Missing required parameters: doctorId, date, time, patientName, patientPhone"
+                };
+            }
 
             return bookAppointment(
 
@@ -66,6 +85,13 @@ function api(
 
         case "getMyAppointments":
 
+            if (!data.patientPhone) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: patientPhone"
+                };
+            }
+
             return getMyAppointments(
                 data.patientPhone
             );
@@ -76,6 +102,13 @@ function api(
         // --------------------------------------------------------
 
         case "cancel":
+
+            if (!data.appointmentId || !data.patientPhone) {
+                return {
+                    success: false,
+                    message: "Missing required parameters: appointmentId, patientPhone"
+                };
+            }
 
             return cancelAppointment(
 
@@ -91,6 +124,14 @@ function api(
 
         case "reschedule":
 
+            if (!data.appointmentId || !data.patientPhone ||
+                !data.newDate || !data.newTime) {
+                return {
+                    success: false,
+                    message: "Missing required parameters: appointmentId, patientPhone, newDate, newTime"
+                };
+            }
+
             return rescheduleAppointment(
 
                 data.appointmentId,
@@ -105,11 +146,25 @@ function api(
 
         case "doctorToday":
 
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
+
             return getDoctorTodaySchedule(
                 data.doctorId
             );
 
         case "doctorWeek":
+
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
 
             return getDoctorWeeklySchedule(
                 data.doctorId
@@ -117,11 +172,25 @@ function api(
 
         case "doctorNext":
 
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
+
             return getDoctorNextAppointment(
                 data.doctorId
             );
 
         case "doctorPatients":
+
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
 
             return {
                 success: true,
@@ -133,6 +202,13 @@ function api(
 
         case "doctorAvailability":
 
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
+
             return {
                 success: true,
                 availability:
@@ -142,6 +218,13 @@ function api(
             };
 
         case "doctorLeaves":
+
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
 
             return {
                 success: true,

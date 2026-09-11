@@ -77,7 +77,16 @@ function sendWhatsAppGraphPayload(to, payload) {
         );
     }
 
-    return JSON.parse(responseBody);
+    try {
+        return JSON.parse(responseBody);
+    } catch (parseError) {
+        throw new Error(
+            "Failed to parse WhatsApp API response: " +
+            parseError.message +
+            " | Response: " +
+            responseBody.substring(0, 200)
+        );
+    }
 }
 
 

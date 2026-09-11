@@ -102,7 +102,14 @@ function getLogSettings() {
         cache.get(LOG_SETTINGS_CACHE_KEY);
 
     if (cached) {
-        return JSON.parse(cached);
+        try {
+            return JSON.parse(cached);
+        } catch (parseError) {
+            Logger.log(
+                "getLogSettings: corrupted cache entry, falling back to sheet. Error: " +
+                parseError.message
+            );
+        }
     }
 
     const settings =

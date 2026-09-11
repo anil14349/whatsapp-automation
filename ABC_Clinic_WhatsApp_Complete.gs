@@ -91,6 +91,64 @@ const APPOINTMENT_STATUS = {
 };
 
 
+// States that allow plain text input (for names, dates, search, reasons, etc.)
+// All other states should reject text input and require interactive options
+const TEXT_INPUT_ALLOWED_STATES = [
+    // ========== Patient Booking ==========
+    "BOOK_NAME",                           // Patient name entry
+    "DATE_CUSTOM",                         // Custom appointment date
+    "HOME_COLLECTION_DATE_CUSTOM",         // Home collection custom date
+
+    // ========== Doctor Management ==========
+    "DOCTOR_DATE_CUSTOM",                  // Custom appointment date (doctor)
+    "DOCTOR_LEAVE_REASON",                 // Leave reason text
+    "DOCTOR_LEAVE_RANGE_REASON",           // Leave reason for date range
+
+    // ========== Search & Lookup ==========
+    "DOCTOR_SEARCH",                       // Search doctor by name
+    "SEARCH_APPOINTMENTS_BY_PHONE",        // Search by patient phone
+    "SEARCH_APPOINTMENTS_BY_ID"            // Search by appointment ID
+];
+
+
+// Protected booking states that prevent navigation away without completing the flow
+// Users cannot press 0 (main menu), 9 (back), or change language in these states
+const PROTECTED_BOOKING_STATES = [
+    // ========== Patient Booking ==========
+    "BOOK_DOCTOR",                         // Selecting doctor
+    "BOOK_DATE",                           // Selecting appointment date
+    "BOOK_TIME",                           // Selecting time slot
+    "BOOK_CONFIRM",                        // Confirming appointment details
+    "BOOK_NAME",                           // Entering patient name
+
+    // ========== Home Sample Collection ==========
+    "HOME_COLLECTION_LOCATION",            // Sharing location
+    "HOME_COLLECTION_DATE",                // Selecting collection date
+    "HOME_COLLECTION_TIME",                // Selecting time window
+
+    // ========== Patient Reschedule ==========
+    "RESCHEDULE_DATE",                     // Selecting new date
+    "RESCHEDULE_TIME",                     // Selecting new time
+    "RESCHEDULE_CONFIRM",                  // Confirming reschedule
+
+    // ========== Patient Cancel ==========
+    "CANCEL_SELECT",                       // Selecting appointment to cancel
+    "CANCEL_CONFIRM",                      // Confirming cancellation
+
+    // ========== Doctor Booking & Management ==========
+    "DOCTOR_LEAVE_REASON",                 // Entering leave reason
+    "DOCTOR_LEAVE_RANGE_REASON",           // Entering leave reason for date range
+    "DOCTOR_AVAIL_CONFIRM",                // Confirming availability
+    "DOCTOR_AVAIL_START",                  // Setting availability start
+    "DOCTOR_AVAIL_END",                    // Setting availability end
+    "DOCTOR_RESCHEDULE_DATE",              // Doctor selecting reschedule date
+    "DOCTOR_RESCHEDULE_TIME",              // Doctor selecting reschedule time
+    "DOCTOR_RESCHEDULE_CONFIRM",           // Doctor confirming reschedule
+    "DOCTOR_CANCEL_CONFIRM",               // Doctor confirming cancellation
+    "DOCTOR_STATUS_ACTION"                 // Doctor marking visit status
+];
+
+
 function normalizeAppointmentStatus(value) {
 
     const raw =
@@ -468,7 +526,7 @@ function getLanguageMenuSpec() {
     const interactive =
         buildInteractiveListSpec(
             [
-                { id: "1", title: "English" },
+                { id: "1", title: "English", description: "English" },
                 { id: "2", title: "Telugu", description: "తెలుగు" },
                 { id: "3", title: "Hindi", description: "हिन्दी" },
                 { id: "4", title: "Kannada", description: "ಕನ್ನಡ" },
@@ -487,6 +545,15 @@ function getLanguageMenuSpec() {
 
 function getDateMenuSpec(mode) {
 
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todayFormatted =
+        Utilities.formatDate(today, TIMEZONE, "MMM dd, yyyy");
+    const tomorrowFormatted =
+        Utilities.formatDate(tomorrow, TIMEZONE, "MMM dd, yyyy");
+
     const fallbackText =
         "1️⃣ Today\n" +
         "2️⃣ Tomorrow\n" +
@@ -495,15 +562,18 @@ function getDateMenuSpec(mode) {
     const rows = [
         {
             id: "date_today",
-            title: "Today"
+            title: "Today",
+            description: todayFormatted
         },
         {
             id: "date_tomorrow",
-            title: "Tomorrow"
+            title: "Tomorrow",
+            description: tomorrowFormatted
         },
         {
             id: "date_custom",
-            title: "Other date"
+            title: "Other date",
+            description: "Enter custom date in YYYY-MM-DD"
         }
     ];
 
@@ -1335,7 +1405,14 @@ function getLogSettings() {
         cache.get(LOG_SETTINGS_CACHE_KEY);
 
     if (cached) {
-        return JSON.parse(cached);
+        try {
+            return JSON.parse(cached);
+        } catch (parseError) {
+            Logger.log(
+                "getLogSettings: corrupted cache entry, falling back to sheet. Error: " +
+                parseError.message
+            );
+        }
     }
 
     const settings =
@@ -5585,12 +5662,26 @@ function bookAppointment(
 
     try {
 
-        if (!lock.tryLock(30000)) {
+        // ========================================================
+        // RETRY LOCK ACQUISITION
+        // ========================================================
+        // Try up to 3 times with timeouts to handle brief lock contention
+        // rather than failing immediately
+
+        let lockAcquired = false;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            if (lock.tryLock(5000)) {
+                lockAcquired = true;
+                break;
+            }
+        }
+
+        if (!lockAcquired) {
 
             return {
                 success: false,
                 message:
-                    "Booking is busy. Please try again."
+                    "Booking is currently busy. Please try again in a moment."
             };
         }
 
@@ -5796,11 +5887,13 @@ function cancelAppointment(
         // ----------------------------------------------------------
         // Find appointment
         // ----------------------------------------------------------
+        // Scan from end backwards since appointments are appended;
+        // target is typically near the end, so this reduces avg scan time.
 
         for (
-            let i = 1;
-            i < appointmentData.length;
-            i++
+            let i = appointmentData.length - 1;
+            i >= 1;
+            i--
         ) {
 
             const rowAppointmentId =
@@ -5834,31 +5927,24 @@ function cancelAppointment(
                 // SECURITY CHECK
                 // ------------------------------------------------------
 
-                if (authorizedDoctorId) {
+                // ========================================================
+                // AUTHORIZATION CHECK: Doctor OR Patient Phone Required
+                // ========================================================
+                // Must have EITHER valid doctor authorization OR matching phone
+                const isDoctorAuthorized =
+                    authorizedDoctorId &&
+                    rowDoctorId === authorizedDoctorId;
 
-                    if (
-                        rowDoctorId !==
-                        authorizedDoctorId
-                    ) {
+                const isPatientAuthorized =
+                    !authorizedDoctorId &&
+                    phonesMatch(rowPhone, patientPhone);
 
-                        return {
-                            success: false,
-                            message:
-                                "Appointment does not belong to this doctor."
-                        };
-                    }
-
-                } else if (
-                    !phonesMatch(
-                        rowPhone,
-                        patientPhone
-                    )
-                ) {
+                if (!isDoctorAuthorized && !isPatientAuthorized) {
 
                     return {
                         success: false,
                         message:
-                            "Appointment does not belong to this phone number."
+                            "You are not authorized to cancel this appointment."
                     };
                 }
 
@@ -6046,12 +6132,25 @@ function rescheduleAppointment(
     const rescheduleLock =
         LockService.getScriptLock();
 
-    if (!rescheduleLock.tryLock(30000)) {
+    // ========================================================
+    // RETRY LOCK ACQUISITION
+    // ========================================================
+    // Try up to 3 times with timeouts to handle brief lock contention
+
+    let lockAcquired = false;
+    for (let attempt = 0; attempt < 3; attempt++) {
+        if (rescheduleLock.tryLock(5000)) {
+            lockAcquired = true;
+            break;
+        }
+    }
+
+    if (!lockAcquired) {
 
         return {
             success: false,
             message:
-                "Reschedule is busy. Please try again."
+                "Reschedule is currently busy. Please try again in a moment."
         };
     }
 
@@ -6073,11 +6172,13 @@ function rescheduleAppointment(
     // ----------------------------------------------------------
     // Find appointment
     // ----------------------------------------------------------
+    // Scan from end backwards since appointments are appended;
+    // target is typically near the end, so this reduces avg scan time.
 
     for (
-        let i = 1;
-        i < appointmentData.length;
-        i++
+        let i = appointmentData.length - 1;
+        i >= 1;
+        i--
     ) {
 
         if (
@@ -6134,35 +6235,26 @@ function rescheduleAppointment(
             opts.authorizedDoctorId || ""
         ).trim();
 
-    if (authorizedDoctorId) {
+    // ========================================================
+    // AUTHORIZATION CHECK: Doctor OR Patient Phone Required
+    // ========================================================
+    // Must have EITHER valid doctor authorization OR matching phone
+    const isDoctorAuthorized =
+        authorizedDoctorId &&
+        String(doctorId || "").trim() === authorizedDoctorId;
 
-        if (
-            String(doctorId || "").trim() !==
-            authorizedDoctorId
-        ) {
+    const isPatientAuthorized =
+        !authorizedDoctorId &&
+        phonesMatch(storedPatientPhone, patientPhoneInput);
 
-            return {
-
-                success: false,
-
-                message:
-                    "Appointment does not belong to this doctor."
-            };
-        }
-
-    } else if (
-        !phonesMatch(
-            storedPatientPhone,
-            patientPhoneInput
-        )
-    ) {
+    if (!isDoctorAuthorized && !isPatientAuthorized) {
 
         return {
 
             success: false,
 
             message:
-                "Appointment does not belong to this phone number."
+                "You are not authorized to reschedule this appointment."
         };
     }
 
@@ -6752,10 +6844,16 @@ function hasActiveAppointmentOnDate(
     const excludedId =
         String(excludedAppointmentId || "").trim();
 
+    // ========================================================
+    // OPTIMIZATION: Scan from end backwards
+    // ========================================================
+    // Most active appointments are recent; scanning from the end
+    // reduces avg scan time on large sheets without missing results.
+
     for (
-        let i = 1;
-        i < data.length;
-        i++
+        let i = data.length - 1;
+        i >= 1;
+        i--
     ) {
 
         const status =
@@ -6918,6 +7016,10 @@ function api(
     data
 ) {
 
+    if (!data || typeof data !== "object") {
+        data = {};
+    }
+
     switch (action) {
 
         // --------------------------------------------------------
@@ -6935,6 +7037,13 @@ function api(
 
         case "getAvailableSlots":
 
+            if (!data.doctorId || !data.date) {
+                return {
+                    success: false,
+                    message: "Missing required parameters: doctorId and date"
+                };
+            }
+
             return getAvailableSlots(
                 data.doctorId,
                 data.date
@@ -6946,6 +7055,14 @@ function api(
         // --------------------------------------------------------
 
         case "book":
+
+            if (!data.doctorId || !data.date || !data.time ||
+                !data.patientName || !data.patientPhone) {
+                return {
+                    success: false,
+                    message: "Missing required parameters: doctorId, date, time, patientName, patientPhone"
+                };
+            }
 
             return bookAppointment(
 
@@ -6969,6 +7086,13 @@ function api(
 
         case "getMyAppointments":
 
+            if (!data.patientPhone) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: patientPhone"
+                };
+            }
+
             return getMyAppointments(
                 data.patientPhone
             );
@@ -6979,6 +7103,13 @@ function api(
         // --------------------------------------------------------
 
         case "cancel":
+
+            if (!data.appointmentId || !data.patientPhone) {
+                return {
+                    success: false,
+                    message: "Missing required parameters: appointmentId, patientPhone"
+                };
+            }
 
             return cancelAppointment(
 
@@ -6994,6 +7125,14 @@ function api(
 
         case "reschedule":
 
+            if (!data.appointmentId || !data.patientPhone ||
+                !data.newDate || !data.newTime) {
+                return {
+                    success: false,
+                    message: "Missing required parameters: appointmentId, patientPhone, newDate, newTime"
+                };
+            }
+
             return rescheduleAppointment(
 
                 data.appointmentId,
@@ -7008,11 +7147,25 @@ function api(
 
         case "doctorToday":
 
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
+
             return getDoctorTodaySchedule(
                 data.doctorId
             );
 
         case "doctorWeek":
+
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
 
             return getDoctorWeeklySchedule(
                 data.doctorId
@@ -7020,11 +7173,25 @@ function api(
 
         case "doctorNext":
 
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
+
             return getDoctorNextAppointment(
                 data.doctorId
             );
 
         case "doctorPatients":
+
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
 
             return {
                 success: true,
@@ -7036,6 +7203,13 @@ function api(
 
         case "doctorAvailability":
 
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
+
             return {
                 success: true,
                 availability:
@@ -7045,6 +7219,13 @@ function api(
             };
 
         case "doctorLeaves":
+
+            if (!data.doctorId) {
+                return {
+                    success: false,
+                    message: "Missing required parameter: doctorId"
+                };
+            }
 
             return {
                 success: true,
@@ -13048,6 +13229,24 @@ if (
     )
 ) {
 
+    // ========================================================
+    // PREVENT NAVIGATION AWAY FROM PROTECTED BOOKING STATES
+    // ========================================================
+    // Users cannot abandon multi-step booking flows mid-process
+
+    if (isStateProtectedFromNavigation(session.state)) {
+
+        sendCustomDateEntryMenuReply(
+            ss,
+            senderPhone,
+            "⚠️ You're in the middle of completing a request.\n\n" +
+            "Please finish your booking or selection first, " +
+            "then you can go back to the main menu."
+        );
+
+        return true;
+    }
+
     if (session.role === "DOCTOR") {
 
         returnDoctorToMenu(
@@ -13111,6 +13310,24 @@ if (
         ) !== -1
     )
 ) {
+
+    // ========================================================
+    // PREVENT GOING BACK FROM PROTECTED BOOKING STATES
+    // ========================================================
+    // Users cannot abandon multi-step booking flows by pressing back
+
+    if (isStateProtectedFromNavigation(session.state)) {
+
+        sendCustomDateEntryMenuReply(
+            ss,
+            senderPhone,
+            "⚠️ You're in the middle of completing a request.\n\n" +
+            "Please finish your booking or selection first, " +
+            "then you can go back."
+        );
+
+        return true;
+    }
 
     if (session.role === "DOCTOR") {
 
@@ -16546,7 +16763,8 @@ function processWhatsAppTextMessage(
     senderPhone,
     senderName,
     messageText,
-    location
+    location,
+    messageType
 ) {
 
     const normalizedMessage =
@@ -16556,6 +16774,23 @@ function processWhatsAppTextMessage(
 
     const session =
         getWhatsAppSession(senderPhone);
+
+    // ========================================================
+    // ENFORCE TAPPABLE-ONLY OPTIONS
+    // ========================================================
+    // Reject plain text input if current state only accepts interactive options
+
+    if (shouldRejectPlainTextInput(messageType, session)) {
+
+        sendCustomDateEntryMenuReply(
+            ss,
+            senderPhone,
+            "👆 Please use the tappable options (buttons/lists) to navigate. " +
+            "Text input is not allowed in this menu."
+        );
+
+        return;
+    }
 
     if (
         handleAfterHoursPatientGate(
@@ -16709,16 +16944,35 @@ function doPost(e) {
         messageId =
             String(message.id || "");
 
-        if (
-            messageId &&
-            !tryBeginWhatsAppMessageProcessing(
-                messageId
-            )
-        ) {
-            return webhookOkResponse();
-        }
+        // ========================================================
+        // PERSISTENT IDEMPOTENCY CHECK
+        // ========================================================
+        // Use sheet-based deduplication instead of cache (which expires)
+        // to prevent duplicate processing after 5+ minutes
 
-        processingStarted = !!messageId;
+        if (messageId) {
+            const idempotencyCheck =
+                checkMessageIdempotency(messageId);
+
+            if (
+                idempotencyCheck.isProcessed &&
+                !idempotencyCheck.isExpired
+            ) {
+                // Message already processed recently
+                Logger.log(
+                    "Message " + messageId +
+                    " already processed; ignoring duplicate"
+                );
+                return webhookOkResponse();
+            }
+
+            // Record that we're processing this message
+            recordMessageProcessing(
+                messageId,
+                senderPhone
+            );
+            processingStarted = true;
+        }
 
         const senderPhone =
             String(message.from);
@@ -16809,7 +17063,8 @@ function doPost(e) {
                     senderPhone,
                     senderName,
                     messageText,
-                    inboundLocation
+                    inboundLocation,
+                    messageType
                 );
 
             } finally {
@@ -16964,17 +17219,13 @@ function markWhatsAppMessageProcessed(messageId) {
         return;
     }
 
-    const cache =
-        CacheService.getScriptCache();
+    // ========================================================
+    // PERSISTENT DEDUPLICATION
+    // ========================================================
+    // Record successful processing in sheet instead of cache
+    // to ensure dedup survives cache expiration (7-day window)
 
-    const key =
-        "WA_PROCESSED_" + messageId;
-
-    cache.put(
-        key,
-        "1",
-        21600
-    );
+    markMessageProcessed(messageId, "SUCCESS");
 }
 
 function isWhatsAppMessageProcessing(messageId) {
@@ -16983,9 +17234,11 @@ function isWhatsAppMessageProcessing(messageId) {
         return false;
     }
 
-    return !!CacheService.getScriptCache().get(
-        "WA_PROCESSING_" + messageId
-    );
+    // Check persistent deduplication
+    const idempotency = checkMessageIdempotency(messageId);
+    return idempotency.isProcessed &&
+           idempotency.status === "PROCESSING" &&
+           !idempotency.isExpired;
 }
 
 function tryBeginWhatsAppMessageProcessing(messageId) {
@@ -17019,11 +17272,11 @@ function tryBeginWhatsAppMessageProcessing(messageId) {
 
         Logger.log(
             "tryBeginWhatsAppMessageProcessing: could not acquire lock " +
-            "for messageId=" + messageId + " after retries; proceeding " +
-            "without the atomic guard rather than dropping the message."
+            "for messageId=" + messageId + " after " + 2 + " retries; " +
+            "rejecting message to prevent concurrent processing."
         );
 
-        return true;
+        return false;
     }
 
     try {
@@ -17152,7 +17405,16 @@ function sendWhatsAppGraphPayload(to, payload) {
         );
     }
 
-    return JSON.parse(responseBody);
+    try {
+        return JSON.parse(responseBody);
+    } catch (parseError) {
+        throw new Error(
+            "Failed to parse WhatsApp API response: " +
+            parseError.message +
+            " | Response: " +
+            responseBody.substring(0, 200)
+        );
+    }
 }
 
 
@@ -18106,133 +18368,138 @@ function saveWhatsAppSession(
     ensureWhatsAppSessionListPageColumn(sheet);
     ensureWhatsAppSessionLocationColumn(sheet);
 
-    const existing =
-        getWhatsAppSession(phone);
+    try {
 
-    const now =
-        new Date();
+        const existing =
+            getWhatsAppSession(phone);
 
-    if (existing) {
+        const now =
+            new Date();
 
-        const row =
-            existing.row;
+        if (existing) {
 
-        const current =
+            const row =
+                existing.row;
+
+            const current =
+                sheet
+                    .getRange(row, 1, 1, 15)
+                    .getValues()[0];
+
             sheet
                 .getRange(row, 1, 1, 15)
-                .getValues()[0];
+                .setValues([[
+                    phone,
 
-        sheet
-            .getRange(row, 1, 1, 15)
-            .setValues([[
+                    updates.role !== undefined
+                        ? updates.role
+                        : current[1],
+
+                    updates.state !== undefined
+                        ? updates.state
+                        : current[2],
+
+                    updates.doctorId !== undefined
+                        ? updates.doctorId
+                        : current[3],
+
+                    updates.date !== undefined
+                        ? updates.date
+                        : current[4],
+
+                    updates.time !== undefined
+                        ? updates.time
+                        : current[5],
+
+                    updates.appointmentId !== undefined
+                        ? updates.appointmentId
+                        : current[6],
+
+                    now,
+
+                    updates.language !== undefined
+                        ? updates.language
+                        : current[8],
+
+                    updates.patientName !== undefined
+                        ? updates.patientName
+                        : current[9],
+
+                    updates.slotPage !== undefined
+                        ? updates.slotPage
+                        : (
+                            current[10] === "" ||
+                            current[10] === undefined ||
+                            current[10] === null
+                                ? 0
+                                : current[10]
+                        ),
+
+                    updates.apptPage !== undefined
+                        ? updates.apptPage
+                        : (
+                            current[11] === "" ||
+                            current[11] === undefined ||
+                            current[11] === null
+                                ? 0
+                                : current[11]
+                        ),
+
+                    updates.doctorMenuTier !== undefined
+                        ? updates.doctorMenuTier
+                        : current[12],
+
+                    updates.listPage !== undefined
+                        ? updates.listPage
+                        : (
+                            current[13] === "" ||
+                            current[13] === undefined ||
+                            current[13] === null
+                                ? 0
+                                : current[13]
+                        ),
+
+                    updates.location !== undefined
+                        ? updates.location
+                        : current[14]
+                ]]);
+
+        } else {
+
+            sheet.appendRow([
                 phone,
-
-                updates.role !== undefined
-                    ? updates.role
-                    : current[1],
-
-                updates.state !== undefined
-                    ? updates.state
-                    : current[2],
-
-                updates.doctorId !== undefined
-                    ? updates.doctorId
-                    : current[3],
-
-                updates.date !== undefined
-                    ? updates.date
-                    : current[4],
-
-                updates.time !== undefined
-                    ? updates.time
-                    : current[5],
-
-                updates.appointmentId !== undefined
-                    ? updates.appointmentId
-                    : current[6],
-
+                updates.role || "",
+                updates.state || "",
+                updates.doctorId || "",
+                updates.date || "",
+                updates.time || "",
+                updates.appointmentId || "",
                 now,
-
-                updates.language !== undefined
-                    ? updates.language
-                    : current[8],
-
-                updates.patientName !== undefined
-                    ? updates.patientName
-                    : current[9],
-
+                updates.language || "EN",
+                updates.patientName || "",
                 updates.slotPage !== undefined
                     ? updates.slotPage
-                    : (
-                        current[10] === "" ||
-                        current[10] === undefined ||
-                        current[10] === null
-                            ? 0
-                            : current[10]
-                    ),
-
+                    : 0,
                 updates.apptPage !== undefined
                     ? updates.apptPage
-                    : (
-                        current[11] === "" ||
-                        current[11] === undefined ||
-                        current[11] === null
-                            ? 0
-                            : current[11]
-                    ),
-
+                    : 0,
                 updates.doctorMenuTier !== undefined
                     ? updates.doctorMenuTier
-                    : current[12],
-
+                    : "",
                 updates.listPage !== undefined
                     ? updates.listPage
-                    : (
-                        current[13] === "" ||
-                        current[13] === undefined ||
-                        current[13] === null
-                            ? 0
-                            : current[13]
-                    ),
+                    : 0,
+                updates.location || ""
+            ]);
+        }
 
-                updates.location !== undefined
-                    ? updates.location
-                    : current[14]
-            ]]);
+    } finally {
 
-    } else {
-
-        sheet.appendRow([
-            phone,
-            updates.role || "",
-            updates.state || "",
-            updates.doctorId || "",
-            updates.date || "",
-            updates.time || "",
-            updates.appointmentId || "",
-            now,
-            updates.language || "EN",
-            updates.patientName || "",
-            updates.slotPage !== undefined
-                ? updates.slotPage
-                : 0,
-            updates.apptPage !== undefined
-                ? updates.apptPage
-                : 0,
-            updates.doctorMenuTier !== undefined
-                ? updates.doctorMenuTier
-                : "",
-            updates.listPage !== undefined
-                ? updates.listPage
-                : 0,
-            updates.location || ""
-        ]);
+        // MUST run after every write so next read sees fresh data instead of
+        // cached value. Placed in finally block to ensure cache invalidation
+        // even if an exception occurs during save operation.
+        invalidateWhatsAppSessionCache(phone);
     }
-
-    // Must run after every write (both branches above) so the next read —
-    // whether later in this same execution or a subsequent message — sees
-    // fresh data instead of the value cached before this save.
-    invalidateWhatsAppSessionCache(phone);
 }
 
 function clearWhatsAppSession(phone) {
@@ -18430,6 +18697,160 @@ function haversineDistanceKm(
 }
 
 
+function isTextInputAllowedForState(state) {
+    return TEXT_INPUT_ALLOWED_STATES.indexOf(state) !== -1;
+}
+
+
+function shouldRejectPlainTextInput(messageType, session) {
+    // Allow text input only if:
+    // 1. Message is interactive (button/list reply), OR
+    // 2. Message is location (shared location), OR
+    // 3. Session state explicitly allows text input
+
+    if (messageType === "interactive" || messageType === "location") {
+        return false;  // Allow interactive messages and locations
+    }
+
+    if (!session || !session.state) {
+        return false;  // Allow if no session
+    }
+
+    // Reject plain text if state doesn't allow it
+    return !isTextInputAllowedForState(session.state);
+}
+
+
+function isStateProtectedFromNavigation(state) {
+    return PROTECTED_BOOKING_STATES.indexOf(state) !== -1;
+}
+
+
+function ensureIdempotencySheet() {
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName("Message_Deduplication");
+
+    if (!sheet) {
+        sheet = ss.insertSheet("Message_Deduplication");
+        sheet.appendRow([
+            "Message ID",
+            "Phone",
+            "Processed At",
+            "Status",
+            "Expires At"
+        ]);
+        // Hide this operational sheet
+        sheet.hideSheet();
+    }
+
+    return sheet;
+}
+
+
+function checkMessageIdempotency(messageId) {
+
+    if (!messageId) {
+        return { isProcessed: false, isExpired: false };
+    }
+
+    const sheet = ensureIdempotencySheet();
+    const data = sheet.getDataRange().getValues();
+    const now = new Date();
+    const retentionMs = 7 * 24 * 60 * 60 * 1000;  // 7 days retention
+
+    for (let i = 1; i < data.length; i++) {
+        const rowMessageId = String(data[i][0] || "").trim();
+
+        if (rowMessageId !== String(messageId).trim()) {
+            continue;
+        }
+
+        const processedAt = new Date(data[i][2]);
+        const expiresAt = new Date(data[i][4]);
+        const age = now - processedAt;
+
+        return {
+            isProcessed: true,
+            isExpired: age > retentionMs,
+            lastProcessedAt: processedAt,
+            status: String(data[i][3] || ""),
+            row: i + 1
+        };
+    }
+
+    return { isProcessed: false, isExpired: false };
+}
+
+
+function recordMessageProcessing(messageId, phone) {
+
+    if (!messageId) {
+        return false;
+    }
+
+    const sheet = ensureIdempotencySheet();
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + (7 * 24 * 60 * 60 * 1000));
+
+    sheet.appendRow([
+        String(messageId).trim(),
+        String(phone || "").trim(),
+        now,
+        "PROCESSING",
+        expiresAt
+    ]);
+
+    return true;
+}
+
+
+function markMessageProcessed(messageId, status) {
+
+    if (!messageId) {
+        return false;
+    }
+
+    const sheet = ensureIdempotencySheet();
+    const data = sheet.getDataRange().getValues();
+
+    for (let i = 1; i < data.length; i++) {
+        const rowMessageId = String(data[i][0] || "").trim();
+
+        if (rowMessageId === String(messageId).trim()) {
+            sheet.getRange(i + 1, 4).setValue(status || "SUCCESS");
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+function cleanupExpiredDeduplicationRecords() {
+
+    const sheet = ensureIdempotencySheet();
+    const data = sheet.getDataRange().getValues();
+    const now = new Date();
+    const rowsToDelete = [];
+
+    for (let i = data.length - 1; i >= 1; i--) {
+        const expiresAt = new Date(data[i][4]);
+
+        if (now > expiresAt) {
+            rowsToDelete.push(i + 1);
+        }
+    }
+
+    // Delete in reverse order to maintain row numbers
+    for (const row of rowsToDelete) {
+        sheet.deleteRow(row);
+    }
+
+    return rowsToDelete.length;
+}
+
+
 function appendWhatsAppLogEntry(
     ss,
     entry
@@ -18497,9 +18918,11 @@ function generateUniqueAppointmentId(appointmentSheet) {
         appointmentSheet.getDataRange().getValues();
 
     const existingIds = {};
+    const maxRecentRows = 500;
+    const startRow = Math.max(1, data.length - maxRecentRows);
 
     for (
-        let i = 1;
+        let i = startRow;
         i < data.length;
         i++
     ) {
@@ -19060,6 +19483,15 @@ function generateHomeCollectionRequestId() {
 
 function createHomeCollectionRequest(details) {
 
+    const phone =
+        String(details.phone || "").trim();
+
+    if (!phone) {
+        throw new Error(
+            "Cannot create home collection request: phone number is missing"
+        );
+    }
+
     const sheet =
         ensureHomeCollectionSheet();
 
@@ -19068,7 +19500,7 @@ function createHomeCollectionRequest(details) {
 
     sheet.appendRow([
         requestId,
-        String(details.phone || ""),
+        phone,
         String(details.patientName || ""),
         details.latitude,
         details.longitude,
@@ -19608,8 +20040,18 @@ function uploadWhatsAppMediaFromDriveFile(driveFileId) {
         );
     }
 
-    const result =
-        JSON.parse(responseBody);
+    let result;
+    try {
+        result =
+            JSON.parse(responseBody);
+    } catch (parseError) {
+        throw new Error(
+            "Failed to parse WhatsApp media upload response: " +
+            parseError.message +
+            " | Response: " +
+            responseBody.substring(0, 200)
+        );
+    }
 
     Logger.log(
         "Uploaded '" +
@@ -20910,8 +21352,10 @@ function handleWhatsAppHomeCollectionMessage(
 
         if (
             !location ||
-            !isFinite(location.latitude) ||
-            !isFinite(location.longitude)
+            typeof location.latitude !== "number" ||
+            typeof location.longitude !== "number" ||
+            !Number.isFinite(location.latitude) ||
+            !Number.isFinite(location.longitude)
         ) {
 
             sendCustomDateEntryMenuReply(
@@ -21144,10 +21588,14 @@ function handleWhatsAppHomeCollectionMessage(
             String(session.location || "").split(",");
 
         const latitude =
-            Number(locationParts[0]) || "";
+            locationParts.length > 0
+                ? Number(locationParts[0])
+                : "";
 
         const longitude =
-            Number(locationParts[1]) || "";
+            locationParts.length > 1
+                ? Number(locationParts[1])
+                : "";
 
         const hospital =
             getHospitalLocation();
@@ -21162,7 +21610,7 @@ function handleWhatsAppHomeCollectionMessage(
                     hospital.lat,
                     hospital.lng
                 )
-                : "";
+                : 0;
 
         const patientName =
             resolveKnownPatientName(senderPhone) ||

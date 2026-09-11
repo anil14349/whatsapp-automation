@@ -86,8 +86,10 @@ function handleWhatsAppHomeCollectionMessage(
 
         if (
             !location ||
-            !isFinite(location.latitude) ||
-            !isFinite(location.longitude)
+            typeof location.latitude !== "number" ||
+            typeof location.longitude !== "number" ||
+            !Number.isFinite(location.latitude) ||
+            !Number.isFinite(location.longitude)
         ) {
 
             sendCustomDateEntryMenuReply(
@@ -320,10 +322,14 @@ function handleWhatsAppHomeCollectionMessage(
             String(session.location || "").split(",");
 
         const latitude =
-            Number(locationParts[0]) || "";
+            locationParts.length > 0
+                ? Number(locationParts[0])
+                : "";
 
         const longitude =
-            Number(locationParts[1]) || "";
+            locationParts.length > 1
+                ? Number(locationParts[1])
+                : "";
 
         const hospital =
             getHospitalLocation();
@@ -338,7 +344,7 @@ function handleWhatsAppHomeCollectionMessage(
                     hospital.lat,
                     hospital.lng
                 )
-                : "";
+                : 0;
 
         const patientName =
             resolveKnownPatientName(senderPhone) ||

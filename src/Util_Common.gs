@@ -631,3 +631,42 @@ function haversineDistanceKm(
 
     return EARTH_RADIUS_KM * c;
 }
+
+
+
+// ============================================================
+// TAPPABLE-ONLY ENFORCEMENT
+// ============================================================
+// (TEXT_INPUT_ALLOWED_STATES constant defined in Config.gs)
+
+function isTextInputAllowedForState(state) {
+    return TEXT_INPUT_ALLOWED_STATES.indexOf(state) !== -1;
+}
+
+function shouldRejectPlainTextInput(messageType, session) {
+    // Allow text input only if:
+    // 1. Message is interactive (button/list reply), OR
+    // 2. Message is location (shared location), OR
+    // 3. Session state explicitly allows text input
+
+    if (messageType === "interactive" || messageType === "location") {
+        return false;  // Allow interactive messages and locations
+    }
+
+    if (!session || !session.state) {
+        return false;  // Allow if no session
+    }
+
+    // Reject plain text if state doesn't allow it
+    return !isTextInputAllowedForState(session.state);
+}
+
+
+// ============================================================
+// NAVIGATION PROTECTION
+// ============================================================
+// (PROTECTED_BOOKING_STATES constant defined in Config.gs)
+
+function isStateProtectedFromNavigation(state) {
+    return PROTECTED_BOOKING_STATES.indexOf(state) !== -1;
+}

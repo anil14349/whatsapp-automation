@@ -19,6 +19,7 @@ const MONOLITH = path.join(ROOT, "ABC_Clinic_WhatsApp_Complete.gs");
 const SRC_FILES = [
     "src/Config.gs",
     "src/Util_Common.gs",
+    "src/Util_Idempotency.gs",
     "src/Logging.gs",
     "src/Model_Reminders.gs",
     "src/Model_AppointmentStatus.gs",

@@ -86,6 +86,11 @@ function buildInteractiveListSpec(
 // nav button instead (see getDoctorMainMenuMoreSpec's tier-4 branch).
 // If a menu legitimately needs more than 10 total options, switch to
 // buildInteractiveListSpec instead (10-row cap) — see getLanguageMenuSpec.
+//
+// NOTE: WhatsApp button interactive messages do NOT support description
+// fields (only title). Use buildInteractiveListSpec for menus that need
+// descriptions (up to 72 chars per row). Buttons max 3 items × 20 chars.
+// Lists max 10 items × title(24 chars) + description(72 chars).
 function buildInteractiveButtonSpec(buttons) {
 
     if (
@@ -387,7 +392,7 @@ function getLanguageMenuSpec() {
     const interactive =
         buildInteractiveListSpec(
             [
-                { id: "1", title: "English" },
+                { id: "1", title: "English", description: "English" },
                 { id: "2", title: "Telugu", description: "తెలుగు" },
                 { id: "3", title: "Hindi", description: "हिन्दी" },
                 { id: "4", title: "Kannada", description: "ಕನ್ನಡ" },
@@ -407,6 +412,15 @@ function getLanguageMenuSpec() {
 
 function getDateMenuSpec(mode) {
 
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todayFormatted =
+        Utilities.formatDate(today, TIMEZONE, "MMM dd, yyyy");
+    const tomorrowFormatted =
+        Utilities.formatDate(tomorrow, TIMEZONE, "MMM dd, yyyy");
+
     const fallbackText =
         "1️⃣ Today\n" +
         "2️⃣ Tomorrow\n" +
@@ -415,15 +429,18 @@ function getDateMenuSpec(mode) {
     const rows = [
         {
             id: "date_today",
-            title: "Today"
+            title: "Today",
+            description: todayFormatted
         },
         {
             id: "date_tomorrow",
-            title: "Tomorrow"
+            title: "Tomorrow",
+            description: tomorrowFormatted
         },
         {
             id: "date_custom",
-            title: "Other date"
+            title: "Other date",
+            description: "Enter custom date in YYYY-MM-DD"
         }
     ];
 

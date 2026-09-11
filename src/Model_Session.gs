@@ -381,133 +381,138 @@ function saveWhatsAppSession(
     ensureWhatsAppSessionListPageColumn(sheet);
     ensureWhatsAppSessionLocationColumn(sheet);
 
-    const existing =
-        getWhatsAppSession(phone);
+    try {
 
-    const now =
-        new Date();
+        const existing =
+            getWhatsAppSession(phone);
 
-    if (existing) {
+        const now =
+            new Date();
 
-        const row =
-            existing.row;
+        if (existing) {
 
-        const current =
+            const row =
+                existing.row;
+
+            const current =
+                sheet
+                    .getRange(row, 1, 1, 15)
+                    .getValues()[0];
+
             sheet
                 .getRange(row, 1, 1, 15)
-                .getValues()[0];
+                .setValues([[
+                    phone,
 
-        sheet
-            .getRange(row, 1, 1, 15)
-            .setValues([[
+                    updates.role !== undefined
+                        ? updates.role
+                        : current[1],
+
+                    updates.state !== undefined
+                        ? updates.state
+                        : current[2],
+
+                    updates.doctorId !== undefined
+                        ? updates.doctorId
+                        : current[3],
+
+                    updates.date !== undefined
+                        ? updates.date
+                        : current[4],
+
+                    updates.time !== undefined
+                        ? updates.time
+                        : current[5],
+
+                    updates.appointmentId !== undefined
+                        ? updates.appointmentId
+                        : current[6],
+
+                    now,
+
+                    updates.language !== undefined
+                        ? updates.language
+                        : current[8],
+
+                    updates.patientName !== undefined
+                        ? updates.patientName
+                        : current[9],
+
+                    updates.slotPage !== undefined
+                        ? updates.slotPage
+                        : (
+                            current[10] === "" ||
+                            current[10] === undefined ||
+                            current[10] === null
+                                ? 0
+                                : current[10]
+                        ),
+
+                    updates.apptPage !== undefined
+                        ? updates.apptPage
+                        : (
+                            current[11] === "" ||
+                            current[11] === undefined ||
+                            current[11] === null
+                                ? 0
+                                : current[11]
+                        ),
+
+                    updates.doctorMenuTier !== undefined
+                        ? updates.doctorMenuTier
+                        : current[12],
+
+                    updates.listPage !== undefined
+                        ? updates.listPage
+                        : (
+                            current[13] === "" ||
+                            current[13] === undefined ||
+                            current[13] === null
+                                ? 0
+                                : current[13]
+                        ),
+
+                    updates.location !== undefined
+                        ? updates.location
+                        : current[14]
+                ]]);
+
+        } else {
+
+            sheet.appendRow([
                 phone,
-
-                updates.role !== undefined
-                    ? updates.role
-                    : current[1],
-
-                updates.state !== undefined
-                    ? updates.state
-                    : current[2],
-
-                updates.doctorId !== undefined
-                    ? updates.doctorId
-                    : current[3],
-
-                updates.date !== undefined
-                    ? updates.date
-                    : current[4],
-
-                updates.time !== undefined
-                    ? updates.time
-                    : current[5],
-
-                updates.appointmentId !== undefined
-                    ? updates.appointmentId
-                    : current[6],
-
+                updates.role || "",
+                updates.state || "",
+                updates.doctorId || "",
+                updates.date || "",
+                updates.time || "",
+                updates.appointmentId || "",
                 now,
-
-                updates.language !== undefined
-                    ? updates.language
-                    : current[8],
-
-                updates.patientName !== undefined
-                    ? updates.patientName
-                    : current[9],
-
+                updates.language || "EN",
+                updates.patientName || "",
                 updates.slotPage !== undefined
                     ? updates.slotPage
-                    : (
-                        current[10] === "" ||
-                        current[10] === undefined ||
-                        current[10] === null
-                            ? 0
-                            : current[10]
-                    ),
-
+                    : 0,
                 updates.apptPage !== undefined
                     ? updates.apptPage
-                    : (
-                        current[11] === "" ||
-                        current[11] === undefined ||
-                        current[11] === null
-                            ? 0
-                            : current[11]
-                    ),
-
+                    : 0,
                 updates.doctorMenuTier !== undefined
                     ? updates.doctorMenuTier
-                    : current[12],
-
+                    : "",
                 updates.listPage !== undefined
                     ? updates.listPage
-                    : (
-                        current[13] === "" ||
-                        current[13] === undefined ||
-                        current[13] === null
-                            ? 0
-                            : current[13]
-                    ),
+                    : 0,
+                updates.location || ""
+            ]);
+        }
 
-                updates.location !== undefined
-                    ? updates.location
-                    : current[14]
-            ]]);
+    } finally {
 
-    } else {
-
-        sheet.appendRow([
-            phone,
-            updates.role || "",
-            updates.state || "",
-            updates.doctorId || "",
-            updates.date || "",
-            updates.time || "",
-            updates.appointmentId || "",
-            now,
-            updates.language || "EN",
-            updates.patientName || "",
-            updates.slotPage !== undefined
-                ? updates.slotPage
-                : 0,
-            updates.apptPage !== undefined
-                ? updates.apptPage
-                : 0,
-            updates.doctorMenuTier !== undefined
-                ? updates.doctorMenuTier
-                : "",
-            updates.listPage !== undefined
-                ? updates.listPage
-                : 0,
-            updates.location || ""
-        ]);
+        // MUST run after every write so next read sees fresh data instead of
+        // cached value. Placed in finally block to ensure cache invalidation
+        // even if an exception occurs during save operation.
+        invalidateWhatsAppSessionCache(phone);
     }
-
-    // Must run after every write (both branches above) so the next read —
-    // whether later in this same execution or a subsequent message — sees
-    // fresh data instead of the value cached before this save.
-    invalidateWhatsAppSessionCache(phone);
 }
 
 

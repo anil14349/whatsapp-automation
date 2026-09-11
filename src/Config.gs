@@ -119,6 +119,63 @@ const APPOINTMENT_STATUS = {
 };
 
 
+// States that allow plain text input (for names, dates, search, reasons, etc.)
+// All other states should reject text input and require interactive options
+const TEXT_INPUT_ALLOWED_STATES = [
+    // ========== Patient Booking ==========
+    "BOOK_NAME",                           // Patient name entry
+    "DATE_CUSTOM",                         // Custom appointment date
+    "HOME_COLLECTION_DATE_CUSTOM",         // Home collection custom date
+
+    // ========== Doctor Management ==========
+    "DOCTOR_DATE_CUSTOM",                  // Custom appointment date (doctor)
+    "DOCTOR_LEAVE_REASON",                 // Leave reason text
+    "DOCTOR_LEAVE_RANGE_REASON",           // Leave reason for date range
+
+    // ========== Search & Lookup ==========
+    "DOCTOR_SEARCH",                       // Search doctor by name
+    "SEARCH_APPOINTMENTS_BY_PHONE",        // Search by patient phone
+    "SEARCH_APPOINTMENTS_BY_ID"            // Search by appointment ID
+];
+
+
+// Protected booking states that prevent navigation away without completing the flow
+// Users cannot press 0 (main menu), 9 (back), or change language in these states
+const PROTECTED_BOOKING_STATES = [
+    // ========== Patient Booking ==========
+    "BOOK_DOCTOR",                         // Selecting doctor
+    "BOOK_DATE",                           // Selecting appointment date
+    "BOOK_TIME",                           // Selecting time slot
+    "BOOK_CONFIRM",                        // Confirming appointment details
+    "BOOK_NAME",                           // Entering patient name
+
+    // ========== Home Sample Collection ==========
+    "HOME_COLLECTION_LOCATION",            // Sharing location
+    "HOME_COLLECTION_DATE",                // Selecting collection date
+    "HOME_COLLECTION_TIME",                // Selecting time window
+
+    // ========== Patient Reschedule ==========
+    "RESCHEDULE_DATE",                     // Selecting new date
+    "RESCHEDULE_TIME",                     // Selecting new time
+    "RESCHEDULE_CONFIRM",                  // Confirming reschedule
+
+    // ========== Patient Cancel ==========
+    "CANCEL_SELECT",                       // Selecting appointment to cancel
+    "CANCEL_CONFIRM",                      // Confirming cancellation
+
+    // ========== Doctor Booking & Management ==========
+    "DOCTOR_LEAVE_REASON",                 // Entering leave reason
+    "DOCTOR_LEAVE_RANGE_REASON",           // Entering leave reason for date range
+    "DOCTOR_AVAIL_CONFIRM",                // Confirming availability
+    "DOCTOR_AVAIL_START",                  // Setting availability start
+    "DOCTOR_AVAIL_END",                    // Setting availability end
+    "DOCTOR_RESCHEDULE_DATE",              // Doctor selecting reschedule date
+    "DOCTOR_RESCHEDULE_TIME",              // Doctor selecting reschedule time
+    "DOCTOR_RESCHEDULE_CONFIRM",           // Doctor confirming reschedule
+    "DOCTOR_CANCEL_CONFIRM",               // Doctor confirming cancellation
+    "DOCTOR_STATUS_ACTION"                 // Doctor marking visit status
+];
+
 
 function normalizeAppointmentStatus(value) {
 

@@ -59,6 +59,15 @@ function generateHomeCollectionRequestId() {
 // bookable slot; see the "Simple request" design decision).
 function createHomeCollectionRequest(details) {
 
+    const phone =
+        String(details.phone || "").trim();
+
+    if (!phone) {
+        throw new Error(
+            "Cannot create home collection request: phone number is missing"
+        );
+    }
+
     const sheet =
         ensureHomeCollectionSheet();
 
@@ -67,7 +76,7 @@ function createHomeCollectionRequest(details) {
 
     sheet.appendRow([
         requestId,
-        String(details.phone || ""),
+        phone,
         String(details.patientName || ""),
         details.latitude,
         details.longitude,
