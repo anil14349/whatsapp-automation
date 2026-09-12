@@ -1769,17 +1769,22 @@ function getReminderSettings() {
 
 function hasReminderBeenSent(
     appointmentId,
-    hoursBefore
+    hoursBefore,
+    logData
 ) {
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
+    // OPTIMIZATION: If logData provided, use cached data instead of reloading
+    let data = logData;
 
-    const sheet =
-        ensureWhatsAppLogSheet(ss);
+    if (!data) {
+        const ss =
+            SpreadsheetApp.getActiveSpreadsheet();
 
-    const data =
-        sheet.getDataRange().getValues();
+        const sheet =
+            ensureWhatsAppLogSheet(ss);
+
+        data = sheet.getDataRange().getValues();
+    }
 
     const targetId =
         String(appointmentId || "").trim();
@@ -2096,6 +2101,13 @@ function sendAppointmentReminders() {
     const data =
         sheet.getDataRange().getValues();
 
+    // OPTIMIZATION: Load log data ONCE instead of reloading in hasReminderBeenSent loop
+    const logSheet =
+        ensureWhatsAppLogSheet(ss);
+
+    const logData =
+        logSheet.getDataRange().getValues();
+
     const results = {
         enabled: true,
         sent: 0,
@@ -2181,10 +2193,12 @@ function sendAppointmentReminders() {
                     return;
                 }
 
+                // OPTIMIZATION: Pass cached logData instead of reloading
                 if (
                     hasReminderBeenSent(
                         appointmentId,
-                        hoursBefore
+                        hoursBefore,
+                        logData
                     )
                 ) {
                     results.skipped++;
@@ -3556,14 +3570,17 @@ function getDoctorAppointmentDuration(doctorId) {
             const duration =
                 Number(data[i][5]);
 
+            // ROBUSTNESS: Use safe default if duration missing or invalid
             if (
                 !duration ||
                 duration <= 0
             ) {
-                throw new Error(
+                Logger.log(
                     "Invalid AppointmentDuration for doctor " +
-                    doctorId
+                    doctorId +
+                    " ; using default 60 minutes"
                 );
+                return 60;  // Safe default
             }
 
             return duration;
@@ -5085,8 +5102,6 @@ function upsertPatient(
 
     try {
 
-        let locked = false;
-
         if (!opts.skipLock) {
 
             if (!lock.tryLock(10000)) {
@@ -5751,33 +5766,12 @@ function bookAppointment(
         };
     }
 
-    // ========================================================
-    // TOCTOU PROTECTION: Check slot reservation
-    // ========================================================
-    // Prevent two patients from booking the same slot
-    // if another patient reserved it between our availability check
-    // and actual booking attempt.
-
-    const slotReservationCheck =
-        isSlotReservedByOther(
-            doctorId,
-            dateString,
-            formattedRequestedTime,
-            patientPhone
-        );
-
-    if (slotReservationCheck.isReserved) {
-
-        return {
-            success: false,
-            message:
-                "The selected appointment time is not available."
-        };
-    }
-
     // ----------------------------------------------------------
-    // Create Calendar event
+    // Acquire lock BEFORE checking slot reservations
     // ----------------------------------------------------------
+    // CRITICAL FIX: Must acquire lock BEFORE slot check to prevent TOCTOU race
+    // where two patients could both see slot available, then both acquire lock
+    // and both succeed in booking same slot.
 
     const lock =
         LockService.getScriptLock();
@@ -5807,6 +5801,32 @@ function bookAppointment(
                 success: false,
                 message:
                     "Booking is currently busy. Please try again in a moment."
+            };
+        }
+
+        // ========================================================
+        // TOCTOU PROTECTION: Check slot reservation INSIDE lock
+        // ========================================================
+        // Now that lock is held, check if slot was reserved by another patient
+        // between our initial availability check and lock acquisition.
+        // This prevents race condition where two patients book same slot.
+
+        const slotReservationCheck =
+            isSlotReservedByOther(
+                doctorId,
+                dateString,
+                formattedRequestedTime,
+                patientPhone
+            );
+
+        if (slotReservationCheck.isReserved) {
+
+            lock.releaseLock();
+
+            return {
+                success: false,
+                message:
+                    "The selected appointment time is not available."
             };
         }
 
@@ -17198,6 +17218,10 @@ function doPost(e) {
         // Use sheet-based deduplication instead of cache (which expires)
         // to prevent duplicate processing after 5+ minutes
 
+        // CRITICAL FIX: Extract senderPhone BEFORE using it in recordMessageProcessing
+        const senderPhone =
+            String(message.from);
+
         if (messageId) {
             const idempotencyCheck =
                 checkMessageIdempotency(messageId);
@@ -17221,9 +17245,6 @@ function doPost(e) {
             );
             processingStarted = true;
         }
-
-        const senderPhone =
-            String(message.from);
 
         const inbound =
             extractInboundWhatsAppMessage(
@@ -26142,23 +26163,21 @@ function createAutoCleanupTriggers() {
         .everyDays(1)
         .create();
 
-    // 2. Waitlist cleanup: Weekly on Sunday at 3 AM (UTC)
+    // 2. Waitlist cleanup: Daily at 4 AM (UTC) — prevent unbounded growth
     ScriptApp.newTrigger(
         "cleanupExpiredWaitlistEntries"
     )
         .timeBased()
-        .onWeekDay(
-            ScriptApp.WeekDay.SUNDAY
-        )
-        .atHour(3)
+        .atHour(4)
+        .everyDays(1)
         .create();
 
-    // 3. Slot reservations: Every 6 hours
+    // 3. Slot reservations: Every hour — prevent accumulation at scale
     ScriptApp.newTrigger(
         "cleanupExpiredSlotReservationsAuto"
     )
         .timeBased()
-        .everyHours(6)
+        .everyHours(1)
         .create();
 
     Logger.log(

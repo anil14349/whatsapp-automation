@@ -130,8 +130,6 @@ function upsertPatient(
 
     try {
 
-        let locked = false;
-
         if (!opts.skipLock) {
 
             if (!lock.tryLock(10000)) {

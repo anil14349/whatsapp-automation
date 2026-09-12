@@ -372,23 +372,21 @@ function createAutoCleanupTriggers() {
         .everyDays(1)
         .create();
 
-    // 2. Waitlist cleanup: Weekly on Sunday at 3 AM (UTC)
+    // 2. Waitlist cleanup: Daily at 4 AM (UTC) — prevent unbounded growth
     ScriptApp.newTrigger(
         "cleanupExpiredWaitlistEntries"
     )
         .timeBased()
-        .onWeekDay(
-            ScriptApp.WeekDay.SUNDAY
-        )
-        .atHour(3)
+        .atHour(4)
+        .everyDays(1)
         .create();
 
-    // 3. Slot reservations: Every 6 hours
+    // 3. Slot reservations: Every hour — prevent accumulation at scale
     ScriptApp.newTrigger(
         "cleanupExpiredSlotReservationsAuto"
     )
         .timeBased()
-        .everyHours(6)
+        .everyHours(1)
         .create();
 
     Logger.log(

@@ -83,17 +83,22 @@ function getReminderSettings() {
 // scheduler depends on to avoid double-sending, not just diagnostics.
 function hasReminderBeenSent(
     appointmentId,
-    hoursBefore
+    hoursBefore,
+    logData
 ) {
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
+    // OPTIMIZATION: If logData provided, use cached data instead of reloading
+    let data = logData;
 
-    const sheet =
-        ensureWhatsAppLogSheet(ss);
+    if (!data) {
+        const ss =
+            SpreadsheetApp.getActiveSpreadsheet();
 
-    const data =
-        sheet.getDataRange().getValues();
+        const sheet =
+            ensureWhatsAppLogSheet(ss);
+
+        data = sheet.getDataRange().getValues();
+    }
 
     const targetId =
         String(appointmentId || "").trim();
@@ -322,6 +327,13 @@ function sendAppointmentReminders() {
     const data =
         sheet.getDataRange().getValues();
 
+    // OPTIMIZATION: Load log data ONCE instead of reloading in hasReminderBeenSent loop
+    const logSheet =
+        ensureWhatsAppLogSheet(ss);
+
+    const logData =
+        logSheet.getDataRange().getValues();
+
     const results = {
         enabled: true,
         sent: 0,
@@ -407,10 +419,12 @@ function sendAppointmentReminders() {
                     return;
                 }
 
+                // OPTIMIZATION: Pass cached logData instead of reloading
                 if (
                     hasReminderBeenSent(
                         appointmentId,
-                        hoursBefore
+                        hoursBefore,
+                        logData
                     )
                 ) {
                     results.skipped++;

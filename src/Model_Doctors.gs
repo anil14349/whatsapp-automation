@@ -41,14 +41,17 @@ function getDoctorAppointmentDuration(doctorId) {
             const duration =
                 Number(data[i][5]);
 
+            // ROBUSTNESS: Use safe default if duration missing or invalid
             if (
                 !duration ||
                 duration <= 0
             ) {
-                throw new Error(
+                Logger.log(
                     "Invalid AppointmentDuration for doctor " +
-                    doctorId
+                    doctorId +
+                    " ; using default 60 minutes"
                 );
+                return 60;  // Safe default
             }
 
             return duration;

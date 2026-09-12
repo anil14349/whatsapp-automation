@@ -257,33 +257,12 @@ function bookAppointment(
         };
     }
 
-    // ========================================================
-    // TOCTOU PROTECTION: Check slot reservation
-    // ========================================================
-    // Prevent two patients from booking the same slot
-    // if another patient reserved it between our availability check
-    // and actual booking attempt.
-
-    const slotReservationCheck =
-        isSlotReservedByOther(
-            doctorId,
-            dateString,
-            formattedRequestedTime,
-            patientPhone
-        );
-
-    if (slotReservationCheck.isReserved) {
-
-        return {
-            success: false,
-            message:
-                "The selected appointment time is not available."
-        };
-    }
-
     // ----------------------------------------------------------
-    // Create Calendar event
+    // Acquire lock BEFORE checking slot reservations
     // ----------------------------------------------------------
+    // CRITICAL FIX: Must acquire lock BEFORE slot check to prevent TOCTOU race
+    // where two patients could both see slot available, then both acquire lock
+    // and both succeed in booking same slot.
 
     const lock =
         LockService.getScriptLock();
@@ -313,6 +292,32 @@ function bookAppointment(
                 success: false,
                 message:
                     "Booking is currently busy. Please try again in a moment."
+            };
+        }
+
+        // ========================================================
+        // TOCTOU PROTECTION: Check slot reservation INSIDE lock
+        // ========================================================
+        // Now that lock is held, check if slot was reserved by another patient
+        // between our initial availability check and lock acquisition.
+        // This prevents race condition where two patients book same slot.
+
+        const slotReservationCheck =
+            isSlotReservedByOther(
+                doctorId,
+                dateString,
+                formattedRequestedTime,
+                patientPhone
+            );
+
+        if (slotReservationCheck.isReserved) {
+
+            lock.releaseLock();
+
+            return {
+                success: false,
+                message:
+                    "The selected appointment time is not available."
             };
         }
 

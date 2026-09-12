@@ -250,6 +250,10 @@ function doPost(e) {
         // Use sheet-based deduplication instead of cache (which expires)
         // to prevent duplicate processing after 5+ minutes
 
+        // CRITICAL FIX: Extract senderPhone BEFORE using it in recordMessageProcessing
+        const senderPhone =
+            String(message.from);
+
         if (messageId) {
             const idempotencyCheck =
                 checkMessageIdempotency(messageId);
@@ -273,9 +277,6 @@ function doPost(e) {
             );
             processingStarted = true;
         }
-
-        const senderPhone =
-            String(message.from);
 
         const inbound =
             extractInboundWhatsAppMessage(
