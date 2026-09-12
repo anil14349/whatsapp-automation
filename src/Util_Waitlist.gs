@@ -394,3 +394,73 @@ function getPatientWaitlistEntries(patientPhone) {
 
     return entries;
 }
+
+
+
+// ========================================================
+// AUTO-CLEANUP EXPIRED WAITLIST ENTRIES
+// ========================================================
+// Call weekly to prevent unbounded sheet growth
+// Removes entries older than 30 days that weren't booked
+
+function cleanupExpiredWaitlistEntries() {
+
+    const sheet = ensureWaitlistSheet();
+
+    if (!sheet) {
+        return 0;
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const now = new Date();
+    const OLD_DAYS = 30;
+    const cutoffDate =
+        new Date(
+            now.getTime() -
+            OLD_DAYS * 24 * 60 * 60 * 1000
+        );
+
+    const rowsToDelete = [];
+
+    // Scan backward to identify old entries
+    for (
+        let i = data.length - 1;
+        i >= 1;
+        i--
+    ) {
+
+        const addedOn =
+            new Date(data[i][6]);
+
+        const status =
+            String(data[i][7] || "").trim();
+
+        // Delete if older than 30 days AND not booked
+        if (
+            addedOn < cutoffDate &&
+            status !== "BOOKED"
+        ) {
+
+            rowsToDelete.push(i + 1);
+        }
+    }
+
+    // Delete rows in reverse order
+    for (
+        let j = rowsToDelete.length - 1;
+        j >= 0;
+        j--
+    ) {
+
+        sheet.deleteRow(rowsToDelete[j]);
+    }
+
+    Logger.log(
+        "Cleaned " + rowsToDelete.length +
+        " old waitlist entries (>30 days)"
+    );
+
+    return rowsToDelete.length;
+}

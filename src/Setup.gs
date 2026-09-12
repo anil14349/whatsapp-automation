@@ -333,3 +333,87 @@ function uploadWhatsAppMediaFromDriveFile(driveFileId) {
 
     return result;
 }
+
+
+
+// ============================================================
+// AUTOMATIC CLEANUP TRIGGERS
+// ============================================================
+// Run once to set up periodic cleanup jobs
+
+function createAutoCleanupTriggers() {
+
+    // Delete existing triggers to avoid duplicates
+    const triggers = ScriptApp.getProjectTriggers();
+
+    for (const trigger of triggers) {
+
+        if (
+            trigger.getHandlerFunction() ===
+            "cleanupExpiredDeduplicationRecordsAuto" ||
+            trigger.getHandlerFunction() ===
+            "cleanupExpiredWaitlistEntries" ||
+            trigger.getHandlerFunction() ===
+            "cleanupExpiredSlotReservationsAuto"
+        ) {
+
+            ScriptApp.deleteTrigger(trigger);
+        }
+    }
+
+    // Create new triggers for auto-cleanup
+
+    // 1. Message deduplication: Daily at 2 AM (UTC)
+    ScriptApp.newTrigger(
+        "cleanupExpiredDeduplicationRecordsAuto"
+    )
+        .timeBased()
+        .atHour(2)
+        .everyDays(1)
+        .create();
+
+    // 2. Waitlist cleanup: Weekly on Sunday at 3 AM (UTC)
+    ScriptApp.newTrigger(
+        "cleanupExpiredWaitlistEntries"
+    )
+        .timeBased()
+        .onWeekDay(
+            ScriptApp.WeekDay.SUNDAY
+        )
+        .atHour(3)
+        .create();
+
+    // 3. Slot reservations: Every 6 hours
+    ScriptApp.newTrigger(
+        "cleanupExpiredSlotReservationsAuto"
+    )
+        .timeBased()
+        .everyHours(6)
+        .create();
+
+    Logger.log(
+        "Auto-cleanup triggers created successfully"
+    );
+
+    return {
+        success: true,
+        triggers: [
+            "cleanupExpiredDeduplicationRecordsAuto (daily at 2 AM UTC)",
+            "cleanupExpiredWaitlistEntries (weekly on Sunday at 3 AM UTC)",
+            "cleanupExpiredSlotReservationsAuto (every 6 hours)"
+        ]
+    };
+}
+
+
+
+// Wrapper for hourly/daily trigger execution
+function cleanupExpiredDeduplicationRecordsAuto() {
+    return cleanupExpiredDeduplicationRecords();
+}
+
+
+
+function cleanupExpiredSlotReservationsAuto() {
+    return cleanupExpiredSlotReservations();
+}

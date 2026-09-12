@@ -12,13 +12,18 @@
 // Cache lookups within single execution to reduce redundant sheet scans
 // Cleared automatically at end of each webhook/function execution
 
-let __patientPhoneCache = {};      // phone → patient record
-let __appointmentIdCache = {};     // appointmentId → appointment record
-let __performanceMetrics = {       // For monitoring
+let __patientPhoneCache = {};           // phone → patient record
+let __appointmentIdCache = {};          // appointmentId → appointment record
+let __whatsAppSessionCache = {};        // phone → session object
+let __appointmentsByPhoneCache = {};    // phone → [appointments]
+let __appointmentsByDateCache = {};     // date → [appointments]
+let __performanceMetrics = {            // For monitoring
     patientLookups: 0,
     patientCacheHits: 0,
     appointmentLookups: 0,
     appointmentCacheHits: 0,
+    sessionLookups: 0,
+    sessionCacheHits: 0,
     slowQueries: []
 };
 
@@ -143,6 +148,179 @@ function getAppointmentByIdWithCache(appointmentId) {
 
     __appointmentIdCache[appointmentId] = null;
     return null;
+}
+
+
+
+// ========================================================
+// WHATSAPP SESSION LOOKUP WITH CACHING
+// ========================================================
+// Cache session lookups since called on every message (1M+/day)
+
+function getWhatsAppSessionWithCache(phoneNumber) {
+
+    if (!phoneNumber) {
+        return null;
+    }
+
+    const normalized =
+        normalizeWhatsAppPhone(phoneNumber);
+
+    if (!normalized) {
+        return null;
+    }
+
+    // Check cache first
+    if (__whatsAppSessionCache[normalized]) {
+        __performanceMetrics.sessionCacheHits++;
+        return __whatsAppSessionCache[normalized];
+    }
+
+    // Cache miss - do full lookup
+    __performanceMetrics.sessionLookups++;
+
+    const result =
+        getWhatsAppSession(phoneNumber);
+
+    // Cache the result
+    __whatsAppSessionCache[normalized] =
+        result;
+
+    return result;
+}
+
+
+
+// ========================================================
+// APPOINTMENTS LOOKUP WITH CACHING BY PHONE
+// ========================================================
+
+function getAppointmentsByPhoneWithCache(phone) {
+
+    if (!phone) {
+        return [];
+    }
+
+    const normalized =
+        normalizeWhatsAppPhone(phone);
+
+    if (!normalized) {
+        return [];
+    }
+
+    // Check cache first
+    if (__appointmentsByPhoneCache[normalized]) {
+        return __appointmentsByPhoneCache[normalized];
+    }
+
+    // Cache miss - do full lookup
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+        return [];
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const appointments = [];
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        if (
+            phonesMatch(
+                data[i][5],
+                normalized
+            )
+        ) {
+
+            appointments.push({
+                row: i + 1,
+                appointmentId: data[i][0],
+                date: data[i][1],
+                time: data[i][2],
+                doctorId: data[i][3],
+                patientName: data[i][4],
+                status: data[i][6]
+            });
+        }
+    }
+
+    // Cache the result
+    __appointmentsByPhoneCache[normalized] =
+        appointments;
+
+    return appointments;
+}
+
+
+
+// ========================================================
+// APPOINTMENTS LOOKUP WITH CACHING BY DATE
+// ========================================================
+
+function getAppointmentsByDateWithCache(dateString) {
+
+    if (!dateString) {
+        return [];
+    }
+
+    // Check cache first
+    if (__appointmentsByDateCache[dateString]) {
+        return __appointmentsByDateCache[dateString];
+    }
+
+    // Cache miss - do full lookup
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+        return [];
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const appointments = [];
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const apptDate =
+            String(data[i][1] || "").trim();
+
+        if (apptDate === dateString) {
+
+            appointments.push({
+                row: i + 1,
+                appointmentId: data[i][0],
+                time: data[i][2],
+                doctorId: data[i][3],
+                patientPhone: data[i][5],
+                status: data[i][6]
+            });
+        }
+    }
+
+    // Cache the result
+    __appointmentsByDateCache[dateString] =
+        appointments;
+
+    return appointments;
 }
 
 

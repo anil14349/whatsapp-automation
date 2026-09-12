@@ -19685,6 +19685,10 @@ function cleanupExpiredSlotReservations() {
     const sheet =
         ensureSlotReservationSheet();
 
+    if (!sheet) {
+        return 0;
+    }
+
     const data = sheet.getDataRange().getValues();
     const now = new Date();
     const rowsToDelete = [];
@@ -19706,6 +19710,11 @@ function cleanupExpiredSlotReservations() {
     for (const row of rowsToDelete) {
         sheet.deleteRow(row);
     }
+
+    Logger.log(
+        "Cleaned " + rowsToDelete.length +
+        " expired slot reservations"
+    );
 
     return rowsToDelete.length;
 }
@@ -22680,6 +22689,69 @@ function getPatientWaitlistEntries(patientPhone) {
 }
 
 
+function cleanupExpiredWaitlistEntries() {
+
+    const sheet = ensureWaitlistSheet();
+
+    if (!sheet) {
+        return 0;
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const now = new Date();
+    const OLD_DAYS = 30;
+    const cutoffDate =
+        new Date(
+            now.getTime() -
+            OLD_DAYS * 24 * 60 * 60 * 1000
+        );
+
+    const rowsToDelete = [];
+
+    // Scan backward to identify old entries
+    for (
+        let i = data.length - 1;
+        i >= 1;
+        i--
+    ) {
+
+        const addedOn =
+            new Date(data[i][6]);
+
+        const status =
+            String(data[i][7] || "").trim();
+
+        // Delete if older than 30 days AND not booked
+        if (
+            addedOn < cutoffDate &&
+            status !== "BOOKED"
+        ) {
+
+            rowsToDelete.push(i + 1);
+        }
+    }
+
+    // Delete rows in reverse order
+    for (
+        let j = rowsToDelete.length - 1;
+        j >= 0;
+        j--
+    ) {
+
+        sheet.deleteRow(rowsToDelete[j]);
+    }
+
+    Logger.log(
+        "Cleaned " + rowsToDelete.length +
+        " old waitlist entries (>30 days)"
+    );
+
+    return rowsToDelete.length;
+}
+
+
 function ensureNotificationPrefColumns() {
 
     const ss =
@@ -23425,6 +23497,163 @@ function getAppointmentByIdWithCache(appointmentId) {
 
     __appointmentIdCache[appointmentId] = null;
     return null;
+}
+
+
+function getWhatsAppSessionWithCache(phoneNumber) {
+
+    if (!phoneNumber) {
+        return null;
+    }
+
+    const normalized =
+        normalizeWhatsAppPhone(phoneNumber);
+
+    if (!normalized) {
+        return null;
+    }
+
+    // Check cache first
+    if (__whatsAppSessionCache[normalized]) {
+        __performanceMetrics.sessionCacheHits++;
+        return __whatsAppSessionCache[normalized];
+    }
+
+    // Cache miss - do full lookup
+    __performanceMetrics.sessionLookups++;
+
+    const result =
+        getWhatsAppSession(phoneNumber);
+
+    // Cache the result
+    __whatsAppSessionCache[normalized] =
+        result;
+
+    return result;
+}
+
+
+function getAppointmentsByPhoneWithCache(phone) {
+
+    if (!phone) {
+        return [];
+    }
+
+    const normalized =
+        normalizeWhatsAppPhone(phone);
+
+    if (!normalized) {
+        return [];
+    }
+
+    // Check cache first
+    if (__appointmentsByPhoneCache[normalized]) {
+        return __appointmentsByPhoneCache[normalized];
+    }
+
+    // Cache miss - do full lookup
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+        return [];
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const appointments = [];
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        if (
+            phonesMatch(
+                data[i][5],
+                normalized
+            )
+        ) {
+
+            appointments.push({
+                row: i + 1,
+                appointmentId: data[i][0],
+                date: data[i][1],
+                time: data[i][2],
+                doctorId: data[i][3],
+                patientName: data[i][4],
+                status: data[i][6]
+            });
+        }
+    }
+
+    // Cache the result
+    __appointmentsByPhoneCache[normalized] =
+        appointments;
+
+    return appointments;
+}
+
+
+function getAppointmentsByDateWithCache(dateString) {
+
+    if (!dateString) {
+        return [];
+    }
+
+    // Check cache first
+    if (__appointmentsByDateCache[dateString]) {
+        return __appointmentsByDateCache[dateString];
+    }
+
+    // Cache miss - do full lookup
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+        return [];
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const appointments = [];
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const apptDate =
+            String(data[i][1] || "").trim();
+
+        if (apptDate === dateString) {
+
+            appointments.push({
+                row: i + 1,
+                appointmentId: data[i][0],
+                time: data[i][2],
+                doctorId: data[i][3],
+                patientPhone: data[i][5],
+                status: data[i][6]
+            });
+        }
+    }
+
+    // Cache the result
+    __appointmentsByDateCache[dateString] =
+        appointments;
+
+    return appointments;
 }
 
 
@@ -24729,6 +24958,81 @@ function uploadWhatsAppMediaFromDriveFile(driveFileId) {
     );
 
     return result;
+}
+
+
+function createAutoCleanupTriggers() {
+
+    // Delete existing triggers to avoid duplicates
+    const triggers = ScriptApp.getProjectTriggers();
+
+    for (const trigger of triggers) {
+
+        if (
+            trigger.getHandlerFunction() ===
+            "cleanupExpiredDeduplicationRecordsAuto" ||
+            trigger.getHandlerFunction() ===
+            "cleanupExpiredWaitlistEntries" ||
+            trigger.getHandlerFunction() ===
+            "cleanupExpiredSlotReservationsAuto"
+        ) {
+
+            ScriptApp.deleteTrigger(trigger);
+        }
+    }
+
+    // Create new triggers for auto-cleanup
+
+    // 1. Message deduplication: Daily at 2 AM (UTC)
+    ScriptApp.newTrigger(
+        "cleanupExpiredDeduplicationRecordsAuto"
+    )
+        .timeBased()
+        .atHour(2)
+        .everyDays(1)
+        .create();
+
+    // 2. Waitlist cleanup: Weekly on Sunday at 3 AM (UTC)
+    ScriptApp.newTrigger(
+        "cleanupExpiredWaitlistEntries"
+    )
+        .timeBased()
+        .onWeekDay(
+            ScriptApp.WeekDay.SUNDAY
+        )
+        .atHour(3)
+        .create();
+
+    // 3. Slot reservations: Every 6 hours
+    ScriptApp.newTrigger(
+        "cleanupExpiredSlotReservationsAuto"
+    )
+        .timeBased()
+        .everyHours(6)
+        .create();
+
+    Logger.log(
+        "Auto-cleanup triggers created successfully"
+    );
+
+    return {
+        success: true,
+        triggers: [
+            "cleanupExpiredDeduplicationRecordsAuto (daily at 2 AM UTC)",
+            "cleanupExpiredWaitlistEntries (weekly on Sunday at 3 AM UTC)",
+            "cleanupExpiredSlotReservationsAuto (every 6 hours)"
+        ]
+    };
+}
+
+
+function cleanupExpiredDeduplicationRecordsAuto() {
+    return cleanupExpiredDeduplicationRecords();
+}
+
+
+function cleanupExpiredSlotReservationsAuto() {
+    return cleanupExpiredSlotReservations();
 }
 
 

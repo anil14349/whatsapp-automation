@@ -245,6 +245,10 @@ function cleanupExpiredSlotReservations() {
     const sheet =
         ensureSlotReservationSheet();
 
+    if (!sheet) {
+        return 0;
+    }
+
     const data = sheet.getDataRange().getValues();
     const now = new Date();
     const rowsToDelete = [];
@@ -266,6 +270,11 @@ function cleanupExpiredSlotReservations() {
     for (const row of rowsToDelete) {
         sheet.deleteRow(row);
     }
+
+    Logger.log(
+        "Cleaned " + rowsToDelete.length +
+        " expired slot reservations"
+    );
 
     return rowsToDelete.length;
 }
