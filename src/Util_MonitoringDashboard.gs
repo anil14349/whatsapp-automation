@@ -223,6 +223,13 @@ function generateMonthlySummaryReport() {
         return { error: "No data to summarize" };
     }
 
+    // DOS PROTECTION: Limit to prevent memory exhaustion
+    // Cost_Dashboard should stay <1000 rows with cleanup, but cap at 5000 for safety
+    if (data.length > 5000) {
+        Logger.log("WARNING: Cost_Dashboard exceeds 5000 rows; limiting to recent 5000");
+        data = data.slice(-5000);  // Keep last 5000 rows (most recent)
+    }
+
     // Get current month
     const today = new Date();
     const currentMonth =

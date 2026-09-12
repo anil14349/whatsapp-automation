@@ -5837,6 +5837,11 @@ function bookAppointment(
             )
         ) {
 
+            // CONSISTENCY: Explicit lock release on early return
+            if (lock && lock.hasLock()) {
+                lock.releaseLock();
+            }
+
             return {
                 success: false,
                 message:
@@ -5851,6 +5856,11 @@ function bookAppointment(
             );
 
         if (existingEvents.length > 0) {
+
+            // CONSISTENCY: Explicit lock release on early return
+            if (lock && lock.hasLock()) {
+                lock.releaseLock();
+            }
 
             return {
                 success: false,
@@ -24649,6 +24659,13 @@ function generateMonthlySummaryReport() {
 
     if (!data || data.length < 2) {
         return { error: "No data to summarize" };
+    }
+
+    // DOS PROTECTION: Limit to prevent memory exhaustion
+    // Cost_Dashboard should stay <1000 rows with cleanup, but cap at 5000 for safety
+    if (data.length > 5000) {
+        Logger.log("WARNING: Cost_Dashboard exceeds 5000 rows; limiting to recent 5000");
+        data = data.slice(-5000);  // Keep last 5000 rows (most recent)
     }
 
     // Get current month

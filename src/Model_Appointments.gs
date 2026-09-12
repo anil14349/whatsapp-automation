@@ -328,6 +328,11 @@ function bookAppointment(
             )
         ) {
 
+            // CONSISTENCY: Explicit lock release on early return
+            if (lock && lock.hasLock()) {
+                lock.releaseLock();
+            }
+
             return {
                 success: false,
                 message:
@@ -342,6 +347,11 @@ function bookAppointment(
             );
 
         if (existingEvents.length > 0) {
+
+            // CONSISTENCY: Explicit lock release on early return
+            if (lock && lock.hasLock()) {
+                lock.releaseLock();
+            }
 
             return {
                 success: false,
