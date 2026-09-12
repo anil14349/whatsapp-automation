@@ -64,6 +64,29 @@
 // ============================================================
 
 const TIMEZONE = "Asia/Kolkata";
+
+// ============================================================
+// EXECUTION-SCOPE CACHE STATE
+// These variables are intentionally global and reset per Apps
+// Script execution. They must exist before any cached helper
+// (for example getDoctorRecord) is called.
+// ============================================================
+let __doctorRecordCache = {};
+let __patientPhoneCache = {};
+let __appointmentIdCache = {};
+let __whatsAppSessionCache = {};
+let __appointmentsByPhoneCache = {};
+let __appointmentsByDateCache = {};
+let __performanceMetrics = {
+    patientLookups: 0,
+    patientCacheHits: 0,
+    appointmentLookups: 0,
+    appointmentCacheHits: 0,
+    sessionLookups: 0,
+    sessionCacheHits: 0,
+    slowQueries: []
+};
+
 const LOG_SHEET_MAX_ROWS = 5000;
 const LOG_SETTINGS_CACHE_KEY = "LOG_SETTINGS_CACHE";
 const LOG_SETTINGS_CACHE_SECONDS = 300;
@@ -116,6 +139,7 @@ const TEXT_INPUT_ALLOWED_STATES = [
 const PROTECTED_BOOKING_STATES = [
     // ========== Patient Booking ==========
     "BOOK_DOCTOR",                         // Selecting doctor
+    "BOOK_DOCTOR_MORE",                    // Remaining doctors
     "BOOK_DATE",                           // Selecting appointment date
     "BOOK_TIME",                           // Selecting time slot
     "BOOK_CONFIRM",                        // Confirming appointment details
@@ -451,12 +475,42 @@ function buildInteractiveButtonSpec(buttons) {
 }
 
 
+function getHomeCollectionCompletionMenuSpec() {
+
+    const fallbackText =
+        "1️⃣ Main Menu\n" +
+        "2️⃣ Book Appointment\n" +
+        "3️⃣ My Appointments";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            {
+                id: "nav_main_menu",
+                title: "Main Menu"
+            },
+            {
+                id: "1",
+                title: "Book Appointment"
+            },
+            {
+                id: "2",
+                title: "My Appointments"
+            }
+        ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
 function getPatientMainMenuSpec() {
 
     const fallbackText =
         "1️⃣ Book Appointment\n" +
-        "2️⃣ My Appointments\n" +
-        "3️⃣ More (Cancel / Reschedule / Language)";
+        "2️⃣ Home Sample Collection\n" +
+        "3️⃣ More (My Appointments / Cancel / Reschedule / Language)";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -465,8 +519,8 @@ function getPatientMainMenuSpec() {
                 title: "Book Appointment"
             },
             {
-                id: "2",
-                title: "My Appointments"
+                id: "home_collection",
+                title: "Home Sample Collection"
             },
             {
                 id: "menu_more",
@@ -599,97 +653,122 @@ function getDoctorSelectionMenuSpec(page) {
 
     const doctors = getDoctors();
 
-    const total =
-        doctors.length;
+    const total = doctors.length;
 
     if (total === 0) {
         return null;
     }
 
-    const fallbackText =
-        buildDoctorSelectionFallbackText(
-            doctors
-        );
+    // Show the first two doctors directly, with a third button opening
+    // the remaining doctors. This keeps the first booking screen simple.
+    const directDoctors = doctors.slice(0, Math.min(2, total));
 
-    // More than 9 doctors no longer means falling back to a plain
-    // numbered text list — paginate the same way the slot picker and
-    // appointment list already do, reusing their generic page-bounds
-    // math (it only cares about a count, not what the items are).
-    const pageInfo =
-        getSlotSelectionPageInfo(
-            total,
-            page || 0
-        );
+    const buttons = directDoctors.map(function (doctor) {
+        return {
+            id:
+                "doctor_select_" +
+                encodeURIComponent(String(doctor.doctorId)),
+            title: doctor.doctorName
+        };
+    });
 
-    const visibleDoctors =
-        doctors.slice(
-            pageInfo.start,
-            pageInfo.end
-        );
+    if (total > 2) {
+        buttons.push({
+            id: "doctor_more",
+            title: "More"
+        });
+    }
 
-    const rows =
-        visibleDoctors.map(
-            function (doctor) {
+    const fallbackLines = directDoctors.map(function (doctor, index) {
+        return (index + 1) + ". " + doctor.doctorName;
+    });
 
-                const description =
-                    [
-                        doctor.specialization,
-                        doctor.clinicName
-                    ]
-                        .filter(Boolean)
-                        .join(" — ");
+    if (total > 2) {
+        fallbackLines.push("3. More doctors");
+    }
 
-                return {
-                    // Use the real Doctor ID in the WhatsApp list so every
-                    // doctor maps directly to the correct Doctors-sheet row.
-                    // encodeURIComponent keeps spaces/special characters safe.
-                    id:
-                        "doctor_select_" +
-                        encodeURIComponent(
-                            String(doctor.doctorId)
-                        ),
-                    title: doctor.doctorName,
-                    description: description
-                };
-            }
-        );
+    return {
+        fallbackText: fallbackLines.join("\n"),
+        interactive: buildInteractiveButtonSpec(buttons),
+        directDoctorCount: directDoctors.length,
+        hasMore: total > 2
+    };
+}
 
-    if (pageInfo.hasPrev) {
 
+function getDoctorMoreMenuSpec(page) {
+
+    const doctors = getDoctors();
+    const remaining = doctors.slice(2);
+
+    if (remaining.length === 0) {
+        return null;
+    }
+
+    const pageSize = 8;
+    const totalPages = Math.max(
+        1,
+        Math.ceil(remaining.length / pageSize)
+    );
+
+    let safePage = Number(page) || 0;
+    if (safePage < 0) safePage = 0;
+    if (safePage >= totalPages) safePage = totalPages - 1;
+
+    const start = safePage * pageSize;
+    const visibleDoctors = remaining.slice(
+        start,
+        start + pageSize
+    );
+
+    const rows = visibleDoctors.map(function (doctor) {
+        const description = [
+            doctor.specialization,
+            doctor.clinicName
+        ].filter(Boolean).join(" — ");
+
+        return {
+            id:
+                "doctor_select_" +
+                encodeURIComponent(String(doctor.doctorId)),
+            title: doctor.doctorName,
+            description: description
+        };
+    });
+
+    if (safePage > 0) {
         rows.push({
-            id: "doctor_prev",
+            id: "doctor_more_prev",
             title: "Earlier doctors",
             description: "Previous page"
         });
     }
 
-    if (pageInfo.hasNext) {
-
+    if (safePage < totalPages - 1) {
         rows.push({
-            id: "doctor_next",
+            id: "doctor_more_next",
             title: "More doctors",
             description: "Next page"
         });
     }
 
-    appendWhatsAppHomeNavRow(
-        rows,
-        "patient"
-    );
+    appendWhatsAppHomeNavRow(rows, "patient");
 
-    const interactive =
-        buildInteractiveListSpec(
-            rows,
-            "Select doctor"
-        );
+    const fallbackLines = visibleDoctors.map(function (doctor, index) {
+        return (index + 1) + ". " + doctor.doctorName;
+    });
+
+    if (safePage < totalPages - 1) {
+        fallbackLines.push("9. More doctors");
+    }
 
     return {
-        fallbackText: fallbackText,
-        interactive: interactive,
-        page: pageInfo.page,
-        totalPages: pageInfo.totalPages,
-        hasPrev: pageInfo.hasPrev,
-        hasNext: pageInfo.hasNext
+        fallbackText: fallbackLines.join("\n"),
+        interactive: buildInteractiveListSpec(rows, "Choose doctor"),
+        page: safePage,
+        totalPages: totalPages,
+        hasPrev: safePage > 0,
+        hasNext: safePage < totalPages - 1
     };
 }
 
@@ -1146,6 +1225,11 @@ function ensureSettingsSheet() {
             "HOME_COLLECTION_RADIUS_KM",
             "5"
         ]);
+
+        sheet.appendRow([
+            "HOME_COLLECTION_MIN_LEAD_HOURS",
+            "2"
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -1216,6 +1300,11 @@ function ensureSettingsSheet() {
             sheet,
             "HOME_COLLECTION_RADIUS_KM",
             "5"
+        );
+        ensureSettingKey(
+            sheet,
+            "HOME_COLLECTION_MIN_LEAD_HOURS",
+            "2"
         );
     }
 
@@ -12544,6 +12633,14 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             returnToMainMenu(ss, phone);
             return;
 
+        case "BOOK_DOCTOR_MORE":
+            saveWhatsAppSession(phone, {
+                state: "BOOK_DOCTOR",
+                listPage: 0
+            });
+            sendDoctorSelectionReply(ss, phone);
+            return;
+
         case "PATIENT_MAIN_MORE":
             returnToMainMenu(
                 ss,
@@ -12603,6 +12700,7 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             );
             return;
 
+        case "BOOK_NO_SLOTS":
         case "BOOK_DATE":
             saveWhatsAppSession(phone, {
                 state: "BOOK_DOCTOR",
@@ -13109,10 +13207,28 @@ function proceedAfterBookingSlotSelected(
             }
         );
 
-        sendWhatsAppReply(
+        const bookNameInteractive =
+            buildInteractiveButtonSpec([
+                {
+                    id: "nav_main_menu",
+                    title: "Main Menu"
+                },
+                {
+                    id: "nav_back",
+                    title: "Back"
+                }
+            ]);
+
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            buildBookNamePrompt()
+            buildBookNamePrompt(),
+            {
+                fallbackText:
+                    buildBookNamePrompt() +
+                    "\n\n0️⃣ Main Menu\n9️⃣ Back",
+                interactive: bookNameInteractive
+            }
         );
 
         return;
@@ -13196,6 +13312,16 @@ function whatsAppShowSlotsForDate(
                 }
             ]);
 
+        // Mark this as a recoverable no-slots state so the user can
+        // explicitly choose another date, go back, or return home.
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                state: "BOOK_NO_SLOTS",
+                date: selectedDate
+            }
+        );
+
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
@@ -13267,7 +13393,7 @@ if (
     const doctor =
         findDoctorByWhatsAppPhone(senderPhone);
 
-    if (doctor) {
+    if (doctor && doctor.found) {
 
         returnDoctorToMenu(
             ss,
@@ -13396,6 +13522,7 @@ if (
     if (
         session.state === "BOOK_DATE" ||
         session.state === "BOOK_DATE_CUSTOM" ||
+        session.state === "BOOK_NO_SLOTS" ||
         session.state === "BOOK_TIME" ||
         session.state === "BOOK_NAME" ||
         session.state === "BOOK_CONFIRM"
@@ -13512,7 +13639,11 @@ if (
     // ========================================================
     // Users cannot abandon multi-step booking flows mid-process
 
-    if (isStateProtectedFromNavigation(session.state)) {
+    if (isStateProtectedFromNavigation(session.state) &&
+        session.state !== "BOOK_NO_SLOTS" &&
+        session.state !== "BOOK_NAME" &&
+        normalizedMessage !== "nav_main_menu" &&
+        normalizedMessage !== "main_menu") {
 
         sendCustomDateEntryMenuReply(
             ss,
@@ -13594,7 +13725,9 @@ if (
     // ========================================================
     // Users cannot abandon multi-step booking flows by pressing back
 
-    if (isStateProtectedFromNavigation(session.state)) {
+    if (isStateProtectedFromNavigation(session.state) &&
+        session.state !== "BOOK_NO_SLOTS" &&
+        session.state !== "BOOK_NAME") {
 
         sendCustomDateEntryMenuReply(
             ss,
@@ -15825,13 +15958,35 @@ if (
 
 
 // ======================================================
+// MAIN MENU → HOME SAMPLE COLLECTION
+// ======================================================
+
+if (
+    normalizedMessage === "home_collection" &&
+    session &&
+    session.state === "MAIN_MENU"
+) {
+
+    beginWhatsAppHomeCollectionFlow(
+        ss,
+        senderPhone
+    );
+
+    return true;
+}
+
+
+// ======================================================
 // MAIN MENU → MY APPOINTMENTS
 // ======================================================
 
 if (
     normalizedMessage === "2" &&
     session &&
-    session.state === "MAIN_MENU"
+    (
+        session.state === "MAIN_MENU" ||
+        session.state === "PATIENT_MAIN_MORE"
+    )
 ) {
 
     const appointments =
@@ -15995,22 +16150,6 @@ if (
 }
 
 
-// ======================================================
-// MORE → HOME SAMPLE COLLECTION
-// ======================================================
-
-if (
-    normalizedMessage === "6" &&
-    session &&
-    session.state === "PATIENT_MAIN_MORE"
-) {
-
-    beginWhatsAppHomeCollectionFlow(
-        ss,
-        senderPhone
-    );
-    return true;
-}
 
 
 // ======================================================
@@ -16050,24 +16189,22 @@ if (
 
 
 // ======================================================
-// BOOK_DOCTOR STATE
+// ======================================================
+// BOOK_DOCTOR_MORE STATE
 // ======================================================
 
 if (
     session &&
-    session.state === "BOOK_DOCTOR"
+    session.state === "BOOK_DOCTOR_MORE"
 ) {
 
     if (
-        normalizedMessage === "doctor_prev" ||
-        normalizedMessage === "doctor_next"
+        normalizedMessage === "doctor_more_prev" ||
+        normalizedMessage === "doctor_more_next"
     ) {
-
-        const currentPage =
-            Number(session.listPage) || 0;
-
+        const currentPage = Number(session.listPage) || 0;
         const nextPage =
-            normalizedMessage === "doctor_prev"
+            normalizedMessage === "doctor_more_prev"
                 ? Math.max(currentPage - 1, 0)
                 : currentPage + 1;
 
@@ -16076,14 +16213,120 @@ if (
             { listPage: nextPage }
         );
 
-        sendDoctorSelectionReply(
+        sendDoctorMoreSelectionReply(
             ss,
             senderPhone,
             nextPage
         );
+        return true;
+    }
+
+    if (
+        normalizedMessage === "nav_main_menu"
+    ) {
+        returnToMainMenu(ss, senderPhone);
+        return true;
+    }
+
+    const selection = String(messageText || "").trim();
+    const doctors = getDoctors();
+    const remaining = doctors.slice(2);
+    const page = Number(session.listPage) || 0;
+    const pageSize = 8;
+    const startIndex = page * pageSize;
+
+    let doctor = null;
+
+    if (selection.indexOf("doctor_select_") === 0) {
+        const encodedDoctorId = selection.substring(
+            "doctor_select_".length
+        );
+        let selectedDoctorId = encodedDoctorId;
+
+        try {
+            selectedDoctorId = decodeURIComponent(encodedDoctorId);
+        } catch (decodeError) {}
+
+        doctor = doctors.find(function (item) {
+            return String(item.doctorId).trim() ===
+                String(selectedDoctorId).trim();
+        }) || null;
+    } else {
+        const doctorNumber = Number(selection);
+        if (
+            Number.isInteger(doctorNumber) &&
+            doctorNumber >= 1 &&
+            doctorNumber <= Math.min(
+                pageSize,
+                remaining.length - startIndex
+            )
+        ) {
+            doctor = remaining[startIndex + doctorNumber - 1] || null;
+        }
+    }
+
+    if (!doctor) {
+        sendDoctorMoreSelectionReply(
+            ss,
+            senderPhone,
+            page
+        );
+        return true;
+    }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "BOOK_DATE",
+            doctorId: doctor.doctorId,
+            date: "",
+            time: "",
+            appointmentId: "",
+            listPage: 0
+        }
+    );
+
+    showBookingDateSelection(
+        ss,
+        senderPhone,
+        {
+            doctorId: doctor.doctorId
+        }
+    );
+
+    return true;
+}
+
+
+// BOOK_DOCTOR STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "BOOK_DOCTOR"
+) {
+
+    if (normalizedMessage === "doctor_more") {
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "BOOK_DOCTOR_MORE",
+                listPage: 0
+            }
+        );
+
+        sendDoctorMoreSelectionReply(
+            ss,
+            senderPhone,
+            0
+        );
 
         return true;
     }
+
 
     const selection =
         String(messageText || "").trim();
@@ -16133,7 +16376,7 @@ if (
         doctor =
             Number.isInteger(doctorNumber) &&
             doctorNumber >= 1 &&
-            doctorNumber <= doctors.length
+            doctorNumber <= Math.min(2, doctors.length)
                 ? doctors[doctorNumber - 1]
                 : null;
     }
@@ -17054,6 +17297,37 @@ function processWhatsAppTextMessage(
         getWhatsAppSession(senderPhone);
 
     // ========================================================
+    // GREETING — ALWAYS ALLOWED
+    // ========================================================
+    // Hi / Hello must be able to restart the conversation even
+    // when the patient is currently inside a tappable menu.
+
+    if (
+        handleWhatsAppGreeting(
+            ss,
+            senderPhone,
+            session,
+            normalizedMessage
+        )
+    ) {
+        return;
+    }
+
+    // ========================================================
+    // AFTER-HOURS GATE
+    // ========================================================
+
+    if (
+        handleAfterHoursPatientGate(
+            ss,
+            senderPhone,
+            session
+        )
+    ) {
+        return;
+    }
+
+    // ========================================================
     // ENFORCE TAPPABLE-ONLY OPTIONS
     // ========================================================
     // Reject plain text input if current state only accepts interactive options
@@ -17067,27 +17341,6 @@ function processWhatsAppTextMessage(
             "Text input is not allowed in this menu."
         );
 
-        return;
-    }
-
-    if (
-        handleAfterHoursPatientGate(
-            ss,
-            senderPhone,
-            session
-        )
-    ) {
-        return;
-    }
-
-    if (
-        handleWhatsAppGreeting(
-            ss,
-            senderPhone,
-            session,
-            normalizedMessage
-        )
-    ) {
         return;
     }
 
@@ -18002,26 +18255,37 @@ function sendDoctorSelectionReply(ss, phone, page) {
     const doctors = getDoctors();
 
     if (doctors.length === 0) {
-
         sendWhatsAppReply(
             ss,
             phone,
             "❌ No doctors are currently available."
         );
-
         return;
     }
 
-    const menuSpec =
-        getDoctorSelectionMenuSpec(page || 0);
+    const menuSpec = getDoctorSelectionMenuSpec();
 
-    let body =
-        buildDoctorSelectionBody();
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        buildDoctorSelectionBody(),
+        menuSpec
+    );
+}
 
-    if (
-        menuSpec &&
-        menuSpec.totalPages > 1
-    ) {
+
+function sendDoctorMoreSelectionReply(ss, phone, page) {
+
+    const menuSpec = getDoctorMoreMenuSpec(page || 0);
+
+    if (!menuSpec) {
+        sendDoctorSelectionReply(ss, phone);
+        return;
+    }
+
+    let body = "📅 Book Appointment\n\nChoose another doctor.";
+
+    if (menuSpec.totalPages > 1) {
         body +=
             "\n\nPage " +
             (menuSpec.page + 1) +
@@ -18957,6 +19221,8 @@ function getHomeCollectionRadiusKm() {
         : 5;
 }
 
+
+let __cachedTimezoneOffset = null;
 
 function getTimezoneOffsetString() {
 
@@ -23813,13 +24079,19 @@ function checkScalabilityStatus() {
 
 
 function resetExecutionCache() {
+    __doctorRecordCache = {};
     __patientPhoneCache = {};
     __appointmentIdCache = {};
+    __whatsAppSessionCache = {};
+    __appointmentsByPhoneCache = {};
+    __appointmentsByDateCache = {};
     __performanceMetrics = {
         patientLookups: 0,
         patientCacheHits: 0,
         appointmentLookups: 0,
         appointmentCacheHits: 0,
+        sessionLookups: 0,
+        sessionCacheHits: 0,
         slowQueries: []
     };
     Logger.log("Execution cache reset");
@@ -25541,11 +25813,33 @@ function ensureHomeCollectionSheet() {
             "Latitude",
             "Longitude",
             "Distance (km)",
+            "Patient Location",
             "Preferred Date",
             "Time Window",
             "Status",
             "Created At"
         ]);
+    } else {
+
+        // Existing installations may already have the original 10-column
+        // Home_Collection_Requests sheet. Add the Maps link column once.
+        const headers = sheet
+            .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
+            .getValues()[0]
+            .map(function(value) {
+                return String(value || "").trim();
+            });
+
+        if (headers.indexOf("Patient Location") === -1) {
+            const distanceIndex = headers.indexOf("Distance (km)");
+            const insertColumn =
+                distanceIndex >= 0
+                    ? distanceIndex + 2
+                    : sheet.getLastColumn() + 1;
+
+            sheet.insertColumnBefore(insertColumn);
+            sheet.getRange(1, insertColumn).setValue("Patient Location");
+        }
     }
 
     return sheet;
@@ -25582,13 +25876,24 @@ function createHomeCollectionRequest(details) {
     const requestId =
         generateHomeCollectionRequestId();
 
+    const latitude = details.latitude;
+    const longitude = details.longitude;
+    const mapsUrl =
+        latitude !== undefined && latitude !== null &&
+        longitude !== undefined && longitude !== null &&
+        String(latitude).trim() !== "" && String(longitude).trim() !== ""
+            ? "https://www.google.com/maps?q=" +
+              encodeURIComponent(String(latitude).trim() + "," + String(longitude).trim())
+            : "";
+
     sheet.appendRow([
         requestId,
         phone,
         String(details.patientName || ""),
-        details.latitude,
-        details.longitude,
+        latitude,
+        longitude,
         details.distanceKm,
+        mapsUrl,
         String(details.date || ""),
         String(details.timeWindow || ""),
         "Pending",
@@ -26224,13 +26529,11 @@ function cleanupExpiredSlotReservationsAuto() {
 
 function getPatientMainMoreMenuSpec() {
 
-    const fallbackText =
-        "3️⃣ Cancel Appointment\n" +
-        "4️⃣ Reschedule Appointment\n" +
-        "5️⃣ Change Language\n" +
-        "6️⃣ Home Sample Collection";
-
     const rows = [
+        {
+            id: "2",
+            title: "My Appointments"
+        },
         {
             id: "3",
             title: "Cancel Appointment"
@@ -26242,13 +26545,14 @@ function getPatientMainMoreMenuSpec() {
         {
             id: "5",
             title: "Change Language"
-        },
-        {
-            id: "6",
-            title: "Home Sample Collection",
-            description: "Blood sample pickup at your home"
         }
     ];
+
+    const fallbackText =
+        "2️⃣ My Appointments\n" +
+        "3️⃣ Cancel Appointment\n" +
+        "4️⃣ Reschedule\n" +
+        "5️⃣ Change Language";
 
     appendWhatsAppHomeNavRow(
         rows,
@@ -26417,30 +26721,115 @@ function getDoctorMainMenuMoreSpec(tier) {
 }
 
 
-function getHomeCollectionTimeWindowSpec() {
+function getHomeCollectionMinLeadHours() {
 
-    const fallbackText =
-        "1️⃣ Morning (8 AM - 12 PM)\n" +
-        "2️⃣ Afternoon (12 PM - 4 PM)\n" +
-        "3️⃣ Evening (4 PM - 8 PM)";
+    const hours =
+        Number(
+            getSetting("HOME_COLLECTION_MIN_LEAD_HOURS", "2")
+        );
 
-    const rows = [
+    return (
+        isFinite(hours) &&
+        hours >= 0
+    )
+        ? hours
+        : 2;
+}
+
+
+function getHomeCollectionTimeWindowOptions() {
+
+    return [
         {
             id: "1",
             title: "Morning",
-            description: "8 AM - 12 PM"
+            description: "8 AM - 12 PM",
+            value: "Morning (8 AM - 12 PM)",
+            startMinutes: 8 * 60
         },
         {
             id: "2",
             title: "Afternoon",
-            description: "12 PM - 4 PM"
+            description: "12 PM - 4 PM",
+            value: "Afternoon (12 PM - 4 PM)",
+            startMinutes: 12 * 60
         },
         {
             id: "3",
             title: "Evening",
-            description: "4 PM - 8 PM"
+            description: "4 PM - 8 PM",
+            value: "Evening (4 PM - 8 PM)",
+            startMinutes: 16 * 60
         }
     ];
+}
+
+
+function getHomeCollectionTimeWindowOptionsForDate(dateString) {
+
+    const options =
+        getHomeCollectionTimeWindowOptions();
+
+    if (!dateString) {
+        return options;
+    }
+
+    const todayString =
+        Utilities.formatDate(
+            new Date(),
+            TIMEZONE,
+            "yyyy-MM-dd"
+        );
+
+    // Future dates have the full set of time windows available.
+    if (String(dateString) !== todayString) {
+        return options;
+    }
+
+    const now = new Date();
+    const currentTime =
+        Utilities.formatDate(
+            now,
+            TIMEZONE,
+            "HH:mm"
+        );
+
+    const parts = currentTime.split(":");
+    const currentMinutes =
+        Number(parts[0]) * 60 + Number(parts[1]);
+
+    const minimumStartMinutes =
+        currentMinutes +
+        Math.ceil(getHomeCollectionMinLeadHours() * 60);
+
+    return options.filter(function (option) {
+        return option.startMinutes >= minimumStartMinutes;
+    });
+}
+
+
+function getHomeCollectionTimeWindowSpec(dateString) {
+
+    const availableOptions =
+        getHomeCollectionTimeWindowOptionsForDate(dateString);
+
+    const fallbackText =
+        availableOptions.map(function (option) {
+            return option.id === "1"
+                ? "1️⃣ " + option.value
+                : option.id === "2"
+                    ? "2️⃣ " + option.value
+                    : "3️⃣ " + option.value;
+        }).join("\n");
+
+    const rows =
+        availableOptions.map(function (option) {
+            return {
+                id: option.id,
+                title: option.title,
+                description: option.description
+            };
+        });
 
     appendWhatsAppHomeNavRow(
         rows,
@@ -26458,7 +26847,6 @@ function getHomeCollectionTimeWindowSpec() {
         interactive: interactive
     };
 }
-
 
 function getMyAppointmentActionSpec() {
 
@@ -27619,6 +28007,25 @@ function handleWhatsAppHomeCollectionMessage(
 
         if (selectedDate) {
 
+            const availableTimeWindows =
+                getHomeCollectionTimeWindowOptionsForDate(
+                    selectedDate
+                );
+
+            if (availableTimeWindows.length === 0) {
+
+                sendDateMenuReply(
+                    ss,
+                    senderPhone,
+                    "⏰ There are no time windows left for today with the " +
+                    getHomeCollectionMinLeadHours() +
+                    "-hour minimum notice.\n\nChoose another date:",
+                    "patient"
+                );
+
+                return true;
+            }
+
             saveWhatsAppSession(
                 senderPhone,
                 {
@@ -27631,7 +28038,7 @@ function handleWhatsAppHomeCollectionMessage(
                 ss,
                 senderPhone,
                 "🕐 Choose a preferred time window:",
-                getHomeCollectionTimeWindowSpec()
+                getHomeCollectionTimeWindowSpec(selectedDate)
             );
 
             return true;
@@ -27707,7 +28114,7 @@ function handleWhatsAppHomeCollectionMessage(
             ss,
             senderPhone,
             "🕐 Choose a preferred time window:",
-            getHomeCollectionTimeWindowSpec()
+            getHomeCollectionTimeWindowSpec(validation.date)
         );
 
         return true;
@@ -27720,26 +28127,37 @@ function handleWhatsAppHomeCollectionMessage(
 
     if (session.state === "HOME_COLLECTION_TIME") {
 
-        const timeWindows = {
-            "1": "Morning (8 AM - 12 PM)",
-            "2": "Afternoon (12 PM - 4 PM)",
-            "3": "Evening (4 PM - 8 PM)"
-        };
+        const availableTimeWindows =
+            getHomeCollectionTimeWindowOptionsForDate(
+                session.date
+            );
 
-        const timeWindow =
-            timeWindows[normalizedMessage];
+        const selectedTimeWindow =
+            availableTimeWindows.find(function (option) {
+                return (
+                    option.id === normalizedMessage ||
+                    option.title.toLowerCase() === String(normalizedMessage || "").toLowerCase()
+                );
+            });
 
-        if (!timeWindow) {
+        if (!selectedTimeWindow) {
 
+            // If the user is booking for today and a window has just become
+            // unavailable, rebuild the menu using the current time rather
+            // than accepting a stale option from an earlier message.
             sendWhatsAppMenuReply(
                 ss,
                 senderPhone,
-                "❌ Invalid option.\n\nChoose a preferred time window:",
-                getHomeCollectionTimeWindowSpec()
+                "❌ That time window is no longer available.\n\n" +
+                "Choose a preferred time window:",
+                getHomeCollectionTimeWindowSpec(session.date)
             );
 
             return true;
         }
+
+        const timeWindow =
+            selectedTimeWindow.value;
 
         const locationParts =
             String(session.location || "").split(",");
@@ -27797,7 +28215,7 @@ function handleWhatsAppHomeCollectionMessage(
             }
         );
 
-        sendPatientMainMenuReply(
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
             "✅ Home sample collection requested for " +
@@ -27805,7 +28223,9 @@ function handleWhatsAppHomeCollectionMessage(
             " (" +
             timeWindow +
             ").\n\n" +
-            "Our team will call you shortly to confirm the exact time."
+            "Our team will call you shortly to confirm the exact time.\n\n" +
+            "What would you like to do next?",
+            getHomeCollectionCompletionMenuSpec()
         );
 
         return true;
@@ -27825,7 +28245,7 @@ function sendPatientMainMoreMenuReply(
         (prefix
             ? String(prefix) + "\n\n"
             : "") +
-        "More options";
+        "Choose an option.";
 
     sendWhatsAppMenuReply(
         ss,
