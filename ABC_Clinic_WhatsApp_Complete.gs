@@ -23742,6 +23742,279 @@ function resetExecutionCache() {
 }
 
 
+function isWithinSessionWindow(patientPhone) {
+
+    if (!COST_OPTIMIZATION.USE_SESSION_WINDOW) {
+        return false;
+    }
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("WhatsApp_Sessions");
+
+    if (!sheet) {
+        return false;
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const normalized =
+        normalizeWhatsAppPhone(patientPhone);
+
+    const now = new Date();
+    const sessionWindowMs =
+        COST_OPTIMIZATION.SESSION_WINDOW_HOURS * 60 * 60 * 1000;
+
+    // Scan backward for most recent session
+    for (
+        let i = data.length - 1;
+        i >= 1;
+        i--
+    ) {
+
+        if (
+            !phonesMatch(
+                data[i][1],
+                normalized
+            )
+        ) {
+            continue;
+        }
+
+        // Found patient session
+        const lastMessageAt =
+            new Date(data[i][11]); // Last Message At column
+
+        const timeSinceLastMessage =
+            now - lastMessageAt;
+
+        // Within session window if less than 24 hours
+        return timeSinceLastMessage < sessionWindowMs;
+    }
+
+    return false;
+}
+
+
+function sendOptimizedConfirmation(
+    patientPhone,
+    patientName,
+    doctorName,
+    date,
+    time
+) {
+
+    // Only send confirmation if within session window (cheap rate)
+    if (!isWithinSessionWindow(patientPhone)) {
+        Logger.log(
+            "Skipping confirmation (outside 24-hour session): " +
+            patientPhone
+        );
+        return { sent: false, reason: "outside_session_window" };
+    }
+
+    const message =
+        "✅ *Appointment Confirmed*\n\n" +
+        "Patient: " + patientName + "\n" +
+        "Doctor: Dr. " + doctorName + "\n" +
+        "Date: " + date + "\n" +
+        "Time: " + time + "\n\n" +
+        "See you soon!";
+
+    try {
+
+        sendWhatsAppTextMessage(patientPhone, message);
+
+        return { sent: true, reason: "session_message" };
+
+    } catch (error) {
+
+        Logger.log(
+            "Failed to send optimized confirmation: " +
+            error.message
+        );
+
+        return {
+            sent: false,
+            reason: "send_error",
+            error: error.message
+        };
+    }
+}
+
+
+function shouldSendReminder(type, appointmentDate) {
+
+    const today = new Date();
+    const apptDate = new Date(appointmentDate);
+
+    // Calculate days until appointment
+    const daysUntil =
+        Math.floor(
+            (apptDate - today) / (24 * 60 * 60 * 1000)
+        );
+
+    // Type 1: 24-hour reminder (configurable)
+    if (type === "24hr") {
+
+        if (!COST_OPTIMIZATION.SEND_24HR_REMINDER) {
+            return false;  // Cost optimization: skip 24hr reminder
+        }
+
+        return daysUntil === 1;  // Tomorrow
+    }
+
+    // Type 2: 1-hour reminder (always send)
+    if (type === "1hr") {
+
+        if (!COST_OPTIMIZATION.SEND_1HR_REMINDER) {
+            return false;  // User disabled
+        }
+
+        return daysUntil === 0;  // Today
+    }
+
+    return false;
+}
+
+
+function shouldSendFeedbackSurvey(appointmentId) {
+
+    const samplingRate =
+        COST_OPTIMIZATION.FEEDBACK_SAMPLING_RATE;
+
+    if (samplingRate <= 0) {
+        return false;  // Feedback disabled
+    }
+
+    if (samplingRate >= 1) {
+        return true;  // Send to all patients
+    }
+
+    // ========================================================
+    // DETERMINISTIC SAMPLING
+    // ========================================================
+    // Use appointmentId to determine if this appointment
+    // should receive feedback (same ID always same result)
+    // Prevents sending survey multiple times to same appointment
+
+    const hash = appointmentId
+        .split("")
+        .reduce(function (acc, char) {
+            return acc + char.charCodeAt(0);
+        }, 0);
+
+    const randomValue = (hash % 100) / 100;
+
+    return randomValue < samplingRate;
+}
+
+
+function generateCostSavingsReport() {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const appointmentsSheet =
+        ss.getSheetByName("Appointments");
+
+    if (!appointmentsSheet) {
+        return { error: "Appointments sheet not found" };
+    }
+
+    const data =
+        appointmentsSheet.getDataRange().getValues();
+
+    // Estimate based on last 30 days
+    const today = new Date();
+    const thirtyDaysAgo =
+        new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    let appointmentsLastMonth = 0;
+
+    for (let i = 1; i < data.length; i++) {
+
+        const appointmentDate =
+            new Date(data[i][1]);
+
+        if (appointmentDate >= thirtyDaysAgo) {
+            appointmentsLastMonth++;
+        }
+    }
+
+    // Calculate baseline cost (all messages)
+    const messagesPerAppointmentBaseline = 3;  // confirmation + 2 reminders
+    const feedbackPerAppointment = 0.3;  // ~30% of appts get feedback
+    const totalMessagesBaseline =
+        (appointmentsLastMonth * messagesPerAppointmentBaseline) +
+        (appointmentsLastMonth * feedbackPerAppointment);
+
+    const baselineCost =
+        totalMessagesBaseline * 0.01;
+
+    // Calculate optimized cost
+    let messagesPerAppointmentOptimized = 1;  // Only 1-hr reminder
+
+    // Confirmation cost: 60% cheaper if in session (assume 50% in session)
+    const confirmationCost =
+        appointmentsLastMonth *
+        ((0.5 * 0.004) + (0.5 * 0.01));
+
+    const remindersOptimized =
+        appointmentsLastMonth * 1;  // Only 1-hr reminder
+
+    const feedbackOptimized =
+        appointmentsLastMonth *
+        COST_OPTIMIZATION.FEEDBACK_SAMPLING_RATE *
+        0.01;
+
+    const totalCostOptimized =
+        confirmationCost +
+        remindersOptimized * 0.01 +
+        feedbackOptimized;
+
+    const monthlySavings =
+        baselineCost - totalCostOptimized;
+
+    const savingsPercentage =
+        (monthlySavings / baselineCost * 100).toFixed(1);
+
+    return {
+        appointmentsLastMonth: appointmentsLastMonth,
+        baselineCostPerMonth: baselineCost.toFixed(2),
+        optimizedCostPerMonth: totalCostOptimized.toFixed(2),
+        monthlySavings: monthlySavings.toFixed(2),
+        savingsPercentage: savingsPercentage,
+        optimizationsActive: [
+            COST_OPTIMIZATION.SEND_24HR_REMINDER ? "" : "✓ Skip 24hr reminder (50% savings)",
+            COST_OPTIMIZATION.USE_SESSION_WINDOW ? "✓ Use session window (60% cheaper confirmations)" : "",
+            COST_OPTIMIZATION.FEEDBACK_SAMPLING_RATE < 1 ? "✓ Sample feedback (" + (COST_OPTIMIZATION.FEEDBACK_SAMPLING_RATE * 100) + "%)" : ""
+        ].filter(function (x) { return x; })
+    };
+}
+
+
+function logCostOptimizations() {
+
+    const report = generateCostSavingsReport();
+
+    Logger.log(
+        "=== COST OPTIMIZATION REPORT ===\n" +
+        "Appointments (last 30 days): " + report.appointmentsLastMonth + "\n" +
+        "Baseline cost/month: $" + report.baselineCostPerMonth + "\n" +
+        "Optimized cost/month: $" + report.optimizedCostPerMonth + "\n" +
+        "Monthly savings: $" + report.monthlySavings + " (" + report.savingsPercentage + "%)\n" +
+        "Active optimizations:\n" +
+        report.optimizationsActive.map(function (o) { return "  " + o; }).join("\n")
+    );
+
+    return report;
+}
+
+
 function appendWhatsAppLogEntry(
     ss,
     entry

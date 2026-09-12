@@ -34,6 +34,7 @@ const SRC_FILES = [
     "src/Util_NotificationPrefs.gs",
     "src/Util_Feedback.gs",
     "src/Util_Performance.gs",
+    "src/Util_CostOptimization.gs",
     "src/Logging.gs",
     "src/Model_Reminders.gs",
     "src/Model_AppointmentStatus.gs",
