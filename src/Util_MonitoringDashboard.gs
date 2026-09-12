@@ -112,6 +112,15 @@ function logDailyMetrics() {
     const feedbackSampling =
         (COST_OPTIMIZATION.FEEDBACK_SAMPLING_RATE * 100).toFixed(0) + "%";
 
+    // Safe access to performance metrics (handle empty object from catch)
+    const patientCacheHit =
+        perfMetrics && perfMetrics.patientCacheHitRate ?
+        (perfMetrics.patientCacheHitRate * 100).toFixed(1) : "0";
+
+    const sessionCacheHit =
+        perfMetrics && perfMetrics.sessionCacheHitRate ?
+        (perfMetrics.sessionCacheHitRate * 100).toFixed(1) : "0";
+
     // Add row
     sheet.appendRow([
         today.toLocaleDateString(),
@@ -124,8 +133,8 @@ function logDailyMetrics() {
         skip24hr,
         sessionWindow,
         feedbackSampling,
-        (perfMetrics.patientCacheHitRate * 100 || 0).toFixed(1) + "%",
-        (perfMetrics.sessionCacheHitRate * 100 || 0).toFixed(1) + "%",
+        patientCacheHit + "%",
+        sessionCacheHit + "%",
         perfMetrics.patientRowCount || 0,
         perfMetrics.appointmentRowCount || 0,
         "Auto-logged"
@@ -349,6 +358,14 @@ function createVisualDashboard() {
 
     const summary =
         generateMonthlySummaryReport();
+
+    // Check for errors before accessing properties
+    if (summary.error || summary.message) {
+        dashSheet.getRange(1, 1).setValue("⚠️ No data available yet");
+        dashSheet.getRange(2, 1).setValue(summary.error || summary.message);
+        Logger.log("Dashboard: " + (summary.error || summary.message));
+        return { success: false, reason: summary.error || summary.message };
+    }
 
     // Title
     const clinicName = getClinicName();

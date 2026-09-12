@@ -311,7 +311,16 @@ function showCostReport() {
 
         message += "📊 ACTIVE OPTIMIZATIONS\n";
         message += "━━━━━━━━━━━━━━━━━━━━━━\n";
-        message += report.optimizationsActive.join("\n");
+
+        // Safe access to optimizationsActive (handle missing array)
+        if (
+            report.optimizationsActive &&
+            Array.isArray(report.optimizationsActive)
+        ) {
+            message += report.optimizationsActive.join("\n");
+        } else {
+            message += "(Unable to retrieve optimizations)";
+        }
 
         ui.alert(message);
 
