@@ -238,6 +238,22 @@ function isConfirmedAppointmentStatus(status) {
 }
 
 
+// Only terminal appointment states may be moved out of the active
+// Appointments sheet.  This protects pending/confirmed records from
+// disappearing during the daily archive job.
+function isArchiveEligibleAppointmentStatus(status) {
+
+    const normalized =
+        normalizeAppointmentStatus(status);
+
+    return (
+        normalized === APPOINTMENT_STATUS.COMPLETED ||
+        normalized === APPOINTMENT_STATUS.NO_SHOW ||
+        normalized === APPOINTMENT_STATUS.CANCELLED
+    );
+}
+
+
 // ============================================================
 // CONFIG & INFRASTRUCTURE
 // ============================================================
@@ -1230,6 +1246,11 @@ function ensureSettingsSheet() {
             "HOME_COLLECTION_MIN_LEAD_HOURS",
             "2"
         ]);
+
+        sheet.appendRow([
+            "ENABLE_HOME_COLLECTION_NOTIFICATIONS",
+            "TRUE"
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -1305,6 +1326,11 @@ function ensureSettingsSheet() {
             sheet,
             "HOME_COLLECTION_MIN_LEAD_HOURS",
             "2"
+        );
+        ensureSettingKey(
+            sheet,
+            "ENABLE_HOME_COLLECTION_NOTIFICATIONS",
+            "TRUE"
         );
     }
 
@@ -1750,6 +1776,30 @@ function cleanupAllWhatsAppLogs() {
     );
 
     return results;
+}
+
+
+function installProductionLogCleanupTrigger() {
+
+    // Production-safe variant: log retention is an operational safeguard,
+    // so it must not depend on DEBUG_MODE being enabled.
+    deleteTriggersByHandler([
+        "cleanupAllWhatsAppLogs"
+    ]);
+
+    ScriptApp.newTrigger(
+        "cleanupAllWhatsAppLogs"
+    )
+        .timeBased()
+        .everyDays(1)
+        .atHour(3)
+        .create();
+
+    return {
+        success: true,
+        message:
+            "WhatsApp log cleanup trigger installed (daily around 3 AM)."
+    };
 }
 
 
@@ -13390,6 +13440,25 @@ if (
     normalizedMessage === "हेलो"
 ) {
 
+    const collector =
+        findHomeCollectionPersonByWhatsAppPhone(senderPhone);
+
+    if (collector && collector.found) {
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "HOME_COLLECTION_PERSON",
+                state: "HOME_COLLECTION_PERSON_MENU",
+                collectorId: collector.personId,
+                collectorName: collector.name
+            }
+        );
+        sendHomeCollectionPersonMenuReply(
+            ss, senderPhone, collector.name
+        );
+        return true;
+    }
+
     const doctor =
         findDoctorByWhatsAppPhone(senderPhone);
 
@@ -13623,14 +13692,16 @@ if (
 
 if (
     session &&
-    session.state !== "MAIN_MENU" &&
     session.state !== "DOCTOR_MENU" &&
     session.state !== "LANGUAGE_SELECT" &&
     session.state !== "LANGUAGE_CHANGE" &&
     (
-        normalizedMessage === "0" ||
         normalizedMessage === "nav_main_menu" ||
-        normalizedMessage === "main_menu"
+        normalizedMessage === "main_menu" ||
+        (
+            session.state !== "MAIN_MENU" &&
+            normalizedMessage === "0"
+        )
     )
 ) {
 
@@ -13665,6 +13736,12 @@ if (
                 senderPhone,
                 session
             )
+        );
+
+    } else if (session.role === "HOME_COLLECTION_PERSON") {
+
+        sendHomeCollectionPersonMenuReply(
+            ss, senderPhone, session.collectorName || ""
         );
 
     } else {
@@ -17356,6 +17433,15 @@ function processWhatsAppTextMessage(
     }
 
     if (
+        handleWhatsAppHomeCollectionPersonMessage(
+            ss, senderPhone, senderName, messageText,
+            normalizedMessage, session
+        )
+    ) {
+        return;
+    }
+
+    if (
         handleWhatsAppDoctorMessage(
             ss,
             senderPhone,
@@ -17386,6 +17472,17 @@ function processWhatsAppTextMessage(
 // ======================================================
 
 if (
+    session &&
+    session.role === "HOME_COLLECTION_PERSON"
+) {
+
+    sendHomeCollectionPersonMenuReply(
+        ss, senderPhone, session.collectorName || ""
+    );
+
+}
+
+else if (
     session &&
     session.role === "DOCTOR"
 ) {
@@ -19518,8 +19615,7 @@ function archivePreviousDayAppointments() {
         );
         return {
             success: false,
-            message:
-                "Appointments sheet not found"
+            message: "Appointments sheet not found"
         };
     }
 
@@ -19547,16 +19643,32 @@ function archivePreviousDayAppointments() {
     );
 
     // ========================================================
-    // LOAD APPOINTMENTS
+    // LOAD APPOINTMENTS + EXISTING HISTORY IDS
     // ========================================================
 
     const appointmentData =
         appointmentSheet.getDataRange().getValues();
 
+    const historyData =
+        historySheet.getDataRange().getValues();
+
+    const archivedAppointmentIds = {};
+
+    for (let i = 1; i < historyData.length; i++) {
+        const id = String(historyData[i][0] || "").trim();
+        if (id) {
+            archivedAppointmentIds[id] = true;
+        }
+    }
+
     const rowsToArchive = [];
+    const archiveRows = [];
+    const skippedNonFinal = [];
+    const skippedAlreadyArchived = [];
     const archivedAt = new Date();
 
-    // Scan from end backwards to collect rows for yesterday
+    // Scan from end backwards to collect yesterday's rows.
+    // Only terminal statuses are eligible for movement.
     for (
         let i = appointmentData.length - 1;
         i >= 1;
@@ -19565,9 +19677,7 @@ function archivePreviousDayAppointments() {
 
         let appointmentDate = "";
 
-        if (
-            appointmentData[i][1] instanceof Date
-        ) {
+        if (appointmentData[i][1] instanceof Date) {
 
             appointmentDate =
                 Utilities.formatDate(
@@ -19582,63 +19692,100 @@ function archivePreviousDayAppointments() {
                 String(appointmentData[i][1] || "").trim();
         }
 
-        if (appointmentDate === yesterdayIso) {
+        if (appointmentDate !== yesterdayIso) {
+            continue;
+        }
 
-            // ====================================================
-            // Archive this row
-            // ====================================================
+        const appointmentId =
+            String(appointmentData[i][0] || "").trim();
 
-            const rowData = [
-                appointmentData[i][0],  // Appointment ID
-                appointmentData[i][1],  // Date
-                appointmentData[i][2],  // Time
-                appointmentData[i][3],  // Doctor ID
-                appointmentData[i][4],  // Patient Name
-                appointmentData[i][5],  // Phone
-                appointmentData[i][6],  // Status
-                appointmentData[i][7],  // Calendar Event ID
-                appointmentData[i][8],  // Patient ID
-                archivedAt              // Archived At
-            ];
+        const status =
+            normalizeAppointmentStatus(appointmentData[i][6]);
 
-            historySheet.appendRow(rowData);
-            rowsToArchive.push(i + 1);  // Store 1-indexed row numbers
+        if (!isArchiveEligibleAppointmentStatus(status)) {
+            skippedNonFinal.push({
+                appointmentId: appointmentId,
+                row: i + 1,
+                status: status
+            });
+            continue;
+        }
+
+        if (
+            appointmentId &&
+            archivedAppointmentIds[appointmentId]
+        ) {
+            skippedAlreadyArchived.push({
+                appointmentId: appointmentId,
+                row: i + 1
+            });
+            continue;
+        }
+
+        archiveRows.push([
+            appointmentData[i][0],  // Appointment ID
+            appointmentData[i][1],  // Date
+            appointmentData[i][2],  // Time
+            appointmentData[i][3],  // Doctor ID
+            appointmentData[i][4],  // Patient Name
+            appointmentData[i][5],  // Phone
+            status,                  // Normalized Status
+            appointmentData[i][7],  // Calendar Event ID
+            appointmentData[i][8],  // Patient ID
+            archivedAt              // Archived At
+        ]);
+
+        rowsToArchive.push(i + 1);
+
+        if (appointmentId) {
+            archivedAppointmentIds[appointmentId] = true;
         }
     }
 
     // ========================================================
-    // DELETE ARCHIVED ROWS
+    // WRITE ARCHIVE IN ONE BATCH
     // ========================================================
-    // Delete in forward order (HIGH to LOW row numbers)
-    // rowsToArchive is in descending order from backward collection loop:
-    // if rows 7, 12, 17 matched → array is [17, 12, 7]
-    // Forward iteration: delete 17 (highest), then 12, then 7 (lowest)
-    // This avoids row number shifts when deleting
 
-    for (
-        let j = 0;
-        j < rowsToArchive.length;
-        j++
-    ) {
+    if (archiveRows.length > 0) {
+        const firstRow =
+            Math.max(historySheet.getLastRow() + 1, 2);
 
-        appointmentSheet.deleteRow(
-            rowsToArchive[j]
-        );
+        historySheet
+            .getRange(
+                firstRow,
+                1,
+                archiveRows.length,
+                archiveRows[0].length
+            )
+            .setValues(archiveRows);
     }
 
     // ========================================================
-    // INVALIDATE CACHE
+    // DELETE ONLY SUCCESSFULLY ARCHIVED ROWS
     // ========================================================
-    // Clear any cached session state that references these appointments
 
-    CacheService.getScriptCache().removeAll([
-        "WA_APPOINTMENTS_CACHE",
-        "WA_DOCTOR_SCHEDULE_CACHE"
-    ]);
+    // rowsToArchive was collected from bottom to top, so deleting in
+    // this same order keeps all row numbers valid.
+    for (const row of rowsToArchive) {
+        appointmentSheet.deleteRow(row);
+    }
+
+    // ========================================================
+    // INVALIDATE CACHE ONLY WHEN ACTIVE DATA CHANGED
+    // ========================================================
+
+    if (rowsToArchive.length > 0) {
+        CacheService.getScriptCache().removeAll([
+            "WA_APPOINTMENTS_CACHE",
+            "WA_DOCTOR_SCHEDULE_CACHE"
+        ]);
+    }
 
     Logger.log(
         "archivePreviousDayAppointments: " +
         "Archived " + rowsToArchive.length +
+        ", skipped non-final " + skippedNonFinal.length +
+        ", already archived " + skippedAlreadyArchived.length +
         " appointments from " + yesterdayIso
     );
 
@@ -19646,8 +19793,12 @@ function archivePreviousDayAppointments() {
         success: true,
         message:
             "Archived " + rowsToArchive.length +
-            " appointments from " + yesterdayIso,
-        archivedCount: rowsToArchive.length
+            " finalized appointments from " + yesterdayIso,
+        archivedCount: rowsToArchive.length,
+        skippedNonFinalCount: skippedNonFinal.length,
+        skippedAlreadyArchivedCount: skippedAlreadyArchived.length,
+        skippedNonFinal: skippedNonFinal,
+        skippedAlreadyArchived: skippedAlreadyArchived
     };
 }
 
@@ -19706,7 +19857,9 @@ function createDailyArchiveTask(
     // ========================================================
     // CREATE NEW TRIGGER
     // ========================================================
-    // Time-based trigger that fires daily at specified time
+    // Apps Script time-driven triggers run approximately within the
+    // selected hour. The minute parameter is retained for backwards
+    // compatibility/documentation but cannot be enforced by atHour().
 
     ScriptApp.newTrigger("archivePreviousDayAppointments")
         .timeBased()
@@ -19715,17 +19868,17 @@ function createDailyArchiveTask(
         .create();
 
     Logger.log(
-        "createDailyArchiveTask: Created daily trigger at " +
-        String(hour).padStart(2, "0") + ":" +
-        String(minute).padStart(2, "0")
+        "createDailyArchiveTask: Created daily trigger around " +
+        String(hour).padStart(2, "0") + ":00 (minute " +
+        String(minute).padStart(2, "0") + " advisory)"
     );
 
     return {
         success: true,
         message:
-            "Daily archive task scheduled at " +
-            String(hour).padStart(2, "0") + ":" +
-            String(minute).padStart(2, "0")
+            "Daily archive task scheduled around " +
+            String(hour).padStart(2, "0") + ":00 (minute " +
+            String(minute).padStart(2, "0") + " is advisory)"
     };
 }
 
@@ -20613,17 +20766,17 @@ function createRemindersSchedule(
         .create();
 
     Logger.log(
-        "createRemindersSchedule: Trigger created at " +
-        String(hour).padStart(2, "0") + ":" +
-        String(minute).padStart(2, "0")
+        "createRemindersSchedule: Trigger created around " +
+        String(hour).padStart(2, "0") + ":00 (minute " +
+        String(minute).padStart(2, "0") + " advisory)"
     );
 
     return {
         success: true,
         message:
-            "Reminders scheduled at " +
-            String(hour).padStart(2, "0") + ":" +
-            String(minute).padStart(2, "0")
+            "Reminders scheduled around " +
+            String(hour).padStart(2, "0") + ":00 (minute " +
+            String(minute).padStart(2, "0") + " advisory)"
     };
 }
 
@@ -24466,14 +24619,14 @@ function runSetupCleanupTriggers() {
 
     try {
 
-        const result = createAutoCleanupTriggers();
+        const result = installProductionAutomationTriggers();
 
         // Validate result
         if (
             !result ||
             !result.success ||
-            !result.triggers ||
-            !Array.isArray(result.triggers)
+            !result.results ||
+            !Array.isArray(result.results)
         ) {
             throw new Error(
                 "Trigger creation failed: " +
@@ -24481,13 +24634,21 @@ function runSetupCleanupTriggers() {
             );
         }
 
+        const installed = result.results
+            .filter(function(item) {
+                return item && item.success !== false;
+            })
+            .map(function(item) {
+                return "📅 " + (item.message || "Trigger installed");
+            });
+
         ui.alert(
             "✅ SETUP COMPLETE!\n\n" +
-            "Automatic cleanup enabled:\n\n" +
-            result.triggers.map(function(t) {
-                return "📅 " + t;
-            }).join("\n") +
-            "\n\nYour system is now on autopilot! 🚀"
+            "Production automation enabled:\n\n" +
+            installed.join("\n") +
+            "\n\n⚠️ Archive and reminder-queue triggers remain configurable.\n" +
+            "Use their dedicated setup functions if those schedules are required.\n\n" +
+            "Your system is now on autopilot! 🚀"
         );
 
     } catch (error) {
@@ -24502,39 +24663,150 @@ function runSetupCleanupTriggers() {
 }
 
 
+/**
+ * MASTER PRODUCTION INITIALIZATION
+ *
+ * Safe to run directly from the Apps Script editor.
+ *
+ * Performs:
+ *  1. Non-destructive sheet initialization
+ *  2. Production automation trigger installation
+ *  3. Trigger health verification
+ *
+ * Existing sheet data is preserved. This function intentionally does
+ * not call SpreadsheetApp.getUi(), so it can be executed from the
+ * Apps Script editor without a Sheet UI context.
+ */
+function initializeClinicSystem() {
+    const report = {
+        success: false,
+        initializedAt: new Date(),
+        sheets: null,
+        triggers: null,
+        triggerStatus: null,
+        errors: []
+    };
+
+    try {
+        // 1. Ensure all required sheets/columns exist.
+        // This is intentionally non-destructive.
+        report.sheets = initializeWhatsAppBotSheets();
+
+        if (!report.sheets || report.sheets.success !== true) {
+            throw new Error(
+                "Sheet initialization failed."
+            );
+        }
+
+        // 2. Install the fixed-cadence production automation triggers.
+        report.triggers =
+            installProductionAutomationTriggers();
+
+        if (!report.triggers || report.triggers.success !== true) {
+            throw new Error(
+                "Production trigger installation failed: " +
+                (
+                    report.triggers &&
+                    report.triggers.message
+                        ? report.triggers.message
+                        : "Unknown error"
+                )
+            );
+        }
+
+        // 3. Verify the resulting trigger state.
+        report.triggerStatus =
+            getProductionTriggerStatus();
+
+        const unhealthy =
+            report.triggerStatus.filter(function (item) {
+                return !item.healthy;
+            });
+
+        report.success = unhealthy.length === 0;
+
+        if (unhealthy.length > 0) {
+            report.errors.push(
+                "Some production triggers are not healthy: " +
+                unhealthy.map(function (item) {
+                    return item.handler +
+                        " (active=" +
+                        item.activeCount +
+                        ")";
+                }).join(", ")
+            );
+        }
+
+        Logger.log(
+            "initializeClinicSystem: " +
+            JSON.stringify(report)
+        );
+
+        return report;
+
+    } catch (error) {
+        report.success = false;
+        report.errors.push(
+            error && error.message
+                ? error.message
+                : String(error)
+        );
+
+        Logger.log(
+            "initializeClinicSystem ERROR: " +
+            JSON.stringify(report)
+        );
+
+        return report;
+    }
+}
+
+
 function runSheetInitialization() {
 
     const ui = SpreadsheetApp.getUi();
 
     try {
 
-        const result = initializeWhatsAppBotSheets();
+        const result = initializeClinicSystem();
 
-        // Validate return object structure
-        if (
-            !result ||
-            !result.sheets ||
-            !Array.isArray(result.sheets)
-        ) {
+        if (!result || result.success !== true) {
             throw new Error(
-                "Sheet initialization returned invalid result"
+                result && result.errors && result.errors.length
+                    ? result.errors.join("\n")
+                    : "Clinic system initialization failed."
             );
         }
 
-        let message = "✅ SHEETS INITIALIZED!\n\n";
+        initializeAdminDashboard();
 
-        for (const sheet of result.sheets) {
-            message +=
-                (sheet.created ? "✨ CREATED: " : "✓ EXISTS: ") +
-                sheet.sheet + "\n";
+        let message =
+            "✅ CLINIC SYSTEM INITIALIZED!\n\n" +
+            "All required sheets were checked/initialized.\n" +
+            "Existing data was preserved.\n\n";
+
+        if (
+            result.sheets &&
+            Array.isArray(result.sheets.sheets)
+        ) {
+            result.sheets.sheets.forEach(function (sheet) {
+                message +=
+                    (sheet.created ? "✨ CREATED: " : "✓ EXISTS: ") +
+                    sheet.sheet + "\n";
+            });
         }
+
+        message +=
+            "\n🚀 Production automation triggers installed.\n" +
+            "🏥 Admin Dashboard menu initialized.\n";
 
         ui.alert(message);
 
     } catch (error) {
 
         ui.alert(
-            "❌ ERROR: " + error.message
+            "❌ INITIALIZATION ERROR:\n\n" +
+            error.message
         );
     }
 
@@ -24625,7 +24897,52 @@ function showCleanupStatus() {
         );
     });
 
-    status += "\n⏰ Active Triggers: " + activeCleanupTriggers.length;
+    status += "\n⏰ Active Cleanup Triggers: " + activeCleanupTriggers.length;
+
+    const historySheet =
+        ss.getSheetByName("Appointment_History");
+
+    if (historySheet) {
+        status +=
+            "\nAppointment History: " +
+            Math.max(historySheet.getLastRow() - 1, 0) +
+            " archived records";
+    }
+
+    const homeCollectionSheet =
+        ss.getSheetByName("Home_Collection_Requests");
+
+    if (homeCollectionSheet) {
+        const homeRows = homeCollectionSheet.getDataRange().getValues();
+        let homePending = 0;
+        let homeCompleted = 0;
+
+        for (let i = 1; i < homeRows.length; i++) {
+            const homeStatus =
+                String(homeRows[i][9] || "").trim().toLowerCase();
+
+            if (homeStatus === "completed") {
+                homeCompleted++;
+            } else if (homeRows[i][0]) {
+                homePending++;
+            }
+        }
+
+        status +=
+            "\nHome Collections: " + homePending +
+            " pending, " + homeCompleted +
+            " completed (protected from automatic deletion)";
+    }
+
+    const triggerStatus = getProductionTriggerStatus();
+    const healthyTriggers = triggerStatus.filter(function(item) {
+        return item.healthy;
+    }).length;
+
+    status +=
+        "\n\n🔧 Production Trigger Health: " +
+        healthyTriggers + "/" + triggerStatus.length +
+        " handlers have exactly one active trigger";
 
     ui.alert(status);
 
@@ -24716,19 +25033,27 @@ function showPerformanceReport() {
 }
 
 
+function onOpen(e) {
+    // Spreadsheet-bound simple trigger. This runs in the Sheet UI context,
+    // so the custom Admin Dashboard menu is added automatically on open.
+    addAdminMenuItems();
+}
+
+
 function addAdminMenuItems() {
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
     const ui = SpreadsheetApp.getUi();
 
     ui.createMenu("🏥 Admin Dashboard")
-        .addItem("Open Admin Panel", "showAdminDashboard")
+        .addItem("🚀 Production Automation Setup", "runSetupCleanupTriggers")
         .addSeparator()
-        .addItem("Setup Cleanup Triggers", "runSetupCleanupTriggers")
-        .addItem("Run Cleanup Now", "runAllCleanupNow")
+        .addItem("🧹 Cleanup Status", "showCleanupStatus")
+        .addItem("🧹 Run Cleanup Now", "runAllCleanupNow")
         .addSeparator()
-        .addItem("View Cost Report", "showCostReport")
-        .addItem("View Performance Report", "showPerformanceReport")
+        .addItem("📊 Cost Report", "showCostReport")
+        .addItem("📈 Performance Report", "showPerformanceReport")
+        .addSeparator()
+        .addItem("⚙️ Open Admin Panel", "showAdminDashboard")
         .addToUi();
 }
 
@@ -25817,7 +26142,9 @@ function ensureHomeCollectionSheet() {
             "Preferred Date",
             "Time Window",
             "Status",
-            "Created At"
+            "Created At",
+            "Completed By",
+            "Completed At"
         ]);
     } else {
 
@@ -25840,6 +26167,16 @@ function ensureHomeCollectionSheet() {
             sheet.insertColumnBefore(insertColumn);
             sheet.getRange(1, insertColumn).setValue("Patient Location");
         }
+
+        ["Completed By", "Completed At"].forEach(function(header) {
+            const currentHeaders = sheet
+                .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
+                .getValues()[0]
+                .map(function(value) { return String(value || "").trim(); });
+            if (currentHeaders.indexOf(header) === -1) {
+                sheet.getRange(1, sheet.getLastColumn() + 1).setValue(header);
+            }
+        });
     }
 
     return sheet;
@@ -25897,8 +26234,24 @@ function createHomeCollectionRequest(details) {
         String(details.date || ""),
         String(details.timeWindow || ""),
         "Pending",
-        new Date()
+        new Date(),
+        "",
+        ""
     ]);
+
+    if (isHomeCollectionNotificationsEnabled()) {
+        notifyHomeCollectionPersons(
+            requestId,
+            {
+                phone: phone,
+                patientName: String(details.patientName || ""),
+                distanceKm: details.distanceKm,
+                mapsUrl: mapsUrl,
+                date: String(details.date || ""),
+                timeWindow: String(details.timeWindow || "")
+            }
+        );
+    }
 
     return requestId;
 }
@@ -26274,6 +26627,9 @@ function ensureDoctorLeavesSheet() {
 }
 
 
+// Non-destructive system initialization.
+// Ensures every required sheet exists and preserves all existing
+// sheet data. Existing sheets are never cleared or deleted here.
 function initializeWhatsAppBotSheets() {
 
     const ss =
@@ -26332,14 +26688,106 @@ function initializeWhatsAppBotSheets() {
     );
 
     ensure(
-        "Doctor_Leaves",
-        ensureDoctorLeavesSheet
+        "Home_Collection_Persons",
+        ensureHomeCollectionPersonsSheet
     );
 
     ensure(
         "Home_Collection_Requests",
         ensureHomeCollectionSheet
     );
+
+    ensure(
+        "Doctor_Leaves",
+        ensureDoctorLeavesSheet
+    );
+
+    // Non-destructive schema migrations for existing sheets.
+    // These functions only add missing header/structure columns;
+    // they do not delete existing rows or clear existing data.
+    ensureDoctorProfileColumns();
+    ensureDoctorSpecializationColumn(
+        ss.getSheetByName("Doctors")
+    );
+    ensureNotificationPrefColumns();
+
+    const sessionSheet =
+        ss.getSheetByName("WhatsApp_Sessions");
+
+    if (sessionSheet) {
+        ensureWhatsAppSessionLanguageColumn(sessionSheet);
+        ensureWhatsAppSessionPatientNameColumn(sessionSheet);
+        ensureWhatsAppSessionSlotPageColumn(sessionSheet);
+        ensureWhatsAppSessionAppointmentPageColumn(sessionSheet);
+        ensureWhatsAppSessionDoctorMenuTierColumn(sessionSheet);
+        ensureWhatsAppSessionListPageColumn(sessionSheet);
+        ensureWhatsAppSessionLocationColumn(sessionSheet);
+    }
+
+    // Operational/history sheets used by the booking, reminder,
+    // deduplication, waitlist, feedback, and reporting workflows.
+    // Each ensure function only creates the sheet when it is missing;
+    // existing sheet data is not deleted.
+    ensure(
+        "Message_Deduplication",
+        ensureIdempotencySheet
+    );
+
+    ensure(
+        "Appointment_History",
+        ensureAppointmentHistorySheet
+    );
+
+    ensure(
+        "Slot_Reservations",
+        ensureSlotReservationSheet
+    );
+
+    ensure(
+        "Reminder_Queue",
+        ensureAppointmentRemindersSheet
+    );
+
+    ensure(
+        "Waitlist",
+        ensureWaitlistSheet
+    );
+
+    ensure(
+        "Feedback",
+        ensureFeedbackSheet
+    );
+
+    // Report/dashboard sheets.
+    // Existing dashboard data is preserved; only missing sheets are created.
+    // createVisualDashboard() is intentionally NOT called here because that
+    // function clears an existing Dashboard before rebuilding it.
+
+    // Reporting sheets: initializeMonitoringDashboard() creates
+    // Cost_Dashboard only when it is missing and does not clear
+    // an existing Cost_Dashboard sheet.
+    const costDashboardExisted =
+        !!ss.getSheetByName("Cost_Dashboard");
+    initializeMonitoringDashboard();
+    results.push({
+        sheet: "Cost_Dashboard",
+        created: !costDashboardExisted
+    });
+
+    // Create the visual Dashboard only if it does not already exist.
+    // IMPORTANT: createVisualDashboard() clears an existing Dashboard,
+    // so it must NOT be called during non-destructive initialization.
+    const dashboardExisted =
+        !!ss.getSheetByName("Dashboard");
+
+    if (!dashboardExisted) {
+        ss.insertSheet("Dashboard");
+    }
+
+    results.push({
+        sheet: "Dashboard",
+        created: !dashboardExisted
+    });
 
     Logger.log(
         "initializeWhatsAppBotSheets: " +
@@ -26454,29 +26902,102 @@ function uploadWhatsAppMediaFromDriveFile(driveFileId) {
 }
 
 
+// ============================================================
+// PRODUCTION TRIGGER REGISTRY
+// ============================================================
+// Keep every automatically managed trigger documented in one place.
+// Apps Script time-driven triggers are approximate; atHour() means
+// the selected hour, not an exact minute. See Google Apps Script docs.
+const PRODUCTION_TRIGGER_REGISTRY = [
+    {
+        handler: "cleanupAllWhatsAppLogs",
+        schedule: "daily around 03:00",
+        purpose: "WhatsApp log retention/cap cleanup"
+    },
+    {
+        handler: "cleanupExpiredDeduplicationRecordsAuto",
+        schedule: "daily around 02:00",
+        purpose: "Expired inbound message deduplication records"
+    },
+    {
+        handler: "cleanupExpiredWaitlistEntries",
+        schedule: "daily around 04:00",
+        purpose: "Old non-booked waitlist entries"
+    },
+    {
+        handler: "cleanupExpiredSlotReservationsAuto",
+        schedule: "every hour",
+        purpose: "Expired temporary slot reservations"
+    },
+    {
+        handler: "sendAppointmentReminders",
+        schedule: "every 30 minutes",
+        purpose: "Upcoming appointment WhatsApp reminders"
+    },
+    {
+        handler: "autoCompletePastAppointments",
+        schedule: "daily around 23:00",
+        purpose: "Finalize past confirmed appointments"
+    },
+    {
+        handler: "logDailyMetricsAuto",
+        schedule: "daily around 23:00",
+        purpose: "Daily monitoring metrics"
+    },
+    {
+        handler: "archivePreviousDayAppointments",
+        schedule: "daily around configured archive hour",
+        purpose: "Move finalized previous-day appointments to history"
+    },
+    {
+        handler: "processDueReminders",
+        schedule: "daily around configured reminder-queue hour",
+        purpose: "Process Appointment_Reminders queue"
+    }
+];
+
+
+function getProductionTriggerRegistry() {
+    return PRODUCTION_TRIGGER_REGISTRY.map(function(item) {
+        return {
+            handler: item.handler,
+            schedule: item.schedule,
+            purpose: item.purpose
+        };
+    });
+}
+
+
+function deleteTriggersByHandler(handlerNames) {
+
+    const names = {};
+    (handlerNames || []).forEach(function(name) {
+        names[String(name)] = true;
+    });
+
+    let removed = 0;
+
+    ScriptApp.getProjectTriggers().forEach(function(trigger) {
+        if (names[trigger.getHandlerFunction()]) {
+            ScriptApp.deleteTrigger(trigger);
+            removed++;
+        }
+    });
+
+    return removed;
+}
+
+
 function createAutoCleanupTriggers() {
 
-    // Delete existing triggers to avoid duplicates
-    const triggers = ScriptApp.getProjectTriggers();
+    // This function remains the public cleanup-trigger setup entry point.
+    // It now reports the actual schedules that it creates.
+    deleteTriggersByHandler([
+        "cleanupExpiredDeduplicationRecordsAuto",
+        "cleanupExpiredWaitlistEntries",
+        "cleanupExpiredSlotReservationsAuto"
+    ]);
 
-    for (const trigger of triggers) {
-
-        if (
-            trigger.getHandlerFunction() ===
-            "cleanupExpiredDeduplicationRecordsAuto" ||
-            trigger.getHandlerFunction() ===
-            "cleanupExpiredWaitlistEntries" ||
-            trigger.getHandlerFunction() ===
-            "cleanupExpiredSlotReservationsAuto"
-        ) {
-
-            ScriptApp.deleteTrigger(trigger);
-        }
-    }
-
-    // Create new triggers for auto-cleanup
-
-    // 1. Message deduplication: Daily at 2 AM (UTC)
     ScriptApp.newTrigger(
         "cleanupExpiredDeduplicationRecordsAuto"
     )
@@ -26485,7 +27006,6 @@ function createAutoCleanupTriggers() {
         .everyDays(1)
         .create();
 
-    // 2. Waitlist cleanup: Daily at 4 AM (UTC) — prevent unbounded growth
     ScriptApp.newTrigger(
         "cleanupExpiredWaitlistEntries"
     )
@@ -26494,7 +27014,6 @@ function createAutoCleanupTriggers() {
         .everyDays(1)
         .create();
 
-    // 3. Slot reservations: Every hour — prevent accumulation at scale
     ScriptApp.newTrigger(
         "cleanupExpiredSlotReservationsAuto"
     )
@@ -26503,17 +27022,70 @@ function createAutoCleanupTriggers() {
         .create();
 
     Logger.log(
-        "Auto-cleanup triggers created successfully"
+        "Auto-cleanup triggers created: dedup daily ~02:00, " +
+        "waitlist daily ~04:00, slot reservations hourly"
     );
 
     return {
         success: true,
         triggers: [
-            "cleanupExpiredDeduplicationRecordsAuto (daily at 2 AM UTC)",
-            "cleanupExpiredWaitlistEntries (weekly on Sunday at 3 AM UTC)",
-            "cleanupExpiredSlotReservationsAuto (every 6 hours)"
+            "cleanupExpiredDeduplicationRecordsAuto (daily around 2 AM)",
+            "cleanupExpiredWaitlistEntries (daily around 4 AM)",
+            "cleanupExpiredSlotReservationsAuto (every hour)"
         ]
     };
+}
+
+
+// Production one-click trigger installer.
+// This centralizes all fixed-cadence automation while leaving the two
+// configurable daily schedules (archive/reminder queue) to their existing
+// dedicated functions so their configured hour is not silently changed.
+function installProductionAutomationTriggers() {
+
+    const results = [];
+
+    results.push(installProductionLogCleanupTrigger());
+    results.push(installAppointmentReminderTrigger());
+    results.push(installAutoCompletePastAppointmentsTrigger());
+    results.push(setupDailyMetricsLogging());
+    results.push(createAutoCleanupTriggers());
+
+    return {
+        success: results.every(function(result) {
+            return result && result.success !== false;
+        }),
+        message:
+            "Production automation triggers installed. " +
+            "Archive and reminder-queue schedules remain managed by " +
+            "createDailyArchiveTask() and createRemindersSchedule().",
+        results: results,
+        registry: getProductionTriggerRegistry()
+    };
+}
+
+
+function getProductionTriggerStatus() {
+
+    const active = {};
+
+    ScriptApp.getProjectTriggers().forEach(function(trigger) {
+        const handler = trigger.getHandlerFunction();
+        if (!active[handler]) {
+            active[handler] = 0;
+        }
+        active[handler]++;
+    });
+
+    return PRODUCTION_TRIGGER_REGISTRY.map(function(item) {
+        return {
+            handler: item.handler,
+            schedule: item.schedule,
+            purpose: item.purpose,
+            activeCount: active[item.handler] || 0,
+            healthy: (active[item.handler] || 0) === 1
+        };
+    });
 }
 
 
@@ -27821,6 +28393,392 @@ function handleDoctorPortalMenuChoice(
 }
 
 
+
+
+// ======================================================
+// HOME COLLECTION PERSON PORTAL
+// ======================================================
+
+function ensureHomeCollectionPersonsSheet() {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName("Home_Collection_Persons");
+    if (!sheet) {
+        sheet = ss.insertSheet("Home_Collection_Persons");
+        sheet.appendRow(["Person ID", "Name", "WhatsApp", "Active"]);
+    }
+    return sheet;
+}
+
+function findHomeCollectionPersonByWhatsAppPhone(phone) {
+    const sheet = ensureHomeCollectionPersonsSheet();
+    const target = normalizeWhatsAppPhone(phone);
+    if (!target) return { found: false, error: "invalid_phone" };
+    const data = sheet.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+        const personId = String(data[i][0] || "").trim();
+        const name = String(data[i][1] || "").trim();
+        const whatsapp = String(data[i][2] || "").trim();
+        const active = String(data[i][3] || "").trim().toUpperCase();
+        if (personId && name && whatsapp && active === "YES" &&
+            normalizeWhatsAppPhone(whatsapp) === target) {
+            return { found: true, personId: personId, name: name, whatsapp: whatsapp };
+        }
+    }
+    return { found: false, error: "not_found" };
+}
+
+function getActiveHomeCollectionPersons() {
+    const sheet = ensureHomeCollectionPersonsSheet();
+    const data = sheet.getDataRange().getValues();
+    const people = [];
+    for (let i = 1; i < data.length; i++) {
+        if (String(data[i][0] || "").trim() &&
+            String(data[i][1] || "").trim() &&
+            String(data[i][2] || "").trim() &&
+            String(data[i][3] || "").trim().toUpperCase() === "YES") {
+            people.push({
+                personId: String(data[i][0]).trim(),
+                name: String(data[i][1]).trim(),
+                whatsapp: String(data[i][2]).trim()
+            });
+        }
+    }
+    return people;
+}
+
+function isHomeCollectionNotificationsEnabled() {
+    return String(getSetting("ENABLE_HOME_COLLECTION_NOTIFICATIONS", "TRUE"))
+        .trim().toUpperCase() === "TRUE";
+}
+
+function getHomeCollectionRequestSheetColumnMap(sheet) {
+    const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
+        .getValues()[0].map(function(v) { return String(v || "").trim(); });
+    const map = {};
+    headers.forEach(function(h, i) { if (h) map[h] = i + 1; });
+    return map;
+}
+
+function formatHomeCollectionDate(value) {
+    if (value instanceof Date && !isNaN(value.getTime())) {
+        return Utilities.formatDate(value, TIMEZONE, "yyyy-MM-dd");
+    }
+    const text = String(value || "").trim();
+    if (!text) return "";
+
+    // Handle an ISO date/time string such as 2026-09-13T00:00:00.000Z.
+    const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (isoMatch) return isoMatch[1];
+
+    // Handle common slash-formatted dates without changing already-valid text.
+    const parsed = new Date(text);
+    if (!isNaN(parsed.getTime())) {
+        return Utilities.formatDate(parsed, TIMEZONE, "yyyy-MM-dd");
+    }
+    return text;
+}
+
+function getHomeCollectionRequestsForCollector(includeCompleted) {
+    const sheet = ensureHomeCollectionSheet();
+    const map = getHomeCollectionRequestSheetColumnMap(sheet);
+    const data = sheet.getDataRange().getValues();
+    const requests = [];
+    for (let i = 1; i < data.length; i++) {
+        const status = String(data[i][map["Status"] - 1] || "Pending").trim();
+        if (!includeCompleted && status.toLowerCase() === "completed") continue;
+        requests.push({
+            row: i + 1,
+            requestId: String(data[i][map["Request ID"] - 1] || "").trim(),
+            phone: String(data[i][map["Phone"] - 1] || "").trim(),
+            patientName: String(data[i][map["Patient Name"] - 1] || "").trim(),
+            latitude: data[i][map["Latitude"] - 1],
+            longitude: data[i][map["Longitude"] - 1],
+            mapsUrl: String(data[i][map["Patient Location"] - 1] || "").trim(),
+            distanceKm: Number(data[i][map["Distance (km)"] - 1] || 0),
+            date: formatHomeCollectionDate(data[i][map["Preferred Date"] - 1]),
+            timeWindow: String(data[i][map["Time Window"] - 1] || "").trim(),
+            status: status,
+            completedBy: map["Completed By"] ? String(data[i][map["Completed By"] - 1] || "").trim() : "",
+            completedAt: map["Completed At"] ? data[i][map["Completed At"] - 1] : ""
+        });
+    }
+    requests.sort(function(a,b) {
+        return (a.date + " " + a.timeWindow).localeCompare(b.date + " " + b.timeWindow);
+    });
+    return requests;
+}
+
+function getHomeCollectionRequestByRow(rowNumber) {
+    const row = Number(rowNumber);
+    if (!row || row < 2) return null;
+
+    const sheet = ensureHomeCollectionSheet();
+    const map = getHomeCollectionRequestSheetColumnMap(sheet);
+    if (row > sheet.getLastRow()) return null;
+
+    const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getValues()[0];
+    const requestId = String(values[map["Request ID"] - 1] || "").trim();
+    if (!requestId) return null;
+
+    return getHomeCollectionRequestById(requestId);
+}
+
+function getHomeCollectionRequestById(requestId) {
+    const target = String(requestId || "").trim();
+    if (!target) return null;
+    const requests = getHomeCollectionRequestsForCollector(true);
+    const exact = requests.find(function(r) { return r.requestId === target; });
+    if (exact) return exact;
+
+    // Be tolerant of casing/whitespace changes introduced by a transport layer.
+    const folded = target.toLowerCase();
+    return requests.find(function(r) { return r.requestId.toLowerCase() === folded; }) || null;
+}
+
+function getHomeCollectionPersonMenuSpec() {
+    return {
+        fallbackText: "1️⃣ Today's Collections\n2️⃣ Upcoming Collections\n3️⃣ More",
+        interactive: buildInteractiveButtonSpec([
+            { id: "hc_today", title: "Today's Collections" },
+            { id: "hc_upcoming", title: "Upcoming" },
+            { id: "hc_more", title: "More" }
+        ])
+    };
+}
+
+function sendHomeCollectionPersonMenuReply(ss, phone, personName, prefix) {
+    const body = (prefix ? String(prefix) + "\n\n" : "") +
+        "🩸 Home Collection Portal" +
+        (personName ? "\nHello " + personName + "." : "") +
+        "\n\nChoose an option.";
+    sendWhatsAppMenuReply(ss, phone, body, getHomeCollectionPersonMenuSpec());
+}
+
+function sendHomeCollectionRequestsListReply(ss, phone, title, requests) {
+    if (!requests || requests.length === 0) {
+        sendHomeCollectionPersonMenuReply(ss, phone,
+            (getWhatsAppSession(phone) || {}).collectorName || "",
+            "No home sample collection requests found.");
+        return;
+    }
+    const visible = requests.slice(0, 10);
+    const rows = visible.map(function(r) {
+        // Use the sheet row as the transport key. This is more robust than
+        // relying on the request ID surviving every WhatsApp client/gateway.
+        return { id: "hc_view_row_" + r.row,
+            title: r.patientName || r.requestId,
+            description: r.date + " • " + r.timeWindow + " • " + r.status };
+    });
+    const body = "🩸 " + title + "\n\n" + visible.map(function(r,i) {
+        return (i+1) + ". " + (r.patientName || r.requestId) +
+            " — " + r.date + " — " + r.timeWindow + " — " + r.status;
+    }).join("\n") + (requests.length > 10 ? "\n\nShowing first 10." : "");
+    sendWhatsAppMenuReply(ss, phone, body, {
+        fallbackText: body,
+        interactive: buildInteractiveListSpec(rows, "Choose")
+    });
+}
+
+function sendHomeCollectionRequestDetailReply(ss, phone, request) {
+    if (!request) {
+        sendHomeCollectionPersonMenuReply(ss, phone,
+            (getWhatsAppSession(phone) || {}).collectorName || "",
+            "❌ Collection request not found.");
+        return;
+    }
+    const buttons = [];
+    if (request.status.toLowerCase() !== "completed") {
+        // Use the sheet row as the completion transport key, just like the
+        // collection list selection. This avoids any mismatch between the
+        // displayed request ID and the value stored in the sheet.
+        buttons.push({ id: "hc_complete_row_" + request.row, title: "Mark Completed" });
+    }
+    buttons.push({ id: "hc_today", title: "Today's Collections" });
+    buttons.push({ id: "nav_main_menu", title: "Main Menu" });
+    const body = "🩸 Home Collection\n\n" +
+        "👤 " + request.patientName + "\n" +
+        "📞 " + request.phone + "\n" +
+        "📅 " + request.date + "\n" +
+        "🕐 " + request.timeWindow + "\n" +
+        "📏 " + Number(request.distanceKm || 0).toFixed(1) + " km\n" +
+        "📍 Patient location:\n" + (request.mapsUrl || "Location unavailable") + "\n" +
+        "Status: " + request.status +
+        "\n\n" + (request.status.toLowerCase() === "completed"
+            ? "This collection is already completed."
+            : "After collecting the sample, tap Mark Completed.");
+    sendWhatsAppMenuReply(ss, phone, body, {
+        fallbackText: body,
+        interactive: buildInteractiveButtonSpec(buttons)
+    });
+}
+
+function markHomeCollectionRequestCompletedByRow(rowNumber, collectorName) {
+    const row = Number(rowNumber);
+    if (!row || row < 2) return { ok: false, reason: "not_found" };
+
+    const sheet = ensureHomeCollectionSheet();
+    const map = getHomeCollectionRequestSheetColumnMap(sheet);
+    if (!map["Request ID"] || !map["Status"]) {
+        return { ok: false, reason: "not_found" };
+    }
+    if (row > sheet.getLastRow()) return { ok: false, reason: "not_found" };
+
+    const requestId = String(sheet.getRange(row, map["Request ID"]).getValue() || "").trim();
+    if (!requestId) return { ok: false, reason: "not_found" };
+
+    const status = String(sheet.getRange(row, map["Status"]).getValue() || "Pending").trim();
+    if (status.toLowerCase() === "completed") {
+        return { ok: false, reason: "already_completed", requestId: requestId };
+    }
+
+    sheet.getRange(row, map["Status"]).setValue("Completed");
+    if (map["Completed By"]) {
+        sheet.getRange(row, map["Completed By"]).setValue(String(collectorName || ""));
+    }
+    if (map["Completed At"]) {
+        sheet.getRange(row, map["Completed At"]).setValue(new Date());
+    }
+
+    return { ok: true, requestId: requestId };
+}
+
+
+function markHomeCollectionRequestCompleted(requestId, collectorName) {
+    const sheet = ensureHomeCollectionSheet();
+    const map = getHomeCollectionRequestSheetColumnMap(sheet);
+    const data = sheet.getDataRange().getValues();
+    const target = String(requestId || "").trim();
+    for (let i = 1; i < data.length; i++) {
+        if (String(data[i][map["Request ID"] - 1] || "").trim() !== target) continue;
+        const status = String(data[i][map["Status"] - 1] || "Pending").trim();
+        if (status.toLowerCase() === "completed") return { ok: false, reason: "already_completed" };
+        sheet.getRange(i+1, map["Status"]).setValue("Completed");
+        if (map["Completed By"]) sheet.getRange(i+1, map["Completed By"]).setValue(String(collectorName || ""));
+        if (map["Completed At"]) sheet.getRange(i+1, map["Completed At"]).setValue(new Date());
+        return { ok: true };
+    }
+    return { ok: false, reason: "not_found" };
+}
+
+function notifyHomeCollectionPersons(requestId, details) {
+    const people = getActiveHomeCollectionPersons();
+    if (!people.length) return;
+    const body = "🩸 New Home Sample Collection\n\n" +
+        "Request: " + requestId + "\n" +
+        "👤 " + (details.patientName || "Patient") + "\n" +
+        "📞 " + (details.phone || "") + "\n" +
+        "📅 " + details.date + "\n" +
+        "🕐 " + details.timeWindow + "\n" +
+        "📏 " + Number(details.distanceKm || 0).toFixed(1) + " km\n\n" +
+        "📍 Patient location:\n" + (details.mapsUrl || "Location unavailable") + "\n\n" +
+        "Please review the request.";
+
+    // This notification is generated while processing the patient's inbound
+    // message. Clear the inbound dedup context so one patient message can
+    // legitimately trigger a notification to every active collector.
+    const inboundMessageId = getWhatsAppInboundMessageId();
+    clearWhatsAppInboundMessageContext();
+
+    try {
+        people.forEach(function(person) {
+        try {
+            sendWhatsAppMenuReply(SpreadsheetApp.getActiveSpreadsheet(), person.whatsapp, body, {
+                fallbackText: body,
+                interactive: buildInteractiveButtonSpec([
+                    { id: "hc_complete_" + requestId, title: "Mark Completed" },
+                    { id: "hc_today", title: "Today's Collections" },
+                    { id: "nav_main_menu", title: "Main Menu" }
+                ])
+            });
+        } catch (error) {
+            Logger.log("Home collection notification failed for " + person.personId + ": " + error.message);
+        }
+        });
+    } finally {
+        if (inboundMessageId) {
+            setWhatsAppInboundMessageContext(inboundMessageId);
+        }
+    }
+}
+
+function handleWhatsAppHomeCollectionPersonMessage(ss, senderPhone, senderName, messageText, normalizedMessage, session) {
+    if (!session || session.role !== "HOME_COLLECTION_PERSON") return false;
+    const collector = findHomeCollectionPersonByWhatsAppPhone(senderPhone);
+    if (!collector.found) return false;
+
+    if (normalizedMessage === "hc_today" || normalizedMessage === "1") {
+        const today = Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd");
+        sendHomeCollectionRequestsListReply(ss, senderPhone, "Today's Collections",
+            getHomeCollectionRequestsForCollector(false).filter(function(r) { return r.date === today; }));
+        return true;
+    }
+    if (normalizedMessage === "hc_upcoming" || normalizedMessage === "2") {
+        const today = Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd");
+        sendHomeCollectionRequestsListReply(ss, senderPhone, "Upcoming Collections",
+            getHomeCollectionRequestsForCollector(false).filter(function(r) { return r.date >= today; }));
+        return true;
+    }
+    if (normalizedMessage === "hc_more" || normalizedMessage === "3") {
+        sendWhatsAppMenuReply(ss, senderPhone, "More options", {
+            fallbackText: "1️⃣ All Pending Collections\n2️⃣ Main Menu",
+            interactive: buildInteractiveButtonSpec([
+                { id: "hc_all_pending", title: "All Pending" },
+                { id: "nav_main_menu", title: "Main Menu" }
+            ])
+        });
+        return true;
+    }
+    if (normalizedMessage === "hc_all_pending") {
+        sendHomeCollectionRequestsListReply(ss, senderPhone, "All Pending Collections",
+            getHomeCollectionRequestsForCollector(false));
+        return true;
+    }
+    if (normalizedMessage.indexOf("hc_view_row_") === 0) {
+        const rowNumber = normalizedMessage.substring("hc_view_row_".length);
+        sendHomeCollectionRequestDetailReply(ss, senderPhone,
+            getHomeCollectionRequestByRow(rowNumber));
+        return true;
+    }
+    // Backward compatibility for any older list messages still in the chat.
+    if (normalizedMessage.indexOf("hc_view_") === 0) {
+        sendHomeCollectionRequestDetailReply(ss, senderPhone,
+            getHomeCollectionRequestById(normalizedMessage.substring(8)));
+        return true;
+    }
+    if (normalizedMessage.indexOf("hc_complete_row_") === 0) {
+        const rowNumber = normalizedMessage.substring("hc_complete_row_".length);
+        const result = markHomeCollectionRequestCompletedByRow(
+            rowNumber, collector.name);
+        const msg = result.ok
+            ? "✅ Collection " + (result.requestId || "") + " marked Completed."
+            : result.reason === "already_completed"
+                ? "ℹ️ This collection has already been marked Completed."
+                : "❌ Collection request not found.";
+        sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name, msg);
+        return true;
+    }
+
+    // Backward compatibility for completion buttons generated by v12/v14.
+    if (normalizedMessage.indexOf("hc_complete_") === 0) {
+        const requestId = normalizedMessage.substring("hc_complete_".length);
+        const result = markHomeCollectionRequestCompleted(
+            requestId, collector.name);
+        const msg = result.ok
+            ? "✅ Collection " + requestId + " marked Completed."
+            : result.reason === "already_completed"
+                ? "ℹ️ This collection has already been marked Completed."
+                : "❌ Collection request not found.";
+        sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name, msg);
+        return true;
+    }
+    sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+        "❌ Please choose one of the available options.");
+    return true;
+}
+
+
+
+// ======================================================
 function beginWhatsAppHomeCollectionFlow(
     ss,
     senderPhone
