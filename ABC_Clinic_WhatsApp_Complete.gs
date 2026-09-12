@@ -18847,15 +18847,27 @@ function findDoctorByName(doctorName) {
 
 function getClinicName() {
 
-    const name =
-        String(
-            getSetting(
-                "CLINIC_NAME",
-                "ABC Clinic"
-            ) || ""
-        ).trim();
+    try {
 
-    return name || "ABC Clinic";
+        const name =
+            String(
+                getSetting(
+                    "CLINIC_NAME",
+                    "ABC Clinic"
+                ) || ""
+            ).trim();
+
+        return name || "ABC Clinic";
+
+    } catch (error) {
+
+        Logger.log(
+            "Error retrieving clinic name: " +
+            error.message
+        );
+
+        return "ABC Clinic";  // Safe fallback
+    }
 }
 
 
@@ -23659,29 +23671,70 @@ function getAppointmentsByDateWithCache(dateString) {
 
 function logPerformanceMetrics() {
 
-    const hitRate = __performanceMetrics.patientLookups > 0
-        ? Math.round(
-            (__performanceMetrics.patientCacheHits /
-            __performanceMetrics.patientLookups) * 100
-        )
+    const patientHitRate = __performanceMetrics.patientLookups > 0
+        ? (__performanceMetrics.patientCacheHits /
+           __performanceMetrics.patientLookups)
         : 0;
+
+    const sessionHitRate = __performanceMetrics.sessionLookups > 0
+        ? (__performanceMetrics.sessionCacheHits /
+           __performanceMetrics.sessionLookups)
+        : 0;
+
+    const appointmentHitRate = __performanceMetrics.appointmentLookups > 0
+        ? (__performanceMetrics.appointmentCacheHits /
+           __performanceMetrics.appointmentLookups)
+        : 0;
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const patientRowCount =
+        (ss.getSheetByName("Patients") || { getLastRow: function() { return 1; } }).getLastRow() - 1;
+
+    const appointmentRowCount =
+        (ss.getSheetByName("Appointments") || { getLastRow: function() { return 1; } }).getLastRow() - 1;
+
+    const sessionRowCount =
+        (ss.getSheetByName("WhatsApp_Sessions") || { getLastRow: function() { return 1; } }).getLastRow() - 1;
+
+    const metrics = {
+        patientLookups: __performanceMetrics.patientLookups,
+        patientCacheHits: __performanceMetrics.patientCacheHits,
+        patientCacheHitRate: patientHitRate,
+        sessionLookups: __performanceMetrics.sessionLookups,
+        sessionCacheHits: __performanceMetrics.sessionCacheHits,
+        sessionCacheHitRate: sessionHitRate,
+        appointmentLookups: __performanceMetrics.appointmentLookups,
+        appointmentCacheHits: __performanceMetrics.appointmentCacheHits,
+        appointmentCacheHitRate: appointmentHitRate,
+        patientRowCount: patientRowCount,
+        appointmentRowCount: appointmentRowCount,
+        sessionRowCount: sessionRowCount,
+        slowQueries: __performanceMetrics.slowQueries,
+        scalabilityStatus:
+            patientRowCount > 100000 ? "CRITICAL - Firestore migration needed" :
+            patientRowCount > 20000 ? "WARNING - Plan Firestore migration" :
+            patientRowCount > 5000 ? "CAUTION - Monitor growth" :
+            "OK - Current scale acceptable"
+    };
 
     Logger.log(
         "Performance Metrics: " +
-        "Patient lookups: " + __performanceMetrics.patientLookups +
-        ", Cache hits: " + __performanceMetrics.patientCacheHits +
-        " (" + hitRate + "%), " +
-        "Slow queries: " + __performanceMetrics.slowQueries.length
+        "Patient lookups: " + metrics.patientLookups +
+        ", Cache hits: " + metrics.patientCacheHits +
+        " (" + (metrics.patientCacheHitRate * 100).toFixed(1) + "%), " +
+        "Slow queries: " + metrics.slowQueries.length
     );
 
-    if (__performanceMetrics.slowQueries.length > 0) {
+    if (metrics.slowQueries.length > 0) {
         Logger.log(
             "Slow queries detected: " +
             JSON.stringify(
-                __performanceMetrics.slowQueries.slice(0, 5)
+                metrics.slowQueries.slice(0, 5)
             )
         );
     }
+
+    return metrics;
 }
 
 
@@ -24112,13 +24165,26 @@ function runSetupCleanupTriggers() {
 
         const result = createAutoCleanupTriggers();
 
+        // Validate result
+        if (
+            !result ||
+            !result.success ||
+            !result.triggers ||
+            !Array.isArray(result.triggers)
+        ) {
+            throw new Error(
+                "Trigger creation failed: " +
+                (result && result.error ? result.error : "Unknown error")
+            );
+        }
+
         ui.alert(
             "✅ SETUP COMPLETE!\n\n" +
             "Automatic cleanup enabled:\n\n" +
-            "📅 Daily (2 AM UTC): Message deduplication\n" +
-            "📅 Weekly (Sunday 3 AM): Waitlist cleanup\n" +
-            "📅 Every 6 hours: Slot reservations\n\n" +
-            "Your system is now on autopilot! 🚀"
+            result.triggers.map(function(t) {
+                return "📅 " + t;
+            }).join("\n") +
+            "\n\nYour system is now on autopilot! 🚀"
         );
 
     } catch (error) {
@@ -24140,6 +24206,17 @@ function runSheetInitialization() {
     try {
 
         const result = initializeWhatsAppBotSheets();
+
+        // Validate return object structure
+        if (
+            !result ||
+            !result.sheets ||
+            !Array.isArray(result.sheets)
+        ) {
+            throw new Error(
+                "Sheet initialization returned invalid result"
+            );
+        }
 
         let message = "✅ SHEETS INITIALIZED!\n\n";
 
@@ -24542,9 +24619,14 @@ function generateMonthlySummaryReport() {
         return { error: "Cost_Dashboard not found" };
     }
 
-    const data = sheet.getDataRange().getValues();
+    let data = [];
+    try {
+        data = sheet.getDataRange().getValues();
+    } catch (error) {
+        return { error: "Failed to read Cost_Dashboard: " + error.message };
+    }
 
-    if (data.length < 2) {
+    if (!data || data.length < 2) {
         return { error: "No data to summarize" };
     }
 
@@ -24558,7 +24640,12 @@ function generateMonthlySummaryReport() {
 
     for (let i = 1; i < data.length; i++) {
 
-        const month = String(data[i][1]);
+        // Bounds check: ensure row has at least 2 columns
+        if (!data[i] || data[i].length < 2) {
+            continue;  // Skip malformed rows
+        }
+
+        const month = String(data[i][1] || "");
 
         if (month.includes(currentMonth)) {
             monthlyData.push(data[i]);
@@ -24581,20 +24668,53 @@ function generateMonthlySummaryReport() {
 
     for (const row of monthlyData) {
 
-        // Parse values carefully
-        const appts = parseInt(row[2]) || 0;
-        const baseline = parseFloat(
-            String(row[3]).replace("$", "")
-        ) || 0;
-        const optimized = parseFloat(
-            String(row[4]).replace("$", "")
-        ) || 0;
-        const savings = parseFloat(
-            String(row[5]).replace("$", "")
-        ) || 0;
-        const cacheHit = parseFloat(
-            String(row[10]).replace("%", "")
-        ) || 0;
+        // Bounds check: ensure columns exist before accessing
+        if (!row || row.length < 11) {
+            continue;  // Skip malformed rows
+        }
+
+        // Safe parsing with bounds checks
+        const appts = parseInt(row[2] || 0) || 0;
+
+        let baseline = 0;
+        if (row[3]) {
+            const baselineStr =
+                String(row[3]).replace("$", "").trim();
+            const parsed = parseFloat(baselineStr);
+            if (isFinite(parsed)) {
+                baseline = parsed;
+            }
+        }
+
+        let optimized = 0;
+        if (row[4]) {
+            const optimizedStr =
+                String(row[4]).replace("$", "").trim();
+            const parsed = parseFloat(optimizedStr);
+            if (isFinite(parsed)) {
+                optimized = parsed;
+            }
+        }
+
+        let savings = 0;
+        if (row[5]) {
+            const savingsStr =
+                String(row[5]).replace("$", "").trim();
+            const parsed = parseFloat(savingsStr);
+            if (isFinite(parsed)) {
+                savings = parsed;
+            }
+        }
+
+        let cacheHit = 0;
+        if (row[10]) {
+            const cacheStr =
+                String(row[10]).replace("%", "").trim();
+            const parsed = parseFloat(cacheStr);
+            if (isFinite(parsed)) {
+                cacheHit = parsed;
+            }
+        }
 
         totalAppts += appts;
         totalBaseline += baseline;

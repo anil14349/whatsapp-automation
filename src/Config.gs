@@ -657,15 +657,27 @@ function getSetting(key, defaultValue) {
 // hardcoded, so rebranding doesn't require a code change.
 function getClinicName() {
 
-    const name =
-        String(
-            getSetting(
-                "CLINIC_NAME",
-                "ABC Clinic"
-            ) || ""
-        ).trim();
+    try {
 
-    return name || "ABC Clinic";
+        const name =
+            String(
+                getSetting(
+                    "CLINIC_NAME",
+                    "ABC Clinic"
+                ) || ""
+            ).trim();
+
+        return name || "ABC Clinic";
+
+    } catch (error) {
+
+        Logger.log(
+            "Error retrieving clinic name: " +
+            error.message
+        );
+
+        return "ABC Clinic";  // Safe fallback
+    }
 }
 
 

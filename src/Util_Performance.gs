@@ -332,29 +332,70 @@ function getAppointmentsByDateWithCache(dateString) {
 
 function logPerformanceMetrics() {
 
-    const hitRate = __performanceMetrics.patientLookups > 0
-        ? Math.round(
-            (__performanceMetrics.patientCacheHits /
-            __performanceMetrics.patientLookups) * 100
-        )
+    const patientHitRate = __performanceMetrics.patientLookups > 0
+        ? (__performanceMetrics.patientCacheHits /
+           __performanceMetrics.patientLookups)
         : 0;
+
+    const sessionHitRate = __performanceMetrics.sessionLookups > 0
+        ? (__performanceMetrics.sessionCacheHits /
+           __performanceMetrics.sessionLookups)
+        : 0;
+
+    const appointmentHitRate = __performanceMetrics.appointmentLookups > 0
+        ? (__performanceMetrics.appointmentCacheHits /
+           __performanceMetrics.appointmentLookups)
+        : 0;
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const patientRowCount =
+        (ss.getSheetByName("Patients") || { getLastRow: function() { return 1; } }).getLastRow() - 1;
+
+    const appointmentRowCount =
+        (ss.getSheetByName("Appointments") || { getLastRow: function() { return 1; } }).getLastRow() - 1;
+
+    const sessionRowCount =
+        (ss.getSheetByName("WhatsApp_Sessions") || { getLastRow: function() { return 1; } }).getLastRow() - 1;
+
+    const metrics = {
+        patientLookups: __performanceMetrics.patientLookups,
+        patientCacheHits: __performanceMetrics.patientCacheHits,
+        patientCacheHitRate: patientHitRate,
+        sessionLookups: __performanceMetrics.sessionLookups,
+        sessionCacheHits: __performanceMetrics.sessionCacheHits,
+        sessionCacheHitRate: sessionHitRate,
+        appointmentLookups: __performanceMetrics.appointmentLookups,
+        appointmentCacheHits: __performanceMetrics.appointmentCacheHits,
+        appointmentCacheHitRate: appointmentHitRate,
+        patientRowCount: patientRowCount,
+        appointmentRowCount: appointmentRowCount,
+        sessionRowCount: sessionRowCount,
+        slowQueries: __performanceMetrics.slowQueries,
+        scalabilityStatus:
+            patientRowCount > 100000 ? "CRITICAL - Firestore migration needed" :
+            patientRowCount > 20000 ? "WARNING - Plan Firestore migration" :
+            patientRowCount > 5000 ? "CAUTION - Monitor growth" :
+            "OK - Current scale acceptable"
+    };
 
     Logger.log(
         "Performance Metrics: " +
-        "Patient lookups: " + __performanceMetrics.patientLookups +
-        ", Cache hits: " + __performanceMetrics.patientCacheHits +
-        " (" + hitRate + "%), " +
-        "Slow queries: " + __performanceMetrics.slowQueries.length
+        "Patient lookups: " + metrics.patientLookups +
+        ", Cache hits: " + metrics.patientCacheHits +
+        " (" + (metrics.patientCacheHitRate * 100).toFixed(1) + "%), " +
+        "Slow queries: " + metrics.slowQueries.length
     );
 
-    if (__performanceMetrics.slowQueries.length > 0) {
+    if (metrics.slowQueries.length > 0) {
         Logger.log(
             "Slow queries detected: " +
             JSON.stringify(
-                __performanceMetrics.slowQueries.slice(0, 5)
+                metrics.slowQueries.slice(0, 5)
             )
         );
     }
+
+    return metrics;
 }
 
 

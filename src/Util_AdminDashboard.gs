@@ -128,13 +128,26 @@ function runSetupCleanupTriggers() {
 
         const result = createAutoCleanupTriggers();
 
+        // Validate result
+        if (
+            !result ||
+            !result.success ||
+            !result.triggers ||
+            !Array.isArray(result.triggers)
+        ) {
+            throw new Error(
+                "Trigger creation failed: " +
+                (result && result.error ? result.error : "Unknown error")
+            );
+        }
+
         ui.alert(
             "✅ SETUP COMPLETE!\n\n" +
             "Automatic cleanup enabled:\n\n" +
-            "📅 Daily (2 AM UTC): Message deduplication\n" +
-            "📅 Weekly (Sunday 3 AM): Waitlist cleanup\n" +
-            "📅 Every 6 hours: Slot reservations\n\n" +
-            "Your system is now on autopilot! 🚀"
+            result.triggers.map(function(t) {
+                return "📅 " + t;
+            }).join("\n") +
+            "\n\nYour system is now on autopilot! 🚀"
         );
 
     } catch (error) {
@@ -161,6 +174,17 @@ function runSheetInitialization() {
     try {
 
         const result = initializeWhatsAppBotSheets();
+
+        // Validate return object structure
+        if (
+            !result ||
+            !result.sheets ||
+            !Array.isArray(result.sheets)
+        ) {
+            throw new Error(
+                "Sheet initialization returned invalid result"
+            );
+        }
 
         let message = "✅ SHEETS INITIALIZED!\n\n";
 

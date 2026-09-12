@@ -212,9 +212,14 @@ function generateMonthlySummaryReport() {
         return { error: "Cost_Dashboard not found" };
     }
 
-    const data = sheet.getDataRange().getValues();
+    let data = [];
+    try {
+        data = sheet.getDataRange().getValues();
+    } catch (error) {
+        return { error: "Failed to read Cost_Dashboard: " + error.message };
+    }
 
-    if (data.length < 2) {
+    if (!data || data.length < 2) {
         return { error: "No data to summarize" };
     }
 
@@ -228,7 +233,12 @@ function generateMonthlySummaryReport() {
 
     for (let i = 1; i < data.length; i++) {
 
-        const month = String(data[i][1]);
+        // Bounds check: ensure row has at least 2 columns
+        if (!data[i] || data[i].length < 2) {
+            continue;  // Skip malformed rows
+        }
+
+        const month = String(data[i][1] || "");
 
         if (month.includes(currentMonth)) {
             monthlyData.push(data[i]);
@@ -251,20 +261,53 @@ function generateMonthlySummaryReport() {
 
     for (const row of monthlyData) {
 
-        // Parse values carefully
-        const appts = parseInt(row[2]) || 0;
-        const baseline = parseFloat(
-            String(row[3]).replace("$", "")
-        ) || 0;
-        const optimized = parseFloat(
-            String(row[4]).replace("$", "")
-        ) || 0;
-        const savings = parseFloat(
-            String(row[5]).replace("$", "")
-        ) || 0;
-        const cacheHit = parseFloat(
-            String(row[10]).replace("%", "")
-        ) || 0;
+        // Bounds check: ensure columns exist before accessing
+        if (!row || row.length < 11) {
+            continue;  // Skip malformed rows
+        }
+
+        // Safe parsing with bounds checks
+        const appts = parseInt(row[2] || 0) || 0;
+
+        let baseline = 0;
+        if (row[3]) {
+            const baselineStr =
+                String(row[3]).replace("$", "").trim();
+            const parsed = parseFloat(baselineStr);
+            if (isFinite(parsed)) {
+                baseline = parsed;
+            }
+        }
+
+        let optimized = 0;
+        if (row[4]) {
+            const optimizedStr =
+                String(row[4]).replace("$", "").trim();
+            const parsed = parseFloat(optimizedStr);
+            if (isFinite(parsed)) {
+                optimized = parsed;
+            }
+        }
+
+        let savings = 0;
+        if (row[5]) {
+            const savingsStr =
+                String(row[5]).replace("$", "").trim();
+            const parsed = parseFloat(savingsStr);
+            if (isFinite(parsed)) {
+                savings = parsed;
+            }
+        }
+
+        let cacheHit = 0;
+        if (row[10]) {
+            const cacheStr =
+                String(row[10]).replace("%", "").trim();
+            const parsed = parseFloat(cacheStr);
+            if (isFinite(parsed)) {
+                cacheHit = parsed;
+            }
+        }
 
         totalAppts += appts;
         totalBaseline += baseline;
