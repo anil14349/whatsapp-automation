@@ -15,8 +15,10 @@ function showAdminDashboard() {
 
     const ui = SpreadsheetApp.getUi();
 
+    const clinicName = getClinicName();
+
     const response = ui.alert(
-        "🏥 ABC Clinic WhatsApp Admin Dashboard\n\n" +
+        "🏥 " + clinicName + " WhatsApp Admin Dashboard\n\n" +
         "What would you like to do?\n",
         ui.ButtonSet.YES_NO_CANCEL
     );

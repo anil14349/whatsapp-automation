@@ -24019,8 +24019,10 @@ function showAdminDashboard() {
 
     const ui = SpreadsheetApp.getUi();
 
+    const clinicName = getClinicName();
+
     const response = ui.alert(
-        "🏥 ABC Clinic WhatsApp Admin Dashboard\n\n" +
+        "🏥 " + clinicName + " WhatsApp Admin Dashboard\n\n" +
         "What would you like to do?\n",
         ui.ButtonSet.YES_NO_CANCEL
     );
@@ -24660,8 +24662,9 @@ function createVisualDashboard() {
         generateMonthlySummaryReport();
 
     // Title
+    const clinicName = getClinicName();
     dashSheet.getRange(1, 1, 1, 3).mergeAcrossCells();
-    dashSheet.getRange(1, 1).setValue("📊 WhatsApp Clinic Dashboard");
+    dashSheet.getRange(1, 1).setValue("📊 " + clinicName + " WhatsApp Dashboard");
     dashSheet.getRange(1, 1).setFontSize(18).setFontWeight("bold");
 
     // Current month indicator

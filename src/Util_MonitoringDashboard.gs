@@ -351,8 +351,9 @@ function createVisualDashboard() {
         generateMonthlySummaryReport();
 
     // Title
+    const clinicName = getClinicName();
     dashSheet.getRange(1, 1, 1, 3).mergeAcrossCells();
-    dashSheet.getRange(1, 1).setValue("📊 WhatsApp Clinic Dashboard");
+    dashSheet.getRange(1, 1).setValue("📊 " + clinicName + " WhatsApp Dashboard");
     dashSheet.getRange(1, 1).setFontSize(18).setFontWeight("bold");
 
     // Current month indicator
