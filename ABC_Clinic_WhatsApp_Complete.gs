@@ -13944,7 +13944,11 @@ if (
 
         return true;
 
-    } else if (normalizedMessage === "0") {
+    } else if (
+        normalizedMessage === "nav_main_menu" ||
+        normalizedMessage === "doctor_portal" ||
+        normalizedMessage === "0"
+    ) {
 
         returnDoctorToMenu(
             ss,
@@ -18499,6 +18503,35 @@ function sendDoctorMainMenuReply(
         phone,
         body,
         getDoctorMainMenuSpec()
+    );
+}
+
+
+// Informational Doctor Portal screens deliberately finish with one
+// explicit navigation button instead of immediately pushing the main menu.
+// This keeps the information readable and gives the doctor a clear next
+// action without adding unnecessary buttons. The session remains in
+// DOCTOR_MENU so the same navigation path also works for typed "0".
+function sendDoctorInfoReply(
+    ss,
+    phone,
+    doctorId,
+    message
+) {
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        String(message || ""),
+        {
+            fallbackText: String(message || "") + "\n\n0️⃣ Doctor Portal",
+            interactive: buildInteractiveButtonSpec([
+                {
+                    id: "nav_main_menu",
+                    title: "Doctor Portal"
+                }
+            ])
+        }
     );
 }
 
@@ -28897,7 +28930,7 @@ function handleDoctorPortalMenuChoice(
 
     if (choice === "1") {
 
-        returnDoctorToMenu(
+        sendDoctorInfoReply(
             ss,
             phone,
             doctorId,
@@ -28914,7 +28947,7 @@ function handleDoctorPortalMenuChoice(
 
     if (choice === "2") {
 
-        returnDoctorToMenu(
+        sendDoctorInfoReply(
             ss,
             phone,
             doctorId,
@@ -28930,7 +28963,7 @@ function handleDoctorPortalMenuChoice(
 
     if (choice === "3") {
 
-        returnDoctorToMenu(
+        sendDoctorInfoReply(
             ss,
             phone,
             doctorId,
@@ -28990,7 +29023,7 @@ function handleDoctorPortalMenuChoice(
 
     if (choice === "7") {
 
-        returnDoctorToMenu(
+        sendDoctorInfoReply(
             ss,
             phone,
             doctorId,
