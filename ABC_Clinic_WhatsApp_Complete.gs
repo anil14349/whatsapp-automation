@@ -540,24 +540,22 @@ function buildInteractiveButtonSpec(buttons) {
 
 function getHomeCollectionCompletionMenuSpec() {
 
+    // An active home-collection request is a special situation.
+    // The most useful actions here are to cancel that request or manage
+    // a regular doctor appointment — not to start another booking flow.
     const fallbackText =
-        "1️⃣ Main Menu\n" +
-        "2️⃣ Book Appointment\n" +
-        "3️⃣ My Appointments";
+        "1️⃣ Cancel Collection\n" +
+        "2️⃣ Reschedule Collection";
 
     const interactive =
         buildInteractiveButtonSpec([
             {
-                id: "nav_main_menu",
-                title: "Main Menu"
+                id: "cancel_home_collection",
+                title: "Cancel Collection"
             },
             {
-                id: "1",
-                title: "Book Appointment"
-            },
-            {
-                id: "2",
-                title: "My Appointments"
+                id: "reschedule_home_collection",
+                title: "Reschedule Collection"
             }
         ]);
 
@@ -19191,6 +19189,7 @@ function saveWhatsAppSession(
     ensureWhatsAppSessionDoctorMenuTierColumn(sheet);
     ensureWhatsAppSessionListPageColumn(sheet);
     ensureWhatsAppSessionLocationColumn(sheet);
+    ensureWhatsAppSessionHomeCollectionRequestIdColumn(sheet);
 
     try {
 
@@ -19207,7 +19206,7 @@ function saveWhatsAppSession(
 
             const values =
                 sheet
-                    .getRange(row, 1, 1, 15)
+                    .getRange(row, 1, 1, 16)
                     .getValues();
 
             if (!values || values.length === 0) {
@@ -19217,7 +19216,7 @@ function saveWhatsAppSession(
             const current = values[0];
 
             sheet
-                .getRange(row, 1, 1, 15)
+                .getRange(row, 1, 1, 16)
                 .setValues([[
                     phone,
 
@@ -19291,7 +19290,11 @@ function saveWhatsAppSession(
 
                     updates.location !== undefined
                         ? updates.location
-                        : current[14]
+                        : current[14],
+
+                    updates.homeCollectionRequestId !== undefined
+                        ? updates.homeCollectionRequestId
+                        : (current[15] || "")
                 ]]);
 
         } else {
@@ -19319,7 +19322,8 @@ function saveWhatsAppSession(
                 updates.listPage !== undefined
                     ? updates.listPage
                     : 0,
-                updates.location || ""
+                updates.location || "",
+                updates.homeCollectionRequestId || ""
             ]);
         }
 
@@ -26355,6 +26359,8 @@ function ensureHomeCollectionSheet() {
             "Time Window",
             "Status",
             "Created At",
+            "Accepted By",
+            "Accepted At",
             "Completed By",
             "Completed At"
         ]);
@@ -26380,7 +26386,7 @@ function ensureHomeCollectionSheet() {
             sheet.getRange(1, insertColumn).setValue("Patient Location");
         }
 
-        ["Completed By", "Completed At"].forEach(function(header) {
+        ["Accepted By", "Accepted At", "Completed By", "Completed At"].forEach(function(header) {
             const currentHeaders = sheet
                 .getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
                 .getValues()[0]
@@ -26414,6 +26420,8 @@ function ensureHomeCollectionHistorySheet() {
             "Time Window",
             "Status",
             "Created At",
+            "Accepted By",
+            "Accepted At",
             "Completed By",
             "Completed At",
             "Archived At"
@@ -26424,9 +26432,13 @@ function ensureHomeCollectionHistorySheet() {
             .getValues()[0]
             .map(function(v) { return String(v || "").trim(); });
 
-        if (headers.indexOf("Archived At") === -1) {
-            sheet.getRange(1, sheet.getLastColumn() + 1).setValue("Archived At");
-        }
+        ["Accepted By", "Accepted At", "Archived At"].forEach(function(header) {
+            const currentHeaders = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
+                .getValues()[0].map(function(v) { return String(v || "").trim(); });
+            if (currentHeaders.indexOf(header) === -1) {
+                sheet.getRange(1, sheet.getLastColumn() + 1).setValue(header);
+            }
+        });
     }
 
     return sheet;
@@ -26519,6 +26531,8 @@ function archivePreviousDayHomeCollectionRequests() {
             sourceData[i][sourceMap["Time Window"] - 1],
             status,
             sourceData[i][sourceMap["Created At"] - 1],
+            sourceData[i][sourceMap["Accepted By"] - 1],
+            sourceData[i][sourceMap["Accepted At"] - 1],
             sourceData[i][sourceMap["Completed By"] - 1],
             sourceData[i][sourceMap["Completed At"] - 1],
             archivedAt
@@ -26606,6 +26620,179 @@ function generateHomeCollectionRequestId() {
 }
 
 
+function findActiveHomeCollectionRequestByPhone(phone, sheet) {
+
+    const normalizedPhone =
+        normalizeWhatsAppPhone(phone);
+
+    if (!normalizedPhone) return null;
+
+    const targetSheet =
+        sheet || ensureHomeCollectionSheet();
+
+    const map =
+        getHomeCollectionRequestSheetColumnMap(targetSheet);
+
+    const data =
+        targetSheet.getDataRange().getValues();
+
+    for (let i = data.length - 1; i >= 1; i--) {
+
+        const rowPhone =
+            String(data[i][map["Phone"] - 1] || "").trim();
+
+        if (!phonesMatch(normalizedPhone, rowPhone)) continue;
+
+        const status =
+            String(data[i][map["Status"] - 1] || "Pending")
+                .trim()
+                .toLowerCase();
+
+        // Only outstanding requests block a new request.
+        // Completed/cancelled requests do not block future collections.
+        if (status === "pending" || status === "accepted") {
+            return getHomeCollectionRequestByRow(i + 1);
+        }
+    }
+
+    return null;
+}
+
+
+function notifyHomeCollectionCancellationToCollector(requestRecord) {
+    if (!requestRecord || !requestRecord.acceptedBy) {
+        return;
+    }
+
+    const people = getActiveHomeCollectionPersons();
+    const collector = people.find(function(person) {
+        return String(person.personId || "").trim() ===
+            String(requestRecord.acceptedBy || "").trim();
+    });
+
+    if (!collector || !collector.whatsapp) {
+        Logger.log(
+            "Home collection cancellation notification skipped: assigned collector not found " +
+            String(requestRecord.acceptedBy || "")
+        );
+        return;
+    }
+
+    const body =
+        "❌ Home Sample Collection Cancelled\n\n" +
+        "Request: " + (requestRecord.requestId || "") + "\n" +
+        "👤 " + (requestRecord.patientName || "Patient") + "\n" +
+        "📞 " + (requestRecord.phone || "") + "\n" +
+        "📅 " + (requestRecord.date || "") + "\n" +
+        "🕐 " + (requestRecord.timeWindow || "") + "\n\n" +
+        "The patient has cancelled this home sample collection request.\n" +
+        "No collection action is required.";
+
+    const inboundMessageId = getWhatsAppInboundMessageId();
+    clearWhatsAppInboundMessageContext();
+
+    try {
+        sendWhatsAppText(collector.whatsapp, body);
+    } catch (error) {
+        Logger.log(
+            "Home collection cancellation notification failed for " +
+            collector.personId + ": " + error.message
+        );
+    } finally {
+        if (inboundMessageId) {
+            setWhatsAppInboundMessageContext(inboundMessageId);
+        }
+    }
+}
+
+
+function cancelHomeCollectionRequestByPatient(requestId, patientPhone) {
+    const targetId = String(requestId || "").trim();
+    const targetPhone = normalizeWhatsAppPhone(patientPhone);
+    if (!targetId || !targetPhone) {
+        return { ok: false, reason: "not_found" };
+    }
+
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(15000)) {
+        return { ok: false, reason: "busy" };
+    }
+
+    let cancelledRequest = null;
+    let result = null;
+
+    try {
+        const sheet = ensureHomeCollectionSheet();
+        const map = getHomeCollectionRequestSheetColumnMap(sheet);
+        const data = sheet.getDataRange().getValues();
+
+        for (let i = 1; i < data.length; i++) {
+            const requestIdValue =
+                String(data[i][map["Request ID"] - 1] || "").trim();
+
+            if (!requestIdValue || requestIdValue.toLowerCase() !== targetId.toLowerCase()) {
+                continue;
+            }
+
+            const rowNumber = i + 1;
+            const phone = String(data[i][map["Phone"] - 1] || "").trim();
+
+            if (!phonesMatch(phone, targetPhone)) {
+                result = { ok: false, reason: "not_authorized" };
+                break;
+            }
+
+            const status =
+                String(data[i][map["Status"] - 1] || "Pending").trim().toLowerCase();
+
+            if (status === "completed") {
+                result = { ok: false, reason: "already_completed" };
+                break;
+            }
+
+            if (status === "cancelled") {
+                result = { ok: false, reason: "already_cancelled" };
+                break;
+            }
+
+            if (status !== "pending" && status !== "accepted") {
+                result = { ok: false, reason: "not_active" };
+                break;
+            }
+
+            // Capture the authoritative record, including Accepted By, before
+            // changing the status so an assigned collector can be notified.
+            cancelledRequest = getHomeCollectionRequestByRow(rowNumber);
+            sheet.getRange(rowNumber, map["Status"]).setValue("Cancelled");
+
+            result = {
+                ok: true,
+                requestId: requestIdValue
+            };
+            break;
+        }
+
+        if (!result) {
+            result = { ok: false, reason: "not_found" };
+        }
+    } catch (error) {
+        Logger.log("cancelHomeCollectionRequestByPatient failed: " + error.message);
+        result = { ok: false, reason: "error" };
+    } finally {
+        lock.releaseLock();
+    }
+
+    // Notify only the assigned collector. Pending/unassigned requests need no
+    // collector notification, while an accepted request should immediately
+    // release the collector from any expected collection action.
+    if (result && result.ok && cancelledRequest && cancelledRequest.acceptedBy) {
+        notifyHomeCollectionCancellationToCollector(cancelledRequest);
+    }
+
+    return result;
+}
+
+
 function createHomeCollectionRequest(details) {
 
     const phone =
@@ -26620,34 +26807,62 @@ function createHomeCollectionRequest(details) {
     const sheet =
         ensureHomeCollectionSheet();
 
-    const requestId =
-        generateHomeCollectionRequestId();
+    // The duplicate check and row creation must be atomic. Otherwise two
+    // near-simultaneous WhatsApp requests can both pass the check.
+    const lock = LockService.getScriptLock();
+    lock.waitLock(15000);
 
-    const latitude = details.latitude;
-    const longitude = details.longitude;
-    const mapsUrl =
-        latitude !== undefined && latitude !== null &&
-        longitude !== undefined && longitude !== null &&
-        String(latitude).trim() !== "" && String(longitude).trim() !== ""
-            ? "https://www.google.com/maps?q=" +
-              encodeURIComponent(String(latitude).trim() + "," + String(longitude).trim())
-            : "";
+    let requestId = "";
+    let duplicateRequest = null;
+    let mapsUrl = "";
 
-    sheet.appendRow([
-        requestId,
-        phone,
-        String(details.patientName || ""),
-        latitude,
-        longitude,
-        details.distanceKm,
-        mapsUrl,
-        String(details.date || ""),
-        String(details.timeWindow || ""),
-        "Pending",
-        new Date(),
-        "",
-        ""
-    ]);
+    try {
+        duplicateRequest =
+            findActiveHomeCollectionRequestByPhone(phone, sheet);
+
+        if (duplicateRequest) {
+            return {
+                success: false,
+                duplicate: true,
+                requestId: duplicateRequest.requestId,
+                existingRequest: duplicateRequest
+            };
+        }
+
+        requestId =
+            generateHomeCollectionRequestId();
+
+        const latitude = details.latitude;
+        const longitude = details.longitude;
+        mapsUrl =
+            latitude !== undefined && latitude !== null &&
+            longitude !== undefined && longitude !== null &&
+            String(latitude).trim() !== "" &&
+            String(longitude).trim() !== ""
+                ? "https://www.google.com/maps?q=" +
+                  encodeURIComponent(String(latitude).trim() + "," + String(longitude).trim())
+                : "";
+
+        sheet.appendRow([
+            requestId,
+            phone,
+            String(details.patientName || ""),
+            latitude,
+            longitude,
+            details.distanceKm,
+            mapsUrl,
+            String(details.date || ""),
+            String(details.timeWindow || ""),
+            "Pending",
+            new Date(),
+            "",
+            "",
+            "",
+            ""
+        ]);
+    } finally {
+        lock.releaseLock();
+    }
 
     if (isHomeCollectionNotificationsEnabled()) {
         notifyHomeCollectionPersons(
@@ -26663,7 +26878,11 @@ function createHomeCollectionRequest(details) {
         );
     }
 
-    return requestId;
+    return {
+        success: true,
+        duplicate: false,
+        requestId: requestId
+    };
 }
 
 
@@ -26713,6 +26932,16 @@ function invalidateWhatsAppSessionCache(phone) {
     CacheService.getScriptCache().remove(
         getWhatsAppSessionCacheKey(phone)
     );
+}
+
+
+function ensureWhatsAppSessionHomeCollectionRequestIdColumn(sheet) {
+
+    if (!sheet.getRange(1, 16).getValue()) {
+        sheet
+            .getRange(1, 16)
+            .setValue("Home Collection Request ID");
+    }
 }
 
 
@@ -26880,7 +27109,10 @@ function readWhatsAppSessionFromSheet(phone) {
             // used by the home blood-sample-collection flow between the
             // location-check step and the final request being saved.
             location:
-                String(data[i][14] || "").trim()
+                String(data[i][14] || "").trim(),
+
+            homeCollectionRequestId:
+                String(data[i][15] || "").trim()
         };
     }
 
@@ -27728,21 +27960,21 @@ function getHomeCollectionTimeWindowOptions() {
     return [
         {
             id: "1",
-            title: "Morning",
+            title: "Morning: 8AM–12PM",
             description: "8 AM - 12 PM",
             value: "Morning (8 AM - 12 PM)",
             startMinutes: 8 * 60
         },
         {
             id: "2",
-            title: "Afternoon",
+            title: "Afternoon: 12–4PM",
             description: "12 PM - 4 PM",
             value: "Afternoon (12 PM - 4 PM)",
             startMinutes: 12 * 60
         },
         {
             id: "3",
-            title: "Evening",
+            title: "Evening: 4–8PM",
             description: "4 PM - 8 PM",
             value: "Evening (4 PM - 8 PM)",
             startMinutes: 16 * 60
@@ -28892,14 +29124,27 @@ function formatHomeCollectionDate(value) {
     return text;
 }
 
-function getHomeCollectionRequestsForCollector(includeCompleted) {
+function getHomeCollectionRequestsForCollector(includeCompleted, collectorPersonId) {
     const sheet = ensureHomeCollectionSheet();
     const map = getHomeCollectionRequestSheetColumnMap(sheet);
     const data = sheet.getDataRange().getValues();
     const requests = [];
     for (let i = 1; i < data.length; i++) {
         const status = String(data[i][map["Status"] - 1] || "Pending").trim();
-        if (!includeCompleted && status.toLowerCase() === "completed") continue;
+        const acceptedBy = map["Accepted By"]
+            ? String(data[i][map["Accepted By"] - 1] || "").trim()
+            : "";
+        const requestedCollector = String(collectorPersonId || "").trim();
+
+        // Unassigned requests are visible to all active collectors.
+        // Once accepted, the request is visible only to its assigned collector.
+        if (requestedCollector && acceptedBy && acceptedBy !== requestedCollector) continue;
+        if (!requestedCollector && acceptedBy) continue;
+        const normalizedStatus = status.toLowerCase();
+        // Active collector queues must never show completed or cancelled
+        // home-collection requests. Completed/cancelled records may still
+        // remain available when includeCompleted=true for history/audit views.
+        if (!includeCompleted && (normalizedStatus === "completed" || normalizedStatus === "cancelled")) continue;
         requests.push({
             row: i + 1,
             requestId: String(data[i][map["Request ID"] - 1] || "").trim(),
@@ -28912,6 +29157,8 @@ function getHomeCollectionRequestsForCollector(includeCompleted) {
             date: formatHomeCollectionDate(data[i][map["Preferred Date"] - 1]),
             timeWindow: String(data[i][map["Time Window"] - 1] || "").trim(),
             status: status,
+            acceptedBy: map["Accepted By"] ? String(data[i][map["Accepted By"] - 1] || "").trim() : "",
+            acceptedAt: map["Accepted At"] ? data[i][map["Accepted At"] - 1] : "",
             completedBy: map["Completed By"] ? String(data[i][map["Completed By"] - 1] || "").trim() : "",
             completedAt: map["Completed At"] ? data[i][map["Completed At"] - 1] : ""
         });
@@ -28934,7 +29181,23 @@ function getHomeCollectionRequestByRow(rowNumber) {
     const requestId = String(values[map["Request ID"] - 1] || "").trim();
     if (!requestId) return null;
 
-    return getHomeCollectionRequestById(requestId);
+    return {
+        row: row,
+        requestId: requestId,
+        phone: String(values[map["Phone"] - 1] || "").trim(),
+        patientName: String(values[map["Patient Name"] - 1] || "").trim(),
+        latitude: values[map["Latitude"] - 1],
+        longitude: values[map["Longitude"] - 1],
+        mapsUrl: map["Patient Location"] ? String(values[map["Patient Location"] - 1] || "").trim() : "",
+        distanceKm: Number(values[map["Distance (km)"] - 1] || 0),
+        date: formatHomeCollectionDate(values[map["Preferred Date"] - 1]),
+        timeWindow: String(values[map["Time Window"] - 1] || "").trim(),
+        status: String(values[map["Status"] - 1] || "Pending").trim(),
+        acceptedBy: map["Accepted By"] ? String(values[map["Accepted By"] - 1] || "").trim() : "",
+        acceptedAt: map["Accepted At"] ? values[map["Accepted At"] - 1] : "",
+        completedBy: map["Completed By"] ? String(values[map["Completed By"] - 1] || "").trim() : "",
+        completedAt: map["Completed At"] ? values[map["Completed At"] - 1] : ""
+    };
 }
 
 function getHomeCollectionRequestById(requestId) {
@@ -29001,10 +29264,10 @@ function sendHomeCollectionRequestDetailReply(ss, phone, request) {
         return;
     }
     const buttons = [];
-    if (request.status.toLowerCase() !== "completed") {
-        // Use the sheet row as the completion transport key, just like the
-        // collection list selection. This avoids any mismatch between the
-        // displayed request ID and the value stored in the sheet.
+    const requestStatus = String(request.status || "Pending").toLowerCase();
+    if (requestStatus === "pending") {
+        buttons.push({ id: "hc_accept_row_" + request.row, title: "Accept Collection" });
+    } else if (requestStatus === "accepted") {
         buttons.push({ id: "hc_complete_row_" + request.row, title: "Mark Completed" });
     }
     buttons.push({ id: "hc_today", title: "Today's Collections" });
@@ -29017,16 +29280,18 @@ function sendHomeCollectionRequestDetailReply(ss, phone, request) {
         "📏 " + Number(request.distanceKm || 0).toFixed(1) + " km\n" +
         "📍 Patient location:\n" + (request.mapsUrl || "Location unavailable") + "\n" +
         "Status: " + request.status +
-        "\n\n" + (request.status.toLowerCase() === "completed"
+        "\n\n" + (requestStatus === "completed"
             ? "This collection is already completed."
-            : "After collecting the sample, tap Mark Completed.");
+            : requestStatus === "pending"
+                ? "Tap Accept Collection to take this request."
+                : "After collecting the sample, tap Mark Completed.");
     sendWhatsAppMenuReply(ss, phone, body, {
         fallbackText: body,
         interactive: buildInteractiveButtonSpec(buttons)
     });
 }
 
-function markHomeCollectionRequestCompletedByRow(rowNumber, collectorName) {
+function markHomeCollectionRequestCompletedByRow(rowNumber, collectorName, collectorPersonId) {
     const row = Number(rowNumber);
     if (!row || row < 2) return { ok: false, reason: "not_found" };
 
@@ -29045,6 +29310,14 @@ function markHomeCollectionRequestCompletedByRow(rowNumber, collectorName) {
         return { ok: false, reason: "already_completed", requestId: requestId };
     }
 
+    const acceptedBy = map["Accepted By"]
+        ? String(sheet.getRange(row, map["Accepted By"]).getValue() || "").trim()
+        : "";
+    if (!acceptedBy) return { ok: false, reason: "not_accepted", requestId: requestId };
+    if (collectorPersonId && acceptedBy !== String(collectorPersonId)) {
+        return { ok: false, reason: "assigned_to_other", requestId: requestId };
+    }
+
     sheet.getRange(row, map["Status"]).setValue("Completed");
     if (map["Completed By"]) {
         sheet.getRange(row, map["Completed By"]).setValue(String(collectorName || ""));
@@ -29057,7 +29330,7 @@ function markHomeCollectionRequestCompletedByRow(rowNumber, collectorName) {
 }
 
 
-function markHomeCollectionRequestCompleted(requestId, collectorName) {
+function markHomeCollectionRequestCompleted(requestId, collectorName, collectorPersonId) {
     const sheet = ensureHomeCollectionSheet();
     const map = getHomeCollectionRequestSheetColumnMap(sheet);
     const data = sheet.getDataRange().getValues();
@@ -29066,6 +29339,13 @@ function markHomeCollectionRequestCompleted(requestId, collectorName) {
         if (String(data[i][map["Request ID"] - 1] || "").trim() !== target) continue;
         const status = String(data[i][map["Status"] - 1] || "Pending").trim();
         if (status.toLowerCase() === "completed") return { ok: false, reason: "already_completed" };
+        const acceptedBy = map["Accepted By"]
+            ? String(data[i][map["Accepted By"] - 1] || "").trim()
+            : "";
+        if (!acceptedBy) return { ok: false, reason: "not_accepted" };
+        if (collectorPersonId && acceptedBy !== String(collectorPersonId)) {
+            return { ok: false, reason: "assigned_to_other" };
+        }
         sheet.getRange(i+1, map["Status"]).setValue("Completed");
         if (map["Completed By"]) sheet.getRange(i+1, map["Completed By"]).setValue(String(collectorName || ""));
         if (map["Completed At"]) sheet.getRange(i+1, map["Completed At"]).setValue(new Date());
@@ -29077,47 +29357,54 @@ function markHomeCollectionRequestCompleted(requestId, collectorName) {
 function notifyHomeCollectionPersons(requestId, details) {
     const people = getActiveHomeCollectionPersons();
     if (!people.length) return;
-    const body = "🩸 New Home Sample Collection\n\n" +
-        "Request: " + requestId + "\n" +
-        "👤 " + (details.patientName || "Patient") + "\n" +
-        "📞 " + (details.phone || "") + "\n" +
-        "📅 " + details.date + "\n" +
-        "🕐 " + details.timeWindow + "\n" +
-        "📏 " + Number(details.distanceKm || 0).toFixed(1) + " km\n\n" +
-        "📍 Patient location:\n" + (details.mapsUrl || "Location unavailable") + "\n\n" +
-        "Please review the request.";
 
-    // Resolve the request row once and use the row as the completion transport
-    // key. This keeps notification buttons consistent with the collector list
-    // flow and avoids request-ID transport mismatches.
+    // Resolve the authoritative request from the sheet. The patient name,
+    // phone, date, time window and location in the notification all come
+    // from the saved request record, not from inbound WhatsApp text.
     const requestRecord = getHomeCollectionRequestById(requestId);
-    const requestRow = requestRecord ? requestRecord.row : null;
+    if (!requestRecord) {
+        Logger.log("Home collection notification skipped: request not found " + requestId);
+        return;
+    }
 
-    // This notification is generated while processing the patient's inbound
-    // message. Clear the inbound dedup context so one patient message can
-    // legitimately trigger a notification to every active collector.
+    const body = "🩸 New Home Sample Collection\n\n" +
+        "Request: " + requestRecord.requestId + "\n" +
+        "👤 " + (requestRecord.patientName || "Patient") + "\n" +
+        "📞 " + (requestRecord.phone || "") + "\n" +
+        "📅 " + requestRecord.date + "\n" +
+        "🕐 " + requestRecord.timeWindow + "\n" +
+        "📏 " + Number(requestRecord.distanceKm || 0).toFixed(1) + " km\n\n" +
+        "📍 Patient location:\n" + (requestRecord.mapsUrl || "Location unavailable") + "\n\n" +
+        "Please review and accept the request.";
+
+    const requestRow = requestRecord.row;
+
     const inboundMessageId = getWhatsAppInboundMessageId();
     clearWhatsAppInboundMessageContext();
 
     try {
         people.forEach(function(person) {
-        try {
-            sendWhatsAppMenuReply(SpreadsheetApp.getActiveSpreadsheet(), person.whatsapp, body, {
-                fallbackText: body,
-                interactive: buildInteractiveButtonSpec([
-                    {
-                        id: requestRow
-                            ? "hc_complete_row_" + requestRow
-                            : "hc_complete_" + requestId,
-                        title: "Mark Completed"
-                    },
-                    { id: "hc_today", title: "Today's Collections" },
-                    { id: "nav_main_menu", title: "Main Menu" }
-                ])
-            });
-        } catch (error) {
-            Logger.log("Home collection notification failed for " + person.personId + ": " + error.message);
-        }
+            try {
+                sendWhatsAppMenuReply(SpreadsheetApp.getActiveSpreadsheet(), person.whatsapp, body, {
+                    fallbackText: body,
+                    interactive: buildInteractiveButtonSpec([
+                        {
+                            id: "hc_accept_row_" + requestRow,
+                            title: "Accept Collection"
+                        },
+                        {
+                            id: "hc_view_row_" + requestRow,
+                            title: "View Details"
+                        },
+                        {
+                            id: "nav_main_menu",
+                            title: "Main Menu"
+                        }
+                    ])
+                });
+            } catch (error) {
+                Logger.log("Home collection notification failed for " + person.personId + ": " + error.message);
+            }
         });
     } finally {
         if (inboundMessageId) {
@@ -29125,6 +29412,64 @@ function notifyHomeCollectionPersons(requestId, details) {
         }
     }
 }
+
+function acceptHomeCollectionRequestByRow(rowNumber, collectorPersonId) {
+    const row = Number(rowNumber);
+    if (!row || row < 2) return { ok: false, reason: "not_found" };
+
+    const lock = LockService.getScriptLock();
+    try {
+        lock.waitLock(10000);
+
+        const sheet = ensureHomeCollectionSheet();
+        const map = getHomeCollectionRequestSheetColumnMap(sheet);
+        if (!map["Request ID"] || !map["Status"] || !map["Accepted By"] || !map["Accepted At"]) {
+            return { ok: false, reason: "schema_missing" };
+        }
+        if (row > sheet.getLastRow()) return { ok: false, reason: "not_found" };
+
+        // Re-read the authoritative row while holding the lock.
+        const request = getHomeCollectionRequestByRow(row);
+        if (!request) return { ok: false, reason: "not_found" };
+
+        const status = String(
+            sheet.getRange(row, map["Status"]).getValue() || "Pending"
+        ).trim().toLowerCase();
+        const acceptedBy = String(
+            sheet.getRange(row, map["Accepted By"]).getValue() || ""
+        ).trim();
+        const personId = String(collectorPersonId || "").trim();
+
+        if (status === "completed") {
+            return { ok: false, reason: "already_completed", request: request };
+        }
+
+        if (acceptedBy) {
+            return {
+                ok: false,
+                reason: acceptedBy === personId
+                    ? "already_accepted_by_self"
+                    : "already_accepted",
+                request: request
+            };
+        }
+
+        sheet.getRange(row, map["Status"]).setValue("Accepted");
+        sheet.getRange(row, map["Accepted By"]).setValue(personId);
+        sheet.getRange(row, map["Accepted At"]).setValue(new Date());
+
+        return {
+            ok: true,
+            request: getHomeCollectionRequestByRow(row)
+        };
+    } catch (error) {
+        Logger.log("acceptHomeCollectionRequestByRow failed: " + error.message);
+        return { ok: false, reason: "error" };
+    } finally {
+        try { lock.releaseLock(); } catch (e) {}
+    }
+}
+
 
 function handleWhatsAppHomeCollectionPersonMessage(ss, senderPhone, senderName, messageText, normalizedMessage, session) {
     if (!session || session.role !== "HOME_COLLECTION_PERSON") return false;
@@ -29134,15 +29479,17 @@ function handleWhatsAppHomeCollectionPersonMessage(ss, senderPhone, senderName, 
     if (normalizedMessage === "hc_today" || normalizedMessage === "1") {
         const today = Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd");
         sendHomeCollectionRequestsListReply(ss, senderPhone, "Today's Collections",
-            getHomeCollectionRequestsForCollector(false).filter(function(r) { return r.date === today; }));
+            getHomeCollectionRequestsForCollector(false, collector.personId).filter(function(r) { return r.date === today; }));
         return true;
     }
+
     if (normalizedMessage === "hc_upcoming" || normalizedMessage === "2") {
         const today = Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd");
         sendHomeCollectionRequestsListReply(ss, senderPhone, "Upcoming Collections",
-            getHomeCollectionRequestsForCollector(false).filter(function(r) { return r.date >= today; }));
+            getHomeCollectionRequestsForCollector(false, collector.personId).filter(function(r) { return r.date >= today; }));
         return true;
     }
+
     if (normalizedMessage === "hc_more" || normalizedMessage === "3") {
         sendWhatsAppMenuReply(ss, senderPhone, "More options", {
             fallbackText: "1️⃣ All Pending Collections\n2️⃣ Main Menu",
@@ -29153,62 +29500,363 @@ function handleWhatsAppHomeCollectionPersonMessage(ss, senderPhone, senderName, 
         });
         return true;
     }
+
     if (normalizedMessage === "hc_all_pending") {
         sendHomeCollectionRequestsListReply(ss, senderPhone, "All Pending Collections",
-            getHomeCollectionRequestsForCollector(false));
+            getHomeCollectionRequestsForCollector(false, collector.personId).filter(function(r) {
+                return String(r.status || "").toLowerCase() === "pending";
+            }));
         return true;
     }
+
+    if (normalizedMessage.indexOf("hc_accept_row_") === 0) {
+        const rowNumber = normalizedMessage.substring("hc_accept_row_".length);
+        const result = acceptHomeCollectionRequestByRow(rowNumber, collector.personId);
+
+        if (result.ok) {
+            const request = result.request;
+            sendHomeCollectionPersonMenuReply(
+                ss,
+                senderPhone,
+                collector.name,
+                "✅ Collection accepted.\n\n" +
+                "Request: " + request.requestId + "\n" +
+                "👤 " + (request.patientName || "Patient") + "\n" +
+                "📅 " + request.date + "\n" +
+                "🕐 " + request.timeWindow + "\n\n" +
+                "This collection is now assigned to you."
+            );
+            return true;
+        }
+
+        if (result.reason === "already_accepted_by_self") {
+            sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+                "✅ This collection is already assigned to you.");
+            return true;
+        }
+
+        if (result.reason === "already_accepted") {
+            sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+                "ℹ️ This collection has already been assigned to another collection person.");
+            return true;
+        }
+
+        if (result.reason === "already_completed") {
+            sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+                "ℹ️ This collection has already been completed.");
+            return true;
+        }
+
+        sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+            "❌ Collection request not found or is no longer available.");
+        return true;
+    }
+
     if (normalizedMessage.indexOf("hc_view_row_") === 0) {
         const rowNumber = normalizedMessage.substring("hc_view_row_".length);
-        sendHomeCollectionRequestDetailReply(ss, senderPhone,
-            getHomeCollectionRequestByRow(rowNumber));
+        const request = getHomeCollectionRequestByRow(rowNumber);
+        if (request && request.acceptedBy && request.acceptedBy !== collector.personId) {
+            sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+                "ℹ️ This collection has already been assigned to another collection person.");
+            return true;
+        }
+        sendHomeCollectionRequestDetailReply(ss, senderPhone, request);
         return true;
     }
-    // Backward compatibility for any older list messages still in the chat.
+
+    // Backward compatibility for older list messages.
     if (normalizedMessage.indexOf("hc_view_") === 0) {
-        sendHomeCollectionRequestDetailReply(ss, senderPhone,
-            getHomeCollectionRequestById(normalizedMessage.substring(8)));
+        const request = getHomeCollectionRequestById(
+            normalizedMessage.substring(8)
+        );
+        if (request && request.acceptedBy && request.acceptedBy !== collector.personId) {
+            sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+                "ℹ️ This collection has already been assigned to another collection person.");
+            return true;
+        }
+        sendHomeCollectionRequestDetailReply(ss, senderPhone, request);
         return true;
     }
+
     if (normalizedMessage.indexOf("hc_complete_row_") === 0) {
         const rowNumber = normalizedMessage.substring("hc_complete_row_".length);
         const result = markHomeCollectionRequestCompletedByRow(
-            rowNumber, collector.name);
+            rowNumber, collector.name, collector.personId);
         const msg = result.ok
             ? "✅ Collection " + (result.requestId || "") + " marked Completed."
             : result.reason === "already_completed"
                 ? "ℹ️ This collection has already been marked Completed."
-                : "❌ Collection request not found.";
+                : result.reason === "assigned_to_other"
+                    ? "ℹ️ This collection is assigned to another collection person."
+                    : result.reason === "not_accepted"
+                        ? "ℹ️ Please accept this collection before marking it Completed."
+                        : "❌ Collection request not found.";
         sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name, msg);
         return true;
     }
 
-    // Backward compatibility for completion buttons generated by older
-    // versions. New notifications use the row-based key above.
     if (normalizedMessage.indexOf("hc_complete_") === 0) {
         const requestId = normalizedMessage.substring("hc_complete_".length);
         const result = markHomeCollectionRequestCompleted(
-            requestId, collector.name);
+            requestId, collector.name, collector.personId);
         const msg = result.ok
             ? "✅ Collection " + requestId + " marked Completed."
             : result.reason === "already_completed"
                 ? "ℹ️ This collection has already been marked Completed."
-                : "❌ Collection request not found.";
+                : result.reason === "assigned_to_other"
+                    ? "ℹ️ This collection is assigned to another collection person."
+                    : result.reason === "not_accepted"
+                        ? "ℹ️ Please accept this collection before marking it Completed."
+                        : "❌ Collection request not found.";
         sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name, msg);
         return true;
     }
+
     sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
         "❌ Please choose one of the available options.");
     return true;
 }
 
 
-
 // ======================================================
+function rescheduleHomeCollectionRequestByPatient(requestId, patientPhone, newDate, newTimeWindow) {
+    const targetId = String(requestId || "").trim();
+    const targetPhone = normalizeWhatsAppPhone(patientPhone);
+    const dateValue = String(newDate || "").trim();
+    const timeValue = String(newTimeWindow || "").trim();
+
+    if (!targetId || !targetPhone || !dateValue || !timeValue) {
+        return { ok: false, reason: "invalid_request" };
+    }
+
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(15000)) {
+        return { ok: false, reason: "busy" };
+    }
+
+    let updatedRequest = null;
+    let failureReason = "not_found";
+
+    try {
+        const sheet = ensureHomeCollectionSheet();
+        const map = getHomeCollectionRequestSheetColumnMap(sheet);
+        const required = ["Request ID", "Phone", "Preferred Date", "Time Window", "Status"];
+
+        for (const header of required) {
+            if (!map[header]) {
+                return { ok: false, reason: "schema_missing", header: header };
+            }
+        }
+
+        const lastRow = sheet.getLastRow();
+        if (lastRow < 2) {
+            return { ok: false, reason: "not_found" };
+        }
+
+        const columnCount = sheet.getLastColumn();
+        const data = sheet.getRange(2, 1, lastRow - 1, columnCount).getValues();
+
+        for (let i = 0; i < data.length; i++) {
+            const rowNumber = i + 2;
+            const requestIdValue = String(
+                data[i][map["Request ID"] - 1] || ""
+            ).trim();
+
+            if (!requestIdValue || requestIdValue.toLowerCase() !== targetId.toLowerCase()) {
+                continue;
+            }
+
+            const phone = String(
+                data[i][map["Phone"] - 1] || ""
+            ).trim();
+
+            if (!phonesMatch(phone, targetPhone)) {
+                return { ok: false, reason: "not_authorized" };
+            }
+
+            const status = String(
+                data[i][map["Status"] - 1] || "Pending"
+            ).trim().toLowerCase();
+
+            if (status === "completed") {
+                return { ok: false, reason: "already_completed" };
+            }
+
+            if (status === "cancelled" || status === "canceled") {
+                return { ok: false, reason: "already_cancelled" };
+            }
+
+            if (status !== "pending" && status !== "accepted") {
+                return { ok: false, reason: "not_active" };
+            }
+
+            // Update the existing request row only. The patient location,
+            // Request ID, creation time and collector assignment stay unchanged.
+            sheet.getRange(rowNumber, map["Preferred Date"]).setValue(dateValue);
+            sheet.getRange(rowNumber, map["Time Window"]).setValue(timeValue);
+            SpreadsheetApp.flush();
+
+            // Build the result from the same authoritative row context instead
+            // of performing a second lookup that can incorrectly turn a
+            // successful update into a generic "not found" failure.
+            updatedRequest = {
+                row: rowNumber,
+                requestId: requestIdValue,
+                phone: phone,
+                patientName: map["Patient Name"]
+                    ? String(data[i][map["Patient Name"] - 1] || "").trim()
+                    : "",
+                latitude: map["Latitude"]
+                    ? data[i][map["Latitude"] - 1]
+                    : "",
+                longitude: map["Longitude"]
+                    ? data[i][map["Longitude"] - 1]
+                    : "",
+                mapsUrl: map["Patient Location"]
+                    ? String(data[i][map["Patient Location"] - 1] || "").trim()
+                    : "",
+                distanceKm: map["Distance (km)"]
+                    ? Number(data[i][map["Distance (km)"] - 1] || 0)
+                    : 0,
+                date: dateValue,
+                timeWindow: timeValue,
+                status: status === "accepted" ? "Accepted" : "Pending",
+                acceptedBy: map["Accepted By"]
+                    ? String(data[i][map["Accepted By"] - 1] || "").trim()
+                    : "",
+                acceptedAt: map["Accepted At"]
+                    ? data[i][map["Accepted At"] - 1]
+                    : "",
+                completedBy: map["Completed By"]
+                    ? String(data[i][map["Completed By"] - 1] || "").trim()
+                    : "",
+                completedAt: map["Completed At"]
+                    ? data[i][map["Completed At"] - 1]
+                    : ""
+            };
+
+            failureReason = "";
+            break;
+        }
+    } catch (error) {
+        Logger.log(
+            "rescheduleHomeCollectionRequestByPatient failed: " +
+            error.message +
+            " | requestId=" + targetId +
+            " | phone=" + targetPhone
+        );
+        failureReason = "error";
+    } finally {
+        lock.releaseLock();
+    }
+
+    if (!updatedRequest) {
+        return { ok: false, reason: failureReason || "not_found" };
+    }
+
+    // If a collector has already accepted the request, notify that same
+    // collector. For Pending requests, do not broadcast a duplicate message.
+    if (updatedRequest.acceptedBy && isHomeCollectionNotificationsEnabled()) {
+        const people = getActiveHomeCollectionPersons();
+        const assigned = people.filter(function (person) {
+            return String(person.personId || "").trim() ===
+                String(updatedRequest.acceptedBy || "").trim();
+        });
+
+        assigned.forEach(function (person) {
+            try {
+                const body =
+                    "🔄 Home Sample Collection Rescheduled\n\n" +
+                    "Request: " + updatedRequest.requestId + "\n" +
+                    "👤 " + (updatedRequest.patientName || "Patient") + "\n" +
+                    "📅 " + updatedRequest.date + "\n" +
+                    "🕐 " + updatedRequest.timeWindow + "\n" +
+                    "📍 Patient location:\n" +
+                    (updatedRequest.mapsUrl || "Location unavailable") +
+                    "\n\nThis request remains assigned to you.";
+
+                sendWhatsAppMenuReply(
+                    SpreadsheetApp.getActiveSpreadsheet(),
+                    person.whatsapp,
+                    body,
+                    {
+                        fallbackText: body,
+                        interactive: buildInteractiveButtonSpec([
+                            {
+                                id: "hc_view_row_" + updatedRequest.row,
+                                title: "View Details"
+                            },
+                            {
+                                id: "nav_main_menu",
+                                title: "Main Menu"
+                            }
+                        ])
+                    }
+                );
+            } catch (error) {
+                Logger.log(
+                    "Home collection reschedule notification failed for " +
+                    person.personId + ": " + error.message
+                );
+            }
+        });
+    }
+
+    return {
+        ok: true,
+        requestId: updatedRequest.requestId,
+        date: updatedRequest.date,
+        timeWindow: updatedRequest.timeWindow
+    };
+}
+
+
 function beginWhatsAppHomeCollectionFlow(
     ss,
     senderPhone
 ) {
+
+    // Check for an existing active request immediately when the patient
+    // taps Home Sample Collection. This avoids asking for a new location,
+    // date, or time when the same phone already has an outstanding request.
+    // The final duplicate check inside createHomeCollectionRequest() is
+    // still kept as a race-condition safety net.
+    const existingRequest =
+        findActiveHomeCollectionRequestByPhone(senderPhone);
+
+    if (existingRequest) {
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "HOME_COLLECTION_ACTIVE",
+                homeCollectionRequestId: existingRequest.requestId || "",
+                doctorId: "",
+                date: existingRequest.date || "",
+                time: existingRequest.timeWindow || "",
+                appointmentId: "",
+                location: ""
+            }
+        );
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            "⚠️ You already have an active home sample collection request.\n\n" +
+            "🆔 Request ID: " +
+            (existingRequest.requestId || "") +
+            "\n📅 Date: " +
+            (existingRequest.date || "") +
+            "\n🕐 Time: " +
+            (existingRequest.timeWindow || "") +
+            "\n📌 Status: " +
+            (existingRequest.status || "Pending") +
+            "\n\nWhat would you like to do?",
+            getHomeCollectionCompletionMenuSpec()
+        );
+
+        return;
+    }
 
     if (!getHospitalLocation()) {
 
@@ -29262,7 +29910,12 @@ function handleWhatsAppHomeCollectionMessage(
         "HOME_COLLECTION_LOCATION",
         "HOME_COLLECTION_DATE",
         "HOME_COLLECTION_DATE_CUSTOM",
-        "HOME_COLLECTION_TIME"
+        "HOME_COLLECTION_TIME",
+        "HOME_COLLECTION_ACTIVE",
+        "HOME_COLLECTION_CANCEL_CONFIRM",
+        "HOME_COLLECTION_RESCHEDULE_DATE",
+        "HOME_COLLECTION_RESCHEDULE_DATE_CUSTOM",
+        "HOME_COLLECTION_RESCHEDULE_TIME"
     ];
 
     if (
@@ -29270,6 +29923,412 @@ function handleWhatsAppHomeCollectionMessage(
         homeCollectionStates.indexOf(session.state) === -1
     ) {
         return false;
+    }
+
+
+    // ======================================================
+    // ACTIVE REQUEST → CANCEL OR RESCHEDULE HOME COLLECTION
+    // ======================================================
+
+    if (session.state === "HOME_COLLECTION_ACTIVE") {
+
+        if (normalizedMessage === "cancel_home_collection") {
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    role: "PATIENT",
+                    state: "HOME_COLLECTION_CANCEL_CONFIRM",
+                    homeCollectionRequestId: session.homeCollectionRequestId || "",
+                    doctorId: "",
+                    date: session.date || "",
+                    time: session.time || "",
+                    appointmentId: "",
+                    location: ""
+                }
+            );
+
+            sendWhatsAppMenuReply(
+                ss,
+                senderPhone,
+                "⚠️ Are you sure you want to cancel your active home sample collection request?",
+                {
+                    fallbackText: "1️⃣ Yes, Cancel\n2️⃣ Keep Request",
+                    interactive: buildInteractiveButtonSpec([
+                        { id: "confirm_cancel_home_collection", title: "Yes, Cancel" },
+                        { id: "keep_home_collection", title: "Keep Request" }
+                    ])
+                }
+            );
+
+            return true;
+        }
+
+        if (
+            normalizedMessage === "reschedule_home_collection" ||
+            normalizedMessage === "reschedule_doctor_appointment"
+        ) {
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    role: "PATIENT",
+                    state: "HOME_COLLECTION_RESCHEDULE_DATE",
+                    homeCollectionRequestId: session.homeCollectionRequestId || "",
+                    doctorId: "",
+                    date: session.date || "",
+                    time: session.time || "",
+                    appointmentId: "",
+                    location: ""
+                }
+            );
+
+            sendDateMenuReply(
+                ss,
+                senderPhone,
+                "🔄 Reschedule home sample collection\n\nChoose a new preferred date:",
+                "patient"
+            );
+
+            return true;
+        }
+
+        // A user may type 0 / Back here and fall through to the universal
+        // navigation handler, which returns them to the Main Menu.
+        return false;
+    }
+
+
+    // ======================================================
+    // CONFIRM ACTIVE REQUEST CANCELLATION
+    // ======================================================
+
+    if (session.state === "HOME_COLLECTION_CANCEL_CONFIRM") {
+
+        if (normalizedMessage === "confirm_cancel_home_collection") {
+            const result =
+                cancelHomeCollectionRequestByPatient(
+                    session.homeCollectionRequestId,
+                    senderPhone
+                );
+
+            if (result.ok) {
+                saveWhatsAppSession(
+                    senderPhone,
+                    {
+                        role: "PATIENT",
+                        state: "MAIN_MENU",
+                        homeCollectionRequestId: "",
+                        doctorId: "",
+                        date: "",
+                        time: "",
+                        appointmentId: "",
+                        location: ""
+                    }
+                );
+
+                sendWhatsAppText(
+                    senderPhone,
+                    "✅ Home sample collection request " +
+                    result.requestId +
+                    " has been cancelled. You can create a new request whenever needed."
+                );
+            } else {
+                saveWhatsAppSession(
+                    senderPhone,
+                    {
+                        role: "PATIENT",
+                        state: "MAIN_MENU",
+                        homeCollectionRequestId: "",
+                        doctorId: "",
+                        date: "",
+                        time: "",
+                        appointmentId: "",
+                        location: ""
+                    }
+                );
+
+                sendWhatsAppText(
+                    senderPhone,
+                    result.reason === "already_completed"
+                        ? "ℹ️ This home sample collection has already been completed."
+                        : result.reason === "already_cancelled"
+                            ? "ℹ️ This home sample collection has already been cancelled."
+                            : "❌ We couldn't cancel that home sample collection request. Please contact the clinic."
+                );
+            }
+
+            return true;
+        }
+
+        if (normalizedMessage === "keep_home_collection") {
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    role: "PATIENT",
+                    state: "HOME_COLLECTION_ACTIVE",
+                    homeCollectionRequestId: session.homeCollectionRequestId || "",
+                    date: session.date || "",
+                    time: session.time || ""
+                }
+            );
+
+            sendWhatsAppMenuReply(
+                ss,
+                senderPhone,
+                "✅ Your home sample collection request remains active.",
+                getHomeCollectionCompletionMenuSpec()
+            );
+
+            return true;
+        }
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            "Please choose an option.",
+            {
+                fallbackText: "1️⃣ Yes, Cancel\n2️⃣ Keep Request",
+                interactive: buildInteractiveButtonSpec([
+                    { id: "confirm_cancel_home_collection", title: "Yes, Cancel" },
+                    { id: "keep_home_collection", title: "Keep Request" }
+                ])
+            }
+        );
+
+        return true;
+    }
+
+
+    // ======================================================
+    // RESCHEDULE HOME COLLECTION → DATE
+    // ======================================================
+
+    if (session.state === "HOME_COLLECTION_RESCHEDULE_DATE") {
+
+        const selectedDate =
+            getISODateFromMenuChoice(
+                normalizedMessage
+            );
+
+        if (selectedDate) {
+            const availableTimeWindows =
+                getHomeCollectionTimeWindowOptionsForDate(
+                    selectedDate
+                );
+
+            if (availableTimeWindows.length === 0) {
+                sendDateMenuReply(
+                    ss,
+                    senderPhone,
+                    "⏰ There are no time windows left for today with the " +
+                    getHomeCollectionMinLeadHours() +
+                    "-hour minimum notice.\n\nChoose another date:",
+                    "patient"
+                );
+                return true;
+            }
+
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    state: "HOME_COLLECTION_RESCHEDULE_TIME",
+                    date: selectedDate,
+                    homeCollectionRequestId: session.homeCollectionRequestId || "",
+                    doctorId: "",
+                    time: "",
+                    appointmentId: "",
+                    location: ""
+                }
+            );
+
+            sendWhatsAppMenuReply(
+                ss,
+                senderPhone,
+                "🕐 Choose a new preferred time window:",
+                getHomeCollectionTimeWindowSpec(selectedDate)
+            );
+
+            return true;
+        }
+
+        if (
+            normalizedMessage === "3" ||
+            normalizedMessage === "date_custom"
+        ) {
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    state: "HOME_COLLECTION_RESCHEDULE_DATE_CUSTOM",
+                    homeCollectionRequestId: session.homeCollectionRequestId || "",
+                    doctorId: "",
+                    date: "",
+                    time: "",
+                    appointmentId: "",
+                    location: ""
+                }
+            );
+
+            sendCustomDateEntryMenuReply(
+                ss,
+                senderPhone,
+                "Please enter the new preferred date in YYYY-MM-DD format.\n\n" +
+                "Example:\n" +
+                Utilities.formatDate(
+                    new Date(),
+                    TIMEZONE,
+                    "yyyy-MM-dd"
+                )
+            );
+
+            return true;
+        }
+
+        sendDateMenuReply(
+            ss,
+            senderPhone,
+            "❌ Invalid option.\n\nChoose a new preferred date:",
+            "patient"
+        );
+        return true;
+    }
+
+
+    // ======================================================
+    // RESCHEDULE HOME COLLECTION → CUSTOM DATE
+    // ======================================================
+
+    if (session.state === "HOME_COLLECTION_RESCHEDULE_DATE_CUSTOM") {
+
+        const validation =
+            validateFutureISODate(
+                String(messageText || "").trim()
+            );
+
+        if (!validation.valid) {
+            sendCustomDateEntryMenuReply(
+                ss,
+                senderPhone,
+                validation.message
+            );
+            return true;
+        }
+
+        const availableTimeWindows =
+            getHomeCollectionTimeWindowOptionsForDate(
+                validation.date
+            );
+
+        if (availableTimeWindows.length === 0) {
+            sendCustomDateEntryMenuReply(
+                ss,
+                senderPhone,
+                "⏰ There are no available home collection time windows for that date. Please choose another date."
+            );
+            return true;
+        }
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                state: "HOME_COLLECTION_RESCHEDULE_TIME",
+                date: validation.date,
+                homeCollectionRequestId: session.homeCollectionRequestId || "",
+                doctorId: "",
+                time: "",
+                appointmentId: "",
+                location: ""
+            }
+        );
+
+        sendWhatsAppMenuReply(
+            ss,
+            senderPhone,
+            "🕐 Choose a new preferred time window:",
+            getHomeCollectionTimeWindowSpec(validation.date)
+        );
+
+        return true;
+    }
+
+
+    // ======================================================
+    // RESCHEDULE HOME COLLECTION → TIME
+    // ======================================================
+
+    if (session.state === "HOME_COLLECTION_RESCHEDULE_TIME") {
+
+        const availableTimeWindows =
+            getHomeCollectionTimeWindowOptionsForDate(
+                session.date
+            );
+
+        const selectedTimeWindow =
+            availableTimeWindows.find(function (option) {
+                return (
+                    option.id === normalizedMessage ||
+                    option.title.toLowerCase() === String(normalizedMessage || "").toLowerCase()
+                );
+            });
+
+        if (!selectedTimeWindow) {
+            sendWhatsAppMenuReply(
+                ss,
+                senderPhone,
+                "❌ That time window is no longer available.\n\n" +
+                "Choose a new preferred time window:",
+                getHomeCollectionTimeWindowSpec(session.date)
+            );
+            return true;
+        }
+
+        const result =
+            rescheduleHomeCollectionRequestByPatient(
+                session.homeCollectionRequestId,
+                senderPhone,
+                session.date,
+                selectedTimeWindow.value
+            );
+
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "PATIENT",
+                state: "MAIN_MENU",
+                homeCollectionRequestId: result.ok
+                    ? result.requestId
+                    : session.homeCollectionRequestId || "",
+                doctorId: "",
+                date: "",
+                time: "",
+                appointmentId: "",
+                location: ""
+            }
+        );
+
+        if (result.ok) {
+            sendWhatsAppText(
+                senderPhone,
+                "✅ Home sample collection rescheduled successfully.\n\n" +
+                "🆔 Request ID: " + result.requestId + "\n" +
+                "📅 Date: " + result.date + "\n" +
+                "🕐 Time: " + result.timeWindow
+            );
+        } else {
+            const message =
+                result.reason === "already_completed"
+                    ? "ℹ️ This home sample collection has already been completed."
+                    : result.reason === "already_cancelled"
+                        ? "ℹ️ This home sample collection has already been cancelled."
+                        : result.reason === "not_authorized"
+                            ? "❌ This home sample collection request does not belong to you."
+                            : "❌ We couldn't reschedule that home sample collection request. Please try again or contact the clinic.";
+
+            sendWhatsAppText(
+                senderPhone,
+                message
+            );
+        }
+
+        return true;
     }
 
 
@@ -29576,15 +30635,53 @@ function handleWhatsAppHomeCollectionMessage(
             senderName ||
             "";
 
-        createHomeCollectionRequest({
-            phone: senderPhone,
-            patientName: patientName,
-            latitude: latitude,
-            longitude: longitude,
-            distanceKm: distanceKm,
-            date: session.date,
-            timeWindow: timeWindow
-        });
+        const homeCollectionResult =
+            createHomeCollectionRequest({
+                phone: senderPhone,
+                patientName: patientName,
+                latitude: latitude,
+                longitude: longitude,
+                distanceKm: distanceKm,
+                date: session.date,
+                timeWindow: timeWindow
+            });
+
+        if (homeCollectionResult && homeCollectionResult.duplicate) {
+            const existing =
+                homeCollectionResult.existingRequest || {};
+
+            saveWhatsAppSession(
+                senderPhone,
+                {
+                    role: "PATIENT",
+                    state: "HOME_COLLECTION_ACTIVE",
+                    homeCollectionRequestId: existing.requestId || homeCollectionResult.requestId || "",
+                    doctorId: "",
+                    date: existing.date || session.date || "",
+                    time: existing.timeWindow || "",
+                    appointmentId: "",
+                    location: ""
+                }
+            );
+
+            sendWhatsAppMenuReply(
+                ss,
+                senderPhone,
+                "⚠️ You already have an active home sample collection request.\n\n" +
+                "🆔 Request ID: " +
+                (existing.requestId || homeCollectionResult.requestId || "") +
+                "\n📅 Date: " +
+                (existing.date || session.date || "") +
+                "\n🕐 Time: " +
+                (existing.timeWindow || "") +
+                "\n📌 Status: " +
+                (existing.status || "Pending") +
+                "\n\nPlease wait for the collection to be completed before creating another request.",
+                getHomeCollectionCompletionMenuSpec()
+            );
+
+            return true;
+        }
 
         saveWhatsAppSession(
             senderPhone,
@@ -29599,17 +30696,29 @@ function handleWhatsAppHomeCollectionMessage(
             }
         );
 
-        sendWhatsAppMenuReply(
-            ss,
-            senderPhone,
+        const confirmationText =
             "✅ Home sample collection requested for " +
             session.date +
             " (" +
             timeWindow +
             ").\n\n" +
-            "Our team will call you shortly to confirm the exact time.\n\n" +
-            "What would you like to do next?",
-            getHomeCollectionCompletionMenuSpec()
+            "Our team will call you shortly to confirm the exact time.";
+
+        const confirmationSession =
+            getWhatsAppSession(senderPhone);
+
+        const confirmationLanguage =
+            resolvePatientLanguage(
+                senderPhone,
+                confirmationSession
+            );
+
+        sendWhatsAppText(
+            senderPhone,
+            localizeWhatsAppReply(
+                confirmationLanguage,
+                confirmationText
+            )
         );
 
         return true;
