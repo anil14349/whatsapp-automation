@@ -90,6 +90,10 @@ const COST_OPTIMIZATION = Object.freeze({
 // (for example getDoctorRecord) is called.
 // ============================================================
 let __doctorRecordCache = {};
+// Execution-scoped cache for doctor WhatsApp phone lookups.
+// This is especially important for shouldBlockPatientForAfterHours(),
+// which can run on every inbound webhook.
+let __doctorWhatsAppPhoneCache = {};
 let __patientPhoneCache = {};
 let __appointmentIdCache = {};
 let __whatsAppSessionCache = {};
@@ -550,8 +554,8 @@ function getHomeCollectionCompletionMenuSpec() {
     // The most useful actions here are to cancel that request or manage
     // a regular doctor appointment — not to start another booking flow.
     const fallbackText =
-        "1️⃣ Cancel Collection\n" +
-        "2️⃣ Reschedule Collection";
+        "Cancel Collection\n" +
+        "Reschedule Collection";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -575,9 +579,10 @@ function getHomeCollectionCompletionMenuSpec() {
 function getPatientMainMenuSpec() {
 
     const fallbackText =
-        "1️⃣ Book Appointment\n" +
-        "2️⃣ Home Sample Collection\n" +
-        "3️⃣ More Options";
+        "📅 Book Appointment\n" +
+        "🩸 Home Sample Collection\n" +
+        "⋯ More Options\n\n" +
+        "Please tap an option above to continue.";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -605,9 +610,9 @@ function getPatientMainMenuSpec() {
 function getDoctorMainMenuSpec() {
 
     const fallbackText =
-        "1️⃣ Today's Schedule\n" +
-        "2️⃣ Next Appointment\n" +
-        "3️⃣ More (schedule / availability / patients…)";
+        "Today's Schedule\n" +
+        "Next Appointment\n" +
+        "More (schedule / availability / patients…)";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -637,12 +642,12 @@ function getLanguageMenuSpec() {
     // 6 languages exceeds WhatsApp's 3-button interactive limit, so this
     // uses a list menu (10-row limit) instead of buildInteractiveButtonSpec.
     const fallbackText =
-        "1️⃣ English\n" +
-        "2️⃣ తెలుగు\n" +
-        "3️⃣ हिन्दी\n" +
-        "4️⃣ ಕನ್ನಡ\n" +
-        "5️⃣ தமிழ்\n" +
-        "6️⃣ മലയാളം";
+        "English\n" +
+        "తెలుగు\n" +
+        "हिन्दी\n" +
+        "ಕನ್ನಡ\n" +
+        "தமிழ்\n" +
+        "മലയാളം";
 
     const interactive =
         buildInteractiveListSpec(
@@ -676,9 +681,9 @@ function getDateMenuSpec(mode) {
         Utilities.formatDate(tomorrow, TIMEZONE, "MMM dd, yyyy");
 
     const fallbackText =
-        "1️⃣ Today\n" +
-        "2️⃣ Tomorrow\n" +
-        "3️⃣ Enter another date";
+        "Today\n" +
+        "Tomorrow\n" +
+        "Enter another date";
 
     const rows = [
         {
@@ -990,8 +995,8 @@ function getSlotSelectionMenuSpec(
 function getYesNoConfirmSpec(mode) {
 
     const fallbackText =
-        "1️⃣ Yes, cancel it\n" +
-        "2️⃣ No, go back";
+        "Yes, cancel it\n" +
+        "No, go back";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -1022,9 +1027,9 @@ function getYesNoConfirmSpec(mode) {
 function getRescheduleConfirmSpec(mode) {
 
     const fallbackText =
-        "1️⃣ Confirm\n" +
-        "2️⃣ Choose another time\n" +
-        "3️⃣ Cancel";
+        "Confirm\n" +
+        "Choose another time\n" +
+        "Cancel";
 
     const rows = [
         {
@@ -1925,46 +1930,96 @@ function hasReminderBeenSent(
     logData
 ) {
 
-    // OPTIMIZATION: If logData provided, use cached data instead of reloading
     let data = logData;
 
     if (!data) {
-        const ss =
-            SpreadsheetApp.getActiveSpreadsheet();
-
-        const sheet =
-            ensureWhatsAppLogSheet(ss);
-
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        const sheet = ensureWhatsAppLogSheet(ss);
         data = sheet.getDataRange().getValues();
     }
 
-    const targetId =
-        String(appointmentId || "").trim();
+    const targetId = String(appointmentId || "").trim();
+    const targetHours = Number(hoursBefore);
 
-    const targetHours =
-        Number(hoursBefore);
-
-    for (
-        let i = 1;
-        i < data.length;
-        i++
-    ) {
-
+    for (let i = 1; i < data.length; i++) {
         if (
             data[i][1] === "REMINDER" &&
-            String(data[i][6] || "").trim() ===
-            targetId &&
+            String(data[i][6] || "").trim() === targetId &&
             Number(data[i][7]) === targetHours &&
-            String(data[i][4] || "")
-                .trim()
-                .toUpperCase() ===
-            "SUCCESS"
+            String(data[i][4] || "").trim().toUpperCase() === "SUCCESS"
         ) {
             return true;
         }
     }
 
     return false;
+}
+
+
+function claimAppointmentReminder(
+    appointmentId,
+    hoursBefore,
+    phone
+) {
+
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+
+    try {
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        const sheet = ensureWhatsAppLogSheet(ss);
+        const data = sheet.getDataRange().getValues();
+        const targetId = String(appointmentId || "").trim();
+        const targetHours = Number(hoursBefore);
+        const now = new Date();
+
+        for (let i = 1; i < data.length; i++) {
+            if (
+                data[i][1] !== "REMINDER" ||
+                String(data[i][6] || "").trim() !== targetId ||
+                Number(data[i][7]) !== targetHours
+            ) {
+                continue;
+            }
+
+            const status = String(data[i][4] || "").trim().toUpperCase();
+
+            if (status === "SUCCESS") {
+                return false;
+            }
+
+            if (status === "PROCESSING") {
+                const claimedAt = data[i][0] instanceof Date
+                    ? data[i][0]
+                    : new Date(data[i][0]);
+
+                if (
+                    !isNaN(claimedAt.getTime()) &&
+                    now.getTime() - claimedAt.getTime() < 10 * 60 * 1000
+                ) {
+                    return false;
+                }
+            }
+        }
+
+        sheet.appendRow([
+            now,
+            "REMINDER",
+            phone,
+            "",
+            "PROCESSING",
+            "",
+            appointmentId,
+            hoursBefore,
+            ""
+        ]);
+
+        return true;
+    } finally {
+        if (lock.hasLock()) {
+            lock.releaseLock();
+        }
+    }
 }
 
 
@@ -2091,7 +2146,7 @@ function formatAppointmentDisplayTime(value) {
 function resolvePatientLanguageFromRegistry(phone) {
 
     const patient =
-        findPatientByPhone(phone);
+        findPatientByPhoneWithCache(phone);
 
     const language =
         patient &&
@@ -2345,12 +2400,14 @@ function sendAppointmentReminders() {
                     return;
                 }
 
-                // OPTIMIZATION: Pass cached logData instead of reloading
+                // Atomically claim the reminder before sending. The lock is
+                // released before the WhatsApp API call so reminder processing
+                // cannot hold the global script lock during network I/O.
                 if (
-                    hasReminderBeenSent(
+                    !claimAppointmentReminder(
                         appointmentId,
                         hoursBefore,
-                        logData
+                        appointment.phone
                     )
                 ) {
                     results.skipped++;
@@ -3159,10 +3216,16 @@ function shouldBlockPatientForAfterHours(
         return false;
     }
 
-    if (
+    const senderDoctor =
         findDoctorByWhatsAppPhone(
             senderPhone
-        )
+        );
+
+    // findDoctorByWhatsAppPhone() returns a result object for both
+    // matches and non-matches, so check the explicit found flag.
+    if (
+        senderDoctor &&
+        senderDoctor.found
     ) {
         return false;
     }
@@ -3613,6 +3676,8 @@ function writeAppointmentSheetSchedule(
             .getRange(row, 8)
             .setValue(String(eventId || ""));
     }
+
+    invalidateAppointmentExecutionCaches();
 }
 
 
@@ -4050,6 +4115,70 @@ function addDoctorAvailabilitySession(
 
         const sheet =
             ensureAvailabilitySheet();
+
+        // Prevent overlapping availability windows for the same doctor/day.
+        // This validation is intentionally inside the ScriptLock so two
+        // concurrent doctor requests cannot both pass the overlap check.
+        const existingSessions =
+            getDoctorDayAvailabilitySessions(
+                doctorId,
+                dayName
+            );
+
+        const sampleDate =
+            new Date(
+                buildISODatetimeWithTimezone(
+                    "2026-01-01",
+                    "00:00"
+                )
+            );
+
+        const newStartDate =
+            parseAvailabilityTimeValue(
+                start,
+                sampleDate
+            );
+
+        const newEndDate =
+            parseAvailabilityTimeValue(
+                end,
+                sampleDate
+            );
+
+        for (let i = 0; i < existingSessions.length; i++) {
+            const existing = existingSessions[i];
+
+            const existingStartDate =
+                parseAvailabilityTimeValue(
+                    existing.start,
+                    sampleDate
+                );
+
+            const existingEndDate =
+                parseAvailabilityTimeValue(
+                    existing.end,
+                    sampleDate
+                );
+
+            if (
+                existingStartDate &&
+                existingEndDate &&
+                newStartDate &&
+                newEndDate &&
+                newStartDate.getTime() < existingEndDate.getTime() &&
+                newEndDate.getTime() > existingStartDate.getTime()
+            ) {
+                return {
+                    success: false,
+                    message:
+                        "This availability overlaps an existing session (" +
+                        existing.start +
+                        " - " +
+                        existing.end +
+                        "). Please choose a different time."
+                };
+            }
+        }
 
         sheet.appendRow([
             String(doctorId).trim(),
@@ -4898,25 +5027,18 @@ function getAvailableSlots(
         return [];
     }
 
-    let appointmentDuration;
+    // PERFORMANCE: getDoctorRecord() already loaded the Doctors row and
+    // includes appointmentDuration. Do not reread the entire Doctors sheet
+    // through getDoctorAppointmentDuration() on every availability request.
+    let appointmentDuration =
+        Number(doctor.appointmentDuration);
 
-    try {
-
-        appointmentDuration =
-            getDoctorAppointmentDuration(
-                doctorId
-            );
-
-    } catch (durationError) {
-
+    if (!appointmentDuration || appointmentDuration <= 0) {
         Logger.log(
-            "getAvailableSlots: could not resolve appointment duration for " +
+            "getAvailableSlots: invalid appointment duration for " +
             doctorId +
-            ": " +
-            durationError
+            "; using default 60 minutes"
         );
-
-        // Fallback to 60 minutes if duration cannot be determined
         appointmentDuration = 60;
     }
 
@@ -5302,6 +5424,8 @@ function upsertPatient(
                 sheet.getRange(existing.row, 7).getValue()
             ]]);
 
+            invalidatePatientExecutionCache(phone);
+
             return {
                 success: true,
                 patientId: existing.patientId,
@@ -5320,6 +5444,8 @@ function upsertPatient(
             opts.updateLastVisit === false ? "" : now,
             ""
         ]);
+
+        invalidatePatientExecutionCache(phone);
 
         return {
             success: true,
@@ -5342,7 +5468,8 @@ function upsertPatient(
 function registerPatientForBooking(
     phone,
     name,
-    language
+    language,
+    options
 ) {
 
     let lang =
@@ -5355,7 +5482,7 @@ function registerPatientForBooking(
     ) {
 
         const existing =
-            findPatientByPhone(phone);
+            findPatientByPhoneWithCache(phone);
 
         lang =
             existing &&
@@ -5366,16 +5493,18 @@ function registerPatientForBooking(
                 : "EN";
     }
 
-    // Note: this runs on the hottest concurrency path (patient booking),
-    // where duplicate/retried WhatsApp webhook deliveries make a
-    // check-then-act race on Patients rows most likely — do NOT skip
-    // the lock here.
+    // Patient booking already holds the script lock across the critical
+    // booking transaction. In that path we can safely skip a second lock
+    // acquisition; standalone callers still use the normal upsert lock.
+    const opts = options || {};
+
     return upsertPatient(
         phone,
         name,
         lang,
         {
-            updateLastVisit: true
+            updateLastVisit: true,
+            skipLock: opts.skipLock === true
         }
     );
 }
@@ -5383,7 +5512,7 @@ function registerPatientForBooking(
 function resolveKnownPatientName(phone) {
 
     const patient =
-        findPatientByPhone(phone);
+        findPatientByPhoneWithCache(phone);
 
     if (
         patient &&
@@ -5493,7 +5622,7 @@ function ensurePatientRecordFromHistory(
     language
 ) {
 
-    if (findPatientByPhone(phone)) {
+    if (findPatientByPhoneWithCache(phone)) {
         return;
     }
 
@@ -5529,7 +5658,7 @@ function syncPatientLanguagePreference(
     }
 
     const existing =
-        findPatientByPhone(phone);
+        findPatientByPhoneWithCache(phone);
 
     if (existing) {
 
@@ -5587,8 +5716,12 @@ function resolvePatientLanguage(phone, session) {
         return sessionLang;
     }
 
+    // OPTIMIZATION: language resolution is a read-only hot path.
+    // Reuse the execution-scoped patient cache instead of scanning
+    // the Patients sheet again. Authoritative patient writes still
+    // use findPatientByPhone() directly inside upsertPatient().
     const patient =
-        findPatientByPhone(phone);
+        findPatientByPhoneWithCache(phone);
 
     if (
         patient &&
@@ -6051,7 +6184,8 @@ function bookAppointment(
             registerPatientForBooking(
                 patientPhone,
                 patientName,
-                patientLanguage
+                patientLanguage,
+                { skipLock: true }
             );
 
         const patientId =
@@ -6100,6 +6234,8 @@ function bookAppointment(
             patientId
 
         ]);
+
+        invalidateAppointmentExecutionCaches();
 
     } catch (error) {
 
@@ -6430,6 +6566,8 @@ function cancelAppointment(
                 appointmentSheet
                     .getRange(i + 1, 7)
                     .setValue("Cancelled");
+
+                invalidateAppointmentExecutionCaches();
 
                 return {
 
@@ -7366,20 +7504,10 @@ function findUpcomingActiveAppointmentByPhone(
     excludedAppointmentId
 ) {
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
-    const sheet =
-        ss.getSheetByName("Appointments");
-
-    if (!sheet) {
-        throw new Error(
-            "Appointments sheet not found."
-        );
-    }
-
-    const data =
-        sheet.getDataRange().getValues();
+    // OPTIMIZATION: reuse the execution-scoped phone index instead of
+    // scanning the entire Appointments sheet on every lookup.
+    const cachedAppointments =
+        getAppointmentsByPhoneWithCache(patientPhone);
 
     const excludedId =
         String(excludedAppointmentId || "").trim();
@@ -7389,14 +7517,10 @@ function findUpcomingActiveAppointmentByPhone(
 
     let latestUpcoming = null;
 
-    for (
-        let i = 1;
-        i < data.length;
-        i++
-    ) {
+    for (const appointment of cachedAppointments) {
 
         const appointmentId =
-            String(data[i][0] || "").trim();
+            String(appointment.appointmentId || "").trim();
 
         if (
             appointmentId &&
@@ -7406,17 +7530,8 @@ function findUpcomingActiveAppointmentByPhone(
         }
 
         if (
-            !phonesMatch(
-                data[i][5],
-                patientPhone
-            )
-        ) {
-            continue;
-        }
-
-        if (
             isInactiveAppointmentStatus(
-                data[i][6]
+                appointment.status
             )
         ) {
             continue;
@@ -7424,8 +7539,8 @@ function findUpcomingActiveAppointmentByPhone(
 
         const startTime =
             getAppointmentStartDateTime(
-                data[i][1],
-                data[i][2]
+                appointment.date,
+                appointment.time
             );
 
         if (
@@ -7441,14 +7556,14 @@ function findUpcomingActiveAppointmentByPhone(
             latestUpcoming.startTime.getTime()
         ) {
             latestUpcoming = {
-                row: i + 1,
-                appointmentId: data[i][0],
-                date: data[i][1],
-                time: data[i][2],
-                doctorId: data[i][3],
-                patientName: data[i][4],
-                phone: data[i][5],
-                status: data[i][6],
+                row: appointment.row,
+                appointmentId: appointment.appointmentId,
+                date: appointment.date,
+                time: appointment.time,
+                doctorId: appointment.doctorId,
+                patientName: appointment.patientName,
+                phone: appointment.patientPhone,
+                status: appointment.status,
                 startTime: startTime
             };
         }
@@ -7466,61 +7581,20 @@ function getMyAppointments(
     patientPhone
 ) {
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
-    const sheet =
-        ss.getSheetByName("Appointments");
-
-    if (!sheet) {
-        throw new Error(
-            "Appointments sheet not found."
-        );
-    }
-
-    const data =
-        sheet.getDataRange().getValues();
+    // OPTIMIZATION: reuse the execution-scoped phone index instead of
+    // reading the entire Appointments sheet for every patient request.
+    const cachedAppointments =
+        getAppointmentsByPhoneWithCache(patientPhone);
 
     const now =
         new Date();
 
     const appointments = [];
 
-    for (
-        let i = 1;
-        i < data.length;
-        i++
-    ) {
-
-        const appointmentId =
-            data[i][0];
-
-        const date =
-            data[i][1];
-
-        const time =
-            data[i][2];
-
-        const doctorId =
-            data[i][3];
-
-        const patientName =
-            data[i][4];
-
-        const phone =
-            data[i][5];
+    for (const appointment of cachedAppointments) {
 
         const status =
-            data[i][6];
-
-        if (
-            !phonesMatch(
-                phone,
-                patientPhone
-            )
-        ) {
-            continue;
-        }
+            appointment.status;
 
         // Only show appointments that are still active.
         if (
@@ -7535,8 +7609,8 @@ function getMyAppointments(
         // Past/today-already-started appointments are excluded.
         const startTime =
             getAppointmentStartDateTime(
-                date,
-                time
+                appointment.date,
+                appointment.time
             );
 
         if (
@@ -7548,11 +7622,11 @@ function getMyAppointments(
 
         let appointmentTime = "";
 
-        if (data[i][2] instanceof Date) {
+        if (appointment.time instanceof Date) {
 
             appointmentTime =
                 Utilities.formatDate(
-                    data[i][2],
+                    appointment.time,
                     TIMEZONE,
                     "hh:mm a"
                 );
@@ -7560,58 +7634,44 @@ function getMyAppointments(
         } else {
 
             appointmentTime =
-                String(data[i][2]).trim();
+                String(appointment.time || "").trim();
 
         }
 
         appointments.push({
+
+            row:
+                appointment.row,
+
             appointmentId:
-                String(appointmentId).trim(),
+                appointment.appointmentId,
 
             date:
-                data[i][1] instanceof Date
-                    ? Utilities.formatDate(
-                        data[i][1],
-                        TIMEZONE,
-                        "dd-MMM-yyyy"
-                    )
-                    : String(date).trim(),
+                appointment.date,
 
             time:
                 appointmentTime,
 
             doctorId:
-                String(doctorId).trim(),
+                appointment.doctorId,
 
             patientName:
-                String(patientName).trim(),
+                appointment.patientName,
 
             phone:
-                String(phone).trim(),
+                appointment.patientPhone,
 
             status:
-                String(status).trim(),
+                appointment.status,
 
-            _startTimeMs:
-                startTime.getTime()
+            startTime:
+                startTime
         });
     }
 
-    // Always show the nearest upcoming appointment first.
-    appointments.sort(
-        function(a, b) {
-            return (
-                a._startTimeMs -
-                b._startTimeMs
-            );
-        }
-    );
-
-    appointments.forEach(
-        function(appt) {
-            delete appt._startTimeMs;
-        }
-    );
+    appointments.sort(function(a, b) {
+        return a.startTime.getTime() - b.startTime.getTime();
+    });
 
     return appointments;
 }
@@ -9864,8 +9924,8 @@ function buildDoctorStatusActionMessage(chosen) {
 function getDoctorStatusActionSpec() {
 
     const fallbackText =
-        "1️⃣ Completed\n" +
-        "2️⃣ No-Show";
+        "Completed\n" +
+        "No-Show";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -10255,8 +10315,8 @@ function getLastSlotSelectionPage(totalSlots) {
 function getConfirmCancelSpec() {
 
     const fallbackText =
-        "1️⃣ Confirm\n" +
-        "2️⃣ Cancel";
+        "Confirm\n" +
+        "Cancel";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -10577,9 +10637,9 @@ function buildDoctorDayAvailabilityBody(
 function getDoctorDayAvailabilityActionSpec() {
 
     const fallbackText =
-        "1️⃣ Add session\n" +
-        "2️⃣ Remove session\n" +
-        "3️⃣ Clear entire day";
+        "Add session\n" +
+        "Remove session\n" +
+        "Clear entire day";
 
     const rows = [
         { id: "1", title: "Add session" },
@@ -12198,18 +12258,34 @@ function maskPhone(phone) {
 }
 
 function findDoctorByWhatsAppPhone(phone) {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet()
-        .getSheetByName("Doctors");
-    if (!sheet) {
-        return { found: false, error: "sheet_error" };
-    }
 
     const target = normalizeWhatsAppPhone(phone);
+
     if (!target) {
         return { found: false, error: "invalid_phone" };
     }
 
+    // shouldBlockPatientForAfterHours() can call this on every inbound
+    // webhook. Reuse the result for the lifetime of this execution so a
+    // burst of messages does not repeatedly read the entire Doctors sheet.
+    if (Object.prototype.hasOwnProperty.call(
+        __doctorWhatsAppPhoneCache,
+        target
+    )) {
+        return __doctorWhatsAppPhoneCache[target];
+    }
+
+    const sheet = SpreadsheetApp.getActiveSpreadsheet()
+        .getSheetByName("Doctors");
+
+    if (!sheet) {
+        const sheetError = { found: false, error: "sheet_error" };
+        __doctorWhatsAppPhoneCache[target] = sheetError;
+        return sheetError;
+    }
+
     const data = sheet.getDataRange().getValues();
+    let result = { found: false, error: "not_found" };
 
     for (let i = 1; i < data.length; i++) {
 
@@ -12233,24 +12309,31 @@ function findDoctorByWhatsAppPhone(phone) {
         if (
             normalizeWhatsAppPhone(whatsappPhone) === target
         ) {
-            return {
+            result = {
                 found: true,
                 doctorId: doctorId,
                 doctorName: doctorName
             };
+            break;
         }
     }
-    return { found: false, error: "not_found" };
+
+    // Cache both positive and negative results. The cache lasts only for
+    // this Apps Script execution, so manual Doctors-sheet edits cannot leak
+    // into a later webhook execution.
+    __doctorWhatsAppPhoneCache[target] = result;
+
+    return result;
 }
 
 function formatDoctorLeavesMenu() {
 
     return (
         "🏖 Manage Leaves\n\n" +
-        "1️⃣ Add single-day leave\n" +
-        "2️⃣ View upcoming leaves\n" +
-        "3️⃣ Cancel a leave\n" +
-        "4️⃣ Add leave range"
+        "Add single-day leave\n" +
+        "View upcoming leaves\n" +
+        "Cancel a leave\n" +
+        "Add leave range"
     );
 }
 
@@ -12489,9 +12572,9 @@ function addWhatsAppNavigationOptions(session, message) {
         String(message || "");
 
     if (
-        text.indexOf("0️⃣ Main Menu") !== -1 ||
-        text.indexOf("0️⃣ Doctor Portal") !== -1 ||
-        text.indexOf("0️⃣ Back to Main Menu") !== -1
+        text.indexOf("Main Menu") !== -1 ||
+        text.indexOf("Doctor Portal") !== -1 ||
+        text.indexOf("Back to Main Menu") !== -1
     ) {
         return message;
     }
@@ -12713,8 +12796,8 @@ function sendCustomDateEntryMenuReply(
             fallbackText:
                 text +
                 "\n\n" +
-                "0️⃣ Main Menu\n" +
-                "9️⃣ Back",
+                "Main Menu\n" +
+                "Back",
 
             interactive:
                 buildInteractiveButtonSpec([
@@ -13494,7 +13577,7 @@ function proceedAfterBookingSlotSelected(
             {
                 fallbackText:
                     buildBookNamePrompt() +
-                    "\n\n0️⃣ Main Menu\n9️⃣ Back",
+                    "\n\nMain Menu\nBack",
                 interactive: bookNameInteractive
             }
         );
@@ -13560,9 +13643,9 @@ function whatsAppShowSlotsForDate(
     ) {
 
         const fallbackText =
-            "1️⃣ Choose Another Date\n" +
-            "0️⃣ Main Menu\n" +
-            "9️⃣ Back";
+            "Choose Another Date\n" +
+            "Main Menu\n" +
+            "Back";
 
         const interactive =
             buildInteractiveButtonSpec([
@@ -13702,8 +13785,11 @@ if (
             ) === -1
         ) {
 
+            // OPTIMIZATION: this is part of the inbound welcome hot path.
+            // Use the execution-scoped patient cache rather than reading
+            // the Patients sheet again.
             const patient =
-                findPatientByPhone(
+                findPatientByPhoneWithCache(
                     senderPhone
                 );
 
@@ -17117,9 +17203,9 @@ if (
                         : "";
 
                 const fallbackText =
-                    "1️⃣ Reschedule Existing\n" +
-                    "2️⃣ Cancel Existing\n" +
-                    "3️⃣ Choose Another Date";
+                    "Reschedule Existing\n" +
+                    "Cancel Existing\n" +
+                    "Choose Another Date";
 
                 const interactive =
                     buildInteractiveButtonSpec([
@@ -17720,7 +17806,7 @@ function processWhatsAppTextMessage(
             .trim();
 
     const session =
-        getWhatsAppSession(senderPhone);
+        getWhatsAppSessionWithCache(senderPhone);
 
     // ========================================================
     // GREETING — ALWAYS ALLOWED
@@ -18469,7 +18555,7 @@ function sendWhatsAppMenuReply(
     try {
 
         const session =
-            getWhatsAppSession(phone);
+            getWhatsAppSessionWithCache(phone);
 
         const language =
             resolvePatientLanguage(
@@ -18550,37 +18636,20 @@ function sendWhatsAppMenuReply(
 
         if (!sendResult) {
 
-            const fallbackBody =
-                willSendInteractive
-                    ? localizeWhatsAppReply(
-                        language,
-                        addWhatsAppNavigationOptions(
-                            session,
-                            rawBody
-                        )
-                    )
-                    : localizedBody;
-
-            const localizedFallback =
-                menuSpec &&
-                menuSpec.fallbackText
-                    ? localizeWhatsAppReply(
-                        language,
-                        menuSpec.fallbackText
-                    )
-                    : "";
-
-            const fallbackText =
-                localizedFallback
-                    ? fallbackBody +
-                    "\n\n" +
-                    localizedFallback
-                    : fallbackBody;
+            // Patient menus are intentionally tappable-only. If the
+            // interactive message cannot be delivered, do NOT expose a
+            // numbered text menu or navigation commands that require typing.
+            // Give the patient a simple recovery path instead.
+            const recoveryText =
+                localizeWhatsAppReply(
+                    language,
+                    "Sorry, we couldn't display the menu.\n\nPlease send Hi to restart."
+                );
 
             sendResult =
                 sendWhatsAppText(
                     phone,
-                    fallbackText
+                    recoveryText
                 );
         }
 
@@ -18687,7 +18756,7 @@ function sendDoctorInfoReply(
         phone,
         String(message || ""),
         {
-            fallbackText: String(message || "") + "\n\n0️⃣ Doctor Portal",
+            fallbackText: String(message || "") + "\n\nDoctor Portal",
             interactive: buildInteractiveButtonSpec([
                 {
                     id: "nav_main_menu",
@@ -19013,7 +19082,7 @@ function sendSlotSelectionMenuReply(
     const opts = options || {};
 
     const session =
-        getWhatsAppSession(phone);
+        getWhatsAppSessionWithCache(phone);
 
     const menuSpec =
         getSlotSelectionMenuSpec(
@@ -19067,7 +19136,7 @@ function sendWhatsAppReply(
     try {
 
         const session =
-            getWhatsAppSession(phone);
+            getWhatsAppSessionWithCache(phone);
 
         const language =
             resolvePatientLanguage(
@@ -23933,11 +24002,11 @@ function sendFeedbackSurvey(
         "How was your experience with " +
         "Dr. " + doctorName + "?\n\n" +
         "Please rate 1-5 stars:\n" +
-        "1️⃣ Poor\n" +
-        "2️⃣ Fair\n" +
-        "3️⃣ Good\n" +
-        "4️⃣ Very Good\n" +
-        "5️⃣ Excellent\n\n" +
+        "Poor\n" +
+        "Fair\n" +
+        "Good\n" +
+        "Very Good\n" +
+        "Excellent\n\n" +
         "(Just reply with the number)";
 
     try {
@@ -24255,8 +24324,9 @@ function findPatientByPhoneWithCache(phone) {
         return null;
     }
 
-    // Check cache first
-    if (__patientPhoneCache[normalized]) {
+    // Check cache first. hasOwnProperty also treats a cached null
+    // (patient not found) as a genuine cache hit.
+    if (Object.prototype.hasOwnProperty.call(__patientPhoneCache, normalized)) {
         __performanceMetrics.patientCacheHits++;
         return __patientPhoneCache[normalized];
     }
@@ -24365,8 +24435,8 @@ function getWhatsAppSessionWithCache(phoneNumber) {
         return null;
     }
 
-    // Check cache first
-    if (__whatsAppSessionCache[normalized]) {
+    // Check cache first, including cached null (no-session) results.
+    if (Object.prototype.hasOwnProperty.call(__whatsAppSessionCache, normalized)) {
         __performanceMetrics.sessionCacheHits++;
         return __whatsAppSessionCache[normalized];
     }
@@ -24399,7 +24469,8 @@ function getAppointmentsByPhoneWithCache(phone) {
     }
 
     // Check cache first
-    if (__appointmentsByPhoneCache[normalized]) {
+    if (Object.prototype.hasOwnProperty.call(__appointmentsByPhoneCache, normalized)) {
+        __performanceMetrics.appointmentCacheHits++;
         return __appointmentsByPhoneCache[normalized];
     }
 
@@ -24439,6 +24510,7 @@ function getAppointmentsByPhoneWithCache(phone) {
                 time: data[i][2],
                 doctorId: data[i][3],
                 patientName: data[i][4],
+                patientPhone: data[i][5],
                 status: data[i][6]
             });
         }
@@ -24621,8 +24693,31 @@ function checkScalabilityStatus() {
 }
 
 
+function invalidatePatientExecutionCache(phone) {
+
+    const normalized =
+        normalizeWhatsAppPhone(phone);
+
+    if (normalized) {
+        delete __patientPhoneCache[normalized];
+    }
+}
+
+
+function invalidateAppointmentExecutionCaches() {
+
+    // Appointment writes can affect both phone- and date-based indexes.
+    // Clear the execution-scoped indexes so later reads in the same webhook
+    // execution cannot observe stale appointment data.
+    __appointmentIdCache = {};
+    __appointmentsByPhoneCache = {};
+    __appointmentsByDateCache = {};
+}
+
+
 function resetExecutionCache() {
     __doctorRecordCache = {};
+    __doctorWhatsAppPhoneCache = {};
     __patientPhoneCache = {};
     __appointmentIdCache = {};
     __whatsAppSessionCache = {};
@@ -25984,10 +26079,9 @@ function appendWhatsAppLogEntry(
         entry.phoneNumberId || ""
     ]);
 
-    cleanupLogSheet(
-        sheet,
-        settings
-    );
+    // Log retention cleanup is intentionally NOT performed on the webhook
+    // hot path. cleanupAllWhatsAppLogs() handles retention/cap cleanup via
+    // the scheduled maintenance trigger, keeping inbound messages fast.
 }
 
 
@@ -27609,6 +27703,16 @@ function getWhatsAppSessionCacheKey(phone) {
 
 function invalidateWhatsAppSessionCache(phone) {
 
+    const normalized =
+        normalizeWhatsAppPhone(phone);
+
+    // Invalidate both cache layers. The execution-scoped cache must be
+    // cleared as well, otherwise a session written earlier in this same
+    // webhook execution can be returned from stale in-memory state.
+    if (normalized) {
+        delete __whatsAppSessionCache[normalized];
+    }
+
     CacheService.getScriptCache().remove(
         getWhatsAppSessionCacheKey(phone)
     );
@@ -28467,11 +28571,12 @@ function getPatientMainMoreMenuSpec() {
     ];
 
     const fallbackText =
-        "2️⃣ My Appointments\n" +
-        "4️⃣ Reschedule Appointment\n" +
-        "3️⃣ Cancel Appointment\n" +
-        "5️⃣ Change Language\n" +
-        "0️⃣ Main Menu";
+        "📋 My Appointments\n" +
+        "🔄 Reschedule Appointment\n" +
+        "❌ Cancel Appointment\n" +
+        "🌐 Change Language\n" +
+        "🏠 Main Menu\n\n" +
+        "Please tap an option above to continue.";
 
     return {
         fallbackText: fallbackText,
@@ -28492,8 +28597,8 @@ function getDoctorMainMenuMoreSpec(tier) {
     if (t === 1) {
 
         const fallbackText =
-            "3️⃣ This Week\n" +
-            "4️⃣ Schedule by Date\n" +
+            "This Week\n" +
+            "Schedule by Date\n" +
             "More → next page";
 
         const rows = [
@@ -28531,8 +28636,8 @@ function getDoctorMainMenuMoreSpec(tier) {
     if (t === 2) {
 
         const fallbackText =
-            "5️⃣ Manage Availability\n" +
-            "6️⃣ Manage Leaves\n" +
+            "Manage Availability\n" +
+            "Manage Leaves\n" +
             "More → next page";
 
         const rows = [
@@ -28570,8 +28675,8 @@ function getDoctorMainMenuMoreSpec(tier) {
     if (t === 3) {
 
         const fallbackText =
-            "7️⃣ My Patients\n" +
-            "8️⃣ Cancel Patient Appt\n" +
+            "My Patients\n" +
+            "Cancel Patient Appt\n" +
             "More → next page";
 
         const rows = [
@@ -28607,7 +28712,7 @@ function getDoctorMainMenuMoreSpec(tier) {
     }
 
     const fallbackText =
-        "9️⃣ Reschedule Patient Appt\n" +
+        "Reschedule Patient Appt\n" +
         "🔟 Mark Visit Status";
 
     const interactive =
@@ -28727,11 +28832,7 @@ function getHomeCollectionTimeWindowSpec(dateString) {
 
     const fallbackText =
         availableOptions.map(function (option) {
-            return option.id === "1"
-                ? "1️⃣ " + option.value
-                : option.id === "2"
-                    ? "2️⃣ " + option.value
-                    : "3️⃣ " + option.value;
+            return option.value;
         }).join("\n");
 
     const rows =
@@ -28763,9 +28864,9 @@ function getHomeCollectionTimeWindowSpec(dateString) {
 function getMyAppointmentActionSpec() {
 
     const fallbackText =
-        "1️⃣ Cancel Appointment\n" +
-        "2️⃣ Reschedule\n" +
-        "3️⃣ Main Menu";
+        "Cancel Appointment\n" +
+        "Reschedule\n" +
+        "Main Menu";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -29488,13 +29589,13 @@ function buildWhatsAppNavigationHintText(session) {
 
     const homeLabel =
         session.role === "DOCTOR"
-            ? "0️⃣ Doctor Portal"
-            : "0️⃣ Main Menu";
+            ? "Doctor Portal"
+            : "Main Menu";
 
     const hints = [homeLabel];
 
     if (whatsAppNavigationShowsBack(session)) {
-        hints.push("9️⃣ Back");
+        hints.push("Back");
     }
 
     return hints.join("\n");
@@ -29912,7 +30013,7 @@ function getHomeCollectionRequestById(requestId) {
 
 function getHomeCollectionPersonMenuSpec() {
     return {
-        fallbackText: "1️⃣ Today's Collections\n2️⃣ Upcoming Collections\n3️⃣ More",
+        fallbackText: "Today's Collections\nUpcoming Collections\nMore",
         interactive: buildInteractiveButtonSpec([
             { id: "hc_today", title: "Today's Collections" },
             { id: "hc_upcoming", title: "Upcoming" },
@@ -30229,7 +30330,7 @@ function handleWhatsAppHomeCollectionPersonMessage(ss, senderPhone, senderName, 
 
     if (normalizedMessage === "hc_more" || normalizedMessage === "3") {
         sendWhatsAppMenuReply(ss, senderPhone, "More options", {
-            fallbackText: "1️⃣ All Pending Collections\n2️⃣ Main Menu",
+            fallbackText: "All Pending Collections\nMain Menu",
             interactive: buildInteractiveButtonSpec([
                 { id: "hc_all_pending", title: "All Pending" },
                 { id: "nav_main_menu", title: "Main Menu" }
@@ -30694,7 +30795,7 @@ function handleWhatsAppHomeCollectionMessage(
                 senderPhone,
                 "⚠️ Are you sure you want to cancel your active home sample collection request?",
                 {
-                    fallbackText: "1️⃣ Yes, Cancel\n2️⃣ Keep Request",
+                    fallbackText: "Yes, Cancel\nKeep Request",
                     interactive: buildInteractiveButtonSpec([
                         { id: "confirm_cancel_home_collection", title: "Yes, Cancel" },
                         { id: "keep_home_collection", title: "Keep Request" }
@@ -30828,7 +30929,7 @@ function handleWhatsAppHomeCollectionMessage(
             senderPhone,
             "Please choose an option.",
             {
-                fallbackText: "1️⃣ Yes, Cancel\n2️⃣ Keep Request",
+                fallbackText: "Yes, Cancel\nKeep Request",
                 interactive: buildInteractiveButtonSpec([
                     { id: "confirm_cancel_home_collection", title: "Yes, Cancel" },
                     { id: "keep_home_collection", title: "Keep Request" }
