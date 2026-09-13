@@ -29295,63 +29295,102 @@ function markHomeCollectionRequestCompletedByRow(rowNumber, collectorName, colle
     const row = Number(rowNumber);
     if (!row || row < 2) return { ok: false, reason: "not_found" };
 
-    const sheet = ensureHomeCollectionSheet();
-    const map = getHomeCollectionRequestSheetColumnMap(sheet);
-    if (!map["Request ID"] || !map["Status"]) {
-        return { ok: false, reason: "not_found" };
-    }
-    if (row > sheet.getLastRow()) return { ok: false, reason: "not_found" };
-
-    const requestId = String(sheet.getRange(row, map["Request ID"]).getValue() || "").trim();
-    if (!requestId) return { ok: false, reason: "not_found" };
-
-    const status = String(sheet.getRange(row, map["Status"]).getValue() || "Pending").trim();
-    if (status.toLowerCase() === "completed") {
-        return { ok: false, reason: "already_completed", requestId: requestId };
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(15000)) {
+        return { ok: false, reason: "busy" };
     }
 
-    const acceptedBy = map["Accepted By"]
-        ? String(sheet.getRange(row, map["Accepted By"]).getValue() || "").trim()
-        : "";
-    if (!acceptedBy) return { ok: false, reason: "not_accepted", requestId: requestId };
-    if (collectorPersonId && acceptedBy !== String(collectorPersonId)) {
-        return { ok: false, reason: "assigned_to_other", requestId: requestId };
-    }
+    try {
+        const sheet = ensureHomeCollectionSheet();
+        const map = getHomeCollectionRequestSheetColumnMap(sheet);
+        if (!map["Request ID"] || !map["Status"]) {
+            return { ok: false, reason: "not_found" };
+        }
+        if (row > sheet.getLastRow()) return { ok: false, reason: "not_found" };
 
-    sheet.getRange(row, map["Status"]).setValue("Completed");
-    if (map["Completed By"]) {
-        sheet.getRange(row, map["Completed By"]).setValue(String(collectorName || ""));
-    }
-    if (map["Completed At"]) {
-        sheet.getRange(row, map["Completed At"]).setValue(new Date());
-    }
+        const requestId = String(sheet.getRange(row, map["Request ID"]).getValue() || "").trim();
+        if (!requestId) return { ok: false, reason: "not_found" };
 
-    return { ok: true, requestId: requestId };
+        const status = String(sheet.getRange(row, map["Status"]).getValue() || "Pending").trim();
+        if (status.toLowerCase() === "completed") {
+            return { ok: false, reason: "already_completed", requestId: requestId };
+        }
+
+        if (status.toLowerCase() !== "accepted") {
+            return { ok: false, reason: "not_accepted", requestId: requestId };
+        }
+
+        const acceptedBy = map["Accepted By"]
+            ? String(sheet.getRange(row, map["Accepted By"]).getValue() || "").trim()
+            : "";
+        if (!acceptedBy) return { ok: false, reason: "not_accepted", requestId: requestId };
+        if (collectorPersonId && acceptedBy !== String(collectorPersonId)) {
+            return { ok: false, reason: "assigned_to_other", requestId: requestId };
+        }
+
+        sheet.getRange(row, map["Status"]).setValue("Completed");
+        if (map["Completed By"]) {
+            sheet.getRange(row, map["Completed By"]).setValue(String(collectorName || ""));
+        }
+        if (map["Completed At"]) {
+            sheet.getRange(row, map["Completed At"]).setValue(new Date());
+        }
+        SpreadsheetApp.flush();
+
+        return { ok: true, requestId: requestId };
+    } catch (error) {
+        Logger.log("markHomeCollectionRequestCompletedByRow failed: " + error.message);
+        return { ok: false, reason: "error" };
+    } finally {
+        lock.releaseLock();
+    }
 }
 
 
 function markHomeCollectionRequestCompleted(requestId, collectorName, collectorPersonId) {
-    const sheet = ensureHomeCollectionSheet();
-    const map = getHomeCollectionRequestSheetColumnMap(sheet);
-    const data = sheet.getDataRange().getValues();
     const target = String(requestId || "").trim();
-    for (let i = 1; i < data.length; i++) {
-        if (String(data[i][map["Request ID"] - 1] || "").trim() !== target) continue;
-        const status = String(data[i][map["Status"] - 1] || "Pending").trim();
-        if (status.toLowerCase() === "completed") return { ok: false, reason: "already_completed" };
-        const acceptedBy = map["Accepted By"]
-            ? String(data[i][map["Accepted By"] - 1] || "").trim()
-            : "";
-        if (!acceptedBy) return { ok: false, reason: "not_accepted" };
-        if (collectorPersonId && acceptedBy !== String(collectorPersonId)) {
-            return { ok: false, reason: "assigned_to_other" };
-        }
-        sheet.getRange(i+1, map["Status"]).setValue("Completed");
-        if (map["Completed By"]) sheet.getRange(i+1, map["Completed By"]).setValue(String(collectorName || ""));
-        if (map["Completed At"]) sheet.getRange(i+1, map["Completed At"]).setValue(new Date());
-        return { ok: true };
+    if (!target) return { ok: false, reason: "not_found" };
+
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(15000)) {
+        return { ok: false, reason: "busy" };
     }
-    return { ok: false, reason: "not_found" };
+
+    try {
+        const sheet = ensureHomeCollectionSheet();
+        const map = getHomeCollectionRequestSheetColumnMap(sheet);
+        const data = sheet.getDataRange().getValues();
+
+        for (let i = 1; i < data.length; i++) {
+            if (String(data[i][map["Request ID"] - 1] || "").trim() !== target) continue;
+
+            const status = String(data[i][map["Status"] - 1] || "Pending").trim();
+            if (status.toLowerCase() === "completed") return { ok: false, reason: "already_completed" };
+            if (status.toLowerCase() !== "accepted") return { ok: false, reason: "not_accepted" };
+
+            const acceptedBy = map["Accepted By"]
+                ? String(data[i][map["Accepted By"] - 1] || "").trim()
+                : "";
+            if (!acceptedBy) return { ok: false, reason: "not_accepted" };
+            if (collectorPersonId && acceptedBy !== String(collectorPersonId)) {
+                return { ok: false, reason: "assigned_to_other" };
+            }
+
+            const rowNumber = i + 1;
+            sheet.getRange(rowNumber, map["Status"]).setValue("Completed");
+            if (map["Completed By"]) sheet.getRange(rowNumber, map["Completed By"]).setValue(String(collectorName || ""));
+            if (map["Completed At"]) sheet.getRange(rowNumber, map["Completed At"]).setValue(new Date());
+            SpreadsheetApp.flush();
+            return { ok: true, requestId: target };
+        }
+
+        return { ok: false, reason: "not_found" };
+    } catch (error) {
+        Logger.log("markHomeCollectionRequestCompleted failed: " + error.message);
+        return { ok: false, reason: "error" };
+    } finally {
+        lock.releaseLock();
+    }
 }
 
 function notifyHomeCollectionPersons(requestId, details) {
@@ -29754,16 +29793,19 @@ function rescheduleHomeCollectionRequestByPatient(requestId, patientPhone, newDa
         return { ok: false, reason: failureReason || "not_found" };
     }
 
-    // If a collector has already accepted the request, notify that same
-    // collector. For Pending requests, do not broadcast a duplicate message.
-    if (updatedRequest.acceptedBy && isHomeCollectionNotificationsEnabled()) {
+    // Pending requests: notify all active collectors that the preferred
+    // date/time changed, so no one is left with stale WhatsApp details.
+    // Accepted requests: notify only the assigned collector.
+    if (isHomeCollectionNotificationsEnabled()) {
         const people = getActiveHomeCollectionPersons();
-        const assigned = people.filter(function (person) {
-            return String(person.personId || "").trim() ===
-                String(updatedRequest.acceptedBy || "").trim();
-        });
+        const recipients = updatedRequest.acceptedBy
+            ? people.filter(function (person) {
+                return String(person.personId || "").trim() ===
+                    String(updatedRequest.acceptedBy || "").trim();
+            })
+            : people;
 
-        assigned.forEach(function (person) {
+        recipients.forEach(function (person) {
             try {
                 const body =
                     "🔄 Home Sample Collection Rescheduled\n\n" +
@@ -29773,7 +29815,9 @@ function rescheduleHomeCollectionRequestByPatient(requestId, patientPhone, newDa
                     "🕐 " + updatedRequest.timeWindow + "\n" +
                     "📍 Patient location:\n" +
                     (updatedRequest.mapsUrl || "Location unavailable") +
-                    "\n\nThis request remains assigned to you.";
+                    (updatedRequest.acceptedBy
+                        ? "\n\nThis request remains assigned to you."
+                        : "\n\nPlease review the updated date/time and accept the request if you can take it.");
 
                 sendWhatsAppMenuReply(
                     SpreadsheetApp.getActiveSpreadsheet(),
