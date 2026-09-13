@@ -577,7 +577,7 @@ function getPatientMainMenuSpec() {
     const fallbackText =
         "1️⃣ Book Appointment\n" +
         "2️⃣ Home Sample Collection\n" +
-        "3️⃣ More (My Appointments / Cancel / Reschedule / Language)";
+        "3️⃣ More Options";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -591,7 +591,7 @@ function getPatientMainMenuSpec() {
             },
             {
                 id: "menu_more",
-                title: "More"
+                title: "More Options"
             }
         ]);
 
@@ -5982,12 +5982,12 @@ function bookAppointment(
             };
         }
 
-        if (
-            hasActiveAppointmentOnDate(
-                patientPhone,
-                dateString
-            )
-        ) {
+        const existingUpcomingAppointment =
+            findUpcomingActiveAppointmentByPhone(
+                patientPhone
+            );
+
+        if (existingUpcomingAppointment) {
 
             // CONSISTENCY: Explicit lock release on early return
             if (lock && lock.hasLock()) {
@@ -5997,7 +5997,7 @@ function bookAppointment(
             return {
                 success: false,
                 message:
-                    "You already have an active appointment on this date."
+                    "You already have an upcoming active appointment."
             };
         }
 
@@ -6864,18 +6864,18 @@ function rescheduleAppointment(
 
     try {
 
-        if (
-            hasActiveAppointmentOnDate(
+        const anotherUpcomingAppointment =
+            findUpcomingActiveAppointmentByPhone(
                 patientPhoneInput,
-                newDateString,
                 appointmentId
-            )
-        ) {
+            );
+
+        if (anotherUpcomingAppointment) {
 
             return {
                 success: false,
                 message:
-                    "You already have an active appointment on this date."
+                    "You already have an upcoming active appointment."
             };
         }
 
@@ -7315,6 +7315,149 @@ function hasActiveAppointmentOnDate(
 }
 
 
+function getAppointmentStartDateTime(
+    dateValue,
+    timeValue
+) {
+
+    const dateIso =
+        normalizeAppointmentDate(dateValue);
+
+    if (!dateIso) {
+        return null;
+    }
+
+    let time24 = "";
+
+    if (timeValue instanceof Date) {
+        time24 =
+            Utilities.formatDate(
+                timeValue,
+                TIMEZONE,
+                "HH:mm"
+            );
+    } else {
+        time24 =
+            convert12HourTo24Hour(
+                timeValue
+            );
+    }
+
+    if (!time24) {
+        return null;
+    }
+
+    const dateTime =
+        new Date(
+            buildISODatetimeWithTimezone(
+                dateIso,
+                time24
+            )
+        );
+
+    return isNaN(dateTime.getTime())
+        ? null
+        : dateTime;
+}
+
+
+function findUpcomingActiveAppointmentByPhone(
+    patientPhone,
+    excludedAppointmentId
+) {
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+        throw new Error(
+            "Appointments sheet not found."
+        );
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const excludedId =
+        String(excludedAppointmentId || "").trim();
+
+    const now =
+        new Date();
+
+    let latestUpcoming = null;
+
+    for (
+        let i = 1;
+        i < data.length;
+        i++
+    ) {
+
+        const appointmentId =
+            String(data[i][0] || "").trim();
+
+        if (
+            appointmentId &&
+            appointmentId === excludedId
+        ) {
+            continue;
+        }
+
+        if (
+            !phonesMatch(
+                data[i][5],
+                patientPhone
+            )
+        ) {
+            continue;
+        }
+
+        if (
+            isInactiveAppointmentStatus(
+                data[i][6]
+            )
+        ) {
+            continue;
+        }
+
+        const startTime =
+            getAppointmentStartDateTime(
+                data[i][1],
+                data[i][2]
+            );
+
+        if (
+            !startTime ||
+            startTime.getTime() <= now.getTime()
+        ) {
+            continue;
+        }
+
+        if (
+            !latestUpcoming ||
+            startTime.getTime() <
+            latestUpcoming.startTime.getTime()
+        ) {
+            latestUpcoming = {
+                row: i + 1,
+                appointmentId: data[i][0],
+                date: data[i][1],
+                time: data[i][2],
+                doctorId: data[i][3],
+                patientName: data[i][4],
+                phone: data[i][5],
+                status: data[i][6],
+                startTime: startTime
+            };
+        }
+    }
+
+    return latestUpcoming;
+}
+
+
 // ============================================================
 // 10. GET PATIENT APPOINTMENTS
 // ============================================================
@@ -7329,8 +7472,17 @@ function getMyAppointments(
     const sheet =
         ss.getSheetByName("Appointments");
 
+    if (!sheet) {
+        throw new Error(
+            "Appointments sheet not found."
+        );
+    }
+
     const data =
         sheet.getDataRange().getValues();
+
+    const now =
+        new Date();
 
     const appointments = [];
 
@@ -7362,71 +7514,104 @@ function getMyAppointments(
             data[i][6];
 
         if (
-            phonesMatch(
+            !phonesMatch(
                 phone,
                 patientPhone
             )
         ) {
-
-            // -------------------------------------------------------
-            // Format appointment time
-            // -------------------------------------------------------
-
-            let appointmentTime = "";
-
-            if (data[i][2] instanceof Date) {
-
-                appointmentTime =
-                    Utilities.formatDate(
-                        data[i][2],
-                        TIMEZONE,
-                        "hh:mm a"
-                    );
-
-            } else {
-
-                appointmentTime =
-                    String(data[i][2]).trim();
-
-            }
-
-
-            // -------------------------------------------------------
-            // Add appointment
-            // -------------------------------------------------------
-
-            appointments.push({
-
-                appointmentId:
-                    String(appointmentId).trim(),
-
-                date:
-                    data[i][1] instanceof Date
-                        ? Utilities.formatDate(
-                            data[i][1],
-                            TIMEZONE,
-                            "dd-MMM-yyyy"
-                        )
-                        : String(date).trim(),
-
-                time:
-                    appointmentTime,
-
-                doctorId:
-                    String(doctorId).trim(),
-
-                patientName:
-                    String(patientName).trim(),
-
-                phone:
-                    String(phone).trim(),
-
-                status:
-                    String(status).trim()
-
-            });
+            continue;
         }
+
+        // Only show appointments that are still active.
+        if (
+            isInactiveAppointmentStatus(
+                status
+            )
+        ) {
+            continue;
+        }
+
+        // My Appointments is specifically an UPCOMING view.
+        // Past/today-already-started appointments are excluded.
+        const startTime =
+            getAppointmentStartDateTime(
+                date,
+                time
+            );
+
+        if (
+            !startTime ||
+            startTime.getTime() <= now.getTime()
+        ) {
+            continue;
+        }
+
+        let appointmentTime = "";
+
+        if (data[i][2] instanceof Date) {
+
+            appointmentTime =
+                Utilities.formatDate(
+                    data[i][2],
+                    TIMEZONE,
+                    "hh:mm a"
+                );
+
+        } else {
+
+            appointmentTime =
+                String(data[i][2]).trim();
+
+        }
+
+        appointments.push({
+            appointmentId:
+                String(appointmentId).trim(),
+
+            date:
+                data[i][1] instanceof Date
+                    ? Utilities.formatDate(
+                        data[i][1],
+                        TIMEZONE,
+                        "dd-MMM-yyyy"
+                    )
+                    : String(date).trim(),
+
+            time:
+                appointmentTime,
+
+            doctorId:
+                String(doctorId).trim(),
+
+            patientName:
+                String(patientName).trim(),
+
+            phone:
+                String(phone).trim(),
+
+            status:
+                String(status).trim(),
+
+            _startTimeMs:
+                startTime.getTime()
+        });
     }
+
+    // Always show the nearest upcoming appointment first.
+    appointments.sort(
+        function(a, b) {
+            return (
+                a._startTimeMs -
+                b._startTimeMs
+            );
+        }
+    );
+
+    appointments.forEach(
+        function(appt) {
+            delete appt._startTimeMs;
+        }
+    );
 
     return appointments;
 }
@@ -16191,41 +16376,7 @@ if (
     sendPatientMainMoreMenuReply(
         ss,
         senderPhone,
-        "",
-        1
-    );
-
-    return true;
-}
-
-
-// ======================================================
-// MORE → NEXT PAGE
-// ======================================================
-
-if (
-    session &&
-    session.state === "PATIENT_MAIN_MORE" &&
-    (
-        normalizedMessage === "patient_menu_more_2" ||
-        normalizedMessage === "menu_more_2"
-    )
-) {
-
-    saveWhatsAppSession(
-        senderPhone,
-        {
-            role: "PATIENT",
-            state: "PATIENT_MAIN_MORE",
-            patientMenuTier: 2
-        }
-    );
-
-    sendPatientMainMoreMenuReply(
-        ss,
-        senderPhone,
-        "",
-        2
+        ""
     );
 
     return true;
@@ -16723,9 +16874,9 @@ if (
 
 
 // ======================================================
-// SAME-DAY APPOINTMENT CONFLICT ACTIONS
+// UPCOMING APPOINTMENT CONFLICT ACTIONS
 // ======================================================
-// A patient may have only one active appointment per calendar date.
+// A patient may have only one upcoming active appointment.
 // When a new booking hits that rule, offer direct actions on the existing
 // appointment instead of forcing the patient to navigate manually.
 
@@ -16857,31 +17008,81 @@ if (
                 }
             );
 
-            // Send the visual appointment confirmation as the final
-            // patient-facing confirmation. All important details are inside
-            // the PNG, so there is no separate text confirmation message.
+            // -------------------------------------------------------
+            // Appointment confirmation
+            // -------------------------------------------------------
+            // First try the visual PNG confirmation. If image generation,
+            // Google Slides export, WhatsApp media upload, or image delivery
+            // fails, DO NOT leave the patient without confirmation.
+            // Send a normal text confirmation as a guaranteed fallback.
+            const receiptAppointment = {
+                appointmentId:
+                    bookingResult.appointmentId,
+                patientName: patientName,
+                doctorId:
+                    session.doctorId,
+                doctor:
+                    bookingResult.doctor,
+                date:
+                    bookingResult.date,
+                time:
+                    bookingResult.time
+            };
+
+            let receiptSent = false;
+
             try {
+
                 sendAppointmentReceiptCard(
                     senderPhone,
-                    {
-                        appointmentId:
-                            bookingResult.appointmentId,
-                        patientName: patientName,
-                        doctorId:
-                            session.doctorId,
-                        doctor:
-                            bookingResult.doctor,
-                        date:
-                            bookingResult.date,
-                        time:
-                            bookingResult.time
-                    }
+                    receiptAppointment
                 );
+
+                receiptSent = true;
+
             } catch (receiptError) {
+
                 Logger.log(
-                    "Appointment receipt failed; booking remains successful: " +
-                    receiptError.message
+                    "Appointment receipt image failed: " +
+                    receiptError.message +
+                    " | appointmentId=" +
+                    bookingResult.appointmentId
                 );
+
+                // IMPORTANT:
+                // Booking is already saved in the sheet and calendar.
+                // Never silently finish the conversation here.
+                try {
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        "✅ Appointment confirmed!\n\n" +
+                        "👤 " +
+                        patientName +
+                        "\n" +
+                        "👨‍⚕️ " +
+                        (bookingResult.doctor || "Doctor") +
+                        "\n" +
+                        "📅 " +
+                        bookingResult.date +
+                        "\n" +
+                        "🕐 " +
+                        bookingResult.time +
+                        "\n" +
+                        "🆔 " +
+                        bookingResult.appointmentId
+                    );
+
+                } catch (fallbackError) {
+
+                    Logger.log(
+                        "Appointment text fallback also failed: " +
+                        fallbackError.message +
+                        " | appointmentId=" +
+                        bookingResult.appointmentId
+                    );
+                }
             }
 
         } else {
@@ -16894,13 +17095,12 @@ if (
 
             if (
                 errorMessage ===
-                "You already have an active appointment on this date."
+                "You already have an upcoming active appointment."
             ) {
 
                 const existingAppointment =
-                    findActiveAppointmentOnDate(
-                        senderPhone,
-                        session.date
+                    findUpcomingActiveAppointmentByPhone(
+                        senderPhone
                     );
 
                 const existingSummary =
@@ -16940,9 +17140,9 @@ if (
                 sendWhatsAppMenuReply(
                     ss,
                     senderPhone,
-                    "❌ You already have an active appointment on this date." +
+                    "❌ You already have an upcoming active appointment." +
                     existingSummary +
-                    "\n\nYou can reschedule or cancel that appointment, or choose another date.",
+                    "\n\nYou can reschedule or cancel that appointment.",
                     {
                         fallbackText: fallbackText,
                         interactive: interactive
@@ -25872,6 +26072,55 @@ function sendAppointmentReceiptCard(to, appointment) {
 }
 
 
+function testAppointmentReceiptPipeline() {
+
+    const testPhone =
+        String(
+            getScriptProperty(
+                "TEST_RECEIPT_PHONE",
+                ""
+            ) || ""
+        ).trim();
+
+    if (!testPhone) {
+        throw new Error(
+            "Set TEST_RECEIPT_PHONE in Script Properties before running this test."
+        );
+    }
+
+    const result =
+        sendAppointmentReceiptCard(
+            testPhone,
+            {
+                appointmentId: "TEST-RECEIPT",
+                patientName: "Test Patient",
+                doctorId: "",
+                doctor: "Test Doctor",
+                date: Utilities.formatDate(
+                    new Date(),
+                    TIMEZONE,
+                    "dd-MMM-yyyy"
+                ),
+                time: Utilities.formatDate(
+                    new Date(
+                        Date.now() +
+                        60 * 60 * 1000
+                    ),
+                    TIMEZONE,
+                    "hh:mm a"
+                )
+            }
+        );
+
+    Logger.log(
+        "Appointment receipt pipeline test succeeded. Media ID: " +
+        result
+    );
+
+    return result;
+}
+
+
 function createAppointmentReceiptCardBlob(appointment) {
     if (!appointment || !appointment.appointmentId) {
         throw new Error(
@@ -28185,38 +28434,52 @@ function cleanupExpiredSlotReservationsAuto() {
 }
 
 
-function getPatientMainMoreMenuSpec(tier) {
+function getPatientMainMoreMenuSpec() {
 
-    const t = Number(tier) || 1;
-
-    if (t === 2) {
-        const fallbackText =
-            "4️⃣ Reschedule\n" +
-            "5️⃣ Change Language\n" +
-            "0️⃣ Main Menu";
-
-        return {
-            fallbackText: fallbackText,
-            interactive: buildInteractiveButtonSpec([
-                { id: "4", title: "Reschedule" },
-                { id: "5", title: "Change Language" },
-                { id: "nav_main_menu", title: "Main Menu" }
-            ])
-        };
-    }
+    // All remaining patient actions are shown in one native WhatsApp list.
+    // forceList=true prevents short lists from being converted into buttons.
+    const rows = [
+        {
+            id: "2",
+            title: "My Appointments",
+            description: "View your upcoming appointments"
+        },
+        {
+            id: "4",
+            title: "Reschedule Appointment",
+            description: "Change the date or time"
+        },
+        {
+            id: "3",
+            title: "Cancel Appointment",
+            description: "Cancel an existing appointment"
+        },
+        {
+            id: "5",
+            title: "Change Language",
+            description: "Choose your preferred language"
+        },
+        {
+            id: "nav_main_menu",
+            title: "Main Menu",
+            description: "Return to the main menu"
+        }
+    ];
 
     const fallbackText =
         "2️⃣ My Appointments\n" +
+        "4️⃣ Reschedule Appointment\n" +
         "3️⃣ Cancel Appointment\n" +
-        "More → next page";
+        "5️⃣ Change Language\n" +
+        "0️⃣ Main Menu";
 
     return {
         fallbackText: fallbackText,
-        interactive: buildInteractiveButtonSpec([
-            { id: "2", title: "My Appointments" },
-            { id: "3", title: "Cancel Appointment" },
-            { id: "patient_menu_more_2", title: "More" }
-        ])
+        interactive: buildInteractiveListSpec(
+            rows,
+            "More Options",
+            true
+        )
     };
 }
 
@@ -28596,9 +28859,13 @@ function buildPatientAppointmentListBody(
         (prefix
             ? String(prefix) + "\n\n"
             : "") +
-        title +
-        "\n\n" +
-        selectLine;
+        title;
+
+    if (selectLine) {
+        body +=
+            "\n\n" +
+            selectLine;
+    }
 
     if (
         pageInfo &&
@@ -28621,8 +28888,8 @@ function buildMyAppointmentsListBody(
 ) {
 
     return buildPatientAppointmentListBody(
-        "📋 Your appointments",
-        "Select an appointment.",
+        "📋 Your upcoming appointment",
+        "",
         pageInfo,
         prefix
     );
@@ -31206,11 +31473,8 @@ function handleWhatsAppHomeCollectionMessage(
 function sendPatientMainMoreMenuReply(
     ss,
     phone,
-    prefix,
-    tier
+    prefix
 ) {
-
-    const safeTier = Number(tier) === 2 ? 2 : 1;
 
     const body =
         (prefix
@@ -31222,7 +31486,7 @@ function sendPatientMainMoreMenuReply(
         ss,
         phone,
         body,
-        getPatientMainMoreMenuSpec(safeTier)
+        getPatientMainMoreMenuSpec()
     );
 }
 
@@ -31340,16 +31604,28 @@ function sendWhatsAppImageMessage(
         image.caption = String(caption);
     }
 
-    return sendWhatsAppGraphPayload(
-        to,
-        {
-            messaging_product: "whatsapp",
-            recipient_type: "individual",
-            to: String(to),
-            type: "image",
-            image: image
-        }
-    );
+    const result =
+        sendWhatsAppGraphPayload(
+            to,
+            {
+                messaging_product: "whatsapp",
+                recipient_type: "individual",
+                to: String(to),
+                type: "image",
+                image: image
+            }
+        );
+
+    if (
+        !result ||
+        result.skipped
+    ) {
+        throw new Error(
+            "WhatsApp image message was skipped."
+        );
+    }
+
+    return result;
 }
 
 
