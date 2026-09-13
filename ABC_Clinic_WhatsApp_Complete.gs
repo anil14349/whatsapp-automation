@@ -10243,10 +10243,23 @@ function computeSlotSelectionPageBounds(
 }
 
 
-function formatWhatsAppDisplayDate(isoDate) {
+function formatWhatsAppDisplayDate(value) {
 
-    if (!isValidISODate(isoDate)) {
-        return String(isoDate || "").trim();
+    // Google Sheets date cells arrive as Date objects. Never stringify
+    // those directly because that produces values such as:
+    // "Mon Sep 14 2026 00:00:00 GMT+0530 (India Standard Time)".
+    if (value instanceof Date && !isNaN(value.getTime())) {
+        return Utilities.formatDate(
+            value,
+            TIMEZONE,
+            "dd-MMM-yyyy"
+        );
+    }
+
+    const isoDate = normalizeAppointmentDate(value);
+
+    if (!isoDate) {
+        return String(value || "").trim();
     }
 
     return Utilities.formatDate(
