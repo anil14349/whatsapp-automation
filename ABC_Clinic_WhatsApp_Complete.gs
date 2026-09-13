@@ -1,3 +1,4 @@
+// UPDATED v23 - prevent recursive Admin Dashboard popup loop
 // ============================================================
 // DOCTOR APPOINTMENT SYSTEM
 // Google Sheets + Google Calendar
@@ -64,6 +65,23 @@
 // ============================================================
 
 const TIMEZONE = "Asia/Kolkata";
+
+// ============================================================
+// COST OPTIMIZATION CONFIGURATION
+// ============================================================
+// These values are used by the cost report and monitoring dashboard.
+// They are intentionally defined as a single immutable configuration so
+// every cost-related function has a safe, explicit source of truth.
+// Default strategy: skip the 24-hour reminder, keep the 1-hour reminder,
+// use the WhatsApp 24-hour session window where applicable, and sample
+// feedback surveys at 30%.
+const COST_OPTIMIZATION = Object.freeze({
+    USE_SESSION_WINDOW: true,
+    SESSION_WINDOW_HOURS: 24,
+    SEND_24HR_REMINDER: false,
+    SEND_1HR_REMINDER: true,
+    FEEDBACK_SAMPLING_RATE: 0.30
+});
 
 // ============================================================
 // EXECUTION-SCOPE CACHE STATE
@@ -421,6 +439,35 @@ function buildInteractiveListSpec(
         rows.length > 10
     ) {
         return null;
+    }
+
+    // WhatsApp list messages add a second tap: the user first sees a
+    // "Choose" button and only then sees the options. Avoid that extra
+    // step whenever the menu can fit into WhatsApp's 3-button reply limit.
+    // A persistent Main Menu / Doctor Portal navigation row is deliberately
+    // omitted from the direct-button version; the numbered/text fallback and
+    // the universal navigation handler still provide navigation.
+    const directRows = rows.filter(function (row) {
+        return row &&
+            row.id !== "nav_main_menu" &&
+            row.id !== "nav_back";
+    });
+
+    const hasPagingRows = rows.some(function (row) {
+        const id = String(row && row.id || "");
+        return /(^|_)(prev|next)$/.test(id) ||
+            id.indexOf("_prev") !== -1 ||
+            id.indexOf("_next") !== -1;
+    });
+
+    if (
+        directRows.length > 0 &&
+        directRows.length <= 3 &&
+        !hasPagingRows
+    ) {
+        return buildInteractiveButtonSpec(
+            directRows.slice(0, 3)
+        );
     }
 
     return {
@@ -7207,7 +7254,7 @@ function buildDoctorSelectionMessage() {
 }
 
 
-function hasActiveAppointmentOnDate(
+function findActiveAppointmentOnDate(
     patientPhone,
     dateString,
     excludedAppointmentId
@@ -7217,7 +7264,7 @@ function hasActiveAppointmentOnDate(
         normalizeAppointmentDate(dateString);
 
     if (!targetDateIso) {
-        return false;
+        return null;
     }
 
     const ss =
@@ -7238,12 +7285,7 @@ function hasActiveAppointmentOnDate(
     const excludedId =
         String(excludedAppointmentId || "").trim();
 
-    // ========================================================
-    // OPTIMIZATION: Scan from end backwards
-    // ========================================================
-    // Most active appointments are recent; scanning from the end
-    // reduces avg scan time on large sheets without missing results.
-
+    // Scan from the end because active appointments are normally recent.
     for (
         let i = data.length - 1;
         i >= 1;
@@ -7257,6 +7299,7 @@ function hasActiveAppointmentOnDate(
 
         const isInactive =
             status === "cancelled" ||
+            status === "canceled" ||
             status === "completed" ||
             status === "no-show" ||
             status === "noshow" ||
@@ -7276,11 +7319,33 @@ function hasActiveAppointmentOnDate(
             rowDateIso === targetDateIso &&
             !isInactive
         ) {
-            return true;
+            return {
+                row: i + 1,
+                appointmentId: data[i][0],
+                date: data[i][1],
+                time: data[i][2],
+                doctorId: data[i][3],
+                patientName: data[i][4],
+                phone: data[i][5],
+                status: data[i][6]
+            };
         }
     }
 
-    return false;
+    return null;
+}
+
+
+function hasActiveAppointmentOnDate(
+    patientPhone,
+    dateString,
+    excludedAppointmentId
+) {
+    return !!findActiveAppointmentOnDate(
+        patientPhone,
+        dateString,
+        excludedAppointmentId
+    );
 }
 
 
@@ -12710,12 +12775,14 @@ function goBackInWhatsAppFlow(ss, phone, session) {
         case "HOME_COLLECTION_LOCATION":
             saveWhatsAppSession(phone, {
                 state: "PATIENT_MAIN_MORE",
+                patientMenuTier: 1,
                 location: ""
             });
             sendPatientMainMoreMenuReply(
                 ss,
                 phone,
-                ""
+                "",
+                1
             );
             return;
 
@@ -16146,13 +16213,49 @@ if (
         senderPhone,
         {
             role: "PATIENT",
-            state: "PATIENT_MAIN_MORE"
+            state: "PATIENT_MAIN_MORE",
+            patientMenuTier: 1
         }
     );
 
     sendPatientMainMoreMenuReply(
         ss,
-        senderPhone
+        senderPhone,
+        "",
+        1
+    );
+
+    return true;
+}
+
+
+// ======================================================
+// MORE → NEXT PAGE
+// ======================================================
+
+if (
+    session &&
+    session.state === "PATIENT_MAIN_MORE" &&
+    (
+        normalizedMessage === "patient_menu_more_2" ||
+        normalizedMessage === "menu_more_2"
+    )
+) {
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "PATIENT_MAIN_MORE",
+            patientMenuTier: 2
+        }
+    );
+
+    sendPatientMainMoreMenuReply(
+        ss,
+        senderPhone,
+        "",
+        2
     );
 
     return true;
@@ -16636,6 +16739,68 @@ if (
 
 
 // ======================================================
+// SAME-DAY APPOINTMENT CONFLICT ACTIONS
+// ======================================================
+// A patient may have only one active appointment per calendar date.
+// When a new booking hits that rule, offer direct actions on the existing
+// appointment instead of forcing the patient to navigate manually.
+
+if (
+    session &&
+    session.state === "BOOK_CONFIRM" &&
+    (
+        normalizedMessage === "same_day_reschedule" ||
+        normalizedMessage === "same_day_cancel"
+    )
+) {
+
+    const existingAppointment =
+        findActiveAppointmentOnDate(
+            senderPhone,
+            session.date
+        );
+
+    if (!existingAppointment) {
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "ℹ️ Your existing appointment could not be found.\n\nPlease send Hi to start again."
+        );
+        return true;
+    }
+
+    if (normalizedMessage === "same_day_reschedule") {
+        beginRescheduleDateSelection(
+            ss,
+            senderPhone,
+            existingAppointment
+        );
+        return true;
+    }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "CANCEL_CONFIRM",
+            appointmentId: existingAppointment.appointmentId,
+            doctorId: existingAppointment.doctorId || "",
+            date: existingAppointment.date || "",
+            time: existingAppointment.time || ""
+        }
+    );
+
+    sendCancelConfirmMenuReply(
+        ss,
+        senderPhone,
+        existingAppointment
+    );
+
+    return true;
+}
+
+
+// ======================================================
 // BOOK_CONFIRM STATE
 // ======================================================
 
@@ -16767,24 +16932,43 @@ if (
                 "You already have an active appointment on this date."
             ) {
 
+                const existingAppointment =
+                    findActiveAppointmentOnDate(
+                        senderPhone,
+                        session.date
+                    );
+
+                const existingSummary =
+                    existingAppointment
+                        ? "\n\nYour existing appointment:\n" +
+                          "👨‍⚕️ " +
+                          (findDoctorById(existingAppointment.doctorId) || "Doctor") +
+                          "\n" +
+                          "📅 " +
+                          formatWhatsAppDisplayDate(existingAppointment.date) +
+                          "\n" +
+                          "🕐 " +
+                          String(existingAppointment.time || "")
+                        : "";
+
                 const fallbackText =
-                    "1️⃣ Choose Another Date\n" +
-                    "0️⃣ Main Menu\n" +
-                    "9️⃣ Back";
+                    "1️⃣ Reschedule Existing\n" +
+                    "2️⃣ Cancel Existing\n" +
+                    "3️⃣ Choose Another Date";
 
                 const interactive =
                     buildInteractiveButtonSpec([
                         {
+                            id: "same_day_reschedule",
+                            title: "Reschedule Existing"
+                        },
+                        {
+                            id: "same_day_cancel",
+                            title: "Cancel Existing"
+                        },
+                        {
                             id: "date_retry",
                             title: "Choose Another Date"
-                        },
-                        {
-                            id: "nav_main_menu",
-                            title: "Main Menu"
-                        },
-                        {
-                            id: "nav_back",
-                            title: "Back"
                         }
                     ]);
 
@@ -16792,8 +16976,8 @@ if (
                     ss,
                     senderPhone,
                     "❌ You already have an active appointment on this date." +
-                    "\n\n" +
-                    "Please choose another date.",
+                    existingSummary +
+                    "\n\nYou can reschedule or cancel that appointment, or choose another date.",
                     {
                         fallbackText: fallbackText,
                         interactive: interactive
@@ -20421,6 +20605,11 @@ function ensureAppointmentRemindersSheet() {
     return sheet;
 }
 
+
+// LEGACY REMINDER QUEUE
+// The current production reminder engine is sendAppointmentReminders().
+// Reminder_Queue/processDueReminders is retained for backward compatibility
+// and existing data, but initializeClinicSystem() does not schedule it.
 
 function queueAppointmentReminder(
     appointmentId,
@@ -24524,6 +24713,8 @@ function logCostOptimizations() {
 }
 
 
+// Opens the dashboard once. Action handlers intentionally do not call this
+// again after completing an action, which prevents recursive popup loops.
 function showAdminDashboard() {
 
     const ui = SpreadsheetApp.getUi();
@@ -24658,8 +24849,6 @@ function runSetupCleanupTriggers() {
             "\n\nPlease contact your developer."
         );
     }
-
-    showAdminDashboard();
 }
 
 
@@ -24677,6 +24866,30 @@ function runSetupCleanupTriggers() {
  * not call SpreadsheetApp.getUi(), so it can be executed from the
  * Apps Script editor without a Sheet UI context.
  */
+function ensureMonitoringDashboardPopulated() {
+
+    const sheet = initializeMonitoringDashboard();
+
+    const dataRows = Math.max(sheet.getLastRow() - 1, 0);
+
+    if (dataRows === 0) {
+        // First initialization: create one baseline metrics snapshot so the
+        // Dashboard is useful immediately. Future initialization runs do not
+        // append duplicate daily rows.
+        logDailyMetrics();
+        return { action: "initial_metrics_logged_and_dashboard_refreshed" };
+    }
+
+    try {
+        createVisualDashboard();
+        return { action: "dashboard_refreshed" };
+    } catch (error) {
+        Logger.log("ensureMonitoringDashboardPopulated: " + error.message);
+        return { action: "dashboard_refresh_failed", error: error.message };
+    }
+}
+
+
 function initializeClinicSystem() {
     const report = {
         success: false,
@@ -24809,8 +25022,6 @@ function runSheetInitialization() {
             error.message
         );
     }
-
-    showAdminDashboard();
 }
 
 
@@ -24845,8 +25056,6 @@ function runAllCleanupNow() {
             "❌ ERROR: " + error.message
         );
     }
-
-    showAdminDashboard();
 }
 
 
@@ -24945,8 +25154,6 @@ function showCleanupStatus() {
         " handlers have exactly one active trigger";
 
     ui.alert(status);
-
-    showAdminDashboard();
 }
 
 
@@ -24991,8 +25198,6 @@ function showCostReport() {
             "❌ ERROR: " + error.message
         );
     }
-
-    showAdminDashboard();
 }
 
 
@@ -25028,8 +25233,6 @@ function showPerformanceReport() {
             "❌ ERROR: " + error.message
         );
     }
-
-    showAdminDashboard();
 }
 
 
@@ -25191,6 +25394,15 @@ function logDailyMetrics() {
     ]);
 
     Logger.log("Daily metrics logged successfully");
+
+    // Keep the visual Dashboard synchronized with the latest Cost_Dashboard
+    // metrics. A dashboard refresh failure must not prevent the daily
+    // metrics row from being recorded.
+    try {
+        createVisualDashboard();
+    } catch (dashboardError) {
+        Logger.log("Dashboard refresh error: " + dashboardError.message);
+    }
 }
 
 
@@ -26183,6 +26395,204 @@ function ensureHomeCollectionSheet() {
 }
 
 
+function ensureHomeCollectionHistorySheet() {
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName("Home_Collection_History");
+
+    if (!sheet) {
+        sheet = ss.insertSheet("Home_Collection_History");
+        sheet.appendRow([
+            "Request ID",
+            "Phone",
+            "Patient Name",
+            "Latitude",
+            "Longitude",
+            "Distance (km)",
+            "Patient Location",
+            "Preferred Date",
+            "Time Window",
+            "Status",
+            "Created At",
+            "Completed By",
+            "Completed At",
+            "Archived At"
+        ]);
+        sheet.hideSheet();
+    } else {
+        const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), 1))
+            .getValues()[0]
+            .map(function(v) { return String(v || "").trim(); });
+
+        if (headers.indexOf("Archived At") === -1) {
+            sheet.getRange(1, sheet.getLastColumn() + 1).setValue("Archived At");
+        }
+    }
+
+    return sheet;
+}
+
+
+function archivePreviousDayHomeCollectionRequests() {
+
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sourceSheet = ss.getSheetByName("Home_Collection_Requests");
+
+    if (!sourceSheet) {
+        return {
+            success: false,
+            message: "Home_Collection_Requests sheet not found"
+        };
+    }
+
+    const historySheet = ensureHomeCollectionHistorySheet();
+    const sourceMap = getHomeCollectionRequestSheetColumnMap(sourceSheet);
+
+    const requiredHeaders = [
+        "Request ID", "Phone", "Patient Name", "Latitude", "Longitude",
+        "Distance (km)", "Patient Location", "Preferred Date", "Time Window",
+        "Status", "Created At", "Completed By", "Completed At"
+    ];
+
+    for (const header of requiredHeaders) {
+        if (!sourceMap[header]) {
+            return {
+                success: false,
+                message: "Missing Home_Collection_Requests column: " + header
+            };
+        }
+    }
+
+    const now = new Date();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayIso = Utilities.formatDate(yesterday, TIMEZONE, "yyyy-MM-dd");
+
+    const sourceData = sourceSheet.getDataRange().getValues();
+    const historyData = historySheet.getDataRange().getValues();
+    const archivedIds = {};
+
+    for (let i = 1; i < historyData.length; i++) {
+        const id = String(historyData[i][0] || "").trim();
+        if (id) archivedIds[id] = true;
+    }
+
+    const rowsToDelete = [];
+    const rowsToArchive = [];
+    const skippedNonCompleted = [];
+    const skippedAlreadyArchived = [];
+    const archivedAt = new Date();
+
+    // Archive completed requests whose preferred collection date is yesterday
+    // or earlier. This is intentionally terminal-only and non-destructive until
+    // the archive write succeeds.
+    for (let i = sourceData.length - 1; i >= 1; i--) {
+        const requestId = String(sourceData[i][sourceMap["Request ID"] - 1] || "").trim();
+        if (!requestId) continue;
+
+        const status = String(sourceData[i][sourceMap["Status"] - 1] || "Pending").trim();
+        if (status.toLowerCase() !== "completed") {
+            skippedNonCompleted.push({ requestId: requestId, row: i + 1, status: status });
+            continue;
+        }
+
+        const preferredDate = formatHomeCollectionDate(
+            sourceData[i][sourceMap["Preferred Date"] - 1]
+        );
+
+        if (!preferredDate || preferredDate > yesterdayIso) continue;
+
+        if (archivedIds[requestId]) {
+            skippedAlreadyArchived.push({ requestId: requestId, row: i + 1 });
+            continue;
+        }
+
+        rowsToArchive.push([
+            sourceData[i][sourceMap["Request ID"] - 1],
+            sourceData[i][sourceMap["Phone"] - 1],
+            sourceData[i][sourceMap["Patient Name"] - 1],
+            sourceData[i][sourceMap["Latitude"] - 1],
+            sourceData[i][sourceMap["Longitude"] - 1],
+            sourceData[i][sourceMap["Distance (km)"] - 1],
+            sourceData[i][sourceMap["Patient Location"] - 1],
+            sourceData[i][sourceMap["Preferred Date"] - 1],
+            sourceData[i][sourceMap["Time Window"] - 1],
+            status,
+            sourceData[i][sourceMap["Created At"] - 1],
+            sourceData[i][sourceMap["Completed By"] - 1],
+            sourceData[i][sourceMap["Completed At"] - 1],
+            archivedAt
+        ]);
+        rowsToDelete.push(i + 1);
+        archivedIds[requestId] = true;
+    }
+
+    if (rowsToArchive.length > 0) {
+        const firstRow = Math.max(historySheet.getLastRow() + 1, 2);
+        historySheet.getRange(
+            firstRow,
+            1,
+            rowsToArchive.length,
+            rowsToArchive[0].length
+        ).setValues(rowsToArchive);
+
+        // Delete only after the history write has succeeded.
+        for (const row of rowsToDelete) {
+            sourceSheet.deleteRow(row);
+        }
+    }
+
+    Logger.log(
+        "archivePreviousDayHomeCollectionRequests: Archived " +
+        rowsToArchive.length + " completed request(s) through " + yesterdayIso
+    );
+
+    return {
+        success: true,
+        message: "Archived " + rowsToArchive.length +
+            " completed home collection request(s) through " + yesterdayIso,
+        archivedCount: rowsToArchive.length,
+        skippedNonCompletedCount: skippedNonCompleted.length,
+        skippedAlreadyArchivedCount: skippedAlreadyArchived.length
+    };
+}
+
+
+function createDailyHomeCollectionArchiveTask(hourOfDay, minuteOfHour) {
+
+    const hour = hourOfDay === undefined || hourOfDay === null ? 1 : Number(hourOfDay);
+    const minute = minuteOfHour === undefined || minuteOfHour === null ? 0 : Number(minuteOfHour);
+
+    if (!isFinite(hour) || hour < 0 || hour > 23 || !isFinite(minute) || minute < 0 || minute > 59) {
+        return {
+            success: false,
+            message: "Invalid time: hour must be 0-23 and minute must be 0-59"
+        };
+    }
+
+    deleteTriggersByHandler(["archivePreviousDayHomeCollectionRequests"]);
+
+    ScriptApp.newTrigger("archivePreviousDayHomeCollectionRequests")
+        .timeBased()
+        .atHour(Math.floor(hour))
+        .everyDays(1)
+        .create();
+
+    Logger.log(
+        "createDailyHomeCollectionArchiveTask: Created daily trigger around " +
+        String(Math.floor(hour)).padStart(2, "0") + ":00 (minute " +
+        String(Math.floor(minute)).padStart(2, "0") + " advisory)"
+    );
+
+    return {
+        success: true,
+        message: "Daily home collection archive scheduled around " +
+            String(Math.floor(hour)).padStart(2, "0") + ":00 (minute " +
+            String(Math.floor(minute)).padStart(2, "0") + " is advisory)"
+    };
+}
+
+
 function generateHomeCollectionRequestId() {
 
     return (
@@ -26698,6 +27108,11 @@ function initializeWhatsAppBotSheets() {
     );
 
     ensure(
+        "Home_Collection_History",
+        ensureHomeCollectionHistorySheet
+    );
+
+    ensure(
         "Doctor_Leaves",
         ensureDoctorLeavesSheet
     );
@@ -26788,6 +27203,10 @@ function initializeWhatsAppBotSheets() {
         sheet: "Dashboard",
         created: !dashboardExisted
     });
+
+    // Populate/refresh monitoring data without duplicating a daily metrics
+    // row when initialization is run again.
+    ensureMonitoringDashboardPopulated();
 
     Logger.log(
         "initializeWhatsAppBotSheets: " +
@@ -26946,13 +27365,13 @@ const PRODUCTION_TRIGGER_REGISTRY = [
     },
     {
         handler: "archivePreviousDayAppointments",
-        schedule: "daily around configured archive hour",
+        schedule: "daily around 01:00",
         purpose: "Move finalized previous-day appointments to history"
     },
     {
-        handler: "processDueReminders",
-        schedule: "daily around configured reminder-queue hour",
-        purpose: "Process Appointment_Reminders queue"
+        handler: "archivePreviousDayHomeCollectionRequests",
+        schedule: "daily around 01:00",
+        purpose: "Move completed previous-day home collections to history"
     }
 ];
 
@@ -27038,9 +27457,10 @@ function createAutoCleanupTriggers() {
 
 
 // Production one-click trigger installer.
-// This centralizes all fixed-cadence automation while leaving the two
-// configurable daily schedules (archive/reminder queue) to their existing
-// dedicated functions so their configured hour is not silently changed.
+// The active production reminder engine is sendAppointmentReminders(),
+// which runs every 30 minutes. The legacy Reminder_Queue/processDueReminders
+// path is retained for compatibility but is not installed as a trigger.
+// Previous-day appointment archiving is installed daily around 01:00.
 function installProductionAutomationTriggers() {
 
     const results = [];
@@ -27050,6 +27470,8 @@ function installProductionAutomationTriggers() {
     results.push(installAutoCompletePastAppointmentsTrigger());
     results.push(setupDailyMetricsLogging());
     results.push(createAutoCleanupTriggers());
+    results.push(createDailyArchiveTask(1, 0));
+    results.push(createDailyHomeCollectionArchiveTask(1, 0));
 
     return {
         success: results.every(function(result) {
@@ -27057,8 +27479,9 @@ function installProductionAutomationTriggers() {
         }),
         message:
             "Production automation triggers installed. " +
-            "Archive and reminder-queue schedules remain managed by " +
-            "createDailyArchiveTask() and createRemindersSchedule().",
+            "Appointment archive and home collection history run daily around 01:00; " +
+            "appointment reminders run every 30 minutes. Legacy Reminder_Queue processing is not " +
+            "installed because the current reminder engine does not use it.",
         results: results,
         registry: getProductionTriggerRegistry()
     };
@@ -27099,47 +27522,38 @@ function cleanupExpiredSlotReservationsAuto() {
 }
 
 
-function getPatientMainMoreMenuSpec() {
+function getPatientMainMoreMenuSpec(tier) {
 
-    const rows = [
-        {
-            id: "2",
-            title: "My Appointments"
-        },
-        {
-            id: "3",
-            title: "Cancel Appointment"
-        },
-        {
-            id: "4",
-            title: "Reschedule"
-        },
-        {
-            id: "5",
-            title: "Change Language"
-        }
-    ];
+    const t = Number(tier) || 1;
+
+    if (t === 2) {
+        const fallbackText =
+            "4️⃣ Reschedule\n" +
+            "5️⃣ Change Language\n" +
+            "0️⃣ Main Menu";
+
+        return {
+            fallbackText: fallbackText,
+            interactive: buildInteractiveButtonSpec([
+                { id: "4", title: "Reschedule" },
+                { id: "5", title: "Change Language" },
+                { id: "nav_main_menu", title: "Main Menu" }
+            ])
+        };
+    }
 
     const fallbackText =
         "2️⃣ My Appointments\n" +
         "3️⃣ Cancel Appointment\n" +
-        "4️⃣ Reschedule\n" +
-        "5️⃣ Change Language";
-
-    appendWhatsAppHomeNavRow(
-        rows,
-        "patient"
-    );
-
-    const interactive =
-        buildInteractiveListSpec(
-            rows,
-            "Choose"
-        );
+        "More → next page";
 
     return {
         fallbackText: fallbackText,
-        interactive: interactive
+        interactive: buildInteractiveButtonSpec([
+            { id: "2", title: "My Appointments" },
+            { id: "3", title: "Cancel Appointment" },
+            { id: "patient_menu_more_2", title: "More" }
+        ])
     };
 }
 
@@ -28673,6 +29087,12 @@ function notifyHomeCollectionPersons(requestId, details) {
         "📍 Patient location:\n" + (details.mapsUrl || "Location unavailable") + "\n\n" +
         "Please review the request.";
 
+    // Resolve the request row once and use the row as the completion transport
+    // key. This keeps notification buttons consistent with the collector list
+    // flow and avoids request-ID transport mismatches.
+    const requestRecord = getHomeCollectionRequestById(requestId);
+    const requestRow = requestRecord ? requestRecord.row : null;
+
     // This notification is generated while processing the patient's inbound
     // message. Clear the inbound dedup context so one patient message can
     // legitimately trigger a notification to every active collector.
@@ -28685,7 +29105,12 @@ function notifyHomeCollectionPersons(requestId, details) {
             sendWhatsAppMenuReply(SpreadsheetApp.getActiveSpreadsheet(), person.whatsapp, body, {
                 fallbackText: body,
                 interactive: buildInteractiveButtonSpec([
-                    { id: "hc_complete_" + requestId, title: "Mark Completed" },
+                    {
+                        id: requestRow
+                            ? "hc_complete_row_" + requestRow
+                            : "hc_complete_" + requestId,
+                        title: "Mark Completed"
+                    },
                     { id: "hc_today", title: "Today's Collections" },
                     { id: "nav_main_menu", title: "Main Menu" }
                 ])
@@ -28758,7 +29183,8 @@ function handleWhatsAppHomeCollectionPersonMessage(ss, senderPhone, senderName, 
         return true;
     }
 
-    // Backward compatibility for completion buttons generated by v12/v14.
+    // Backward compatibility for completion buttons generated by older
+    // versions. New notifications use the row-based key above.
     if (normalizedMessage.indexOf("hc_complete_") === 0) {
         const requestId = normalizedMessage.substring("hc_complete_".length);
         const result = markHomeCollectionRequestCompleted(
@@ -29196,20 +29622,23 @@ function handleWhatsAppHomeCollectionMessage(
 function sendPatientMainMoreMenuReply(
     ss,
     phone,
-    prefix
+    prefix,
+    tier
 ) {
+
+    const safeTier = Number(tier) === 2 ? 2 : 1;
 
     const body =
         (prefix
             ? String(prefix) + "\n\n"
             : "") +
-        "Choose an option.";
+        "More options";
 
     sendWhatsAppMenuReply(
         ss,
         phone,
         body,
-        getPatientMainMoreMenuSpec()
+        getPatientMainMoreMenuSpec(safeTier)
     );
 }
 
