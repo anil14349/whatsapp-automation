@@ -28,6 +28,10 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { createJwtToken } from "../shared/jwt-auth.ts";
 import { badRequestResponse, errorResponse, successResponse } from "../shared/auth-middleware.ts";
 import { debug } from "../shared/logger.ts";
+import { verifyPassword } from "../shared/bcrypt-password.ts";
+import { isRateLimited, recordFailedAttempt, clearFailedAttempts, getRemainingLockoutTime, DEFAULT_RATE_LIMIT } from "../shared/rate-limiting.ts";
+import { verifyPassword } from "../shared/bcrypt-password.ts";
+import { isRateLimited, recordFailedAttempt, clearFailedAttempts, getRemainingLockoutTime } from "../shared/rate-limiting.ts";
 
 interface LoginRequest {
   email: string;
@@ -36,12 +40,10 @@ interface LoginRequest {
 }
 
 /**
- * Verify doctor PIN against hashed PIN in database
+ * Verify doctor PIN against bcrypt-hashed PIN in database
  */
 async function verifyDoctorPin(supabase: SupabaseClient, doctorId: string, pin: string): Promise<boolean> {
   try {
-    // In production, PIN should be hashed using bcrypt
-    // For now, we'll compare directly (THIS IS A SECURITY RISK - SEE COMMENT BELOW)
     const { data, error } = await supabase
       .from("doctors")
       .select("pin_hash")
@@ -52,9 +54,9 @@ async function verifyDoctorPin(supabase: SupabaseClient, doctorId: string, pin: 
       return false;
     }
 
-    // TODO: Use bcrypt to verify hashed PIN
-    // For now, simple comparison (NOT SECURE FOR PRODUCTION)
-    return data.pin_hash === pin;
+    // Use bcrypt to verify PIN securely
+    const isValid = await verifyPassword(pin, data.pin_hash);
+    return isValid;
   } catch (error) {
     debug("doctorLogin", "Error verifying PIN", { error: String(error) });
     return false;
@@ -118,17 +120,41 @@ export async function handleDoctorLogin(req: Request): Promise<Response> {
       return badRequestResponse("Invalid email or clinic");
     }
 
+    // Check rate limiting (prevent brute force)
+    const isLocked = await isRateLimited(supabase, doctor.id, "doctor");
+    if (isLocked) {
+      const remainingMinutes = await getRemainingLockoutTime(supabase, doctor.id, "doctor");
+      debug("doctorLogin", "Account locked due to failed attempts", { doctorId: doctor.id });
+      return badRequestResponse(
+        `Account temporarily locked. Try again in ${remainingMinutes} minutes.`
+      );
+    }
+
     // Verify PIN
     const pinValid = await verifyDoctorPin(supabase, doctor.id, body.pin);
 
     if (!pinValid) {
       debug("doctorLogin", "Invalid PIN", { doctorId: doctor.id });
       
-      // TODO: Implement rate limiting here
-      // Increment failed attempts, lock after 3 failures for 15 minutes
+      // Record failed attempt and check if should lock
+      const wasLocked = await recordFailedAttempt(
+        supabase,
+        doctor.id,
+        "doctor",
+        body.clinicId
+      );
+      
+      if (wasLocked) {
+        return badRequestResponse(
+          `Invalid PIN. Account locked for ${DEFAULT_RATE_LIMIT.lockoutDurationMinutes} minutes.`
+        );
+      }
       
       return badRequestResponse("Invalid PIN");
     }
+
+    // Clear failed attempts on successful login
+    await clearFailedAttempts(supabase, doctor.id, "doctor");
 
     // Create JWT token
     const token = await createJwtToken(

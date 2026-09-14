@@ -28,6 +28,8 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { createJwtToken } from "../shared/jwt-auth.ts";
 import { badRequestResponse, errorResponse, successResponse } from "../shared/auth-middleware.ts";
 import { debug } from "../shared/logger.ts";
+import { verifyPassword } from "../shared/bcrypt-password.ts";
+import { isRateLimited, recordFailedAttempt, clearFailedAttempts, getRemainingLockoutTime, DEFAULT_RATE_LIMIT } from "../shared/rate-limiting.ts";
 
 interface ReceptionistLoginRequest {
   email: string;
@@ -36,7 +38,7 @@ interface ReceptionistLoginRequest {
 }
 
 /**
- * Verify receptionist password (hashed)
+ * Verify receptionist password (bcrypt-hashed)
  */
 async function verifyReceptionistPassword(
   supabase: SupabaseClient,
@@ -54,9 +56,9 @@ async function verifyReceptionistPassword(
       return false;
     }
 
-    // TODO: Use bcrypt to verify hashed password
-    // For now, simple comparison (NOT SECURE FOR PRODUCTION)
-    return data.password_hash === password;
+    // Use bcrypt to verify password securely
+    const isValid = await verifyPassword(password, data.password_hash);
+    return isValid;
   } catch (error) {
     debug("receptionistLogin", "Error verifying password", { error: String(error) });
     return false;
@@ -126,17 +128,41 @@ export async function handleReceptionistLogin(req: Request): Promise<Response> {
       return badRequestResponse("Invalid email, password or clinic");
     }
 
+    // Check rate limiting (prevent brute force)
+    const isLocked = await isRateLimited(supabase, receptionist.id, "receptionist");
+    if (isLocked) {
+      const remainingMinutes = await getRemainingLockoutTime(supabase, receptionist.id, "receptionist");
+      debug("receptionistLogin", "Account locked due to failed attempts", { receptionistId: receptionist.id });
+      return badRequestResponse(
+        `Account temporarily locked. Try again in ${remainingMinutes} minutes.`
+      );
+    }
+
     // Verify password
     const passwordValid = await verifyReceptionistPassword(supabase, receptionist.id, body.password);
 
     if (!passwordValid) {
       debug("receptionistLogin", "Invalid password", { receptionistId: receptionist.id });
 
-      // TODO: Implement rate limiting
-      // Increment failed attempts, lock after 3 failures for 15 minutes
+      // Record failed attempt and check if should lock
+      const wasLocked = await recordFailedAttempt(
+        supabase,
+        receptionist.id,
+        "receptionist",
+        body.clinicId
+      );
+
+      if (wasLocked) {
+        return badRequestResponse(
+          `Invalid password. Account locked for ${DEFAULT_RATE_LIMIT.lockoutDurationMinutes} minutes.`
+        );
+      }
 
       return badRequestResponse("Invalid email or password");
     }
+
+    // Clear failed attempts on successful login
+    await clearFailedAttempts(supabase, receptionist.id, "receptionist");
 
     // Create JWT token
     const token = await createJwtToken(
