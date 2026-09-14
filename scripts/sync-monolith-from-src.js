@@ -1,9 +1,15 @@
 /**
- * Sync top-level function bodies from src/*.gs into ABC_Clinic_WhatsApp_Complete.gs.
+ * Sync top-level function bodies from legacy/src-archive/*.gs into
+ * ABC_Clinic_WhatsApp_Complete.gs.
  *
- * All 23 production files under src/ are included (same set as Option B in README).
- * Only `function` bodies are copied — top-level const/var blocks in Config.gs stay
- * duplicated manually in the monolith header.
+ * STATUS: effectively disabled. The monolith is the source of truth and is now
+ * 39 functions ahead of the archive. This script strips everything below the
+ * auto-insert marker and re-adds only what the archive contains, so running it
+ * would delete those 39 functions (the whole home-collection collector flow,
+ * trigger installation, initializeClinicSystem). A guard in main() refuses to
+ * write in that case and lists the functions at risk.
+ *
+ * To revive it, port the missing functions into legacy/src-archive/ first.
  *
  * Run: node scripts/sync-monolith-from-src.js
  * Check (no write): node scripts/sync-monolith-from-src.js --check
@@ -17,47 +23,47 @@ const MONOLITH = path.join(ROOT, "ABC_Clinic_WhatsApp_Complete.gs");
 
 /** Same order as README Option B — later files win on duplicate names. */
 const SRC_FILES = [
-    "src/Config.gs",
-    "src/Util_Common.gs",
-    "src/Util_Idempotency.gs",
-    "src/Util_Maintenance.gs",
-    "src/Util_SlotReservation.gs",
-    "src/Util_RLS.gs",
-    "src/Util_Reminders.gs",
-    "src/Util_DataBackup.gs",
-    "src/Util_Migration.gs",
-    "src/Util_RLSAuditing.gs",
-    "src/Util_DoctorProfile.gs",
-    "src/Util_QuickBooking.gs",
-    "src/Util_PatientHistory.gs",
-    "src/Util_Waitlist.gs",
-    "src/Util_NotificationPrefs.gs",
-    "src/Util_Feedback.gs",
-    "src/Util_Performance.gs",
-    "src/Util_CostOptimization.gs",
-    "src/Util_AdminDashboard.gs",
-    "src/Util_MonitoringDashboard.gs",
-    "src/Logging.gs",
-    "src/Model_Reminders.gs",
-    "src/Model_AppointmentStatus.gs",
-    "src/Model_AfterHours.gs",
-    "src/Model_Doctors.gs",
-    "src/Model_Calendar.gs",
-    "src/Model_Patients.gs",
-    "src/Model_Appointments.gs",
-    "src/Model_HomeCollection.gs",
-    "src/Model_Session.gs",
-    "src/Setup.gs",
-    "src/Api.gs",
-    "src/Webhook.gs",
-    "src/View_Menus.gs",
-    "src/View_Messages.gs",
-    "src/Controller_Shared.gs",
-    "src/Controller_Router.gs",
-    "src/Controller_DoctorFlow.gs",
-    "src/Controller_PatientFlow.gs",
-    "src/Controller_HomeCollection.gs",
-    "src/WhatsApp_Send.gs"
+    "legacy/src-archive/Config.gs",
+    "legacy/src-archive/Util_Common.gs",
+    "legacy/src-archive/Util_Idempotency.gs",
+    "legacy/src-archive/Util_Maintenance.gs",
+    "legacy/src-archive/Util_SlotReservation.gs",
+    "legacy/src-archive/Util_RLS.gs",
+    "legacy/src-archive/Util_Reminders.gs",
+    "legacy/src-archive/Util_DataBackup.gs",
+    "legacy/src-archive/Util_Migration.gs",
+    "legacy/src-archive/Util_RLSAuditing.gs",
+    "legacy/src-archive/Util_DoctorProfile.gs",
+    "legacy/src-archive/Util_QuickBooking.gs",
+    "legacy/src-archive/Util_PatientHistory.gs",
+    "legacy/src-archive/Util_Waitlist.gs",
+    "legacy/src-archive/Util_NotificationPrefs.gs",
+    "legacy/src-archive/Util_Feedback.gs",
+    "legacy/src-archive/Util_Performance.gs",
+    "legacy/src-archive/Util_CostOptimization.gs",
+    "legacy/src-archive/Util_AdminDashboard.gs",
+    "legacy/src-archive/Util_MonitoringDashboard.gs",
+    "legacy/src-archive/Logging.gs",
+    "legacy/src-archive/Model_Reminders.gs",
+    "legacy/src-archive/Model_AppointmentStatus.gs",
+    "legacy/src-archive/Model_AfterHours.gs",
+    "legacy/src-archive/Model_Doctors.gs",
+    "legacy/src-archive/Model_Calendar.gs",
+    "legacy/src-archive/Model_Patients.gs",
+    "legacy/src-archive/Model_Appointments.gs",
+    "legacy/src-archive/Model_HomeCollection.gs",
+    "legacy/src-archive/Model_Session.gs",
+    "legacy/src-archive/Setup.gs",
+    "legacy/src-archive/Api.gs",
+    "legacy/src-archive/Webhook.gs",
+    "legacy/src-archive/View_Menus.gs",
+    "legacy/src-archive/View_Messages.gs",
+    "legacy/src-archive/Controller_Shared.gs",
+    "legacy/src-archive/Controller_Router.gs",
+    "legacy/src-archive/Controller_DoctorFlow.gs",
+    "legacy/src-archive/Controller_PatientFlow.gs",
+    "legacy/src-archive/Controller_HomeCollection.gs",
+    "legacy/src-archive/WhatsApp_Send.gs"
 ];
 
 const AUTO_INSERT_MARKER =
@@ -113,6 +119,18 @@ function extractTopLevelFunctions(source) {
     }
 
     return functions;
+}
+
+function collectFunctionNames(source) {
+    const names = [];
+    const nameRegex = /^function\s+([A-Za-z0-9_]+)\s*\(/gm;
+    let match;
+
+    while ((match = nameRegex.exec(source)) !== null) {
+        names.push(match[1]);
+    }
+
+    return Array.from(new Set(names));
 }
 
 function findFunctionBounds(source, name) {
@@ -235,8 +253,8 @@ function main() {
     const checkOnly =
         process.argv.indexOf("--check") !== -1;
 
-    let monolith = fs.readFileSync(MONOLITH, "utf8");
-    monolith = stripPreviousAutoInsertBlock(monolith);
+    const originalMonolith = fs.readFileSync(MONOLITH, "utf8");
+    let monolith = stripPreviousAutoInsertBlock(originalMonolith);
 
     const { allFunctions, byFile } =
         loadAllSourceFunctions();
@@ -299,6 +317,27 @@ function main() {
             "one silently wins at runtime, not necessarily the one " +
             "kept in sync with src/): " +
             Array.from(new Set(duplicateNames)).join(", ")
+        );
+    }
+
+    // This script only adds back what exists in src/, but it first strips
+    // everything below the auto-insert marker. Any function that was added
+    // to the monolith by hand below that marker would be destroyed. Refuse
+    // to write a monolith that has fewer functions than it started with.
+    const droppedNames = collectFunctionNames(originalMonolith).filter(
+        function (name) {
+            return !findFunctionBounds(monolith, name);
+        }
+    );
+
+    if (droppedNames.length > 0) {
+        throw new Error(
+            "Refusing to sync: " +
+            droppedNames.length +
+            " function(s) exist in the monolith but not in src/, and this " +
+            "sync would delete them. Port them into src/ first (or stop " +
+            "using this script if the monolith is the source of truth): " +
+            droppedNames.join(", ")
         );
     }
 

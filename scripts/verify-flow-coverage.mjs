@@ -10,6 +10,9 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 
+// Reads legacy/src-archive/, which is byte-identical to the monolith for the
+// 449 functions they share but is missing the 39 monolith-only ones.
+
 function read(relPath) {
     return fs.readFileSync(path.join(ROOT, relPath), "utf8");
 }
@@ -32,11 +35,11 @@ function extractStates(src, pattern) {
     return states;
 }
 
-const patientFlow = read("src/Controller_PatientFlow.gs");
-const doctorFlow = read("src/Controller_DoctorFlow.gs");
-const homeCollectionFlow = read("src/Controller_HomeCollection.gs");
-const shared = read("src/Controller_Shared.gs");
-const router = read("src/Controller_Router.gs");
+const patientFlow = read("legacy/src-archive/Controller_PatientFlow.gs");
+const doctorFlow = read("legacy/src-archive/Controller_DoctorFlow.gs");
+const homeCollectionFlow = read("legacy/src-archive/Controller_HomeCollection.gs");
+const shared = read("legacy/src-archive/Controller_Shared.gs");
+const router = read("legacy/src-archive/Controller_Router.gs");
 
 const patientStates = new Set([
     ...extractStates(
@@ -186,7 +189,7 @@ assert(
     "sendPatientAppointmentListMenuReply"
 ].forEach(function (fn) {
     const inShared = shared.includes(`function ${fn}`);
-    const inSend = read("src/WhatsApp_Send.gs").includes(`function ${fn}`);
+    const inSend = read("legacy/src-archive/WhatsApp_Send.gs").includes(`function ${fn}`);
     assert(
         `helper ${fn} exists`,
         inShared || inSend,
@@ -196,7 +199,7 @@ assert(
 
 assert(
     "buildDoctorSelectionBody exists",
-    read("src/View_Messages.gs").includes("function buildDoctorSelectionBody"),
+    read("legacy/src-archive/View_Messages.gs").includes("function buildDoctorSelectionBody"),
     "missing in View_Messages.gs"
 );
 

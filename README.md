@@ -21,48 +21,53 @@ Or browse by category: [Architecture](./docs/ARCHITECTURE/) · [Security](./docs
 
 ## Apps Script files
 
-There are two equivalent ways to source the production code — pick **one**, don't bind both:
-
-### Option A — single file (original)
+Bind `ABC_Clinic_WhatsApp_Complete.gs`. It is the single source of truth.
 
 | File | Bind in production? | Purpose |
 |------|---------------------|---------|
 | `ABC_Clinic_WhatsApp_Complete.gs` | **Required** | Production code (webhook, booking, doctor portal) |
 | `ABC_Clinic_Tests.gs` | Optional | Test helpers — bind for dev/staging; safe to leave bound |
 
-### Option B — `src/` split (recommended)
+### Archived — the `legacy/src-archive/` split
 
-The same code, reorganized into 23 smaller files by responsibility (Model/View/Controller-style). Apps Script merges every bound `.gs` file into one shared global scope regardless of file name or count, so this is behaviorally identical to Option A — just easier to navigate. Bind **every file in `src/`** (all 23) plus, optionally, `ABC_Clinic_Tests.gs`:
+> **Do not deploy this and do not sync from it.** It is kept for reference only.
+>
+> The archive holds the same code split into 23 files. It is **39 functions behind** the monolith — the whole home-collection collector flow, trigger installation and `initializeClinicSystem` exist only in the monolith. It also calls 27 functions it does not define, so it would throw `ReferenceError` at runtime if bound.
+>
+> `scripts/sync-monolith-from-src.js` copies the archive **into** the monolith and would delete those 39 functions. The script now refuses to run for that reason. Since Apps Script merges every `.gs` file into one global scope anyway, the split had no runtime benefit.
+
+<details>
+<summary>Archived file layout</summary>
 
 | File | Purpose |
 |------|---------|
-| `src/Config.gs` | Constants, Settings sheet, debug/log-mode flags |
-| `src/Util_Common.gs` | Phone/date/time parsing & formatting helpers |
-| `src/Logging.gs` | Single `WhatsApp_Log` sheet (inbound/errors/reminder ledger), retention cleanup |
-| `src/Model_Reminders.gs` | Appointment reminder scheduling & sending |
-| `src/Model_AppointmentStatus.gs` | Completed/No-Show status workflow, auto-complete |
-| `src/Model_AfterHours.gs` | Clinic-hours gate & after-hours auto-reply |
-| `src/Model_Doctors.gs` | Doctor records, availability, leaves, schedule views |
-| `src/Model_Calendar.gs` | Calendar event lookup & slot-availability engine |
-| `src/Model_Patients.gs` | Patients registry (find/upsert/sync) |
-| `src/Model_Appointments.gs` | Book/cancel/reschedule, appointment lookups |
-| `src/Model_HomeCollection.gs` | `Home_Collection_Requests` sheet — home blood-sample-collection requests |
-| `src/Model_Session.gs` | `WhatsApp_Sessions` sheet read/write |
-| `src/Setup.gs` | `initializeWhatsAppBotSheets()` — one-time creation of every required sheet |
-| `src/Api.gs` | `api()` HTTP-style dispatcher for external callers |
-| `src/Webhook.gs` | `doGet`/`doPost` entry points, inbound idempotency |
-| `src/View_Menus.gs` | Interactive list/button menu specs |
-| `src/View_Messages.gs` | WhatsApp reply text builders & localization |
-| `src/Controller_Shared.gs` | Flow helpers shared by patient & doctor state machines |
-| `src/Controller_Router.gs` | Top-level message dispatch (greeting/navigation/router) |
-| `src/Controller_DoctorFlow.gs` | Doctor-portal conversation state machine |
-| `src/Controller_PatientFlow.gs` | Patient conversation state machine |
-| `src/Controller_HomeCollection.gs` | Home blood-sample-collection request flow (location-gated by radius) |
-| `src/WhatsApp_Send.gs` | Low-level WhatsApp Cloud API senders |
+| `legacy/src-archive/Config.gs` | Constants, Settings sheet, debug/log-mode flags |
+| `legacy/src-archive/Util_Common.gs` | Phone/date/time parsing & formatting helpers |
+| `legacy/src-archive/Logging.gs` | Single `WhatsApp_Log` sheet (inbound/errors/reminder ledger), retention cleanup |
+| `legacy/src-archive/Model_Reminders.gs` | Appointment reminder scheduling & sending |
+| `legacy/src-archive/Model_AppointmentStatus.gs` | Completed/No-Show status workflow, auto-complete |
+| `legacy/src-archive/Model_AfterHours.gs` | Clinic-hours gate & after-hours auto-reply |
+| `legacy/src-archive/Model_Doctors.gs` | Doctor records, availability, leaves, schedule views |
+| `legacy/src-archive/Model_Calendar.gs` | Calendar event lookup & slot-availability engine |
+| `legacy/src-archive/Model_Patients.gs` | Patients registry (find/upsert/sync) |
+| `legacy/src-archive/Model_Appointments.gs` | Book/cancel/reschedule, appointment lookups |
+| `legacy/src-archive/Model_HomeCollection.gs` | `Home_Collection_Requests` sheet — home blood-sample-collection requests |
+| `legacy/src-archive/Model_Session.gs` | `WhatsApp_Sessions` sheet read/write |
+| `legacy/src-archive/Setup.gs` | `initializeWhatsAppBotSheets()` — one-time creation of every required sheet |
+| `legacy/src-archive/Api.gs` | `api()` HTTP-style dispatcher for external callers |
+| `legacy/src-archive/Webhook.gs` | `doGet`/`doPost` entry points, inbound idempotency |
+| `legacy/src-archive/View_Menus.gs` | Interactive list/button menu specs |
+| `legacy/src-archive/View_Messages.gs` | WhatsApp reply text builders & localization |
+| `legacy/src-archive/Controller_Shared.gs` | Flow helpers shared by patient & doctor state machines |
+| `legacy/src-archive/Controller_Router.gs` | Top-level message dispatch (greeting/navigation/router) |
+| `legacy/src-archive/Controller_DoctorFlow.gs` | Doctor-portal conversation state machine |
+| `legacy/src-archive/Controller_PatientFlow.gs` | Patient conversation state machine |
+| `legacy/src-archive/Controller_HomeCollection.gs` | Home blood-sample-collection request flow (location-gated by radius) |
+| `legacy/src-archive/WhatsApp_Send.gs` | Low-level WhatsApp Cloud API senders |
 
-Every function/variable name is still globally unique across all files (Apps Script requirement) — kept in sync automatically by `scripts/sync-monolith-from-src.js` (`node scripts/sync-monolith-from-src.js --check` reports drift between Option A and Option B without writing).
+Every function/variable name is still globally unique across all files (Apps Script requirement).
 
-Don't bind both options at once — that would double-declare every function.
+</details>
 
 ---
 
@@ -228,14 +233,14 @@ You need:
 - **Graph API credentials:** long-lived `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID`
 - A **Google Sheet** that will hold clinic data (create new, or use your existing production sheet)
 
-Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/` (see [Apps Script files](#apps-script-files) above) — not both — plus, optionally, `ABC_Clinic_Tests.gs`. Don't add other `.gs` files with duplicate function names.
+Bind `ABC_Clinic_WhatsApp_Complete.gs` plus, optionally, `ABC_Clinic_Tests.gs`. Don't add other `.gs` files with duplicate function names, and don't bind anything from `legacy/src-archive/`.
 
 ---
 
 ### Step 1 — Prepare the spreadsheet
 
 1. Create or open the clinic Google Sheet (this becomes the data store).
-2. After binding the Apps Script project (Step 2 below), run **`initializeWhatsAppBotSheets()`** once from the Apps Script editor — it creates every required sheet with its header row (`Settings`, `WhatsApp_Log`, `Patients`, `WhatsApp_Sessions`, `Doctors`, `Availability`, `Appointments`, `Doctor_Leaves`, `Home_Collection_Requests`) if it doesn't already exist. Safe to re-run any time. See `src/README.md` for details.
+2. After binding the Apps Script project (Step 2 below), run **`initializeWhatsAppBotSheets()`** once from the Apps Script editor — it creates every required sheet with its header row (`Settings`, `WhatsApp_Log`, `Patients`, `WhatsApp_Sessions`, `Doctors`, `Availability`, `Appointments`, `Doctor_Leaves`, `Home_Collection_Requests`) if it doesn't already exist. Safe to re-run any time. See `legacy/src-archive/README.md` for sheet schema details.
 3. Fill in the **`Doctors`** sheet, one row per doctor:
 
    | Doctor ID | Doctor Name | Clinic | Calendar ID | WhatsApp | AppointmentDuration | Active | Specialization |
@@ -262,9 +267,7 @@ Bind **either** `ABC_Clinic_WhatsApp_Complete.gs` **or** every file under `src/`
 
 1. In the spreadsheet: **Extensions → Apps Script**
 2. Remove any old/default `Code.gs` content if present (or delete the file).
-3. Add the production code — pick one:
-   - **Single file:** add **`ABC_Clinic_WhatsApp_Complete.gs`**, copying the full file from this repo into a script file with that name.
-   - **Split (`src/`):** add all 23 files from `src/` as separate script files, each with the same name (minus `.gs`, which the editor appends automatically).
+3. Add the production code: add **`ABC_Clinic_WhatsApp_Complete.gs`**, copying the full file from this repo into a script file with that name.
 4. *(Optional, recommended for staging)* Add **`ABC_Clinic_Tests.gs`** for in-editor smoke tests.
 5. **Save** the project (Ctrl+S). Give the project a clear name, e.g. `ABC Clinic WhatsApp`.
 
@@ -440,8 +443,8 @@ Confirm **`WhatsApp_Log`** receives `INBOUND` rows for each message (and `OUTBOU
 
 When you pull new code from this repo:
 
-1. Copy the updated file(s) into Apps Script (overwrite existing files) — either `ABC_Clinic_WhatsApp_Complete.gs`, or every changed file under `src/` if you're on the split layout.
-2. **If you maintain both Option A and Option B**, run `node scripts/sync-monolith-from-src.js` from the repo after editing any `src/*.gs` file, then copy the updated monolith too.
+1. Copy the updated `ABC_Clinic_WhatsApp_Complete.gs` into Apps Script (overwrite the existing file).
+2. Nothing else to sync — the monolith is the only source of truth.
 3. **Deploy → Manage deployments → Edit → New version → Deploy**
 4. Re-run a quick manual WhatsApp test (patient Hi + one booking; try a date with many slots if possible).
 5. If new sheets or settings were added, they auto-create on first use — check **`Settings`** for new keys and confirm `WhatsApp_Sessions` has a **Slot Page** header after the first paginated slot pick.
@@ -454,7 +457,7 @@ You do **not** need to re-verify the Meta webhook unless the deployment URL chan
 
 Use this after you have done the full steps above:
 
-- [ ] Production code bound — either `ABC_Clinic_WhatsApp_Complete.gs` **or** all files under `src/` (not both) + optional tests file
+- [ ] Production code bound — `ABC_Clinic_WhatsApp_Complete.gs` + optional tests file
 - [ ] `WHATSAPP_ACCESS_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` set
 - [ ] `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_WEBHOOK_POST_TOKEN` set (both required — webhook fails closed without them)
 - [ ] Web app deployed (**Execute as: Me**, **Anyone** can access)
@@ -523,9 +526,9 @@ Local Node unit tests (`tests/run-unit-tests.mjs`) are **not included yet** — 
 ## Repo layout
 
 ```
-ABC_Clinic_WhatsApp_Complete.gs   ← production, Option A: single file
-ABC_Clinic_Tests.gs               ← tests (optional bind, either option)
-src/                               ← production, Option B: split into 23 files (see above)
+ABC_Clinic_WhatsApp_Complete.gs   ← production, single source of truth
+ABC_Clinic_Tests.gs               ← tests (optional bind)
+legacy/src-archive/                ← ARCHIVED split layout — do not deploy or sync (see above)
   Config.gs
   Util_Common.gs
   Logging.gs
@@ -549,14 +552,14 @@ src/                               ← production, Option B: split into 23 files
   Controller_PatientFlow.gs
   Controller_HomeCollection.gs
   WhatsApp_Send.gs
-  README.md                        ← src/-specific setup notes (sheet schemas, Settings keys)
+  README.md                        ← archived setup notes (sheet schemas, Settings keys)
 landing/                           ← marketing website (Vercel / Replit)
 marketing/                         ← brochure, one-pager, offboarding docs
 scripts/
-  sync-monolith-from-src.js        ← copy src/ function bodies into ABC_Clinic_WhatsApp_Complete.gs
+  sync-monolith-from-src.js        ← DISABLED by a guard; would delete monolith-only functions
   verify-menu-flows.mjs            ← static checks for interactive menu wiring
   verify-flow-coverage.mjs         ← static checks that every session state is reachable
 README.md                          ← this file
 ```
 
-Option A and Option B are kept in sync with `node scripts/sync-monolith-from-src.js` after editing `src/` — the script copies all **23** `src/*.gs` files into the monolith (function bodies only; top-level comments and consts are not copied — see the script's own header comment). Use `--check` for a dry-run. Run it before deploying the monolith. If you only use one layout, you can ignore the script.
+The monolith is the source of truth. `scripts/sync-monolith-from-src.js` copies `legacy/src-archive/` **into** the monolith, which would delete the 39 functions that exist only in the monolith — it now refuses to run and lists them. Don't use it unless you first port those functions into the archive.

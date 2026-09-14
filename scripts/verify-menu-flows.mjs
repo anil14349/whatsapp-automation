@@ -11,6 +11,9 @@ import { spawnSync } from "child_process";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 
+// Reads legacy/src-archive/, which is byte-identical to the monolith for the
+// 449 functions they share but is missing the 39 monolith-only ones.
+
 function read(relPath) {
     return fs.readFileSync(path.join(ROOT, relPath), "utf8");
 }
@@ -34,100 +37,100 @@ function mustInclude(file, pattern, label) {
 
 // --- Patient main menu (regression) ---
 mustInclude(
-    "src/View_Menus.gs",
+    "legacy/src-archive/View_Menus.gs",
     /function getPatientMainMenuSpec[\s\S]*?id:\s*"menu_more"/,
     "patient main menu has menu_more button"
 );
 mustInclude(
-    "src/Controller_PatientFlow.gs",
+    "legacy/src-archive/Controller_PatientFlow.gs",
     'state === "PATIENT_MAIN_MORE"',
     "patient PATIENT_MAIN_MORE state handler"
 );
 mustInclude(
-    "src/Controller_PatientFlow.gs",
+    "legacy/src-archive/Controller_PatientFlow.gs",
     'state === "MY_APPOINTMENTS"',
     "patient MY_APPOINTMENTS state handler"
 );
 mustInclude(
-    "src/Controller_Shared.gs",
+    "legacy/src-archive/Controller_Shared.gs",
     "function whatsAppNavigationShowsBack",
     "smart navigation back detection"
 );
 mustInclude(
-    "src/View_Menus.gs",
+    "legacy/src-archive/View_Menus.gs",
     /appendWhatsAppHomeNavRow[\s\S]*?nav_main_menu[\s\S]*?Doctor Portal/,
     "appointment lists use home nav only"
 );
 mustInclude(
-    "src/WhatsApp_Send.gs",
+    "legacy/src-archive/WhatsApp_Send.gs",
     "function sendCancelConfirmMenuReply",
     "cancel confirm menu sender"
 );
 mustInclude(
-    "src/View_Messages.gs",
+    "legacy/src-archive/View_Messages.gs",
     "function buildMyAppointmentsListBody",
     "my appointments screen body builder"
 );
 mustInclude(
-    "src/View_Menus.gs",
+    "legacy/src-archive/View_Menus.gs",
     "formatAppointmentListRowDescription",
     "formatted appointment list row dates"
 );
 
 // --- Doctor button sub-menu ---
 mustInclude(
-    "src/View_Menus.gs",
+    "legacy/src-archive/View_Menus.gs",
     /function getDoctorMainMenuSpec[\s\S]*?buildInteractiveButtonSpec[\s\S]*?menu_more/,
     "doctor main menu is 3-button spec with menu_more"
 );
 mustInclude(
-    "src/View_Menus.gs",
+    "legacy/src-archive/View_Menus.gs",
     "function getDoctorMainMenuMoreSpec(tier)",
     "doctor more menu spec by tier"
 );
 mustInclude(
-    "src/View_Menus.gs",
+    "legacy/src-archive/View_Menus.gs",
     'id: "doctor_reschedule"',
     "doctor tier-4 reschedule semantic id"
 );
 mustInclude(
-    "src/View_Menus.gs",
+    "legacy/src-archive/View_Menus.gs",
     'id: "doctor_status"',
     "doctor tier-4 status semantic id"
 );
 mustInclude(
-    "src/WhatsApp_Send.gs",
+    "legacy/src-archive/WhatsApp_Send.gs",
     "function sendDoctorMainMenuMoreReply",
     "sendDoctorMainMenuMoreReply helper"
 );
 mustInclude(
-    "src/Controller_DoctorFlow.gs",
+    "legacy/src-archive/Controller_DoctorFlow.gs",
     'state === "DOCTOR_MENU_MORE"',
     "doctor DOCTOR_MENU_MORE state handler"
 );
 mustInclude(
-    "src/Controller_Shared.gs",
+    "legacy/src-archive/Controller_Shared.gs",
     "function handleDoctorPortalMenuChoice",
     "shared doctor menu choice handler"
 );
 mustInclude(
-    "src/Controller_Shared.gs",
+    "legacy/src-archive/Controller_Shared.gs",
     "function isDoctorMenuChoiceAllowedForTier",
     "tier-gated doctor more menu choices"
 );
 mustInclude(
-    "src/Controller_Shared.gs",
+    "legacy/src-archive/Controller_Shared.gs",
     'case "DOCTOR_MENU_MORE":',
     "doctor back nav for DOCTOR_MENU_MORE"
 );
 mustInclude(
-    "src/Controller_Shared.gs",
+    "legacy/src-archive/Controller_Shared.gs",
     /doctor_reschedule[\s\S]*return "9"/,
     "normalizeDoctorMenuChoice maps doctor_reschedule → 9"
 );
 
 // --- Router: DOCTOR_MENU still exempt from universal 9 (option 9 = reschedule on main) ---
-const router = read("src/Controller_Router.gs");
+const router = read("legacy/src-archive/Controller_Router.gs");
 assert(
     "router exempts DOCTOR_MENU from universal 9",
     /state !== "DOCTOR_MENU"[\s\S]*normalizedMessage === "9"/.test(router),
@@ -152,7 +155,9 @@ mustInclude(
     "tests cover doctor semantic ids"
 );
 
-// --- Monolith in sync ---
+// --- Sync guard is active ---
+// The monolith is the source of truth and is ahead of the archive, so the
+// sync script must refuse to run rather than delete monolith-only functions.
 const sync = spawnSync(
     process.execPath,
     ["scripts/sync-monolith-from-src.js", "--check"],
@@ -160,10 +165,10 @@ const sync = spawnSync(
 );
 
 assert(
-    "monolith sync --check passes",
-    sync.status === 0,
-    (sync.stdout || "") + (sync.stderr || "") ||
-        `exit ${sync.status}`
+    "sync script refuses to overwrite monolith-only functions",
+    sync.status !== 0 &&
+        ((sync.stdout || "") + (sync.stderr || "")).includes("Refusing to sync"),
+    `expected the guard to fire, got exit ${sync.status}`
 );
 
 if (failures.length === 0) {
