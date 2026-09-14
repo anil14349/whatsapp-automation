@@ -151,9 +151,9 @@ supabase functions serve
 Create `.env.local` in the project root:
 
 ```
-SUPABASE_URL=http://localhost:54321
-SUPABASE_ANON_KEY=xxx
-SUPABASE_SERVICE_ROLE_KEY=xxx
+SB_URL=http://localhost:54321
+SB_ANON_KEY=xxx
+SB_SERVICE_ROLE_KEY=xxx
 WHATSAPP_ACCESS_TOKEN=xxx
 WHATSAPP_PHONE_NUMBER_ID=xxx
 WHATSAPP_VERIFY_TOKEN=xxx
@@ -283,7 +283,7 @@ supabase functions deploy webhook  # Deploy it
 **Cause**: Service role key not configured, database down, or RLS policy blocking
 
 **Solution**:
-1. Check `SUPABASE_SERVICE_ROLE_KEY` in function settings
+1. Check `SB_SERVICE_ROLE_KEY` in function settings
 2. Verify Supabase project is active
 3. Check RLS policies allow service role access
 

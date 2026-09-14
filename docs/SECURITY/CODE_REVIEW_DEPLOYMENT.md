@@ -42,8 +42,8 @@ import { create, verify } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 ```typescript
 // Environment variables
 const JWT_SECRET = Deno.env.get("JWT_SECRET") || "default";
-const supabaseUrl = Deno.env.get("SUPABASE_URL");
-const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseUrl = Deno.env.get("SB_URL");
+const supabaseKey = Deno.env.get("SB_SERVICE_ROLE_KEY");
 
 // Server handler
 Deno.serve(async (req: Request) => {
@@ -103,8 +103,8 @@ All environment variables are accessed correctly:
 const JWT_SECRET = Deno.env.get("JWT_SECRET") || "default";
 
 // API Functions
-const supabaseUrl = Deno.env.get("SUPABASE_URL");
-const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseUrl = Deno.env.get("SB_URL");
+const supabaseKey = Deno.env.get("SB_SERVICE_ROLE_KEY");
 
 if (!supabaseUrl || !supabaseKey) {
   return errorResponse("Server configuration error", 500);
@@ -113,8 +113,8 @@ if (!supabaseUrl || !supabaseKey) {
 
 **Required Environment Variables**:
 ```bash
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SB_URL=https://your-project.supabase.co
+SB_SERVICE_ROLE_KEY=your-service-role-key
 JWT_SECRET=your-random-secret-key-min-32-chars
 ```
 
@@ -326,8 +326,8 @@ if (!pinValid) {
 **2.1 Optimize Supabase client initialization**
 ```typescript
 // CURRENT (creates new client per request):
-const supabaseUrl = Deno.env.get("SUPABASE_URL");
-const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+const supabaseUrl = Deno.env.get("SB_URL");
+const supabaseKey = Deno.env.get("SB_SERVICE_ROLE_KEY");
 const supabase = new SupabaseClient(supabaseUrl, supabaseKey);
 
 // RECOMMENDED (cache client):
@@ -337,8 +337,8 @@ export const getSupabaseClient = (() => {
   let client: SupabaseClient | null = null;
   return (): SupabaseClient => {
     if (!client) {
-      const url = Deno.env.get("SUPABASE_URL");
-      const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      const url = Deno.env.get("SB_URL");
+      const key = Deno.env.get("SB_SERVICE_ROLE_KEY");
       if (!url || !key) throw new Error("Missing Supabase env vars");
       client = new SupabaseClient(url, key);
     }
@@ -454,8 +454,8 @@ debug("api", `${req.method} ${new URL(req.url).pathname}`, {
 ### Before Deployment
 
 - [ ] **Set environment variables** in Supabase Dashboard:
-  - [ ] SUPABASE_URL
-  - [ ] SUPABASE_SERVICE_ROLE_KEY
+  - [ ] SB_URL
+  - [ ] SB_SERVICE_ROLE_KEY
   - [ ] JWT_SECRET (32+ character random string)
 
 - [ ] **Create deno.json** (optional but recommended):

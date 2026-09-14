@@ -48,8 +48,8 @@ export async function handleDoctorPasswordResetRequest(req: Request): Promise<Re
       return badRequestResponse("Missing required fields: email, clinicId");
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseUrl = Deno.env.get("SB_URL");
+    const supabaseKey = Deno.env.get("SB_SERVICE_ROLE_KEY");
 
     if (!supabaseUrl || !supabaseKey) {
       return errorResponse("Server configuration error", 500);
@@ -127,8 +127,8 @@ export async function handleDoctorPasswordResetConfirm(req: Request): Promise<Re
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const supabaseUrl = Deno.env.get("SB_URL");
+    const supabaseKey = Deno.env.get("SB_SERVICE_ROLE_KEY");
 
     if (!supabaseUrl || !supabaseKey) {
       return errorResponse("Server configuration error", 500);
@@ -225,8 +225,8 @@ export async function handleDoctorPasswordChange(req: Request): Promise<Response
         );
       }
 
-      const supabaseUrl = Deno.env.get("SUPABASE_URL");
-      const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+      const supabaseUrl = Deno.env.get("SB_URL");
+      const supabaseKey = Deno.env.get("SB_SERVICE_ROLE_KEY");
 
       if (!supabaseUrl || !supabaseKey) {
         return errorResponse("Server configuration error", 500);

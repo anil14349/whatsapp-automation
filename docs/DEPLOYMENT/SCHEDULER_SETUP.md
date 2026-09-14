@@ -46,7 +46,7 @@ Add to your Supabase project settings (or `.env.local`):
 
 ```env
 # Supabase (should already be set)
-SUPABASE_URL=https://<project-id>.supabase.co
+SB_URL=https://<project-id>.supabase.co
 SUPABASE_SERVICE_KEY=<service-key-with-admin-privileges>
 
 # WhatsApp Cloud API

@@ -71,9 +71,9 @@ curl -H "Authorization: Bearer $ACCESS_TOKEN" \
 ### Required (Production)
 
 ```
-SUPABASE_URL=https://[project].supabase.co
-SUPABASE_ANON_KEY=[your-key]
-SUPABASE_SERVICE_ROLE_KEY=[your-key]
+SB_URL=https://[project].supabase.co
+SB_ANON_KEY=[your-key]
+SB_SERVICE_ROLE_KEY=[your-key]
 WHATSAPP_ACCESS_TOKEN=[your-token]
 WHATSAPP_PHONE_NUMBER_ID=[your-id]
 WHATSAPP_VERIFY_TOKEN=[your-token]

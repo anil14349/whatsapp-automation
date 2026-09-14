@@ -21,9 +21,9 @@ Create `tests/config.ts`:
 
 ```typescript
 export const TEST_CONFIG = {
-    SUPABASE_URL: Deno.env.get("SUPABASE_URL") || "http://localhost:54321",
-    SUPABASE_ANON_KEY: Deno.env.get("SUPABASE_ANON_KEY") || "eyJhbGc...",
-    SUPABASE_SERVICE_ROLE_KEY: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "eyJhbGc...",
+    SB_URL: Deno.env.get("SB_URL") || "http://localhost:54321",
+    SB_ANON_KEY: Deno.env.get("SB_ANON_KEY") || "eyJhbGc...",
+    SB_SERVICE_ROLE_KEY: Deno.env.get("SB_SERVICE_ROLE_KEY") || "eyJhbGc...",
     WHATSAPP_VERIFY_TOKEN: "test-token",
     WHATSAPP_POST_TOKEN: "test-post-token",
     TEST_PHONE: "919876543210",
@@ -112,8 +112,8 @@ import { createClient } from "@supabase/supabase-js";
 import { logWhatsAppMessage, logError } from "../functions/shared/logger.ts";
 
 const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    Deno.env.get("SB_URL")!,
+    Deno.env.get("SB_SERVICE_ROLE_KEY")!
 );
 
 Deno.test("Logger", async (t) => {
@@ -165,8 +165,8 @@ import {
 } from "../functions/shared/message-processor.ts";
 
 const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    Deno.env.get("SB_URL")!,
+    Deno.env.get("SB_SERVICE_ROLE_KEY")!
 );
 
 Deno.test("Message Processor", async (t) => {
@@ -255,7 +255,7 @@ import { createClient } from "@supabase/supabase-js";
 const WEBHOOK_URL = "http://localhost:54321/functions/v1/webhook?token=test-post-token";
 const supabase = createClient(
     "http://localhost:54321",
-    Deno.env.get("SUPABASE_ANON_KEY")!
+    Deno.env.get("SB_ANON_KEY")!
 );
 
 Deno.test("Webhook Message Processing", async (t) => {
@@ -360,7 +360,7 @@ import { createClient } from "@supabase/supabase-js";
 const WEBHOOK_URL = "http://localhost:54321/functions/v1/webhook?token=test-post-token";
 const supabase = createClient(
     "http://localhost:54321",
-    Deno.env.get("SUPABASE_ANON_KEY")!
+    Deno.env.get("SB_ANON_KEY")!
 );
 
 async function sendMessage(phone: string, text: string): Promise<void> {
@@ -666,8 +666,8 @@ beforeEach(async () => {
 **Solution:**
 ```bash
 # Create .env.test file
-export SUPABASE_URL=http://localhost:54321
-export SUPABASE_ANON_KEY=eyJ...
+export SB_URL=http://localhost:54321
+export SB_ANON_KEY=eyJ...
 
 # Source before running
 source .env.test

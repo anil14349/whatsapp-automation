@@ -322,7 +322,7 @@ export async function runReminderScheduler(
  * Cloud Function handler - triggered by Cloud Scheduler (every minute)
  * 
  * Environment Variables Required:
- * - SUPABASE_URL
+ * - SB_URL
  * - SUPABASE_SERVICE_KEY (with admin privileges)
  * - WHATSAPP_BUSINESS_ACCOUNT_ID
  * - WHATSAPP_API_ACCESS_TOKEN
@@ -342,7 +342,7 @@ export async function handleScheduledReminders(req: Request): Promise<Response> 
         }
 
         // Initialize Supabase client
-        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        const supabaseUrl = Deno.env.get("SB_URL");
         const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_KEY");
 
         if (!supabaseUrl || !supabaseServiceKey) {

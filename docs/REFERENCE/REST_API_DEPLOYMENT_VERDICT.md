@@ -114,8 +114,8 @@ supabase functions deploy
 
 **Environment Variables** (add to Supabase Dashboard):
 ```
-□ SUPABASE_URL = https://your-project.supabase.co
-□ SUPABASE_SERVICE_ROLE_KEY = your-service-role-key
+□ SB_URL = https://your-project.supabase.co
+□ SB_SERVICE_ROLE_KEY = your-service-role-key
 □ JWT_SECRET = (use: openssl rand -base64 32)
 ```
 

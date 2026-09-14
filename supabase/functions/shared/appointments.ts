@@ -39,8 +39,8 @@ export async function bookAppointment(
     request: AppointmentRequest
 ): Promise<AppointmentResponse> {
     const client = new MultiClinicSupabaseClient(
-        Deno.env.get("SUPABASE_URL") || "",
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+        Deno.env.get("SB_URL") || "",
+        Deno.env.get("SB_SERVICE_ROLE_KEY") || ""
     );
 
     try {
@@ -302,15 +302,13 @@ export async function cancelAppointment(
     reason?: string
 ): Promise<AppointmentResponse> {
     const client = new MultiClinicSupabaseClient(
-        Deno.env.get("SUPABASE_URL") || "",
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+        Deno.env.get("SB_URL") || "",
+        Deno.env.get("SB_SERVICE_ROLE_KEY") || ""
     );
 
     try {
         // Fetch appointment details
         const appointment = await client.getAppointment("DEFAULT_CLINIC", appointmentId);
-            "A:J"
-        );
 
         const appointmentRow = allAppointments.find(
             (row: any[]) => row[0] === appointmentId
@@ -394,8 +392,8 @@ export async function rescheduleAppointment(
     newTime: string
 ): Promise<AppointmentResponse> {
     const client = new MultiClinicSupabaseClient(
-        Deno.env.get("SUPABASE_URL") || "",
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+        Deno.env.get("SB_URL") || "",
+        Deno.env.get("SB_SERVICE_ROLE_KEY") || ""
     );
 
     try {
@@ -525,8 +523,8 @@ export async function getAvailableSlots(
 ): Promise<string[]> {
     try {
         const client = new MultiClinicSupabaseClient(
-            Deno.env.get("SUPABASE_URL") || "",
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+            Deno.env.get("SB_URL") || "",
+            Deno.env.get("SB_SERVICE_ROLE_KEY") || ""
         );
 
         // Validate date

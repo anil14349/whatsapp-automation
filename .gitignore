@@ -33,3 +33,5 @@ Thumbs.db
 # Misc
 .cache/
 *.pid
+supabase/.temp/*
+supabase/supabase/.temp/*

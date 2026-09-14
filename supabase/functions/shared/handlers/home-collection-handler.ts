@@ -21,8 +21,8 @@ export class HomeCollectionHandler {
         this.supabase = supabase;
         this.whatsappClient = whatsappClient;
         this.supabaseClient = new MultiClinicSupabaseClient(
-            Deno.env.get("SUPABASE_URL") || "",
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+            Deno.env.get("SB_URL") || "",
+            Deno.env.get("SB_SERVICE_ROLE_KEY") || ""
         );
     }
 

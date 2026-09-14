@@ -131,8 +131,8 @@ New Supabase tables:
 ### Required
 
 ```
-SUPABASE_URL=https://xxx.supabase.co
-SUPABASE_ANON_KEY=xxx
+SB_URL=https://xxx.supabase.co
+SB_ANON_KEY=xxx
 WHATSAPP_ACCESS_TOKEN=xxx
 WHATSAPP_PHONE_NUMBER_ID=xxx
 WHATSAPP_VERIFY_TOKEN=xxx

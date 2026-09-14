@@ -18,9 +18,9 @@ This guide covers deployment, monitoring, and operational procedures for Supabas
 Production environment must have:
 
 ```bash
-SUPABASE_URL=https://[project].supabase.co
-SUPABASE_ANON_KEY=[your-anon-key]
-SUPABASE_SERVICE_ROLE_KEY=[your-service-role-key]
+SB_URL=https://[project].supabase.co
+SB_ANON_KEY=[your-anon-key]
+SB_SERVICE_ROLE_KEY=[your-service-role-key]
 WHATSAPP_ACCESS_TOKEN=[your-access-token]
 WHATSAPP_PHONE_NUMBER_ID=[your-phone-id]
 WHATSAPP_VERIFY_TOKEN=[your-verify-token]

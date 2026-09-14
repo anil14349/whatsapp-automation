@@ -25,8 +25,8 @@ export class DoctorFlowHandler {
         this.supabase = supabase;
         this.whatsappClient = whatsappClient;
         this.supabaseClient = new MultiClinicSupabaseClient(
-            Deno.env.get("SUPABASE_URL") || "",
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+            Deno.env.get("SB_URL") || "",
+            Deno.env.get("SB_SERVICE_ROLE_KEY") || ""
         );
     }
 
@@ -215,12 +215,6 @@ export class DoctorFlowHandler {
             );
         }
     }
-            phone,
-            `✅ Welcome, Dr. ${doctor.name}! 👋\n\nYou are now logged into the doctor portal.`
-        );
-
-        await this.showMenu(phone);
-    }
 
     /**
      * DOCTOR_MENU - Show doctor portal options
@@ -295,23 +289,6 @@ export class DoctorFlowHandler {
 
             default:
                 await this.showMenu(phone);
-        }
-    }
-        } else if (choice === "3" || choice === "appointments") {
-            await this.updateSession(phone, "DOCTOR_APPOINTMENTS", {
-                doctorId: session.data?.doctorId,
-                doctorName: session.data?.doctorName,
-                authenticated: true
-            });
-            await this.showTodayAppointments(phone, session.data?.doctorId);
-        } else if (choice === "4" || choice === "logout") {
-            await this.updateSession(phone, "DOCTOR_LOGIN", {});
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                "You have been logged out. Please login again with your PIN."
-            );
-        } else {
-            await this.showMenu(phone);
         }
     }
 
@@ -561,8 +538,6 @@ export class DoctorFlowHandler {
 
             await this.whatsappClient.sendTextMessage(phone, "❌ Cancelled.");
             await this.showMenu(phone);
-        }
-    }
         }
     }
 

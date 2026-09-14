@@ -206,8 +206,8 @@ export class PatientFlowHandler {
 
     constructor(supabase: SupabaseClient, whatsappClient: any) {
         this.supabaseClient = new MultiClinicSupabaseClient(
-            Deno.env.get("SUPABASE_URL") || "",
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+            Deno.env.get("SB_URL") || "",
+            Deno.env.get("SB_SERVICE_ROLE_KEY") || ""
         );
         // ✅ Instantiated but never used!
     }

@@ -427,8 +427,8 @@ curl -X POST https://your-supabase.functions.supabase.co/v1/api/receptionists/ap
 ## Environment Variables Required
 
 ```bash
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SB_URL=https://your-project.supabase.co
+SB_SERVICE_ROLE_KEY=your-service-role-key
 JWT_SECRET=your-jwt-secret-key
 ```
 

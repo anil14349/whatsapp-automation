@@ -126,8 +126,8 @@ Doctor: LOGIN → MENU → [AVAILABILITY | LEAVE | APPOINTMENTS | LOGOUT]
 ### Step 1: Environment Setup (15 min)
 ```bash
 # Set environment variables
-SUPABASE_URL=<your-project-url>
-SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
+SB_URL=<your-project-url>
+SB_SERVICE_ROLE_KEY=<your-service-role-key>
 DOCTOR_PORTAL_PIN=<secure-pin>
 DEFAULT_CLINIC_ID=default-clinic
 WHATSAPP_BUSINESS_ACCOUNT_ID=<your-account-id>

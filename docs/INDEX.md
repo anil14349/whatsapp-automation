@@ -121,8 +121,8 @@
 **File:** `.env.local` (created in project root)
 
 ```bash
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+SB_URL=https://your-project.supabase.co
+SB_SERVICE_ROLE_KEY=your-service-role-key
 JWT_SECRET=your-jwt-secret
 ```
 

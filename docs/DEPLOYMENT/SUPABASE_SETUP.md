@@ -16,9 +16,9 @@ After project creation:
 
 1. Go to **Settings → API**
 2. Copy and save:
-   - `SUPABASE_URL` (Project URL)
-   - `SUPABASE_ANON_KEY` (anon key)
-   - `SUPABASE_SERVICE_ROLE_KEY` (service role key - keep secret!)
+   - `SB_URL` (Project URL)
+   - `SB_ANON_KEY` (anon key)
+   - `SB_SERVICE_ROLE_KEY` (service role key - keep secret!)
 
 ## 3. Create Database Tables
 
