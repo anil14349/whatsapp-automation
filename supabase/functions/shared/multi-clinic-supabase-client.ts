@@ -548,6 +548,84 @@ export class MultiClinicSupabaseClient {
 
     return results;
   }
+
+  // ============================================================================
+  // APPOINTMENT HISTORY
+  // ============================================================================
+
+  async getPatientAppointmentHistory(
+    clinicId: string,
+    patientPhone: string,
+    limit: number = 10,
+    offset: number = 0
+  ): Promise<Array<{
+    appointment_id: string;
+    doctor_name: string;
+    appointment_date: string;
+    appointment_time: string;
+    status: string;
+    service_type: string;
+  }>> {
+    const { data, error } = await this.supabase
+      .from("appointments")
+      .select("id, doctor:doctors(name), appointment_date, appointment_time, status, service_type:service_types(name)")
+      .eq("clinic_id", clinicId)
+      .eq("patient_phone", patientPhone)
+      .eq("status", "COMPLETED")
+      .order("appointment_date", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) throw new types.ClinicError(`Failed to fetch appointment history: ${error.message}`);
+
+    return (data || []).map((apt: any) => ({
+      appointment_id: apt.id,
+      doctor_name: apt.doctor?.name || "Unknown Doctor",
+      appointment_date: apt.appointment_date,
+      appointment_time: apt.appointment_time,
+      status: apt.status,
+      service_type: apt.service_type?.name || "Service"
+    }));
+  }
+
+  async getPatientAppointmentHistoryCount(
+    clinicId: string,
+    patientPhone: string
+  ): Promise<number> {
+    const { count, error } = await this.supabase
+      .from("appointments")
+      .select("*", { count: "exact" })
+      .eq("clinic_id", clinicId)
+      .eq("patient_phone", patientPhone)
+      .eq("status", "COMPLETED");
+
+    if (error) throw new types.ClinicError(`Failed to count appointments: ${error.message}`);
+    return count || 0;
+  }
+
+  // ============================================================================
+  // CLINICS TABLE OPERATIONS
+  // ============================================================================
+
+  async updateClinicConfig(
+    clinicId: string,
+    config: {
+      clinic_name?: string;
+      clinic_phone?: string;
+      clinic_email?: string;
+      open_time?: string;
+      close_time?: string;
+      working_days?: string;
+      address?: string;
+      website?: string;
+    }
+  ): Promise<void> {
+    const { error } = await this.supabase
+      .from("clinics")
+      .update(config)
+      .eq("clinic_id", clinicId);
+
+    if (error) throw new types.ClinicError(`Failed to update clinic config: ${error.message}`);
+  }
 }
 
 export default MultiClinicSupabaseClient;

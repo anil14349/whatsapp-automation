@@ -10,6 +10,8 @@ import {
 } from "../appointments.ts";
 import { debug, info, recordAuditEvent } from "../logger.ts";
 import { isValidPatientName, normalizePhoneNumber } from "../validators.ts";
+import { AppointmentHistoryHandler } from "./appointment-history-handler.ts";
+import { getClinicConfig, getClinicGreeting } from "../clinic-config.ts";
 
 /**
  * Patient Flow Handler - Manages all patient conversation states
@@ -71,6 +73,10 @@ export class PatientFlowHandler {
 
                 case "MY_APPOINTMENTS":
                     await this.handleMyAppointments(phone, message, session);
+                    break;
+
+                case "APPOINTMENT_HISTORY":
+                    await this.handleAppointmentHistory(phone, message, session);
                     break;
 
                 case "CANCEL_SELECT":
@@ -536,16 +542,54 @@ export class PatientFlowHandler {
     }
 
     /**
-     * MY_APPOINTMENTS - Show patient's upcoming appointments
+     * MY_APPOINTMENTS - Show patient's upcoming appointments with history option
      */
     private async handleMyAppointments(
         phone: string,
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // GUARD: Explicit state validation
+        if (session.state !== "MY_APPOINTMENTS") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
+
         const language = session.data?.language || "EN";
-        await this.updateSession(phone, "MAIN_MENU", { language });
-        await this.showMyAppointments(phone, language);
+        const buttonId = message.text?.trim() || "";
+
+        // Check for history button
+        if (buttonId === "appt_history" || message.text?.toLowerCase() === "2") {
+            // Show appointment history
+            await this.updateSession(phone, "APPOINTMENT_HISTORY", { language });
+
+            const historyHandler = new AppointmentHistoryHandler(this.supabase, this.whatsappClient);
+            await historyHandler.handle(phone, session, "");
+            return;
+        }
+
+        // Default: show upcoming appointments
+        const clinicId = session.clinic_id;
+        await this.showUpcomingAppointments(phone, language, clinicId);
+    }
+
+    /**
+     * APPOINTMENT_HISTORY - Show patient's past appointments with pagination
+     */
+    private async handleAppointmentHistory(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        // GUARD: Explicit state validation
+        if (session.state !== "APPOINTMENT_HISTORY") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
+
+        const language = session.data?.language || "EN";
+        const historyHandler = new AppointmentHistoryHandler(this.supabase, this.whatsappClient);
+        await historyHandler.handle(phone, session, message.text || "");
     }
 
     /**
@@ -932,25 +976,39 @@ export class PatientFlowHandler {
     /**
      * Helper: Show patient's appointments
      */
-    private async showMyAppointments(phone: string, language: string, clinicId: string): Promise<void> {
+    private async showUpcomingAppointments(phone: string, language: string, clinicId: string): Promise<void> {
         try {
             const appointments = await this.supabaseClient.getPatientAppointments(clinicId, phone, true);
 
             if (!appointments || appointments.length === 0) {
-                await this.whatsappClient.sendTextMessage(
+                await this.whatsappClient.sendInteractiveButtonMessage(
                     phone,
                     language === "EN"
-                        ? "📋 You have no upcoming appointments."
-                        : "📋 आपके पास कोई आने वाली नियुक्तियाँ नहीं हैं।"
+                        ? "📋 You have no upcoming appointments.\n\nWould you like to book one?"
+                        : "📋 आपके पास कोई आने वाली नियुक्तियाँ नहीं हैं।\n\nक्या आप एक बुक करना चाहेंगे?",
+                    [
+                        { id: "menu_book", title: "📅 Book Appointment" },
+                        { id: "nav_menu", title: "🏠 Main Menu" }
+                    ]
                 );
             } else {
-                let message = language === "EN" ? "📋 Your Appointments:\n\n" : "📋 आपकी नियुक्तियाँ:\n\n";
+                let message = language === "EN" 
+                    ? "📋 Your Upcoming Appointments:\n\n" 
+                    : "📋 आपकी आने वाली नियुक्तियाँ:\n\n";
 
                 appointments.forEach((apt: any, idx: number) => {
-                    message += `${idx + 1}. Dr. ${apt.doctor_name || "Unknown"}\n   📅 ${apt.appointment_date} @ ${apt.appointment_time}\n   Status: ${apt.status}\n\n`;
+                    message += `${idx + 1}. 🩺 Dr. ${apt.doctor_name || "Unknown"}\n   📅 ${this.formatDate(apt.appointment_date)}\n   🕐 ${apt.appointment_time}\n   Status: ${apt.status}\n\n`;
                 });
 
-                await this.whatsappClient.sendTextMessage(phone, message);
+                // Show with history and menu buttons
+                await this.whatsappClient.sendInteractiveButtonMessage(
+                    phone,
+                    message,
+                    [
+                        { id: "appt_history", title: "📜 View History" },
+                        { id: "nav_menu", title: "🏠 Main Menu" }
+                    ]
+                );
             }
         } catch (error) {
             debug("patientFlow", "Error loading appointments", {
@@ -963,6 +1021,23 @@ export class PatientFlowHandler {
                     ? "❌ Error loading appointments. Please try again."
                     : "❌ नियुक्तियाँ लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।"
             );
+        }
+    }
+
+    /**
+     * Helper: Format date for display
+     */
+    private formatDate(dateString: string): string {
+        try {
+            const date = new Date(dateString);
+            const formatter = new Intl.DateTimeFormat("en-IN", {
+                day: "numeric",
+                month: "short",
+                year: "numeric"
+            });
+            return formatter.format(date);
+        } catch {
+            return dateString;
         }
     }
 
