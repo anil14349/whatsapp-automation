@@ -30,9 +30,13 @@ interface PasswordResetConfirm {
  */
 function generateResetToken(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  // Math.random() is predictable and must never mint a reset token.
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+
   let token = "";
-  for (let i = 0; i < 32; i++) {
-    token += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < bytes.length; i++) {
+    token += chars.charAt(bytes[i] % chars.length);
   }
   return token;
 }
@@ -280,3 +284,18 @@ export async function handleReceptionistPasswordChange(req: Request): Promise<Re
     }
   });
 }
+
+Deno.serve((req) => {
+    // Sub-action is the last path segment: /request, /confirm or /change.
+    const action = new URL(req.url).pathname.split("/").filter(Boolean).pop();
+
+    if (action === "confirm") {
+        return handleReceptionistPasswordResetConfirm(req);
+    }
+
+    if (action === "change") {
+        return handleReceptionistPasswordChange(req);
+    }
+
+    return handleReceptionistPasswordResetRequest(req);
+});

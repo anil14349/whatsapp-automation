@@ -324,3 +324,5 @@ async function handleGetAvailableSlots(req: Request): Promise<Response> {
         );
     }
 }
+
+Deno.serve((req) => handleAppointmentRequest(req));
