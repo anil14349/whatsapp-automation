@@ -265,6 +265,29 @@ async function handleGreeting(
             supabase
         );
     } else {
+        // Returning patients keep the language they chose last time.
+        const { data: knownPatient } = await supabase
+            .from("patients")
+            .select("preferred_language")
+            .eq("phone", phone)
+            .maybeSingle();
+
+        const savedLanguage = knownPatient?.preferred_language;
+
+        if (savedLanguage) {
+            await updateSession(supabase, phone, {
+                state: "MAIN_MENU",
+                data: { language: savedLanguage }
+            });
+
+            const handler = new PatientFlowHandler(supabase, whatsappClient);
+            await handler.handle(
+                { ...session, state: "MAIN_MENU", data: { language: savedLanguage } },
+                { type: "text", text: "" }
+            );
+            return;
+        }
+
         // For patients, reset to language selection
         await updateSession(supabase, phone, {
             state: "LANGUAGE_SELECT",

@@ -155,6 +155,15 @@ export class PatientFlowHandler {
         // Parse selected language
         const selectedLanguage = buttonId === BUTTON_IDS.LANGUAGE.EN ? "EN" : "HI";
 
+        // Remember it so returning patients are not asked again.
+        try {
+            await this.supabaseClient.setPatientLanguage(phone, selectedLanguage);
+        } catch (error) {
+            debug("patientFlow", "Could not persist language preference", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+        }
+
         // Update session
         await this.updateSession(phone, "MAIN_MENU", { language: selectedLanguage });
 
@@ -637,6 +646,18 @@ export class PatientFlowHandler {
 
                 const serviceTypeId = await this.supabaseClient.getServiceTypeIdByCode("CONSULTATION");
 
+                // Keep a patient record so history and preferences have an owner.
+                try {
+                    await this.supabaseClient.getOrCreatePatient(
+                        phone,
+                        session.data?.patientName || "Patient"
+                    );
+                } catch (patientError) {
+                    debug("patientFlow", "Could not upsert patient record", {
+                        error: patientError instanceof Error ? patientError.message : String(patientError)
+                    });
+                }
+
                 const appointment = await this.supabaseClient.createAppointment({
                     clinic_id: clinicId,
                     patient_phone: phone,
@@ -683,6 +704,18 @@ export class PatientFlowHandler {
                 // Notify doctor
                 await this.notifyDoctorNewBooking(session.data?.selectedDoctorId, clinicId, session.data, language);
             } catch (error) {
+                // Someone claimed the slot between selection and insert.
+                if (error instanceof Error && error.message === "SLOT_TAKEN") {
+                    await this.whatsappClient.sendTextMessage(
+                        phone,
+                        "That time was just booked by someone else. Please choose another slot."
+                    );
+
+                    await this.updateSession(phone, "MAIN_MENU", { language });
+                    await this.showMainMenu(phone, language);
+                    return;
+                }
+
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"

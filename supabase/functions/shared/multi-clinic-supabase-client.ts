@@ -344,6 +344,11 @@ export class MultiClinicSupabaseClient {
       .select()
       .single();
 
+    // 23505 means the slot's unique index rejected a concurrent booking.
+    if (error?.code === "23505") {
+      throw new types.ClinicError("SLOT_TAKEN");
+    }
+
     if (error) throw new types.ClinicError(`Failed to create appointment: ${error.message}`);
     return data;
   }
@@ -526,6 +531,41 @@ export class MultiClinicSupabaseClient {
 
     if (error) throw new types.ClinicError(`Failed to create patient: ${error.message}`);
     return data;
+  }
+
+  async getPatientLanguage(phone: string): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from("patients")
+      .select("preferred_language")
+      .eq("phone", phone)
+      .maybeSingle();
+
+    if (error) throw new types.ClinicError(`Failed to read patient language: ${error.message}`);
+    return data?.preferred_language ?? null;
+  }
+
+  async setPatientLanguage(phone: string, language: string, name?: string): Promise<void> {
+    const { data: existing } = await this.supabase
+      .from("patients")
+      .select("id")
+      .eq("phone", phone)
+      .maybeSingle();
+
+    if (existing) {
+      const { error } = await this.supabase
+        .from("patients")
+        .update({ preferred_language: language, updated_at: new Date().toISOString() })
+        .eq("phone", phone);
+
+      if (error) throw new types.ClinicError(`Failed to save patient language: ${error.message}`);
+      return;
+    }
+
+    const { error } = await this.supabase
+      .from("patients")
+      .insert({ phone, name: name || "Patient", preferred_language: language });
+
+    if (error) throw new types.ClinicError(`Failed to save patient language: ${error.message}`);
   }
 
   // ============================================================================
