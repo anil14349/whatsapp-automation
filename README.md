@@ -10,6 +10,7 @@ All documentation has been organized in the `/docs` folder. **Start here:**
 
 - **📖 [Documentation Index](./docs/INDEX.md)** — Complete guide to all documentation
 - **🚀 [Getting Started](./docs/GETTING_STARTED.md)** — Setup & configuration
+- **⚙️ [Environment Template](./.env.example)** — Copy to `.env.local` and fill in secrets
 - **🔐 [Security Guide](./docs/SECURITY/SECURITY_FEATURES_IMPLEMENTATION.md)** — Bcrypt, rate limiting, password reset
 - **🌐 [Deployment Guide](./docs/DEPLOYMENT/DEPLOYMENT_GUIDE.md)** — Step-by-step deployment
 - **✅ [Testing Guide](./docs/TESTING/TESTING_GUIDE.md)** — Test strategy & verification
