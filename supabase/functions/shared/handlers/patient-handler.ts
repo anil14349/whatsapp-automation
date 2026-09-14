@@ -13,6 +13,7 @@ import { debug, info, recordAuditEvent } from "../logger.ts";
 import { isValidPatientName, normalizePhoneNumber, isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
 import { AppointmentHistoryHandler } from "./appointment-history-handler.ts";
 import { WaitlistHandler } from "./waitlist-handler.ts";
+import { FeedbackHandler } from "./feedback-handler.ts";
 import { getClinicConfig, getClinicGreeting } from "../clinic-config.ts";
 import {
     isSupportedLanguageButton,
@@ -72,6 +73,16 @@ export class PatientFlowHandler {
                 case "WAITLIST_CONFIRM":
                     await new WaitlistHandler(this.supabase, this.whatsappClient)
                         .handleWaitlistConfirm(phone, session, message.text?.trim() || "");
+                    break;
+
+                case "FEEDBACK_RATING":
+                    await new FeedbackHandler(this.supabase, this.whatsappClient)
+                        .handleRating(phone, message, session);
+                    break;
+
+                case "FEEDBACK_COMMENTS":
+                    await new FeedbackHandler(this.supabase, this.whatsappClient)
+                        .handleComments(phone, message, session);
                     break;
 
                 case "BOOK_DOCTOR":

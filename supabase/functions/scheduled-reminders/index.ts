@@ -17,6 +17,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppClient } from "../shared/whatsapp-client.ts";
 import { runReminderScheduler } from "../shared/appointment-reminder-scheduler.ts";
 import { runHomeCollectionReminderScheduler } from "../shared/home-collection-reminder-scheduler.ts";
+import { FeedbackHandler } from "../shared/handlers/feedback-handler.ts";
 import { debug } from "../shared/logger.ts";
 
 Deno.serve(async (req: Request) => {
@@ -119,12 +120,39 @@ Deno.serve(async (req: Request) => {
             .in("clinic_id", clinicIds)
             .eq("status", "CONFIRMED")
             .lt("appointment_date", today)
-            .select("id");
+            .select("id, clinic_id, patient_phone, patient_name, doctor_id");
 
         if (completeError) {
             debug("scheduledReminders", "Failed to auto-complete appointments", {
                 error: completeError.message
             });
+        }
+
+        // Ask for feedback once an appointment has been completed.
+        let surveysSent = 0;
+
+        if (completed && completed.length > 0) {
+            const feedback = new FeedbackHandler(supabase, whatsappClient);
+
+            for (const appointment of completed) {
+                const { data: doctor } = await supabase
+                    .from("doctors")
+                    .select("name")
+                    .eq("id", appointment.doctor_id)
+                    .maybeSingle();
+
+                const sent = await feedback.sendFeedbackSurvey(
+                    appointment.clinic_id,
+                    appointment.id,
+                    appointment.patient_phone,
+                    appointment.patient_name,
+                    doctor?.name || "your doctor"
+                );
+
+                if (sent) {
+                    surveysSent++;
+                }
+            }
         }
 
         // Combine results
@@ -133,6 +161,7 @@ Deno.serve(async (req: Request) => {
             appointment_reminders: appointmentResult,
             home_collection_reminders: homeCollectionResult,
             appointments_auto_completed: completed?.length || 0,
+            feedback_surveys_sent: surveysSent,
             total_reminders_sent: appointmentResult.reminders_sent + homeCollectionResult.reminders_sent,
             total_reminders_failed: appointmentResult.reminders_failed + homeCollectionResult.reminders_failed,
             total_errors: (appointmentResult.errors?.length || 0) + (homeCollectionResult.errors?.length || 0)
