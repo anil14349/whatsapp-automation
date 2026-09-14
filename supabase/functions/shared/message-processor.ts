@@ -7,7 +7,7 @@ import { PatientFlowHandler } from "./handlers/patient-handler.ts";
 import { DoctorFlowHandler } from "./handlers/doctor-handler.ts";
 import { HomeCollectionHandler } from "./handlers/home-collection-handler.ts";
 import { getRoleByPhone } from "./config.ts";
-import { getClinicConfig } from "./clinic-config.ts";
+import { getClinicConfig, isClinicOpen, getAfterHoursMessage } from "./clinic-config.ts";
 import { getPinEntryPrompt } from "./doctor-auth.ts";
 import { BUTTON_IDS } from "./button-ids.ts";
 
@@ -50,6 +50,14 @@ export async function processMessage(
         role: session.role,
         clinic_id: session.clinic_id
     });
+
+    // ============================================================
+    // AFTER-HOURS GATE
+    // ============================================================
+
+    if (await isBlockedByAfterHours(supabase, whatsappClient, senderPhone, session)) {
+        return;
+    }
 
     // ============================================================
     // ROUTE TO HANDLER
@@ -115,6 +123,49 @@ export async function processMessage(
             context.latitude,
             context.longitude
         );
+    }
+}
+
+/**
+ * After-hours gate: reply with clinic hours instead of the menu.
+ * Only fresh/idle patient conversations are gated, so nobody is stranded
+ * halfway through a booking when the clinic closes.
+ */
+async function isBlockedByAfterHours(
+    supabase: SupabaseClient,
+    whatsappClient: WhatsAppClient,
+    senderPhone: string,
+    session: WhatsAppSession
+): Promise<boolean> {
+    if (session.role === "DOCTOR" || session.role === "HOME_COLLECTION_PERSON") {
+        return false;
+    }
+
+    const idleStates = new Set(["LANGUAGE_SELECT", "MAIN_MENU"]);
+    if (!idleStates.has(session.state)) {
+        return false;
+    }
+
+    try {
+        const config = await getClinicConfig(supabase, session.clinic_id);
+
+        if (!config.enable_after_hours_reply || isClinicOpen(config, new Date())) {
+            return false;
+        }
+
+        await whatsappClient.sendTextMessage(
+            senderPhone,
+            getAfterHoursMessage(config),
+            supabase
+        );
+
+        return true;
+    } catch (error) {
+        // A config lookup failure must never silence the bot.
+        debug("processMessage", "After-hours check failed, allowing message", {
+            error: error instanceof Error ? error.message : String(error)
+        });
+        return false;
     }
 }
 
