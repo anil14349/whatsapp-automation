@@ -35,19 +35,23 @@ export class WaitlistHandler {
         doctorName: string,
         session: WhatsAppSession
     ): Promise<void> {
-        // A whole date can be full, in which case there is no specific time.
-        const slotText = !time || time === "ANY" ? `on ${date}` : `on ${date} at ${time}`;
+        const isEn = (session.data?.language || "EN") === "EN";
 
-        const message =
-            `❌ No slots available for ${doctorName} ${slotText}.\n\n` +
-            `Would you like to join the waitlist? We'll notify you if a slot becomes available.`;
+        // A whole date can be full, in which case there is no specific time.
+        const slotText = !time || time === "ANY" ? date : `${date} ${time}`;
+
+        const message = isEn
+            ? `❌ No slots available for ${doctorName} on ${slotText}.\n\n` +
+              `Would you like to join the waitlist? We'll notify you if a slot becomes available.`
+            : `❌ ${slotText} को ${doctorName} के लिए कोई स्लॉट उपलब्ध नहीं है।\n\n` +
+              `क्या आप प्रतीक्षा सूची में शामिल होना चाहेंगे? स्लॉट खाली होने पर हम आपको सूचित करेंगे।`;
 
         await this.whatsappClient.sendInteractiveButtonMessage(
             phone,
             message,
             [
-                { id: "waitlist_yes", title: "Join Waitlist" },
-                { id: "waitlist_no", title: "Pick Another Date" }
+                { id: "waitlist_yes", title: isEn ? "Join Waitlist" : "सूची में जुड़ें" },
+                { id: "waitlist_no", title: isEn ? "Pick Another Date" : "दूसरी तारीख चुनें" }
             ],
             this.supabase
         );
@@ -66,10 +70,15 @@ export class WaitlistHandler {
             return false;
         }
 
+        const isEn = (session.data?.language || "EN") === "EN";
+
         if (!isValidConfirmationButton(buttonId) && buttonId !== "waitlist_yes" && buttonId !== "waitlist_no") {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "Please tap a button to confirm."
+                isEn
+                    ? "Please tap a button to confirm."
+                    : "कृपया पुष्टि के लिए बटन दबाएं।",
+                this.supabase
             );
             return true;
         }
@@ -85,14 +94,27 @@ export class WaitlistHandler {
             );
 
             if (result.success) {
+                const whenText =
+                    !session.data?.time || session.data?.time === "ANY"
+                        ? ""
+                        : `🕐 ${session.data?.time}\n`;
+
                 await this.whatsappClient.sendTextMessage(
                     phone,
-                    `✅ You've been added to the waitlist!\n\n` +
-                        `🩺 Doctor: ${session.data?.doctorName}\n` +
-                        `📅 Requested Date: ${session.data?.date}\n` +
-                        `🕐 Requested Time: ${session.data?.time}\n\n` +
-                        `Position: #${result.position}\n\n` +
-                        `We'll notify you via WhatsApp if this slot becomes available.`
+                    isEn
+                        ? `✅ You've been added to the waitlist!\n\n` +
+                          `🩺 Doctor: ${session.data?.doctorName}\n` +
+                          `📅 Date: ${session.data?.date}\n` +
+                          whenText +
+                          `\nPosition: #${result.position}\n\n` +
+                          `We'll notify you on WhatsApp if a slot opens up.`
+                        : `✅ आपको प्रतीक्षा सूची में जोड़ दिया गया है!\n\n` +
+                          `🩺 डॉक्टर: ${session.data?.doctorName}\n` +
+                          `📅 तारीख: ${session.data?.date}\n` +
+                          whenText +
+                          `\nक्रम संख्या: #${result.position}\n\n` +
+                          `स्लॉट खाली होने पर हम आपको WhatsApp पर सूचित करेंगे।`,
+                    this.supabase
                 );
 
                 // Reset session to main menu
@@ -102,7 +124,10 @@ export class WaitlistHandler {
             } else {
                 await this.whatsappClient.sendTextMessage(
                     phone,
-                    `❌ Failed to add to waitlist: ${result.error}`
+                    isEn
+                        ? `❌ Could not add you to the waitlist. Please try again.`
+                        : `❌ आपको प्रतीक्षा सूची में नहीं जोड़ा जा सका। कृपया पुनः प्रयास करें।`,
+                    this.supabase
                 );
             }
         } else if (buttonId === "waitlist_no" || buttonId === BUTTON_IDS.CONFIRMATION.NO) {
@@ -115,7 +140,9 @@ export class WaitlistHandler {
 
             await this.whatsappClient.sendTextMessage(
                 phone,
-                `Please select a different date (YYYY-MM-DD):`,
+                isEn
+                    ? `Please select a different date (YYYY-MM-DD):`
+                    : `कृपया दूसरी तारीख चुनें (YYYY-MM-DD):`,
                 this.supabase
             );
         }
@@ -244,16 +271,30 @@ export class WaitlistHandler {
             }
 
             // Notify the patient
-            const timeLine = !time || time === "ANY" ? "" : `🕐 Time: ${time}\n`;
+            const { data: patient } = await this.supabase
+                .from("patients")
+                .select("preferred_language")
+                .eq("phone", data.phone)
+                .maybeSingle();
+
+            const isEn = (patient?.preferred_language || "EN") === "EN";
+            const timeLine = !time || time === "ANY" ? "" : `🕐 ${time}\n`;
 
             await this.whatsappClient.sendTextMessage(
                 data.phone,
-                `🎉 Good news!\n\n` +
-                    `A slot has become available that you were waiting for.\n\n` +
-                    `📅 Date: ${date}\n` +
-                    timeLine +
-                    `\nWould you like to book this appointment?\n\n` +
-                    `Send "Hi" to start booking.`,
+                isEn
+                    ? `🎉 Good news!\n\n` +
+                      `A slot has become available that you were waiting for.\n\n` +
+                      `📅 Date: ${date}\n` +
+                      timeLine +
+                      `\nWould you like to book this appointment?\n\n` +
+                      `Send "Hi" to start booking.`
+                    : `🎉 खुशखबरी!\n\n` +
+                      `जिस स्लॉट का आप इंतज़ार कर रहे थे वह खाली हो गया है।\n\n` +
+                      `📅 तारीख: ${date}\n` +
+                      timeLine +
+                      `\nक्या आप यह नियुक्ति बुक करना चाहेंगे?\n\n` +
+                      `बुकिंग शुरू करने के लिए "Hi" भेजें।`,
                 this.supabase
             );
 

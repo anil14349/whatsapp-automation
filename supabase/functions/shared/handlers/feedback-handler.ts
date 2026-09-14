@@ -7,12 +7,12 @@ import { debug } from "../logger.ts";
  * Mirrors the monolith's 1-5 rating plus optional free-text comments.
  */
 
-const RATING_LABELS: Array<{ value: number; label: string }> = [
-    { value: 5, label: "⭐⭐⭐⭐⭐ Excellent" },
-    { value: 4, label: "⭐⭐⭐⭐ Very Good" },
-    { value: 3, label: "⭐⭐⭐ Good" },
-    { value: 2, label: "⭐⭐ Fair" },
-    { value: 1, label: "⭐ Poor" }
+const RATING_LABELS: Array<{ value: number; label: string; labelHi: string }> = [
+    { value: 5, label: "⭐⭐⭐⭐⭐ Excellent", labelHi: "⭐⭐⭐⭐⭐ उत्कृष्ट" },
+    { value: 4, label: "⭐⭐⭐⭐ Very Good", labelHi: "⭐⭐⭐⭐ बहुत अच्छा" },
+    { value: 3, label: "⭐⭐⭐ Good", labelHi: "⭐⭐⭐ अच्छा" },
+    { value: 2, label: "⭐⭐ Fair", labelHi: "⭐⭐ ठीक-ठाक" },
+    { value: 1, label: "⭐ Poor", labelHi: "⭐ खराब" }
 ];
 
 export const FEEDBACK_SKIP_ID = "feedback_skip";
@@ -52,16 +52,46 @@ export class FeedbackHandler {
                 return false;
             }
 
+            const { data: session } = await this.supabase
+                .from("whatsapp_sessions")
+                .select("state, data")
+                .eq("phone", patientPhone)
+                .eq("clinic_id", clinicId)
+                .maybeSingle();
+
+            // Never interrupt someone mid-flow; their booking context would be lost.
+            const idleStates = ["LANGUAGE_SELECT", "MAIN_MENU", ""];
+            const isIdle = !session || idleStates.includes(session.state || "");
+
+            if (!isIdle) {
+                debug("feedback", "Patient is mid-flow, survey not sent", {
+                    appointmentId,
+                    state: session.state
+                });
+
+                await this.supabase
+                    .from("feedback")
+                    .delete()
+                    .eq("appointment_id", appointmentId);
+
+                return false;
+            }
+
+            const language = session?.data?.language || "EN";
+            const isEn = language === "EN";
+
             await this.whatsappClient.sendInteractiveListMessage(
                 patientPhone,
-                `⭐ How was your experience with Dr. ${doctorName}?\n\nYour feedback helps us improve.`,
-                "Rate us",
+                isEn
+                    ? `⭐ How was your experience with Dr. ${doctorName}?\n\nYour feedback helps us improve.`
+                    : `⭐ डॉ. ${doctorName} के साथ आपका अनुभव कैसा रहा?\n\nआपकी प्रतिक्रिया से हमें सुधार करने में मदद मिलती है।`,
+                isEn ? "Rate us" : "रेटिंग दें",
                 [
                     {
-                        title: "Your rating",
+                        title: isEn ? "Your rating" : "आपकी रेटिंग",
                         rows: RATING_LABELS.map((item) => ({
                             id: `feedback_rating_${item.value}`,
-                            title: item.label
+                            title: isEn ? item.label : item.labelHi
                         }))
                     }
                 ],
@@ -72,7 +102,11 @@ export class FeedbackHandler {
                 .from("whatsapp_sessions")
                 .update({
                     state: "FEEDBACK_RATING",
-                    data: { appointmentId, doctorName },
+                    data: {
+                        appointmentId,
+                        doctorName,
+                        language: session?.data?.language || "EN"
+                    },
                     updated_at: new Date().toISOString()
                 })
                 .eq("phone", patientPhone)
@@ -99,11 +133,14 @@ export class FeedbackHandler {
         const reply = message.text?.trim() || "";
         const fromRow = reply.startsWith("feedback_rating_") ? reply.substring(16) : reply;
         const rating = Number(fromRow);
+        const isEn = (session.data?.language || "EN") === "EN";
 
         if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "Please tap one of the star ratings, or reply with a number from 1 to 5.",
+                isEn
+                    ? "Please tap one of the star ratings, or reply with a number from 1 to 5."
+                    : "कृपया कोई एक रेटिंग चुनें, या 1 से 5 के बीच कोई संख्या भेजें।",
                 this.supabase
             );
             return;
@@ -123,8 +160,10 @@ export class FeedbackHandler {
 
         await this.whatsappClient.sendInteractiveButtonMessage(
             phone,
-            `Thank you for rating us ${rating}/5!\n\nWould you like to add a comment?`,
-            [{ id: FEEDBACK_SKIP_ID, title: "No thanks" }],
+            isEn
+                ? `Thank you for rating us ${rating}/5!\n\nWould you like to add a comment?`
+                : `${rating}/5 रेटिंग देने के लिए धन्यवाद!\n\nक्या आप कोई टिप्पणी जोड़ना चाहेंगे?`,
+            [{ id: FEEDBACK_SKIP_ID, title: isEn ? "No thanks" : "नहीं, धन्यवाद" }],
             this.supabase
         );
     }
@@ -158,9 +197,13 @@ export class FeedbackHandler {
 
         await this.whatsappClient.sendTextMessage(
             phone,
-            skipped
-                ? "Thank you for your feedback! 🙏"
-                : "Thank you! Your comments have been shared with the clinic. 🙏",
+            (session.data?.language || "EN") === "EN"
+                ? skipped
+                    ? "Thank you for your feedback! 🙏"
+                    : "Thank you! Your comments have been shared with the clinic. 🙏"
+                : skipped
+                  ? "आपकी प्रतिक्रिया के लिए धन्यवाद! 🙏"
+                  : "धन्यवाद! आपकी टिप्पणी क्लीनिक को भेज दी गई है। 🙏",
             this.supabase
         );
     }
