@@ -73,6 +73,18 @@ export class DoctorFlowHandler {
                     await this.handleCancel(phone, message, session);
                     break;
 
+                case "DOCTOR_MARK_STATUS":
+                    await this.handleMarkStatus(phone, message, session);
+                    break;
+
+                case "DOCTOR_MARK_STATUS_SELECT":
+                    await this.handleMarkStatusSelect(phone, message, session);
+                    break;
+
+                case "DOCTOR_MARK_STATUS_CONFIRM":
+                    await this.handleMarkStatusConfirm(phone, message, session);
+                    break;
+
                 default:
                     await this.handleMenu(phone, message, session);
             }
@@ -264,9 +276,21 @@ export class DoctorFlowHandler {
                 await this.showAppointments(phone, session);
                 break;
 
-            case BUTTON_IDS.DOCTOR_MENU.CANCEL:
-                await this.updateSession(phone, "DOCTOR_MENU");
-                await this.showMenu(phone);
+            case BUTTON_IDS.DOCTOR_MENU.MARK_STATUS:
+                await this.updateSession(phone, "DOCTOR_MARK_STATUS", {
+                    doctorId: session.data?.doctorId,
+                    doctorName: session.data?.doctorName,
+                    authenticated: true
+                });
+                await this.showMarkStatusAppointments(phone, session.data?.doctorId, session.data?.clinicId);
+                break;
+
+            case BUTTON_IDS.DOCTOR_MENU.LOGOUT:
+                await this.updateSession(phone, "DOCTOR_LOGIN", {});
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "You have been logged out. Please login again with your PIN."
+                );
                 break;
 
             default:
@@ -609,7 +633,8 @@ export class DoctorFlowHandler {
             { id: BUTTON_IDS.DOCTOR_MENU.AVAILABILITY, title: "📅 Availability" },
             { id: BUTTON_IDS.DOCTOR_MENU.LEAVE, title: "🗓️ Leave" },
             { id: BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS, title: "📋 Appointments" },
-            { id: BUTTON_IDS.DOCTOR_MENU.CANCEL, title: "🚪 Logout" }
+            { id: BUTTON_IDS.DOCTOR_MENU.MARK_STATUS, title: "✅ Mark Status" },
+            { id: BUTTON_IDS.DOCTOR_MENU.LOGOUT, title: "🚪 Logout" }
         ]);
     }
 
@@ -650,12 +675,43 @@ export class DoctorFlowHandler {
      */
     private async showTodayAppointments(phone: string, doctorId: string): Promise<void> {
         try {
-            // TODO: Query appointments for this doctor on today's date
-            // This requires filtering the Appointments sheet by doctorId and today's date
+            // Get clinic ID from session
+            const { data: session } = await this.supabase
+                .from("whatsapp_sessions")
+                .select("data")
+                .eq("phone", phone)
+                .single();
 
-            const message = `Today's Appointments:\n\n1. 10:00 - Patient Name 1\n2. 14:30 - Patient Name 2\n3. 16:00 - Patient Name 3\n\nTotal: 3 appointments`;
+            if (!session?.data?.clinicId) {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "Error: Clinic information not found."
+                );
+                return;
+            }
 
-            await this.whatsappClient.sendTextMessage(phone, message);
+            const clinicId = session.data.clinicId;
+            const today = new Date().toISOString().split("T")[0];
+
+            const appointments = await this.supabaseClient.getDoctorAppointments(clinicId, doctorId, today);
+
+            if (appointments.length === 0) {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    `📋 No appointments scheduled for today.\n\nYou're all set! 😊`
+                );
+            } else {
+                let appointmentList = "📋 Today's Appointments:\n\n";
+                appointments.forEach((apt, index) => {
+                    const patientName = apt.patient?.full_name || "Unknown";
+                    const status = apt.status || "CONFIRMED";
+                    const icon = status === "COMPLETED" ? "✅" : status === "NO_SHOW" ? "❌" : "📌";
+                    appointmentList += `${index + 1}. ${apt.appointment_time} - ${patientName} ${icon}\n`;
+                });
+                appointmentList += `\nTotal: ${appointments.length} appointment(s)`;
+
+                await this.whatsappClient.sendTextMessage(phone, appointmentList);
+            }
         } catch (error) {
             debug("doctorFlow", "Error loading appointments", {
                 error: error instanceof Error ? error.message : String(error)
@@ -665,6 +721,200 @@ export class DoctorFlowHandler {
                 phone,
                 "Error loading appointments. Please try again."
             );
+        }
+    }
+
+    /**
+     * Helper: Show appointments for marking status
+     */
+    private async showMarkStatusAppointments(phone: string, doctorId: string, clinicId: string): Promise<void> {
+        try {
+            const today = new Date().toISOString().split("T")[0];
+            const appointments = await this.supabaseClient.getDoctorAppointments(clinicId, doctorId, today);
+
+            const confirmedAppointments = appointments.filter(apt => apt.status === "CONFIRMED");
+
+            if (confirmedAppointments.length === 0) {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "✅ No pending appointments to mark.\n\nAll appointments have been processed!"
+                );
+                await this.showMenu(phone);
+            } else {
+                let appointmentList = "📌 Select appointment to mark status:\n\n";
+                confirmedAppointments.forEach((apt, index) => {
+                    const patientName = apt.patient?.full_name || "Unknown";
+                    appointmentList += `${index + 1}. ${apt.appointment_time} - ${patientName}\n`;
+                });
+                appointmentList += `\nReply with number (e.g., 1):`;
+
+                await this.whatsappClient.sendTextMessage(phone, appointmentList);
+
+                // Store appointments in session for later reference
+                await this.updateSession(phone, "DOCTOR_MARK_STATUS_SELECT", {
+                    doctorId: doctorId,
+                    doctorName: (await this.supabase
+                        .from("doctors")
+                        .select("name")
+                        .eq("id", doctorId)
+                        .single()
+                    ).data?.name,
+                    authenticated: true,
+                    clinicId: clinicId,
+                    appointments: confirmedAppointments.map(apt => ({
+                        id: apt.id,
+                        time: apt.appointment_time,
+                        patientName: apt.patient?.full_name || "Unknown",
+                        patientId: apt.patient_id
+                    }))
+                });
+            }
+        } catch (error) {
+            debug("doctorFlow", "Error loading appointments for status marking", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "Error loading appointments. Please try again."
+            );
+        }
+    }
+
+    /**
+     * DOCTOR_MARK_STATUS - Show list of appointments to mark
+     */
+    private async handleMarkStatus(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        // Explicit state validation
+        if (session.state !== "DOCTOR_MARK_STATUS") {
+            await this.showMenu(phone);
+            return;
+        }
+
+        await this.showMarkStatusAppointments(phone, session.data?.doctorId, session.data?.clinicId);
+    }
+
+    /**
+     * DOCTOR_MARK_STATUS_SELECT - Receive appointment selection and show status options
+     */
+    private async handleMarkStatusSelect(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        // Explicit state validation
+        if (session.state !== "DOCTOR_MARK_STATUS_SELECT") {
+            await this.showMenu(phone);
+            return;
+        }
+
+        const appointments = session.data?.appointments || [];
+        const choice = message.text.trim();
+        const appointmentIndex = parseInt(choice) - 1;
+
+        if (isNaN(appointmentIndex) || appointmentIndex < 0 || appointmentIndex >= appointments.length) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "❌ Invalid selection. Please reply with the appointment number:"
+            );
+            return;
+        }
+
+        const selectedAppointment = appointments[appointmentIndex];
+
+        // Store selected appointment and show status options
+        await this.updateSession(phone, "DOCTOR_MARK_STATUS_CONFIRM", {
+            doctorId: session.data?.doctorId,
+            doctorName: session.data?.doctorName,
+            authenticated: true,
+            clinicId: session.data?.clinicId,
+            selectedAppointmentId: selectedAppointment.id,
+            selectedAppointmentTime: selectedAppointment.time,
+            selectedPatientName: selectedAppointment.patientName
+        });
+
+        // Show status options
+        const message2 = `Mark appointment for ${selectedAppointment.patientName} at ${selectedAppointment.time}:\n\nSelect status:`;
+        
+        await this.whatsappClient.sendInteractiveButtonMessage(phone, message2, [
+            { id: "status_completed", title: "✅ Completed" },
+            { id: "status_no_show", title: "❌ No Show" }
+        ]);
+    }
+
+    /**
+     * DOCTOR_MARK_STATUS_CONFIRM - Confirm and update appointment status
+     */
+    private async handleMarkStatusConfirm(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        // Explicit state validation
+        if (session.state !== "DOCTOR_MARK_STATUS_CONFIRM") {
+            await this.showMenu(phone);
+            return;
+        }
+
+        const statusChoice = message.text.trim();
+        let newStatus: string;
+
+        if (statusChoice === "status_completed") {
+            newStatus = "COMPLETED";
+        } else if (statusChoice === "status_no_show") {
+            newStatus = "NO_SHOW";
+        } else {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "❌ Invalid status. Please select from the options above."
+            );
+            return;
+        }
+
+        try {
+            const appointmentId = session.data?.selectedAppointmentId;
+            const clinicId = session.data?.clinicId;
+            const patientName = session.data?.selectedPatientName;
+
+            await this.supabaseClient.updateAppointmentStatus(
+                clinicId,
+                appointmentId,
+                newStatus,
+                newStatus === "NO_SHOW" ? "Doctor marked as no-show" : undefined
+            );
+
+            const statusText = newStatus === "COMPLETED" ? "Completed ✅" : "No-Show ❌";
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                `✅ Appointment for ${patientName} marked as ${statusText}.\n\nReturning to menu...`
+            );
+
+            // Reset to menu
+            await this.updateSession(phone, "DOCTOR_MENU", {
+                doctorId: session.data?.doctorId,
+                doctorName: session.data?.doctorName,
+                authenticated: true,
+                clinicId: clinicId
+            });
+
+            await this.showMenu(phone);
+        } catch (error) {
+            debug("doctorFlow", "Error updating appointment status", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "❌ Error updating appointment status. Please try again."
+            );
+
+            // Return to mark status selection
+            await this.showMarkStatusAppointments(phone, session.data?.doctorId, session.data?.clinicId);
         }
     }
 

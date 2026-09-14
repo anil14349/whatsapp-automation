@@ -34,7 +34,8 @@ export const BUTTON_IDS = {
         AVAILABILITY: "doctor_availability",
         LEAVE: "doctor_leave",
         APPOINTMENTS: "doctor_appointments",
-        CANCEL: "doctor_cancel",
+        MARK_STATUS: "doctor_mark_status",
+        LOGOUT: "doctor_logout",
     },
     
     // Home collection menu
