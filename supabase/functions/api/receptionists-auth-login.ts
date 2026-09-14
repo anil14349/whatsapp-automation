@@ -24,6 +24,7 @@
  * }
  */
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createJwtToken } from "../shared/jwt-auth.ts";
 import { badRequestResponse, errorResponse, successResponse } from "../shared/auth-middleware.ts";
@@ -118,7 +119,7 @@ export async function handleReceptionistLogin(req: Request): Promise<Response> {
       return errorResponse("Server configuration error", 500);
     }
 
-    const supabase = new SupabaseClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get receptionist by email and clinic
     const receptionist = await getReceptionistDetails(supabase, body.email, body.clinicId);

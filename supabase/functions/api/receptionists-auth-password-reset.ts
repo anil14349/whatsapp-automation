@@ -8,6 +8,7 @@
  * Confirm password reset with token and new password
  */
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { badRequestResponse, errorResponse, successResponse, withAuth } from "../shared/auth-middleware.ts";
 import { debug } from "../shared/logger.ts";
@@ -54,7 +55,7 @@ export async function handleReceptionistPasswordResetRequest(req: Request): Prom
       return errorResponse("Server configuration error", 500);
     }
 
-    const supabase = new SupabaseClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Find receptionist by email and clinic
     const { data: receptionist, error: recError } = await supabase
@@ -134,7 +135,7 @@ export async function handleReceptionistPasswordResetConfirm(req: Request): Prom
       return errorResponse("Server configuration error", 500);
     }
 
-    const supabase = new SupabaseClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Verify reset token
     const { data: resetRecord, error: tokenError } = await supabase
@@ -232,7 +233,7 @@ export async function handleReceptionistPasswordChange(req: Request): Promise<Re
         return errorResponse("Server configuration error", 500);
       }
 
-      const supabase = new SupabaseClient(supabaseUrl, supabaseKey);
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Verify current password
       const { data: receptionist, error: recError } = await supabase

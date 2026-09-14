@@ -6,6 +6,7 @@
  * or call from webhook handler
  */
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppClient } from "./whatsapp-client.ts";
 import * as types from "./multi-clinic-types.ts";
@@ -351,7 +352,7 @@ export async function handleScheduledReminders(req: Request): Promise<Response> 
             );
         }
 
-        const supabase = new SupabaseClient(supabaseUrl, supabaseServiceKey);
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // Initialize WhatsApp client
         const businessAccountId = Deno.env.get("WHATSAPP_BUSINESS_ACCOUNT_ID");

@@ -38,6 +38,7 @@
  * }
  */
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withAuth, successResponse, errorResponse, badRequestResponse } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
@@ -277,7 +278,7 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
       return errorResponse("Server configuration error", 500);
     }
 
-    const supabase = new SupabaseClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Handle GET (list appointments)
     if (req.method === "GET") {

@@ -12,6 +12,7 @@
  * - Auth Header: Authorization: Bearer <SCHEDULER_AUTH_TOKEN>
  */
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppClient } from "../shared/whatsapp-client.ts";
 import { runReminderScheduler } from "../shared/appointment-reminder-scheduler.ts";
@@ -56,7 +57,7 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        const supabase = new SupabaseClient(supabaseUrl, supabaseServiceKey);
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // Initialize WhatsApp client
         const businessAccountId = Deno.env.get("WHATSAPP_BUSINESS_ACCOUNT_ID");

@@ -8,6 +8,7 @@
  * Confirm password reset with token and new PIN
  */
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { badRequestResponse, errorResponse, successResponse, withAuth } from "../shared/auth-middleware.ts";
 import { debug } from "../shared/logger.ts";
@@ -54,7 +55,7 @@ export async function handleDoctorPasswordResetRequest(req: Request): Promise<Re
       return errorResponse("Server configuration error", 500);
     }
 
-    const supabase = new SupabaseClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Find doctor by email and clinic
     const { data: doctor, error: docError } = await supabase
@@ -133,7 +134,7 @@ export async function handleDoctorPasswordResetConfirm(req: Request): Promise<Re
       return errorResponse("Server configuration error", 500);
     }
 
-    const supabase = new SupabaseClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Verify reset token
     const { data: resetRecord, error: tokenError } = await supabase
@@ -231,7 +232,7 @@ export async function handleDoctorPasswordChange(req: Request): Promise<Response
         return errorResponse("Server configuration error", 500);
       }
 
-      const supabase = new SupabaseClient(supabaseUrl, supabaseKey);
+      const supabase = createClient(supabaseUrl, supabaseKey);
 
       // Verify current PIN
       const { data: doctor, error: docError } = await supabase

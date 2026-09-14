@@ -109,7 +109,7 @@ export async function handleDoctorLogin(req: Request): Promise<Response> {
       return errorResponse("Server configuration error", 500);
     }
 
-    const supabase = new SupabaseClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Get doctor by email and clinic
     const doctor = await getDoctorDetails(supabase, body.email, body.clinicId);

@@ -16,6 +16,7 @@
  * }
  */
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withAuth, successResponse, errorResponse } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
@@ -67,7 +68,7 @@ async function handleGetProfile(user: TokenPayload): Promise<Response> {
       return errorResponse("Server configuration error", 500);
     }
 
-    const supabase = new SupabaseClient(supabaseUrl, supabaseKey);
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Fetch doctor profile
     const profile = await getDoctorProfile(supabase, user.userId);
