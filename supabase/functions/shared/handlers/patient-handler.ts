@@ -316,12 +316,32 @@ export class PatientFlowHandler {
             // Check availability for selected date
             const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, selectedDate, locationType);
             if (!slots || slots.length === 0) {
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    language === "EN"
-                        ? "❌ No available slots on that date. Please try another date."
-                        : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
-                );
+                // Check if doctor is unavailable (not AVAILABLE or IN_CONSULTATION)
+                const doctorAvailable = await this.supabaseClient.isDoctorAvailable(clinicId, doctorId);
+                
+                if (!doctorAvailable) {
+                    const doctorStatus = await this.supabaseClient.getDoctorAvailabilityStatus(clinicId, doctorId);
+                    const statusMessage = 
+                        doctorStatus === 'ON_BREAK'
+                            ? (language === "EN" ? "Dr. is currently on break" : "डॉ. वर्तमान में ब्रेक पर हैं")
+                            : doctorStatus === 'BUSY'
+                            ? (language === "EN" ? "Dr. is currently busy" : "डॉ. वर्तमान में व्यस्त हैं")
+                            : (language === "EN" ? "Dr. is not available" : "डॉ. उपलब्ध नहीं हैं");
+                    
+                    await this.whatsappClient.sendTextMessage(
+                        phone,
+                        language === "EN"
+                            ? `❌ ${statusMessage}. Please try another doctor or date.`
+                            : `❌ ${statusMessage}। कृपया किसी अन्य डॉक्टर या तारीख को आजमाएं।`
+                    );
+                } else {
+                    await this.whatsappClient.sendTextMessage(
+                        phone,
+                        language === "EN"
+                            ? "❌ No available slots on that date. Please try another date."
+                            : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
+                    );
+                }
                 await this.showDateMenu(phone, language);
                 return;
             }
@@ -416,12 +436,32 @@ export class PatientFlowHandler {
         // Check availability
         const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, dateString, locationType);
         if (!slots || slots.length === 0) {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                language === "EN"
-                    ? "❌ No available slots on that date. Please try another date."
-                    : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
-            );
+            // Check if doctor is unavailable (not AVAILABLE or IN_CONSULTATION)
+            const doctorAvailable = await this.supabaseClient.isDoctorAvailable(clinicId, doctorId);
+            
+            if (!doctorAvailable) {
+                const doctorStatus = await this.supabaseClient.getDoctorAvailabilityStatus(clinicId, doctorId);
+                const statusMessage = 
+                    doctorStatus === 'ON_BREAK'
+                        ? (language === "EN" ? "Dr. is currently on break" : "डॉ. वर्तमान में ब्रेक पर हैं")
+                        : doctorStatus === 'BUSY'
+                        ? (language === "EN" ? "Dr. is currently busy" : "डॉ. वर्तमान में व्यस्त हैं")
+                        : (language === "EN" ? "Dr. is not available" : "डॉ. उपलब्ध नहीं हैं");
+                
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    language === "EN"
+                        ? `❌ ${statusMessage}. Please try another doctor or date.`
+                        : `❌ ${statusMessage}। कृपया किसी अन्य डॉक्टर या तारीख को आजमाएं।`
+                );
+            } else {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    language === "EN"
+                        ? "❌ No available slots on that date. Please try another date."
+                        : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
+                );
+            }
 
             // Offer to try another date
             await this.whatsappClient.sendTextMessage(
@@ -445,9 +485,6 @@ export class PatientFlowHandler {
 
         await this.showAvailableSlots(phone, language, slots, 0);
     }
-                        ? "❌ No available slots on that date. Please try another date."
-                        : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
-                );
                 return;
             }
 
@@ -991,10 +1028,30 @@ export class PatientFlowHandler {
             let message = language === "EN" ? "👨‍⚕️ Select a doctor:\n\n" : "👨‍⚕️ एक डॉक्टर चुनें:\n\n";
 
             doctors.forEach((doc: any, idx: number) => {
-                message += `${idx + 1}. Dr. ${doc.name}\n`;
+                // Add status indicator
+                const availableStatuses = ['AVAILABLE', 'IN_CONSULTATION'];
+                const statusIndicator = availableStatuses.includes(doc.availability_status) 
+                    ? "✅" 
+                    : "⚠️";
+                
+                message += `${idx + 1}. ${statusIndicator} Dr. ${doc.name}`;
+                
+                // Add status hint for unavailable doctors
+                if (!availableStatuses.includes(doc.availability_status)) {
+                    const statusLabel = 
+                        doc.availability_status === 'ON_BREAK' 
+                            ? (language === "EN" ? "(On break)" : "(ब्रेक पर)")
+                            : doc.availability_status === 'BUSY'
+                            ? (language === "EN" ? "(Busy)" : "(व्यस्त)")
+                            : (language === "EN" ? "(Offline)" : "(ऑफलाइन)");
+                    message += ` ${statusLabel}`;
+                }
+                message += "\n";
             });
 
-            message += language === "EN" ? "\nTap a doctor to book an appointment" : "\nनियुक्ति बुक करने के लिए एक डॉक्टर दबाएं";
+            message += language === "EN" 
+                ? "\nTap a doctor to book an appointment" 
+                : "\nनियुक्ति बुक करने के लिए एक डॉक्टर दबाएं";
 
             await this.whatsappClient.sendTextMessage(phone, message);
         } catch (error) {

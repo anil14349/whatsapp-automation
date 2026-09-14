@@ -144,6 +144,49 @@ export class MultiClinicSupabaseClient {
     return data || [];
   }
 
+  /**
+   * Check if doctor is currently available (AVAILABLE or IN_CONSULTATION)
+   */
+  async isDoctorAvailable(
+    clinicId: string,
+    doctorId: string
+  ): Promise<boolean> {
+    const doctor = await this.getDoctorById(clinicId, doctorId);
+    const availableStatuses = ['AVAILABLE', 'IN_CONSULTATION'];
+    return availableStatuses.includes(doctor.availability_status);
+  }
+
+  /**
+   * Get doctor availability status
+   */
+  async getDoctorAvailabilityStatus(
+    clinicId: string,
+    doctorId: string
+  ): Promise<string> {
+    const doctor = await this.getDoctorById(clinicId, doctorId);
+    return doctor.availability_status;
+  }
+
+  /**
+   * Update doctor availability status (clinic staff only)
+   */
+  async updateDoctorAvailabilityStatus(
+    clinicId: string,
+    doctorId: string,
+    status: 'AVAILABLE' | 'BUSY' | 'ON_BREAK' | 'IN_CONSULTATION' | 'OFFLINE'
+  ): Promise<void> {
+    const { error } = await this.supabase
+      .from("doctors")
+      .update({
+        availability_status: status,
+        last_status_update: new Date().toISOString()
+      })
+      .eq("clinic_id", clinicId)
+      .eq("id", doctorId);
+
+    if (error) throw new types.ClinicError(`Failed to update doctor availability: ${error.message}`);
+  }
+
   // ============================================================================
   // DOCTOR LEAVE OPERATIONS
   // ============================================================================
@@ -328,6 +371,16 @@ export class MultiClinicSupabaseClient {
     date: string,
     locationType: string = "CLINIC"
   ): Promise<string[]> {
+    // Check doctor availability status first
+    const doctor = await this.getDoctorById(clinicId, doctorId);
+    
+    // Only show slots if doctor is AVAILABLE or IN_CONSULTATION
+    // BUSY, ON_BREAK, OFFLINE doctors shouldn't show any slots
+    const availableStatuses = ['AVAILABLE', 'IN_CONSULTATION'];
+    if (!availableStatuses.includes(doctor.availability_status)) {
+      return [];
+    }
+
     // Get doctor hours
     const dayOfWeek = new Date(date + "T00:00:00").getDay();
     const doctorHours =

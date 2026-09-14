@@ -135,6 +135,10 @@ export interface Doctor {
   can_do_home_visits: boolean;
   max_home_visits_per_day: number;
   
+  // Availability status for real-time filtering
+  availability_status: 'AVAILABLE' | 'BUSY' | 'ON_BREAK' | 'IN_CONSULTATION' | 'OFFLINE';
+  last_status_update?: string;
+  
   emergency_contact_phone?: string;
   
   created_at: string;
