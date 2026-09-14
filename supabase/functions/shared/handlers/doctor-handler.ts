@@ -40,6 +40,19 @@ export class DoctorFlowHandler {
 
             debug("doctorFlow", `Processing state: ${state}`, { phone, messageText: message.text });
 
+            // Menu buttons must work from any sub-state, otherwise a doctor who
+            // opens a sub-flow can never log out or switch task.
+            if (
+                state !== "DOCTOR_LOGIN" &&
+                session.data?.authenticated &&
+                isValidDoctorMenuButton(message.text?.trim() || "")
+            ) {
+                // Leave the sub-flow first so later input is not captured by it.
+                await this.updateSession(phone, "DOCTOR_MENU", session.data);
+                await this.handleMenu(phone, message, { ...session, state: "DOCTOR_MENU" });
+                return;
+            }
+
             switch (state) {
                 case "DOCTOR_LOGIN":
                     await this.handleLogin(phone, message, session);
@@ -604,19 +617,34 @@ export class DoctorFlowHandler {
     private async showMenu(phone: string): Promise<void> {
         const message = `👨‍⚕️ Doctor Portal Menu:\n\nTap an option below:`;
 
+        const rows = [
+            { id: BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS, title: "📋 Appointments", description: "View today's appointments" },
+            { id: BUTTON_IDS.DOCTOR_MENU.MARK_STATUS, title: "✅ Mark Status", description: "Update an appointment status" },
+            { id: BUTTON_IDS.DOCTOR_MENU.AVAILABILITY, title: "📅 Availability", description: "Set your consulting hours" },
+            { id: BUTTON_IDS.DOCTOR_MENU.LEAVE, title: "🗓️ Leave", description: "Mark yourself on leave" },
+            { id: BUTTON_IDS.DOCTOR_MENU.LOGOUT, title: "🚪 Logout", description: "End this portal session" }
+        ];
+
         // Five options exceed the 3-button limit, so use a list message.
-        await this.whatsappClient.sendInteractiveListMessage(phone, message, "Menu", [
-            {
-                title: "Doctor Portal",
-                rows: [
-                    { id: BUTTON_IDS.DOCTOR_MENU.AVAILABILITY, title: "📅 Availability" },
-                    { id: BUTTON_IDS.DOCTOR_MENU.LEAVE, title: "🗓️ Leave" },
-                    { id: BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS, title: "📋 Appointments" },
-                    { id: BUTTON_IDS.DOCTOR_MENU.MARK_STATUS, title: "✅ Mark Status" },
-                    { id: BUTTON_IDS.DOCTOR_MENU.LOGOUT, title: "🚪 Logout" }
-                ]
-            }
-        ]);
+        try {
+            await this.whatsappClient.sendInteractiveListMessage(
+                phone,
+                message,
+                "Menu",
+                [{ title: "Doctor Portal", rows }],
+                this.supabase
+            );
+        } catch (error) {
+            debug("doctorFlow", "Doctor menu list failed, sending text fallback", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                `${message}\n\n${rows.map((row) => row.title).join("\n")}`,
+                this.supabase
+            );
+        }
     }
 
     /**

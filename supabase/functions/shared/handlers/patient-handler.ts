@@ -48,6 +48,17 @@ export class PatientFlowHandler {
 
             debug("patientFlow", `Processing state: ${state}`, { phone, messageText: message.text });
 
+            // Patients often scroll up and tap an older menu button, so menu
+            // ids are honoured from any state instead of being read as input.
+            if (
+                state !== "LANGUAGE_SELECT" &&
+                state !== "MAIN_MENU" &&
+                isValidPatientMenuButton(message.text?.trim() || "")
+            ) {
+                await this.handleMainMenu(phone, message, { ...session, state: "MAIN_MENU" });
+                return;
+            }
+
             switch (state) {
                 case "LANGUAGE_SELECT":
                     await this.handleLanguageSelect(phone, message, session);
@@ -233,6 +244,7 @@ export class PatientFlowHandler {
                 break;
 
             case BUTTON_IDS.PATIENT_MENU.MORE:
+                await this.updateSession(phone, "MAIN_MENU", { language });
                 await this.showMoreMenu(phone, language);
                 break;
 
@@ -242,10 +254,12 @@ export class PatientFlowHandler {
                 break;
 
             case BUTTON_IDS.PATIENT_MENU.MAIN_MENU:
+                await this.updateSession(phone, "MAIN_MENU", { language });
                 await this.showMainMenu(phone, language);
                 break;
 
             default:
+                await this.updateSession(phone, "MAIN_MENU", { language });
                 await this.showMainMenu(phone, language);
         }
     }
@@ -1114,11 +1128,16 @@ export class PatientFlowHandler {
 
         // WhatsApp allows a maximum of 3 reply buttons, so the less common
         // actions live behind "More Options".
-        await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
-            { id: BUTTON_IDS.PATIENT_MENU.BOOK, title: language === "EN" ? "📅 Book Appointment" : "📅 नियुक्ति बुक करें" },
-            { id: BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION, title: language === "EN" ? "🏠 Home Collection" : "🏠 घर से सैंपल" },
-            { id: BUTTON_IDS.PATIENT_MENU.MORE, title: language === "EN" ? "➕ More Options" : "➕ अन्य विकल्प" }
-        ]);
+        await this.whatsappClient.sendInteractiveButtonMessage(
+            phone,
+            message,
+            [
+                { id: BUTTON_IDS.PATIENT_MENU.BOOK, title: language === "EN" ? "📅 Book Appointment" : "📅 नियुक्ति बुक करें" },
+                { id: BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION, title: language === "EN" ? "🏠 Home Collection" : "🏠 घर से सैंपल" },
+                { id: BUTTON_IDS.PATIENT_MENU.MORE, title: language === "EN" ? "➕ More Options" : "➕ अन्य विकल्प" }
+            ],
+            this.supabase
+        );
     }
 
     /**
@@ -1127,38 +1146,55 @@ export class PatientFlowHandler {
     private async showMoreMenu(phone: string, language: string): Promise<void> {
         const isEn = language === "EN";
 
-        await this.whatsappClient.sendInteractiveListMessage(
-            phone,
-            isEn ? "📋 More options:" : "📋 अन्य विकल्प:",
-            isEn ? "Choose" : "चुनें",
-            [
-                {
-                    title: isEn ? "Options" : "विकल्प",
-                    rows: [
-                        {
-                            id: BUTTON_IDS.PATIENT_MENU.APPOINTMENTS,
-                            title: isEn ? "📝 My Appointments" : "📝 मेरी नियुक्तियाँ"
-                        },
-                        {
-                            id: BUTTON_IDS.PATIENT_MENU.RESCHEDULE,
-                            title: isEn ? "🔄 Reschedule" : "🔄 समय बदलें"
-                        },
-                        {
-                            id: BUTTON_IDS.PATIENT_MENU.CANCEL,
-                            title: isEn ? "❌ Cancel Appointment" : "❌ नियुक्ति रद्द करें"
-                        },
-                        {
-                            id: BUTTON_IDS.PATIENT_MENU.CHANGE_LANGUAGE,
-                            title: isEn ? "🌐 Change Language" : "🌐 भाषा बदलें"
-                        },
-                        {
-                            id: BUTTON_IDS.PATIENT_MENU.MAIN_MENU,
-                            title: isEn ? "↩️ Main Menu" : "↩️ मुख्य मेनू"
-                        }
-                    ]
-                }
-            ]
-        );
+        const rows = [
+            {
+                id: BUTTON_IDS.PATIENT_MENU.APPOINTMENTS,
+                title: isEn ? "📝 My Appointments" : "📝 मेरी नियुक्तियाँ",
+                description: isEn ? "View your upcoming appointments" : "अपनी आगामी नियुक्तियाँ देखें"
+            },
+            {
+                id: BUTTON_IDS.PATIENT_MENU.RESCHEDULE,
+                title: isEn ? "🔄 Reschedule" : "🔄 समय बदलें",
+                description: isEn ? "Change the date or time" : "तारीख या समय बदलें"
+            },
+            {
+                id: BUTTON_IDS.PATIENT_MENU.CANCEL,
+                title: isEn ? "❌ Cancel Appointment" : "❌ नियुक्ति रद्द करें",
+                description: isEn ? "Cancel an existing appointment" : "मौजूदा नियुक्ति रद्द करें"
+            },
+            {
+                id: BUTTON_IDS.PATIENT_MENU.CHANGE_LANGUAGE,
+                title: isEn ? "🌐 Change Language" : "🌐 भाषा बदलें",
+                description: isEn ? "Choose your preferred language" : "अपनी पसंदीदा भाषा चुनें"
+            },
+            {
+                id: BUTTON_IDS.PATIENT_MENU.MAIN_MENU,
+                title: isEn ? "↩️ Main Menu" : "↩️ मुख्य मेनू",
+                description: isEn ? "Return to the main menu" : "मुख्य मेनू पर लौटें"
+            }
+        ];
+
+        const body = isEn ? "📋 More options:" : "📋 अन्य विकल्प:";
+
+        try {
+            await this.whatsappClient.sendInteractiveListMessage(
+                phone,
+                body,
+                isEn ? "Choose" : "चुनें",
+                [{ title: isEn ? "Options" : "विकल्प", rows }],
+                this.supabase
+            );
+        } catch (error) {
+            debug("patientFlow", "More options list failed, sending text fallback", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                `${body}\n\n${rows.map((row) => row.title).join("\n")}`,
+                this.supabase
+            );
+        }
     }
 
     /**
