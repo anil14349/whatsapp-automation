@@ -31,6 +31,22 @@ export function getSampleCollectorPhones(): string[] {
 }
 
 /**
+ * Minimum notice before a home collection window can be offered today
+ */
+export function getHomeCollectionMinLeadHours(): number {
+    const hours = Number(Deno.env.get("HOME_COLLECTION_MIN_LEAD_HOURS") || "2");
+    return isFinite(hours) && hours >= 0 ? hours : 2;
+}
+
+/**
+ * How many collections a single collector can take in one day
+ */
+export function getMaxCollectionsPerCollectorPerDay(): number {
+    const limit = Number(Deno.env.get("MAX_COLLECTIONS_PER_COLLECTOR_PER_DAY") || "8");
+    return isFinite(limit) && limit > 0 ? Math.floor(limit) : 8;
+}
+
+/**
  * Determine user role based on phone number
  * Returns: "DOCTOR" | "HOME_COLLECTION_PERSON" | "PATIENT"
  */

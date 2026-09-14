@@ -4,7 +4,7 @@ import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 import { BUTTON_IDS, isValidConfirmationButton } from "../button-ids.ts";
 import { debug } from "../logger.ts";
 import { isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
-import { getSampleCollectorPhones } from "../config.ts";
+import { getSampleCollectorPhones, getHomeCollectionMinLeadHours, getMaxCollectionsPerCollectorPerDay } from "../config.ts";
 import { createHomeCollectionReminder, markHomeCollectionRemindersAsSkipped } from "../home-collection-reminders.ts";
 
 /**
@@ -65,6 +65,10 @@ export class HomeCollectionHandler {
 
                 case "REQUEST_DATE_CUSTOM":
                     await this.handleRequestDateCustom(phone, message, session);
+                    break;
+
+                case "REQUEST_TIME_WINDOW":
+                    await this.handleRequestTimeWindow(phone, message, session);
                     break;
 
                 case "REQUEST_CONFIRM":
@@ -279,29 +283,8 @@ export class HomeCollectionHandler {
             return;
         }
 
-        // Move to confirmation
-        await this.updateSession(phone, "REQUEST_CONFIRM", {
-            latitude: session.data?.latitude,
-            longitude: session.data?.longitude,
-            address: session.data?.address,
-            locationType: session.data?.locationType,
-            requestDate: selectedDate
-        });
-
-        // Show confirmation with date included
-        await this.whatsappClient.sendTextMessage(
-            phone,
-            `📍 Location: ${session.data?.address || "Verified"}\n📅 Date: ${selectedDate}\n\nIs this correct?`
-        );
-
-        await this.whatsappClient.sendInteractiveButtonMessage(
-            phone,
-            "Please confirm your home collection request details:",
-            [
-                { id: BUTTON_IDS.CONFIRMATION.YES, title: "Yes, Confirm" },
-                { id: BUTTON_IDS.CONFIRMATION.NO, title: "No, Change" }
-            ]
-        );
+        // Move to window selection
+        await this.offerTimeWindows(phone, session, selectedDate);
     }
 
     /**
@@ -329,29 +312,8 @@ export class HomeCollectionHandler {
             return;
         }
 
-        // Move to confirmation
-        await this.updateSession(phone, "REQUEST_CONFIRM", {
-            latitude: session.data?.latitude,
-            longitude: session.data?.longitude,
-            address: session.data?.address,
-            locationType: session.data?.locationType,
-            requestDate: dateString
-        });
-
-        // Show confirmation with date included
-        await this.whatsappClient.sendTextMessage(
-            phone,
-            `📍 Location: ${session.data?.address || "Verified"}\n📅 Date: ${dateString}\n\nIs this correct?`
-        );
-
-        await this.whatsappClient.sendInteractiveButtonMessage(
-            phone,
-            "Please confirm your home collection request details:",
-            [
-                { id: BUTTON_IDS.CONFIRMATION.YES, title: "Yes, Confirm" },
-                { id: BUTTON_IDS.CONFIRMATION.NO, title: "No, Change" }
-            ]
-        );
+        // Move to window selection
+        await this.offerTimeWindows(phone, session, dateString);
     }
 
     /**
@@ -490,6 +452,150 @@ export class HomeCollectionHandler {
      * Also creates a reminder for the collection date
      */
     /**
+     * The three collection windows, mirroring the Apps Script rules.
+     */
+    private getTimeWindowOptions(): Array<{ id: string; title: string; value: string; startMinutes: number }> {
+        return [
+            { id: "1", title: "Morning: 8AM-12PM", value: "Morning (8 AM - 12 PM)", startMinutes: 8 * 60 },
+            { id: "2", title: "Afternoon: 12-4PM", value: "Afternoon (12 PM - 4 PM)", startMinutes: 12 * 60 },
+            { id: "3", title: "Evening: 4-8PM", value: "Evening (4 PM - 8 PM)", startMinutes: 16 * 60 }
+        ];
+    }
+
+    /**
+     * Windows still reachable for a date, honouring the minimum lead time today.
+     */
+    private getTimeWindowOptionsForDate(dateString: string) {
+        const options = this.getTimeWindowOptions();
+        const today = new Date().toISOString().split("T")[0];
+
+        if (!dateString || dateString !== today) {
+            return options;
+        }
+
+        const now = new Date();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const minimumStart = currentMinutes + Math.ceil(getHomeCollectionMinLeadHours() * 60);
+
+        return options.filter((option) => option.startMinutes >= minimumStart);
+    }
+
+    /**
+     * Collections still bookable on a date across all collectors.
+     */
+    private async getRemainingCapacity(clinicId: string, date: string): Promise<number> {
+        const capacity = getSampleCollectorPhones().length * getMaxCollectionsPerCollectorPerDay();
+
+        if (capacity === 0) {
+            return 0;
+        }
+
+        const { count, error } = await this.supabase
+            .from("home_collection_requests")
+            .select("id", { count: "exact", head: true })
+            .eq("clinic_id", clinicId)
+            .eq("requested_date", date)
+            .neq("status", "CANCELLED");
+
+        if (error) {
+            debug("homeCollectionFlow", "Error reading capacity", { error: error.message });
+            return capacity;
+        }
+
+        return capacity - (count || 0);
+    }
+
+    /**
+     * Offer the windows available for the chosen date, or explain why there are none.
+     */
+    private async offerTimeWindows(phone: string, session: WhatsAppSession, selectedDate: string): Promise<void> {
+        const clinicId = session.clinic_id;
+        const remaining = await this.getRemainingCapacity(clinicId, selectedDate);
+
+        if (remaining <= 0) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                `Sorry, ${selectedDate} is fully booked for home collection. Please choose another date.`
+            );
+            return;
+        }
+
+        const windows = this.getTimeWindowOptionsForDate(selectedDate);
+
+        if (windows.length === 0) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "There are no collection windows left for today. Please choose another date."
+            );
+            return;
+        }
+
+        await this.updateSession(phone, "REQUEST_TIME_WINDOW", {
+            latitude: session.data?.latitude,
+            longitude: session.data?.longitude,
+            address: session.data?.address,
+            locationType: session.data?.locationType,
+            requestDate: selectedDate
+        });
+
+        const list = windows.map((w) => `${w.id}. ${w.value}`).join("\n");
+
+        await this.whatsappClient.sendTextMessage(
+            phone,
+            `📅 Date: ${selectedDate}\n\nPlease choose a collection window:\n\n${list}`
+        );
+    }
+
+    /**
+     * REQUEST_TIME_WINDOW - Capture the chosen collection window
+     */
+    private async handleRequestTimeWindow(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        const selectedDate = session.data?.requestDate;
+        const choice = message.text?.trim() || "";
+        const windows = this.getTimeWindowOptionsForDate(selectedDate);
+
+        const selected = windows.find(
+            (w) => w.id === choice || w.value.toLowerCase() === choice.toLowerCase()
+        );
+
+        if (!selected) {
+            const list = windows.map((w) => `${w.id}. ${w.value}`).join("\n");
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                `Please choose a valid collection window:\n\n${list}`
+            );
+            return;
+        }
+
+        await this.updateSession(phone, "REQUEST_CONFIRM", {
+            latitude: session.data?.latitude,
+            longitude: session.data?.longitude,
+            address: session.data?.address,
+            locationType: session.data?.locationType,
+            requestDate: selectedDate,
+            requestTimeWindow: selected.value
+        });
+
+        await this.whatsappClient.sendTextMessage(
+            phone,
+            `📍 Location: ${session.data?.address || "Verified"}\n📅 Date: ${selectedDate}\n🕐 Window: ${selected.value}\n\nIs this correct?`
+        );
+
+        await this.whatsappClient.sendInteractiveButtonMessage(
+            phone,
+            "Please confirm your home collection request details:",
+            [
+                { id: BUTTON_IDS.CONFIRMATION.YES, title: "Yes, Confirm" },
+                { id: BUTTON_IDS.CONFIRMATION.NO, title: "No, Change" }
+            ]
+        );
+    }
+
+    /**
      * Offer a new request to every configured collector; first to accept wins.
      */
     private async notifyCollectors(requestId: string, locationData: any): Promise<void> {
@@ -503,7 +609,8 @@ export class HomeCollectionHandler {
         const summary =
             "New home collection request\n\n" +
             `Address: ${locationData?.address || "Not provided"}\n` +
-            `Date: ${locationData?.requestDate || "As soon as possible"}\n\n` +
+            `Date: ${locationData?.requestDate || "As soon as possible"}\n` +
+            `Window: ${locationData?.requestTimeWindow || "Any"}\n\n` +
             "First collector to accept is assigned.";
 
         for (const collector of collectors) {
@@ -544,6 +651,33 @@ export class HomeCollectionHandler {
         }
 
         // The status filter makes the claim atomic: only one collector can win.
+        const { data: pending } = await this.supabase
+            .from("home_collection_requests")
+            .select("id, requested_date, status")
+            .eq("id", requestId)
+            .maybeSingle();
+
+        if (!pending) {
+            await this.whatsappClient.sendTextMessage(phone, "That collection request no longer exists.");
+            return;
+        }
+
+        const dailyLimit = getMaxCollectionsPerCollectorPerDay();
+        const { count: assignedToday } = await this.supabase
+            .from("home_collection_requests")
+            .select("id", { count: "exact", head: true })
+            .eq("assigned_technician_name", phone)
+            .eq("requested_date", pending.requested_date)
+            .neq("status", "CANCELLED");
+
+        if ((assignedToday || 0) >= dailyLimit) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                `You already have ${assignedToday} collections on ${pending.requested_date}, which is your daily limit of ${dailyLimit}.`
+            );
+            return;
+        }
+
         const { data, error } = await this.supabase
             .from("home_collection_requests")
             .update({
@@ -597,6 +731,7 @@ export class HomeCollectionHandler {
                     latitude: locationData?.latitude ?? null,
                     longitude: locationData?.longitude ?? null,
                     requested_date: collectionDate,
+                    requested_time_window: locationData?.requestTimeWindow || null,
                     status: "PENDING",
                     preferred_language: locationData?.language || "EN"
                 })
