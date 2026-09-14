@@ -618,6 +618,23 @@ export class PatientFlowHandler {
         if (buttonId === BUTTON_IDS.CONFIRMATION.YES) {
             // Proceed with booking
             try {
+                // One active appointment per patient: block a second concurrent booking.
+                const upcoming = await this.supabaseClient.getPatientAppointments(clinicId, phone, true);
+                const active = upcoming?.find(
+                    (a: any) => a.status === "CONFIRMED" || a.status === "RESCHEDULED"
+                );
+
+                if (active) {
+                    await this.whatsappClient.sendTextMessage(
+                        phone,
+                        `You already have an appointment on ${active.appointment_date} at ${active.appointment_time}. Please cancel or reschedule it before booking another.`
+                    );
+
+                    await this.updateSession(phone, "MAIN_MENU", { language });
+                    await this.showMainMenu(phone, language);
+                    return;
+                }
+
                 const serviceTypeId = await this.supabaseClient.getServiceTypeIdByCode("CONSULTATION");
 
                 const appointment = await this.supabaseClient.createAppointment({
@@ -900,6 +917,16 @@ export class PatientFlowHandler {
         }
         const language = session.data?.language || "EN";
         const newDate = message.text.trim();
+
+        // Reschedule must honour the same 0-7 day window as a new booking.
+        const rescheduleWindow = isValidBookingDate(newDate);
+        if (!rescheduleWindow.valid) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                formatBookingDateErrorMessage(rescheduleWindow.error || "invalid_format", language)
+            );
+            return;
+        }
 
         if (!/^\d{4}-\d{2}-\d{2}$/.test(newDate)) {
             await this.whatsappClient.sendTextMessage(

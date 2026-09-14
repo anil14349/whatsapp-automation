@@ -107,11 +107,32 @@ Deno.serve(async (req: Request) => {
             maxConcurrent: 5
         });
 
+        // Appointments whose date has passed are closed off automatically.
+        const today = new Date().toISOString().split("T")[0];
+        const { data: completed, error: completeError } = await supabase
+            .from("appointments")
+            .update({
+                status: "COMPLETED",
+                completed_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+            })
+            .in("clinic_id", clinicIds)
+            .eq("status", "CONFIRMED")
+            .lt("appointment_date", today)
+            .select("id");
+
+        if (completeError) {
+            debug("scheduledReminders", "Failed to auto-complete appointments", {
+                error: completeError.message
+            });
+        }
+
         // Combine results
         const combinedResult = {
             success: appointmentResult.success && homeCollectionResult.success,
             appointment_reminders: appointmentResult,
             home_collection_reminders: homeCollectionResult,
+            appointments_auto_completed: completed?.length || 0,
             total_reminders_sent: appointmentResult.reminders_sent + homeCollectionResult.reminders_sent,
             total_reminders_failed: appointmentResult.reminders_failed + homeCollectionResult.reminders_failed,
             total_errors: (appointmentResult.errors?.length || 0) + (homeCollectionResult.errors?.length || 0)
