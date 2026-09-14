@@ -37,9 +37,19 @@ export const BUTTON_IDS = {
     DOCTOR_MENU: {
         AVAILABILITY: "doctor_availability",
         LEAVE: "doctor_leave",
+        MY_LEAVES: "doctor_my_leaves",
         APPOINTMENTS: "doctor_appointments",
         MARK_STATUS: "doctor_mark_status",
+        SET_STATUS: "doctor_set_status",
         LOGOUT: "doctor_logout",
+    },
+
+    // Doctor presence, gates whether patients see any slots
+    DOCTOR_STATUS: {
+        AVAILABLE: "status_available",
+        BUSY: "status_busy",
+        ON_BREAK: "status_on_break",
+        OFFLINE: "status_offline",
     },
     
     // Home collection menu

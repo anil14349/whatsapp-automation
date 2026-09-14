@@ -261,8 +261,7 @@ export class MultiClinicSupabaseClient {
     clinicId: string,
     doctorId: string,
     date: string
-  ): Promise<types.DoctorLeave[]> {
-    const { data, error } = await this.supabase
+  ): Promise<types.DoctorLeave[]> {    const { data, error } = await this.supabase
       .from("doctor_leaves")
       .select("*")
       .eq("clinic_id", clinicId)
@@ -282,6 +281,43 @@ export class MultiClinicSupabaseClient {
   ): Promise<boolean> {
     const leaves = await this.getDoctorLeaves(clinicId, doctorId, date);
     return leaves.length > 0;
+  }
+
+  /**
+   * Approved leaves that have not finished yet, soonest first.
+   */
+  async getUpcomingDoctorLeaves(
+    clinicId: string,
+    doctorId: string
+  ): Promise<types.DoctorLeave[]> {
+    const today = new Date().toISOString().split("T")[0];
+
+    const { data, error } = await this.supabase
+      .from("doctor_leaves")
+      .select("*")
+      .eq("clinic_id", clinicId)
+      .eq("doctor_id", doctorId)
+      .eq("status", "APPROVED")
+      .gte("leave_end_date", today)
+      .order("leave_start_date", { ascending: true });
+
+    if (error) throw new types.ClinicError(`Failed to fetch doctor leaves: ${error.message}`);
+    return data || [];
+  }
+
+  async cancelDoctorLeave(
+    clinicId: string,
+    doctorId: string,
+    leaveId: string
+  ): Promise<void> {
+    const { error } = await this.supabase
+      .from("doctor_leaves")
+      .update({ status: "CANCELLED" })
+      .eq("clinic_id", clinicId)
+      .eq("doctor_id", doctorId)
+      .eq("id", leaveId);
+
+    if (error) throw new types.ClinicError(`Failed to cancel leave: ${error.message}`);
   }
 
   // ============================================================================

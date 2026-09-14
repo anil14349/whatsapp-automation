@@ -66,6 +66,18 @@ export class DoctorFlowHandler {
                     await this.handleAvailability(phone, message, session);
                     break;
 
+                case "DOCTOR_AVAILABILITY_DAY":
+                    await this.handleAvailabilityDay(phone, message, session);
+                    break;
+
+                case "DOCTOR_SET_STATUS":
+                    await this.handleSetStatus(phone, message, session);
+                    break;
+
+                case "DOCTOR_MY_LEAVES":
+                    await this.handleMyLeaves(phone, message, session);
+                    break;
+
                 case "DOCTOR_AVAILABILITY_CONFIRM":
                     await this.handleAvailabilityConfirm(phone, message, session);
                     break;
@@ -256,15 +268,30 @@ export class DoctorFlowHandler {
 
         switch (buttonId) {
             case BUTTON_IDS.DOCTOR_MENU.AVAILABILITY:
-                await this.updateSession(phone, "DOCTOR_AVAILABILITY", {
+                await this.updateSession(phone, "DOCTOR_AVAILABILITY_DAY", {
                     doctorId: session.data?.doctorId,
                     doctorName: session.data?.doctorName,
                     authenticated: true
                 });
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    "📅 Please provide your availability for today (format: HH:MM-HH:MM, e.g., 09:00-17:00):"
-                );
+                await this.showAvailabilityDayMenu(phone);
+                break;
+
+            case BUTTON_IDS.DOCTOR_MENU.SET_STATUS:
+                await this.updateSession(phone, "DOCTOR_SET_STATUS", {
+                    doctorId: session.data?.doctorId,
+                    doctorName: session.data?.doctorName,
+                    authenticated: true
+                });
+                await this.showStatusMenu(phone, session);
+                break;
+
+            case BUTTON_IDS.DOCTOR_MENU.MY_LEAVES:
+                await this.updateSession(phone, "DOCTOR_MY_LEAVES", {
+                    doctorId: session.data?.doctorId,
+                    doctorName: session.data?.doctorName,
+                    authenticated: true
+                });
+                await this.showUpcomingLeaves(phone, session);
                 break;
 
             case BUTTON_IDS.DOCTOR_MENU.LEAVE:
@@ -348,6 +375,7 @@ export class DoctorFlowHandler {
             doctorId: session.data?.doctorId,
             doctorName: session.data?.doctorName,
             authenticated: true,
+            availabilityDay: session.data?.availabilityDay,
             availabilityStart: startTime,
             availabilityEnd: endTime
         });
@@ -384,12 +412,25 @@ export class DoctorFlowHandler {
 
         if (buttonId === BUTTON_IDS.CONFIRMATION.YES) {
             try {
-                // Save availability to database
-                await this.supabaseClient.addDoctorOperatingHours(
-                    clinicId,
-                    doctorId,
-                    `${session.data?.availabilityStart}-${session.data?.availabilityEnd}`
-                );
+                const timeRange = `${session.data?.availabilityStart}-${session.data?.availabilityEnd}`;
+                const target = session.data?.availabilityDay;
+
+                // "weekdays" means Mon-Sat; otherwise a single ISO weekday.
+                const days =
+                    target === "weekdays"
+                        ? [1, 2, 3, 4, 5, 6]
+                        : target
+                          ? [Number(target)]
+                          : [undefined];
+
+                for (const day of days) {
+                    await this.supabaseClient.addDoctorOperatingHours(
+                        clinicId,
+                        doctorId,
+                        timeRange,
+                        day
+                    );
+                }
 
                 await this.updateSession(phone, "DOCTOR_MENU", {
                     doctorId,
@@ -397,9 +438,17 @@ export class DoctorFlowHandler {
                     authenticated: true
                 });
 
+                const scope =
+                    target === "weekdays"
+                        ? " for Mon-Sat"
+                        : target
+                          ? ` for ${this.dayLabel(Number(target))}`
+                          : "";
+
                 await this.whatsappClient.sendTextMessage(
                     phone,
-                    `✅ Availability updated: ${session.data?.availabilityStart} - ${session.data?.availabilityEnd}`
+                    `✅ Consulting hours updated${scope}: ${session.data?.availabilityStart} - ${session.data?.availabilityEnd}`,
+                    this.supabase
                 );
 
                 await this.showMenu(phone);
@@ -409,7 +458,8 @@ export class DoctorFlowHandler {
                 });
                 await this.whatsappClient.sendTextMessage(
                     phone,
-                    "Error updating availability. Please try again."
+                    "Error updating availability. Please try again.",
+                    this.supabase
                 );
             }
         } else if (buttonId === BUTTON_IDS.CONFIRMATION.NO) {
@@ -620,8 +670,10 @@ export class DoctorFlowHandler {
         const rows = [
             { id: BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS, title: "📋 Appointments", description: "View today's appointments" },
             { id: BUTTON_IDS.DOCTOR_MENU.MARK_STATUS, title: "✅ Mark Status", description: "Update an appointment status" },
-            { id: BUTTON_IDS.DOCTOR_MENU.AVAILABILITY, title: "📅 Availability", description: "Set your consulting hours" },
-            { id: BUTTON_IDS.DOCTOR_MENU.LEAVE, title: "🗓️ Leave", description: "Mark yourself on leave" },
+            { id: BUTTON_IDS.DOCTOR_MENU.SET_STATUS, title: "🟢 My Availability", description: "Available, busy, on break or offline" },
+            { id: BUTTON_IDS.DOCTOR_MENU.AVAILABILITY, title: "📅 Consulting Hours", description: "Set your hours for a day" },
+            { id: BUTTON_IDS.DOCTOR_MENU.LEAVE, title: "🗓️ Apply for Leave", description: "Block a date range" },
+            { id: BUTTON_IDS.DOCTOR_MENU.MY_LEAVES, title: "📖 My Leaves", description: "View or cancel upcoming leave" },
             { id: BUTTON_IDS.DOCTOR_MENU.LOGOUT, title: "🚪 Logout", description: "End this portal session" }
         ];
 
@@ -645,6 +697,240 @@ export class DoctorFlowHandler {
                 this.supabase
             );
         }
+    }
+
+    /**
+     * DOCTOR_AVAILABILITY_DAY - pick which weekday the hours apply to
+     */
+    private async handleAvailabilityDay(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        const reply = message.text?.trim() || "";
+
+        if (!reply.startsWith("avail_day_")) {
+            await this.showAvailabilityDayMenu(phone);
+            return;
+        }
+
+        const target = reply.substring(10);
+
+        await this.updateSession(phone, "DOCTOR_AVAILABILITY", {
+            ...session.data,
+            availabilityDay: target
+        });
+
+        const label = target === "weekdays" ? "Mon-Sat" : this.dayLabel(Number(target));
+
+        await this.whatsappClient.sendTextMessage(
+            phone,
+            `📅 Consulting hours for ${label}.\n\nReply with the time range (HH:MM-HH:MM), e.g. 09:00-17:00:`,
+            this.supabase
+        );
+    }
+
+    private async showAvailabilityDayMenu(phone: string): Promise<void> {
+        const today = new Date().getDay();
+        const todayIso = today === 0 ? 7 : today;
+
+        await this.whatsappClient.sendInteractiveListMessage(
+            phone,
+            "📅 Which day should these consulting hours apply to?",
+            "Choose day",
+            [
+                {
+                    title: "Apply to",
+                    rows: [
+                        { id: `avail_day_${todayIso}`, title: `Today (${this.dayLabel(todayIso)})` },
+                        { id: "avail_day_weekdays", title: "Mon to Sat" },
+                        { id: "avail_day_1", title: "Monday" },
+                        { id: "avail_day_2", title: "Tuesday" },
+                        { id: "avail_day_3", title: "Wednesday" },
+                        { id: "avail_day_4", title: "Thursday" },
+                        { id: "avail_day_5", title: "Friday" },
+                        { id: "avail_day_6", title: "Saturday" },
+                        { id: "avail_day_7", title: "Sunday" }
+                    ]
+                }
+            ],
+            this.supabase
+        );
+    }
+
+    private dayLabel(day: number): string {
+        const labels = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+        return labels[day] || "that day";
+    }
+
+    /**
+     * DOCTOR_SET_STATUS - presence toggle that gates patient bookings
+     */
+    private async handleSetStatus(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        const reply = message.text?.trim() || "";
+
+        const statuses: Record<string, "AVAILABLE" | "BUSY" | "ON_BREAK" | "OFFLINE"> = {
+            [BUTTON_IDS.DOCTOR_STATUS.AVAILABLE]: "AVAILABLE",
+            [BUTTON_IDS.DOCTOR_STATUS.BUSY]: "BUSY",
+            [BUTTON_IDS.DOCTOR_STATUS.ON_BREAK]: "ON_BREAK",
+            [BUTTON_IDS.DOCTOR_STATUS.OFFLINE]: "OFFLINE"
+        };
+
+        const status = statuses[reply];
+
+        if (!status) {
+            await this.showStatusMenu(phone, session);
+            return;
+        }
+
+        try {
+            await this.supabaseClient.updateDoctorAvailabilityStatus(
+                session.clinic_id,
+                session.data?.doctorId,
+                status
+            );
+
+            const blocksBooking = status !== "AVAILABLE" && status !== "IN_CONSULTATION";
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                `✅ Status set to ${status.replace("_", " ").toLowerCase()}.` +
+                    (blocksBooking ? "\n\nPatients cannot book new slots until you are available again." : ""),
+                this.supabase
+            );
+        } catch (error) {
+            debug("doctorFlow", "Failed to update status", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "Could not update your status. Please try again.",
+                this.supabase
+            );
+        }
+
+        await this.updateSession(phone, "DOCTOR_MENU", session.data);
+        await this.showMenu(phone);
+    }
+
+    private async showStatusMenu(phone: string, session: WhatsAppSession): Promise<void> {
+        let current = "";
+
+        try {
+            current = await this.supabaseClient.getDoctorAvailabilityStatus(
+                session.clinic_id,
+                session.data?.doctorId
+            );
+        } catch {
+            current = "";
+        }
+
+        await this.whatsappClient.sendInteractiveListMessage(
+            phone,
+            `🟢 Your current status: ${current || "unknown"}\n\nWhat should it be?`,
+            "Set status",
+            [
+                {
+                    title: "Availability",
+                    rows: [
+                        { id: BUTTON_IDS.DOCTOR_STATUS.AVAILABLE, title: "🟢 Available", description: "Patients can book slots" },
+                        { id: BUTTON_IDS.DOCTOR_STATUS.BUSY, title: "🟡 Busy", description: "Hide slots for now" },
+                        { id: BUTTON_IDS.DOCTOR_STATUS.ON_BREAK, title: "☕ On break", description: "Hide slots for now" },
+                        { id: BUTTON_IDS.DOCTOR_STATUS.OFFLINE, title: "⚪ Offline", description: "Hide slots until you return" }
+                    ]
+                }
+            ],
+            this.supabase
+        );
+    }
+
+    /**
+     * DOCTOR_MY_LEAVES - list upcoming leave and allow cancelling it
+     */
+    private async handleMyLeaves(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        const reply = message.text?.trim() || "";
+
+        if (!reply.startsWith("leave_cancel_")) {
+            await this.updateSession(phone, "DOCTOR_MENU", session.data);
+            await this.showMenu(phone);
+            return;
+        }
+
+        try {
+            await this.supabaseClient.cancelDoctorLeave(
+                session.clinic_id,
+                session.data?.doctorId,
+                reply.substring(13)
+            );
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "✅ Leave cancelled. Patients can book those dates again.",
+                this.supabase
+            );
+        } catch (error) {
+            debug("doctorFlow", "Failed to cancel leave", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "Could not cancel that leave. Please try again.",
+                this.supabase
+            );
+        }
+
+        await this.updateSession(phone, "DOCTOR_MENU", session.data);
+        await this.showMenu(phone);
+    }
+
+    private async showUpcomingLeaves(phone: string, session: WhatsAppSession): Promise<void> {
+        const leaves = await this.supabaseClient.getUpcomingDoctorLeaves(
+            session.clinic_id,
+            session.data?.doctorId
+        );
+
+        if (leaves.length === 0) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "📖 You have no upcoming leave.",
+                this.supabase
+            );
+
+            await this.updateSession(phone, "DOCTOR_MENU", session.data);
+            await this.showMenu(phone);
+            return;
+        }
+
+        // 10-row limit, and one row is the exit option.
+        const rows = leaves.slice(0, 9).map((leave: any) => ({
+            id: `leave_cancel_${leave.id}`,
+            title: `${leave.leave_start_date} → ${leave.leave_end_date}`.substring(0, 24),
+            description: leave.reason ? `Cancel · ${leave.reason}`.substring(0, 72) : "Tap to cancel this leave"
+        }));
+
+        rows.push({
+            id: "leave_back",
+            title: "↩️ Back to menu",
+            description: "Leave everything unchanged"
+        });
+
+        await this.whatsappClient.sendInteractiveListMessage(
+            phone,
+            "📖 Your upcoming leave. Tap one to cancel it.",
+            "My leaves",
+            [{ title: "Upcoming leave", rows }],
+            this.supabase
+        );
     }
 
     /**
