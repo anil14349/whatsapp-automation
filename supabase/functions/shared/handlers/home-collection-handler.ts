@@ -482,24 +482,23 @@ export class HomeCollectionHandler {
         clinicId: string
     ): Promise<{ success: boolean; requestId?: string; error?: string }> {
         try {
-            const requestId = `HC_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             const collectionDate = locationData?.requestDate || new Date().toISOString().split("T")[0];
 
             // Call Supabase to create home collection request
-            const { error } = await this.supabase.from("home_collection_requests").insert({
-                request_id: requestId,
-                clinic_id: clinicId,
-                phone,
-                address: locationData?.address || null,
-                latitude: locationData?.latitude || null,
-                longitude: locationData?.longitude || null,
-                location_type: locationData?.locationType || "TEXT",
-                appointment_date: collectionDate,
-                status: "PENDING",
-                preferred_language: locationData?.language || "EN",
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString()
-            });
+            const { data, error } = await this.supabase
+                .from("home_collection_requests")
+                .insert({
+                    clinic_id: clinicId,
+                    patient_phone: phone,
+                    service_address: locationData?.address || null,
+                    latitude: locationData?.latitude ?? null,
+                    longitude: locationData?.longitude ?? null,
+                    requested_date: collectionDate,
+                    status: "PENDING",
+                    preferred_language: locationData?.language || "EN"
+                })
+                .select("id")
+                .single();
 
             if (error) {
                 debug("homeCollectionFlow", "Error creating home collection request", {
@@ -511,6 +510,8 @@ export class HomeCollectionHandler {
                     error: error.message
                 };
             }
+
+            const requestId = data.id as string;
 
             debug("homeCollectionFlow", "Created home collection request", { requestId });
 

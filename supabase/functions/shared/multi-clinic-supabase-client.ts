@@ -120,6 +120,40 @@ export class MultiClinicSupabaseClient {
     return data || null;
   }
 
+  async addDoctorOperatingHours(
+    clinicId: string,
+    doctorId: string,
+    timeRange: string,
+    dayOfWeek?: number
+  ): Promise<void> {
+    const [opening, closing] = String(timeRange || "").split("-").map((t) => t.trim());
+
+    if (!opening || !closing) {
+      throw new types.ClinicError(`Invalid time range: ${timeRange}`);
+    }
+
+    // Postgres uses 1=Monday..7=Sunday; JS getDay() returns 0 for Sunday.
+    const jsDay = new Date().getDay();
+    const day = dayOfWeek ?? (jsDay === 0 ? 7 : jsDay);
+
+    const { error } = await this.supabase
+      .from("doctor_operating_hours")
+      .upsert(
+        {
+          clinic_id: clinicId,
+          doctor_id: doctorId,
+          day_of_week: day,
+          opening_time: opening,
+          closing_time: closing,
+          is_active: true,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "doctor_id,day_of_week" }
+      );
+
+    if (error) throw new types.ClinicError(`Failed to save doctor hours: ${error.message}`);
+  }
+
   async getDoctorHomeVisitHours(
     clinicId: string,
     doctorId: string,
@@ -201,6 +235,27 @@ export class MultiClinicSupabaseClient {
   // ============================================================================
   // DOCTOR LEAVE OPERATIONS
   // ============================================================================
+
+  async addDoctorLeave(
+    clinicId: string,
+    doctorId: string,
+    startDate: string,
+    endDate: string,
+    reason?: string
+  ): Promise<void> {
+    const { error } = await this.supabase.from("doctor_leaves").insert({
+      clinic_id: clinicId,
+      doctor_id: doctorId,
+      leave_start_date: startDate,
+      leave_end_date: endDate,
+      reason: reason ?? null,
+      // Self-service requests are effective immediately, so slots are blocked.
+      status: "APPROVED",
+      approval_date: new Date().toISOString()
+    });
+
+    if (error) throw new types.ClinicError(`Failed to save doctor leave: ${error.message}`);
+  }
 
   async getDoctorLeaves(
     clinicId: string,
