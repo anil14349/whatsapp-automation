@@ -126,14 +126,14 @@ function runSetupCleanupTriggers() {
 
     try {
 
-        const result = createAutoCleanupTriggers();
+        const result = installProductionAutomationTriggers();
 
         // Validate result
         if (
             !result ||
             !result.success ||
-            !result.triggers ||
-            !Array.isArray(result.triggers)
+            !result.results ||
+            !Array.isArray(result.results)
         ) {
             throw new Error(
                 "Trigger creation failed: " +
@@ -141,13 +141,21 @@ function runSetupCleanupTriggers() {
             );
         }
 
+        const installed = result.results
+            .filter(function(item) {
+                return item && item.success !== false;
+            })
+            .map(function(item) {
+                return "📅 " + (item.message || "Trigger installed");
+            });
+
         ui.alert(
             "✅ SETUP COMPLETE!\n\n" +
-            "Automatic cleanup enabled:\n\n" +
-            result.triggers.map(function(t) {
-                return "📅 " + t;
-            }).join("\n") +
-            "\n\nYour system is now on autopilot! 🚀"
+            "Production automation enabled:\n\n" +
+            installed.join("\n") +
+            "\n\n⚠️ Archive and reminder-queue triggers remain configurable.\n" +
+            "Use their dedicated setup functions if those schedules are required.\n\n" +
+            "Your system is now on autopilot! 🚀"
         );
 
     } catch (error) {
@@ -157,8 +165,6 @@ function runSetupCleanupTriggers() {
             "\n\nPlease contact your developer."
         );
     }
-
-    showAdminDashboard();
 }
 
 
@@ -173,37 +179,47 @@ function runSheetInitialization() {
 
     try {
 
-        const result = initializeWhatsAppBotSheets();
+        const result = initializeClinicSystem();
 
-        // Validate return object structure
-        if (
-            !result ||
-            !result.sheets ||
-            !Array.isArray(result.sheets)
-        ) {
+        if (!result || result.success !== true) {
             throw new Error(
-                "Sheet initialization returned invalid result"
+                result && result.errors && result.errors.length
+                    ? result.errors.join("\n")
+                    : "Clinic system initialization failed."
             );
         }
 
-        let message = "✅ SHEETS INITIALIZED!\n\n";
+        initializeAdminDashboard();
 
-        for (const sheet of result.sheets) {
-            message +=
-                (sheet.created ? "✨ CREATED: " : "✓ EXISTS: ") +
-                sheet.sheet + "\n";
+        let message =
+            "✅ CLINIC SYSTEM INITIALIZED!\n\n" +
+            "All required sheets were checked/initialized.\n" +
+            "Existing data was preserved.\n\n";
+
+        if (
+            result.sheets &&
+            Array.isArray(result.sheets.sheets)
+        ) {
+            result.sheets.sheets.forEach(function (sheet) {
+                message +=
+                    (sheet.created ? "✨ CREATED: " : "✓ EXISTS: ") +
+                    sheet.sheet + "\n";
+            });
         }
+
+        message +=
+            "\n🚀 Production automation triggers installed.\n" +
+            "🏥 Admin Dashboard menu initialized.\n";
 
         ui.alert(message);
 
     } catch (error) {
 
         ui.alert(
-            "❌ ERROR: " + error.message
+            "❌ INITIALIZATION ERROR:\n\n" +
+            error.message
         );
     }
-
-    showAdminDashboard();
 }
 
 
@@ -243,8 +259,6 @@ function runAllCleanupNow() {
             "❌ ERROR: " + error.message
         );
     }
-
-    showAdminDashboard();
 }
 
 
@@ -300,11 +314,54 @@ function showCleanupStatus() {
         );
     });
 
-    status += "\n⏰ Active Triggers: " + activeCleanupTriggers.length;
+    status += "\n⏰ Active Cleanup Triggers: " + activeCleanupTriggers.length;
+
+    const historySheet =
+        ss.getSheetByName("Appointment_History");
+
+    if (historySheet) {
+        status +=
+            "\nAppointment History: " +
+            Math.max(historySheet.getLastRow() - 1, 0) +
+            " archived records";
+    }
+
+    const homeCollectionSheet =
+        ss.getSheetByName("Home_Collection_Requests");
+
+    if (homeCollectionSheet) {
+        const homeRows = homeCollectionSheet.getDataRange().getValues();
+        let homePending = 0;
+        let homeCompleted = 0;
+
+        for (let i = 1; i < homeRows.length; i++) {
+            const homeStatus =
+                String(homeRows[i][9] || "").trim().toLowerCase();
+
+            if (homeStatus === "completed") {
+                homeCompleted++;
+            } else if (homeRows[i][0]) {
+                homePending++;
+            }
+        }
+
+        status +=
+            "\nHome Collections: " + homePending +
+            " pending, " + homeCompleted +
+            " completed (protected from automatic deletion)";
+    }
+
+    const triggerStatus = getProductionTriggerStatus();
+    const healthyTriggers = triggerStatus.filter(function(item) {
+        return item.healthy;
+    }).length;
+
+    status +=
+        "\n\n🔧 Production Trigger Health: " +
+        healthyTriggers + "/" + triggerStatus.length +
+        " handlers have exactly one active trigger";
 
     ui.alert(status);
-
-    showAdminDashboard();
 }
 
 
@@ -354,8 +411,6 @@ function showCostReport() {
             "❌ ERROR: " + error.message
         );
     }
-
-    showAdminDashboard();
 }
 
 
@@ -396,8 +451,6 @@ function showPerformanceReport() {
             "❌ ERROR: " + error.message
         );
     }
-
-    showAdminDashboard();
 }
 
 
@@ -409,17 +462,18 @@ function showPerformanceReport() {
 
 function addAdminMenuItems() {
 
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
     const ui = SpreadsheetApp.getUi();
 
     ui.createMenu("🏥 Admin Dashboard")
-        .addItem("Open Admin Panel", "showAdminDashboard")
+        .addItem("🚀 Production Automation Setup", "runSetupCleanupTriggers")
         .addSeparator()
-        .addItem("Setup Cleanup Triggers", "runSetupCleanupTriggers")
-        .addItem("Run Cleanup Now", "runAllCleanupNow")
+        .addItem("🧹 Cleanup Status", "showCleanupStatus")
+        .addItem("🧹 Run Cleanup Now", "runAllCleanupNow")
         .addSeparator()
-        .addItem("View Cost Report", "showCostReport")
-        .addItem("View Performance Report", "showPerformanceReport")
+        .addItem("📊 Cost Report", "showCostReport")
+        .addItem("📈 Performance Report", "showPerformanceReport")
+        .addSeparator()
+        .addItem("⚙️ Open Admin Panel", "showAdminDashboard")
         .addToUi();
 }
 

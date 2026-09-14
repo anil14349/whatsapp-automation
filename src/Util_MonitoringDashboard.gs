@@ -141,6 +141,15 @@ function logDailyMetrics() {
     ]);
 
     Logger.log("Daily metrics logged successfully");
+
+    // Keep the visual Dashboard synchronized with the latest Cost_Dashboard
+    // metrics. A dashboard refresh failure must not prevent the daily
+    // metrics row from being recorded.
+    try {
+        createVisualDashboard();
+    } catch (dashboardError) {
+        Logger.log("Dashboard refresh error: " + dashboardError.message);
+    }
 }
 
 

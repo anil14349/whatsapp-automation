@@ -393,17 +393,17 @@ function createRemindersSchedule(
         .create();
 
     Logger.log(
-        "createRemindersSchedule: Trigger created at " +
-        String(hour).padStart(2, "0") + ":" +
-        String(minute).padStart(2, "0")
+        "createRemindersSchedule: Trigger created around " +
+        String(hour).padStart(2, "0") + ":00 (minute " +
+        String(minute).padStart(2, "0") + " advisory)"
     );
 
     return {
         success: true,
         message:
-            "Reminders scheduled at " +
-            String(hour).padStart(2, "0") + ":" +
-            String(minute).padStart(2, "0")
+            "Reminders scheduled around " +
+            String(hour).padStart(2, "0") + ":00 (minute " +
+            String(minute).padStart(2, "0") + " advisory)"
     };
 }
 

@@ -321,12 +321,12 @@ function bookAppointment(
             };
         }
 
-        if (
-            hasActiveAppointmentOnDate(
-                patientPhone,
-                dateString
-            )
-        ) {
+        const existingUpcomingAppointment =
+            findUpcomingActiveAppointmentByPhone(
+                patientPhone
+            );
+
+        if (existingUpcomingAppointment) {
 
             // CONSISTENCY: Explicit lock release on early return
             if (lock && lock.hasLock()) {
@@ -336,7 +336,7 @@ function bookAppointment(
             return {
                 success: false,
                 message:
-                    "You already have an active appointment on this date."
+                    "You already have an upcoming active appointment."
             };
         }
 
@@ -390,7 +390,8 @@ function bookAppointment(
             registerPatientForBooking(
                 patientPhone,
                 patientName,
-                patientLanguage
+                patientLanguage,
+                { skipLock: true }
             );
 
         const patientId =
@@ -439,6 +440,8 @@ function bookAppointment(
             patientId
 
         ]);
+
+        invalidateAppointmentExecutionCaches();
 
     } catch (error) {
 
@@ -770,6 +773,8 @@ function cancelAppointment(
                 appointmentSheet
                     .getRange(i + 1, 7)
                     .setValue("Cancelled");
+
+                invalidateAppointmentExecutionCaches();
 
                 return {
 
@@ -1205,18 +1210,18 @@ function rescheduleAppointment(
 
     try {
 
-        if (
-            hasActiveAppointmentOnDate(
+        const anotherUpcomingAppointment =
+            findUpcomingActiveAppointmentByPhone(
                 patientPhoneInput,
-                newDateString,
                 appointmentId
-            )
-        ) {
+            );
+
+        if (anotherUpcomingAppointment) {
 
             return {
                 success: false,
                 message:
-                    "You already have an active appointment on this date."
+                    "You already have an upcoming active appointment."
             };
         }
 
@@ -1460,75 +1465,11 @@ function hasActiveAppointmentOnDate(
     dateString,
     excludedAppointmentId
 ) {
-
-    const targetDateIso =
-        normalizeAppointmentDate(dateString);
-
-    if (!targetDateIso) {
-        return false;
-    }
-
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
-
-    const sheet =
-        ss.getSheetByName("Appointments");
-
-    if (!sheet) {
-        throw new Error(
-            "Appointments sheet not found."
-        );
-    }
-
-    const data =
-        sheet.getDataRange().getValues();
-
-    const excludedId =
-        String(excludedAppointmentId || "").trim();
-
-    // ========================================================
-    // OPTIMIZATION: Scan from end backwards
-    // ========================================================
-    // Most active appointments are recent; scanning from the end
-    // reduces avg scan time on large sheets without missing results.
-
-    for (
-        let i = data.length - 1;
-        i >= 1;
-        i--
-    ) {
-
-        const status =
-            String(data[i][6] || "")
-                .trim()
-                .toLowerCase();
-
-        const isInactive =
-            status === "cancelled" ||
-            status === "completed" ||
-            status === "no-show" ||
-            status === "noshow" ||
-            status === "no show";
-
-        const rowDateIso =
-            normalizeAppointmentDate(
-                data[i][1]
-            );
-
-        if (
-            String(data[i][0] || "").trim() !== excludedId &&
-            phonesMatch(
-                data[i][5],
-                patientPhone
-            ) &&
-            rowDateIso === targetDateIso &&
-            !isInactive
-        ) {
-            return true;
-        }
-    }
-
-    return false;
+    return !!findActiveAppointmentOnDate(
+        patientPhone,
+        dateString,
+        excludedAppointmentId
+    );
 }
 
 
@@ -1541,110 +1482,97 @@ function getMyAppointments(
     patientPhone
 ) {
 
-    const ss =
-        SpreadsheetApp.getActiveSpreadsheet();
+    // OPTIMIZATION: reuse the execution-scoped phone index instead of
+    // reading the entire Appointments sheet for every patient request.
+    const cachedAppointments =
+        getAppointmentsByPhoneWithCache(patientPhone);
 
-    const sheet =
-        ss.getSheetByName("Appointments");
-
-    const data =
-        sheet.getDataRange().getValues();
+    const now =
+        new Date();
 
     const appointments = [];
 
-    for (
-        let i = 1;
-        i < data.length;
-        i++
-    ) {
-
-        const appointmentId =
-            data[i][0];
-
-        const date =
-            data[i][1];
-
-        const time =
-            data[i][2];
-
-        const doctorId =
-            data[i][3];
-
-        const patientName =
-            data[i][4];
-
-        const phone =
-            data[i][5];
+    for (const appointment of cachedAppointments) {
 
         const status =
-            data[i][6];
+            appointment.status;
 
+        // Only show appointments that are still active.
         if (
-            phonesMatch(
-                phone,
-                patientPhone
+            isInactiveAppointmentStatus(
+                status
             )
         ) {
-
-            // -------------------------------------------------------
-            // Format appointment time
-            // -------------------------------------------------------
-
-            let appointmentTime = "";
-
-            if (data[i][2] instanceof Date) {
-
-                appointmentTime =
-                    Utilities.formatDate(
-                        data[i][2],
-                        TIMEZONE,
-                        "hh:mm a"
-                    );
-
-            } else {
-
-                appointmentTime =
-                    String(data[i][2]).trim();
-
-            }
-
-
-            // -------------------------------------------------------
-            // Add appointment
-            // -------------------------------------------------------
-
-            appointments.push({
-
-                appointmentId:
-                    String(appointmentId).trim(),
-
-                date:
-                    data[i][1] instanceof Date
-                        ? Utilities.formatDate(
-                            data[i][1],
-                            TIMEZONE,
-                            "dd-MMM-yyyy"
-                        )
-                        : String(date).trim(),
-
-                time:
-                    appointmentTime,
-
-                doctorId:
-                    String(doctorId).trim(),
-
-                patientName:
-                    String(patientName).trim(),
-
-                phone:
-                    String(phone).trim(),
-
-                status:
-                    String(status).trim()
-
-            });
+            continue;
         }
+
+        // My Appointments is specifically an UPCOMING view.
+        // Past/today-already-started appointments are excluded.
+        const startTime =
+            getAppointmentStartDateTime(
+                appointment.date,
+                appointment.time
+            );
+
+        if (
+            !startTime ||
+            startTime.getTime() <= now.getTime()
+        ) {
+            continue;
+        }
+
+        let appointmentTime = "";
+
+        if (appointment.time instanceof Date) {
+
+            appointmentTime =
+                Utilities.formatDate(
+                    appointment.time,
+                    TIMEZONE,
+                    "hh:mm a"
+                );
+
+        } else {
+
+            appointmentTime =
+                String(appointment.time || "").trim();
+
+        }
+
+        appointments.push({
+
+            row:
+                appointment.row,
+
+            appointmentId:
+                appointment.appointmentId,
+
+            date:
+                appointment.date,
+
+            time:
+                appointmentTime,
+
+            doctorId:
+                appointment.doctorId,
+
+            patientName:
+                appointment.patientName,
+
+            phone:
+                appointment.patientPhone,
+
+            status:
+                appointment.status,
+
+            startTime:
+                startTime
+        });
     }
+
+    appointments.sort(function(a, b) {
+        return a.startTime.getTime() - b.startTime.getTime();
+    });
 
     return appointments;
 }
@@ -1841,7 +1769,7 @@ function sendAppointmentReceiptCard(to, appointment) {
     sendWhatsAppImageMessage(
         to,
         mediaId,
-        "🎫 Appointment confirmation — please forward this card to the patient if you booked on their behalf."
+        "🎫 Appointment confirmation"
     );
 
     return mediaId;
@@ -1849,7 +1777,6 @@ function sendAppointmentReceiptCard(to, appointment) {
 
 
 function createAppointmentReceiptCardBlob(appointment) {
-
     if (!appointment || !appointment.appointmentId) {
         throw new Error(
             "Appointment data is incomplete for receipt generation."
@@ -1859,54 +1786,206 @@ function createAppointmentReceiptCardBlob(appointment) {
     let presentation = null;
 
     try {
-
         presentation =
             SlidesApp.create(
-                getClinicName() + " Appointment Receipt"
+                getClinicName() + " Appointment Confirmation"
             );
 
         const slide =
-            presentation
-                .getSlides()[0];
-
-        // Use a clean white canvas.
-        slide
-            .getBackground()
-            .setSolidFill("#FFFFFF");
+            presentation.getSlides()[0];
 
         const pageWidth =
-            presentation
-                .getPageWidth();
+            presentation.getPageWidth();
 
         const pageHeight =
-            presentation
-                .getPageHeight();
+            presentation.getPageHeight();
 
         // ------------------------------------------------------
-        // Top clinic/header area
+        // Palette — clean WellSun-style healthcare card
         // ------------------------------------------------------
+        const NAVY = "#102A56";
+        const TEAL = "#087E8B";
+        const GREEN = "#2DBE72";
+        const PALE_GREEN = "#E9F9EF";
+        const PALE_BLUE = "#EEF7FB";
+        const PALE_TEAL = "#E9F7F8";
+        const TEXT = "#1F2937";
+        const MUTED = "#64748B";
+        const WHITE = "#FFFFFF";
+        const BORDER = "#D9E7EA";
+        const LIGHT = "#F7FBFC";
 
-        const header =
+        // ------------------------------------------------------
+        // Helpers
+        // ------------------------------------------------------
+        function addText(
+            value,
+            left,
+            top,
+            width,
+            height,
+            size,
+            color,
+            bold,
+            align
+        ) {
+            const box =
+                slide.insertTextBox(
+                    String(value == null ? "" : value),
+                    left,
+                    top,
+                    width,
+                    height
+                );
+
+            const style =
+                box.getText().getTextStyle();
+
+            style.setFontSize(size || 12);
+            style.setForegroundColor(color || TEXT);
+            style.setBold(!!bold);
+
+            if (align) {
+                box.getText().getParagraphStyle()
+                    .setParagraphAlignment(align);
+            }
+
+            return box;
+        }
+
+        function addRoundedBox(
+            left,
+            top,
+            width,
+            height,
+            fill,
+            lineColor
+        ) {
+            const box =
+                slide.insertShape(
+                    SlidesApp.ShapeType.ROUNDED_RECTANGLE,
+                    left,
+                    top,
+                    width,
+                    height
+                );
+
+            box.getFill().setSolidFill(fill);
+            box.getLine().setSolidFill(
+                lineColor || fill
+            );
+
+            return box;
+        }
+
+        function addCircle(
+            left,
+            top,
+            size,
+            fill,
+            symbol,
+            symbolColor,
+            symbolSize
+        ) {
+            const circle =
+                slide.insertShape(
+                    SlidesApp.ShapeType.ELLIPSE,
+                    left,
+                    top,
+                    size,
+                    size
+                );
+
+            circle.getFill().setSolidFill(fill);
+            circle.getLine().setTransparent();
+
+            const t =
+                circle.getText();
+
+            t.setText(symbol);
+
+            t.getTextStyle()
+                .setFontSize(symbolSize || 18)
+                .setBold(true)
+                .setForegroundColor(
+                    symbolColor || WHITE
+                );
+
+            t.getParagraphStyle()
+                .setParagraphAlignment(
+                    SlidesApp.ParagraphAlignment.CENTER
+                );
+
+            return circle;
+        }
+
+        function addDetailRow(
+            y,
+            icon,
+            iconFill,
+            label,
+            value,
+            valueSize
+        ) {
+            addCircle(
+                leftMargin,
+                y,
+                iconSize,
+                iconFill,
+                icon,
+                WHITE,
+                17
+            );
+
+            addText(
+                label.toUpperCase(),
+                leftMargin + iconSize + 12,
+                y - 1,
+                detailWidth - iconSize - 12,
+                16,
+                8.5,
+                MUTED,
+                true
+            );
+
+            addText(
+                value,
+                leftMargin + iconSize + 12,
+                y + 13,
+                detailWidth - iconSize - 12,
+                28,
+                valueSize || 14,
+                NAVY,
+                true
+            );
+        }
+
+        // ------------------------------------------------------
+        // Background
+        // ------------------------------------------------------
+        slide
+            .getBackground()
+            .setSolidFill(LIGHT);
+
+        // Soft top band.
+        const topBand =
             slide.insertShape(
                 SlidesApp.ShapeType.RECTANGLE,
                 0,
                 0,
                 pageWidth,
-                105
+                pageHeight * 0.055
             );
 
-        header
-            .getFill()
-            .setSolidFill("#0B6E4F");
+        topBand.getFill().setSolidFill(TEAL);
+        topBand.getLine().setTransparent();
 
-        header
-            .getLine()
-            .setTransparent();
+        const margin =
+            pageWidth * 0.055;
 
         // ------------------------------------------------------
-        // Hospital logo
+        // Header / branding
         // ------------------------------------------------------
-
         const logoFileId =
             String(
                 getSetting(
@@ -1928,9 +2007,9 @@ function createAppointmentReceiptCardBlob(appointment) {
                     );
 
                 logo
-                    .setLeft(22)
-                    .setTop(17)
-                    .setHeight(70);
+                    .setLeft(margin)
+                    .setTop(pageHeight * 0.075)
+                    .setHeight(pageHeight * 0.105);
             } catch (logoError) {
                 Logger.log(
                     "Receipt logo could not be inserted: " +
@@ -1942,41 +2021,111 @@ function createAppointmentReceiptCardBlob(appointment) {
         const clinicName =
             getClinicName();
 
-        const clinicText =
-            slide.insertTextBox(
-                String(clinicName || ""),
-                105,
-                22,
-                pageWidth - 130,
-                32
-            );
+        addText(
+            clinicName,
+            margin + pageWidth * 0.145,
+            pageHeight * 0.075,
+            pageWidth * 0.42,
+            27,
+            20,
+            NAVY,
+            true
+        );
 
-        clinicText
-            .getText()
-            .getTextStyle()
-            .setFontSize(22)
-            .setBold(true)
-            .setForegroundColor("#FFFFFF");
-
-        const statusText =
-            slide.insertTextBox(
-                "APPOINTMENT CONFIRMED",
-                105,
-                56,
-                pageWidth - 130,
-                25
-            );
-
-        statusText
-            .getText()
-            .getTextStyle()
-            .setFontSize(11)
-            .setBold(true)
-            .setForegroundColor("#FFFFFF");
+        addText(
+            "Your Health, Our Priority",
+            pageWidth * 0.68,
+            pageHeight * 0.078,
+            pageWidth * 0.25,
+            24,
+            11,
+            TEAL,
+            true,
+            SlidesApp.ParagraphAlignment.RIGHT
+        );
 
         // ------------------------------------------------------
-        // Appointment details
+        // Confirmation heading
         // ------------------------------------------------------
+        addCircle(
+            margin,
+            pageHeight * 0.205,
+            42,
+            GREEN,
+            "✓",
+            WHITE,
+            25
+        );
+
+        addText(
+            "Appointment",
+            margin + 55,
+            pageHeight * 0.185,
+            pageWidth * 0.42,
+            31,
+            25,
+            NAVY,
+            true
+        );
+
+        addText(
+            "Confirmed!",
+            margin + 55,
+            pageHeight * 0.245,
+            pageWidth * 0.42,
+            31,
+            25,
+            NAVY,
+            true
+        );
+
+        addRoundedBox(
+            margin,
+            pageHeight * 0.325,
+            pageWidth * 0.50,
+            38,
+            PALE_GREEN,
+            PALE_GREEN
+        );
+
+        addText(
+            "We look forward to seeing you!",
+            margin + 12,
+            pageHeight * 0.338,
+            pageWidth * 0.47,
+            20,
+            11,
+            TEAL,
+            true,
+            SlidesApp.ParagraphAlignment.CENTER
+        );
+
+        // ------------------------------------------------------
+        // Patient / appointment details card
+        // ------------------------------------------------------
+        const detailTop =
+            pageHeight * 0.405;
+
+        const detailHeight =
+            pageHeight * 0.43;
+
+        const detailWidth =
+            pageWidth * 0.54;
+
+        const leftMargin =
+            margin;
+
+        const iconSize =
+            31;
+
+        addRoundedBox(
+            leftMargin,
+            detailTop,
+            detailWidth,
+            detailHeight,
+            WHITE,
+            BORDER
+        );
 
         const doctorRecord =
             appointment.doctorId
@@ -1999,102 +2148,314 @@ function createAppointmentReceiptCardBlob(appointment) {
                 "Doctor"
             );
 
-        const details = [
-            ["PATIENT", appointment.patientName || ""],
-            ["DOCTOR", doctorName],
-            ["SPECIALIZATION", specialization || ""],
-            ["DATE", formatReceiptDate(appointment.date)],
-            ["TIME", appointment.time || ""],
-            ["APPOINTMENT ID", appointment.appointmentId],
-            ["CLINIC", (doctorRecord && doctorRecord.clinicName) || clinicName || ""]
-        ];
+        const clinicForReceipt =
+            (doctorRecord &&
+                doctorRecord.clinicName) ||
+            clinicName ||
+            "";
 
-        let top = 125;
+        const rowStart =
+            detailTop + 18;
 
-        details.forEach(function(row) {
+        const rowGap =
+            detailHeight / 4.65;
 
-            const label =
-                slide.insertTextBox(
-                    row[0],
-                    35,
-                    top,
-                    135,
-                    22
-                );
+        addDetailRow(
+            rowStart,
+            "P",
+            "#2E86DE",
+            "Patient",
+            appointment.patientName || "",
+            14
+        );
 
-            label
-                .getText()
-                .getTextStyle()
-                .setFontSize(9)
-                .setBold(true)
-                .setForegroundColor("#777777");
+        addDetailRow(
+            rowStart + rowGap,
+            "D",
+            TEAL,
+            "Doctor",
+            doctorName,
+            13.5
+        );
 
-            const value =
-                slide.insertTextBox(
-                    String(row[1] || ""),
-                    175,
-                    top - 2,
-                    pageWidth - 210,
-                    25
-                );
+        if (specialization) {
+            addDetailRow(
+                rowStart + rowGap * 2,
+                "S",
+                "#4E9F3D",
+                "Specialization",
+                specialization,
+                12.5
+            );
+        } else {
+            addDetailRow(
+                rowStart + rowGap * 2,
+                "C",
+                "#4E9F3D",
+                "Clinic",
+                clinicForReceipt,
+                12.5
+            );
+        }
 
-            value
-                .getText()
-                .getTextStyle()
-                .setFontSize(13)
-                .setBold(row[0] === "APPOINTMENT ID")
-                .setForegroundColor("#222222");
-
-            top += 43;
-        });
+        addDetailRow(
+            rowStart + rowGap * 3,
+            "T",
+            "#E65F5C",
+            "Date & Time",
+            formatReceiptDate(
+                appointment.date
+            ) +
+            "  •  " +
+            String(
+                appointment.time || ""
+            ),
+            12.5
+        );
 
         // ------------------------------------------------------
-        // Footer / sharing instruction
+        // Decorative appointment illustration
         // ------------------------------------------------------
+        const artLeft =
+            pageWidth * 0.66;
 
-        const footerTop =
-            pageHeight - 70;
+        const artTop =
+            pageHeight * 0.39;
 
-        const footerLine =
-            slide.insertShape(
-                SlidesApp.ShapeType.RECTANGLE,
-                0,
-                footerTop,
-                pageWidth,
-                1
+        const artWidth =
+            pageWidth * 0.27;
+
+        const artHeight =
+            pageHeight * 0.44;
+
+        addRoundedBox(
+            artLeft,
+            artTop,
+            artWidth,
+            artHeight,
+            PALE_BLUE,
+            PALE_BLUE
+        );
+
+        // Calendar.
+        const calLeft =
+            artLeft + artWidth * 0.16;
+
+        const calTop =
+            artTop + artHeight * 0.18;
+
+        const calWidth =
+            artWidth * 0.68;
+
+        const calHeight =
+            artHeight * 0.50;
+
+        const calendar =
+            addRoundedBox(
+                calLeft,
+                calTop,
+                calWidth,
+                calHeight,
+                WHITE,
+                BORDER
             );
 
-        footerLine
-            .getFill()
-            .setSolidFill("#DDDDDD");
+        const calendarHeader =
+            slide.insertShape(
+                SlidesApp.ShapeType.ROUNDED_RECTANGLE,
+                calLeft,
+                calTop,
+                calWidth,
+                calHeight * 0.23
+            );
 
-        footerLine
+        calendarHeader
+            .getFill()
+            .setSolidFill(TEAL);
+        calendarHeader
             .getLine()
             .setTransparent();
 
-        const footer =
-            slide.insertTextBox(
-                "Please show this confirmation at reception.\nYou can forward this card to the patient.",
-                35,
-                footerTop + 10,
-                pageWidth - 70,
-                45
+        addText(
+            "APPOINTMENT",
+            calLeft + 8,
+            calTop + 10,
+            calWidth - 16,
+            16,
+            8,
+            WHITE,
+            true,
+            SlidesApp.ParagraphAlignment.CENTER
+        );
+
+        addText(
+            formatReceiptDate(
+                appointment.date
+            ),
+            calLeft + 8,
+            calTop + calHeight * 0.34,
+            calWidth - 16,
+            24,
+            13,
+            NAVY,
+            true,
+            SlidesApp.ParagraphAlignment.CENTER
+        );
+
+        addText(
+            String(
+                appointment.time || ""
+            ),
+            calLeft + 8,
+            calTop + calHeight * 0.56,
+            calWidth - 16,
+            22,
+            14,
+            TEAL,
+            true,
+            SlidesApp.ParagraphAlignment.CENTER
+        );
+
+        // Simple plant / healthcare cross illustration.
+        const potLeft =
+            artLeft + artWidth * 0.39;
+
+        const potTop =
+            artTop + artHeight * 0.71;
+
+        const pot =
+            slide.insertShape(
+                SlidesApp.ShapeType.ROUNDED_RECTANGLE,
+                potLeft,
+                potTop,
+                artWidth * 0.22,
+                artHeight * 0.12
             );
 
-        footer
-            .getText()
-            .getTextStyle()
-            .setFontSize(9)
-            .setForegroundColor("#666666");
+        pot.getFill().setSolidFill(WHITE);
+        pot.getLine().setSolidFill(BORDER);
 
-        presentation
-            .saveAndClose();
+        const stem =
+            slide.insertShape(
+                SlidesApp.ShapeType.RECTANGLE,
+                potLeft + artWidth * 0.105,
+                potTop - artHeight * 0.20,
+                3,
+                artHeight * 0.22
+            );
+
+        stem.getFill().setSolidFill(TEAL);
+        stem.getLine().setTransparent();
+
+        addCircle(
+            potLeft - artWidth * 0.08,
+            potTop - artHeight * 0.22,
+            artWidth * 0.17,
+            "#6BCB77",
+            "✓",
+            WHITE,
+            15
+        );
+
+        addCircle(
+            potLeft + artWidth * 0.10,
+            potTop - artHeight * 0.30,
+            artWidth * 0.17,
+            "#37B24D",
+            "♥",
+            WHITE,
+            13
+        );
+
+        addCircle(
+            potLeft + artWidth * 0.23,
+            potTop - artHeight * 0.18,
+            artWidth * 0.17,
+            "#51CF66",
+            "＋",
+            WHITE,
+            13
+        );
+
+        addText(
+            "See you soon!",
+            artLeft + 8,
+            artTop + artHeight * 0.88,
+            artWidth - 16,
+            25,
+            13,
+            TEAL,
+            true,
+            SlidesApp.ParagraphAlignment.CENTER
+        );
+
+        // ------------------------------------------------------
+        // Appointment ID + clinic footer
+        // ------------------------------------------------------
+        const footerTop =
+            pageHeight * 0.875;
+
+        addRoundedBox(
+            margin,
+            footerTop,
+            pageWidth - margin * 2,
+            pageHeight * 0.075,
+            PALE_TEAL,
+            PALE_TEAL
+        );
+
+        addText(
+            "Appointment ID",
+            margin + 12,
+            footerTop + 8,
+            pageWidth * 0.18,
+            15,
+            8,
+            MUTED,
+            true
+        );
+
+        addText(
+            appointment.appointmentId,
+            margin + 12,
+            footerTop + 23,
+            pageWidth * 0.25,
+            20,
+            12,
+            NAVY,
+            true
+        );
+
+        addText(
+            clinicForReceipt,
+            pageWidth * 0.42,
+            footerTop + 11,
+            pageWidth * 0.50,
+            19,
+            10,
+            TEAL,
+            true,
+            SlidesApp.ParagraphAlignment.RIGHT
+        );
+
+        addText(
+            "Please keep this confirmation for your visit.",
+            pageWidth * 0.40,
+            footerTop + 29,
+            pageWidth * 0.52,
+            16,
+            8,
+            MUTED,
+            false,
+            SlidesApp.ParagraphAlignment.RIGHT
+        );
+
+        presentation.saveAndClose();
 
         // ------------------------------------------------------
         // Export slide as PNG using Google Slides API.
-        // This avoids any third-party image-generation service.
+        // No third-party image-generation service is required.
         // ------------------------------------------------------
-
         const presentationId =
             presentation.getId();
 
@@ -2130,7 +2491,8 @@ function createAppointmentReceiptCardBlob(appointment) {
         if (code < 200 || code >= 300) {
             throw new Error(
                 "Google Slides thumbnail export failed (" +
-                code + "): " +
+                code +
+                "): " +
                 response.getContentText()
             );
         }
@@ -2179,7 +2541,8 @@ function createAppointmentReceiptCardBlob(appointment) {
         };
 
     } finally {
-
+        // Keep the generated presentation out of the user's Drive after
+        // the PNG has been exported.
         if (presentation) {
             try {
                 DriveApp
@@ -2187,10 +2550,10 @@ function createAppointmentReceiptCardBlob(appointment) {
                         presentation.getId()
                     )
                     .setTrashed(true);
-            } catch (trashError) {
+            } catch (cleanupError) {
                 Logger.log(
-                    "Could not trash temporary receipt presentation: " +
-                    trashError.message
+                    "Appointment receipt presentation cleanup failed: " +
+                    cleanupError.message
                 );
             }
         }

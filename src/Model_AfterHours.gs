@@ -311,10 +311,16 @@ function shouldBlockPatientForAfterHours(
         return false;
     }
 
-    if (
+    const senderDoctor =
         findDoctorByWhatsAppPhone(
             senderPhone
-        )
+        );
+
+    // findDoctorByWhatsAppPhone() returns a result object for both
+    // matches and non-matches, so check the explicit found flag.
+    if (
+        senderDoctor &&
+        senderDoctor.found
     ) {
         return false;
     }

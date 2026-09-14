@@ -165,7 +165,7 @@ function sendWhatsAppMenuReply(
     try {
 
         const session =
-            getWhatsAppSession(phone);
+            getWhatsAppSessionWithCache(phone);
 
         const language =
             resolvePatientLanguage(
@@ -246,37 +246,20 @@ function sendWhatsAppMenuReply(
 
         if (!sendResult) {
 
-            const fallbackBody =
-                willSendInteractive
-                    ? localizeWhatsAppReply(
-                        language,
-                        addWhatsAppNavigationOptions(
-                            session,
-                            rawBody
-                        )
-                    )
-                    : localizedBody;
-
-            const localizedFallback =
-                menuSpec &&
-                menuSpec.fallbackText
-                    ? localizeWhatsAppReply(
-                        language,
-                        menuSpec.fallbackText
-                    )
-                    : "";
-
-            const fallbackText =
-                localizedFallback
-                    ? fallbackBody +
-                    "\n\n" +
-                    localizedFallback
-                    : fallbackBody;
+            // Patient menus are intentionally tappable-only. If the
+            // interactive message cannot be delivered, do NOT expose a
+            // numbered text menu or navigation commands that require typing.
+            // Give the patient a simple recovery path instead.
+            const recoveryText =
+                localizeWhatsAppReply(
+                    language,
+                    "Sorry, we couldn't display the menu.\n\nPlease send Hi to restart."
+                );
 
             sendResult =
                 sendWhatsAppText(
                     phone,
-                    fallbackText
+                    recoveryText
                 );
         }
 
@@ -743,7 +726,7 @@ function sendSlotSelectionMenuReply(
     const opts = options || {};
 
     const session =
-        getWhatsAppSession(phone);
+        getWhatsAppSessionWithCache(phone);
 
     const menuSpec =
         getSlotSelectionMenuSpec(
@@ -822,8 +805,8 @@ function sendCustomDateEntryMenuReply(
             fallbackText:
                 text +
                 "\n\n" +
-                "0️⃣ Main Menu\n" +
-                "9️⃣ Back",
+                "Main Menu\n" +
+                "Back",
 
             interactive:
                 buildInteractiveButtonSpec([
@@ -847,37 +830,21 @@ function sendDoctorSelectionReply(ss, phone, page) {
     const doctors = getDoctors();
 
     if (doctors.length === 0) {
-
         sendWhatsAppReply(
             ss,
             phone,
             "❌ No doctors are currently available."
         );
-
         return;
     }
 
     const menuSpec =
         getDoctorSelectionMenuSpec(page || 0);
 
-    let body =
-        buildDoctorSelectionBody();
-
-    if (
-        menuSpec &&
-        menuSpec.totalPages > 1
-    ) {
-        body +=
-            "\n\nPage " +
-            (menuSpec.page + 1) +
-            " of " +
-            menuSpec.totalPages;
-    }
-
     sendWhatsAppMenuReply(
         ss,
         phone,
-        body,
+        buildDoctorSelectionBody(),
         menuSpec
     );
 }
@@ -893,7 +860,7 @@ function sendWhatsAppReply(
     try {
 
         const session =
-            getWhatsAppSession(phone);
+            getWhatsAppSessionWithCache(phone);
 
         const language =
             resolvePatientLanguage(
@@ -1018,16 +985,28 @@ function sendWhatsAppImageMessage(
         image.caption = String(caption);
     }
 
-    return sendWhatsAppGraphPayload(
-        to,
-        {
-            messaging_product: "whatsapp",
-            recipient_type: "individual",
-            to: String(to),
-            type: "image",
-            image: image
-        }
-    );
+    const result =
+        sendWhatsAppGraphPayload(
+            to,
+            {
+                messaging_product: "whatsapp",
+                recipient_type: "individual",
+                to: String(to),
+                type: "image",
+                image: image
+            }
+        );
+
+    if (
+        !result ||
+        result.skipped
+    ) {
+        throw new Error(
+            "WhatsApp image message was skipped."
+        );
+    }
+
+    return result;
 }
 
 

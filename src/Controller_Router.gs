@@ -31,10 +31,29 @@ if (
     normalizedMessage === "हेलो"
 ) {
 
+    const collector =
+        findHomeCollectionPersonByWhatsAppPhone(senderPhone);
+
+    if (collector && collector.found) {
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                role: "HOME_COLLECTION_PERSON",
+                state: "HOME_COLLECTION_PERSON_MENU",
+                collectorId: collector.personId,
+                collectorName: collector.name
+            }
+        );
+        sendHomeCollectionPersonMenuReply(
+            ss, senderPhone, collector.name
+        );
+        return true;
+    }
+
     const doctor =
         findDoctorByWhatsAppPhone(senderPhone);
 
-    if (doctor) {
+    if (doctor && doctor.found) {
 
         returnDoctorToMenu(
             ss,
@@ -56,8 +75,11 @@ if (
             ) === -1
         ) {
 
+            // OPTIMIZATION: this is part of the inbound welcome hot path.
+            // Use the execution-scoped patient cache rather than reading
+            // the Patients sheet again.
             const patient =
-                findPatientByPhone(
+                findPatientByPhoneWithCache(
                     senderPhone
                 );
 
@@ -164,6 +186,7 @@ if (
     if (
         session.state === "BOOK_DATE" ||
         session.state === "BOOK_DATE_CUSTOM" ||
+        session.state === "BOOK_NO_SLOTS" ||
         session.state === "BOOK_TIME" ||
         session.state === "BOOK_NAME" ||
         session.state === "BOOK_CONFIRM"
@@ -264,14 +287,16 @@ if (
 
 if (
     session &&
-    session.state !== "MAIN_MENU" &&
     session.state !== "DOCTOR_MENU" &&
     session.state !== "LANGUAGE_SELECT" &&
     session.state !== "LANGUAGE_CHANGE" &&
     (
-        normalizedMessage === "0" ||
         normalizedMessage === "nav_main_menu" ||
-        normalizedMessage === "main_menu"
+        normalizedMessage === "main_menu" ||
+        (
+            session.state !== "MAIN_MENU" &&
+            normalizedMessage === "0"
+        )
     )
 ) {
 
@@ -280,7 +305,11 @@ if (
     // ========================================================
     // Users cannot abandon multi-step booking flows mid-process
 
-    if (isStateProtectedFromNavigation(session.state)) {
+    if (isStateProtectedFromNavigation(session.state) &&
+        session.state !== "BOOK_NO_SLOTS" &&
+        session.state !== "BOOK_NAME" &&
+        normalizedMessage !== "nav_main_menu" &&
+        normalizedMessage !== "main_menu") {
 
         sendCustomDateEntryMenuReply(
             ss,
@@ -302,6 +331,12 @@ if (
                 senderPhone,
                 session
             )
+        );
+
+    } else if (session.role === "HOME_COLLECTION_PERSON") {
+
+        sendHomeCollectionPersonMenuReply(
+            ss, senderPhone, session.collectorName || ""
         );
 
     } else {
@@ -362,7 +397,9 @@ if (
     // ========================================================
     // Users cannot abandon multi-step booking flows by pressing back
 
-    if (isStateProtectedFromNavigation(session.state)) {
+    if (isStateProtectedFromNavigation(session.state) &&
+        session.state !== "BOOK_NO_SLOTS" &&
+        session.state !== "BOOK_NAME") {
 
         sendCustomDateEntryMenuReply(
             ss,
@@ -417,7 +454,38 @@ function processWhatsAppTextMessage(
             .trim();
 
     const session =
-        getWhatsAppSession(senderPhone);
+        getWhatsAppSessionWithCache(senderPhone);
+
+    // ========================================================
+    // GREETING — ALWAYS ALLOWED
+    // ========================================================
+    // Hi / Hello must be able to restart the conversation even
+    // when the patient is currently inside a tappable menu.
+
+    if (
+        handleWhatsAppGreeting(
+            ss,
+            senderPhone,
+            session,
+            normalizedMessage
+        )
+    ) {
+        return;
+    }
+
+    // ========================================================
+    // AFTER-HOURS GATE
+    // ========================================================
+
+    if (
+        handleAfterHoursPatientGate(
+            ss,
+            senderPhone,
+            session
+        )
+    ) {
+        return;
+    }
 
     // ========================================================
     // ENFORCE TAPPABLE-ONLY OPTIONS
@@ -437,32 +505,20 @@ function processWhatsAppTextMessage(
     }
 
     if (
-        handleAfterHoursPatientGate(
-            ss,
-            senderPhone,
-            session
-        )
-    ) {
-        return;
-    }
-
-    if (
-        handleWhatsAppGreeting(
-            ss,
-            senderPhone,
-            session,
-            normalizedMessage
-        )
-    ) {
-        return;
-    }
-
-    if (
         handleWhatsAppUniversalNavigation(
             ss,
             senderPhone,
             session,
             normalizedMessage
+        )
+    ) {
+        return;
+    }
+
+    if (
+        handleWhatsAppHomeCollectionPersonMessage(
+            ss, senderPhone, senderName, messageText,
+            normalizedMessage, session
         )
     ) {
         return;
@@ -499,6 +555,17 @@ function processWhatsAppTextMessage(
 // ======================================================
 
 if (
+    session &&
+    session.role === "HOME_COLLECTION_PERSON"
+) {
+
+    sendHomeCollectionPersonMenuReply(
+        ss, senderPhone, session.collectorName || ""
+    );
+
+}
+
+else if (
     session &&
     session.role === "DOCTOR"
 ) {

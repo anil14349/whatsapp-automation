@@ -232,25 +232,18 @@ function getAvailableSlots(
         return [];
     }
 
-    let appointmentDuration;
+    // PERFORMANCE: getDoctorRecord() already loaded the Doctors row and
+    // includes appointmentDuration. Do not reread the entire Doctors sheet
+    // through getDoctorAppointmentDuration() on every availability request.
+    let appointmentDuration =
+        Number(doctor.appointmentDuration);
 
-    try {
-
-        appointmentDuration =
-            getDoctorAppointmentDuration(
-                doctorId
-            );
-
-    } catch (durationError) {
-
+    if (!appointmentDuration || appointmentDuration <= 0) {
         Logger.log(
-            "getAvailableSlots: could not resolve appointment duration for " +
+            "getAvailableSlots: invalid appointment duration for " +
             doctorId +
-            ": " +
-            durationError
+            "; using default 60 minutes"
         );
-
-        // Fallback to 60 minutes if duration cannot be determined
         appointmentDuration = 60;
     }
 

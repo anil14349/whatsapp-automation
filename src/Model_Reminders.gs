@@ -87,40 +87,23 @@ function hasReminderBeenSent(
     logData
 ) {
 
-    // OPTIMIZATION: If logData provided, use cached data instead of reloading
     let data = logData;
 
     if (!data) {
-        const ss =
-            SpreadsheetApp.getActiveSpreadsheet();
-
-        const sheet =
-            ensureWhatsAppLogSheet(ss);
-
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        const sheet = ensureWhatsAppLogSheet(ss);
         data = sheet.getDataRange().getValues();
     }
 
-    const targetId =
-        String(appointmentId || "").trim();
+    const targetId = String(appointmentId || "").trim();
+    const targetHours = Number(hoursBefore);
 
-    const targetHours =
-        Number(hoursBefore);
-
-    for (
-        let i = 1;
-        i < data.length;
-        i++
-    ) {
-
+    for (let i = 1; i < data.length; i++) {
         if (
             data[i][1] === "REMINDER" &&
-            String(data[i][6] || "").trim() ===
-            targetId &&
+            String(data[i][6] || "").trim() === targetId &&
             Number(data[i][7]) === targetHours &&
-            String(data[i][4] || "")
-                .trim()
-                .toUpperCase() ===
-            "SUCCESS"
+            String(data[i][4] || "").trim().toUpperCase() === "SUCCESS"
         ) {
             return true;
         }
@@ -162,7 +145,7 @@ function markReminderSent(
 function resolvePatientLanguageFromRegistry(phone) {
 
     const patient =
-        findPatientByPhone(phone);
+        findPatientByPhoneWithCache(phone);
 
     const language =
         patient &&
@@ -419,12 +402,14 @@ function sendAppointmentReminders() {
                     return;
                 }
 
-                // OPTIMIZATION: Pass cached logData instead of reloading
+                // Atomically claim the reminder before sending. The lock is
+                // released before the WhatsApp API call so reminder processing
+                // cannot hold the global script lock during network I/O.
                 if (
-                    hasReminderBeenSent(
+                    !claimAppointmentReminder(
                         appointmentId,
                         hoursBefore,
-                        logData
+                        appointment.phone
                     )
                 ) {
                     results.skipped++;

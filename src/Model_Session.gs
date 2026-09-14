@@ -105,6 +105,16 @@ function getWhatsAppSession(phone) {
 
 function invalidateWhatsAppSessionCache(phone) {
 
+    const normalized =
+        normalizeWhatsAppPhone(phone);
+
+    // Invalidate both cache layers. The execution-scoped cache must be
+    // cleared as well, otherwise a session written earlier in this same
+    // webhook execution can be returned from stale in-memory state.
+    if (normalized) {
+        delete __whatsAppSessionCache[normalized];
+    }
+
     CacheService.getScriptCache().remove(
         getWhatsAppSessionCacheKey(phone)
     );
@@ -274,7 +284,10 @@ function readWhatsAppSessionFromSheet(phone) {
             // used by the home blood-sample-collection flow between the
             // location-check step and the final request being saved.
             location:
-                String(data[i][14] || "").trim()
+                String(data[i][14] || "").trim(),
+
+            homeCollectionRequestId:
+                String(data[i][15] || "").trim()
         };
     }
 
@@ -380,6 +393,7 @@ function saveWhatsAppSession(
     ensureWhatsAppSessionDoctorMenuTierColumn(sheet);
     ensureWhatsAppSessionListPageColumn(sheet);
     ensureWhatsAppSessionLocationColumn(sheet);
+    ensureWhatsAppSessionHomeCollectionRequestIdColumn(sheet);
 
     try {
 
@@ -396,7 +410,7 @@ function saveWhatsAppSession(
 
             const values =
                 sheet
-                    .getRange(row, 1, 1, 15)
+                    .getRange(row, 1, 1, 16)
                     .getValues();
 
             if (!values || values.length === 0) {
@@ -406,7 +420,7 @@ function saveWhatsAppSession(
             const current = values[0];
 
             sheet
-                .getRange(row, 1, 1, 15)
+                .getRange(row, 1, 1, 16)
                 .setValues([[
                     phone,
 
@@ -480,7 +494,11 @@ function saveWhatsAppSession(
 
                     updates.location !== undefined
                         ? updates.location
-                        : current[14]
+                        : current[14],
+
+                    updates.homeCollectionRequestId !== undefined
+                        ? updates.homeCollectionRequestId
+                        : (current[15] || "")
                 ]]);
 
         } else {
@@ -508,7 +526,8 @@ function saveWhatsAppSession(
                 updates.listPage !== undefined
                     ? updates.listPage
                     : 0,
-                updates.location || ""
+                updates.location || "",
+                updates.homeCollectionRequestId || ""
             ]);
         }
 

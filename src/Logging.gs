@@ -373,10 +373,9 @@ function appendWhatsAppLogEntry(
         entry.phoneNumberId || ""
     ]);
 
-    cleanupLogSheet(
-        sheet,
-        settings
-    );
+    // Log retention cleanup is intentionally NOT performed on the webhook
+    // hot path. cleanupAllWhatsAppLogs() handles retention/cap cleanup via
+    // the scheduled maintenance trigger, keeping inbound messages fast.
 }
 
 

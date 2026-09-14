@@ -32,7 +32,8 @@ function truncateInteractiveLabel(
 
 function buildInteractiveListSpec(
     rows,
-    buttonLabel
+    buttonLabel,
+    forceList
 ) {
 
     if (
@@ -41,6 +42,36 @@ function buildInteractiveListSpec(
         rows.length > 10
     ) {
         return null;
+    }
+
+    // WhatsApp list messages add a second tap: the user first sees a
+    // "Choose" button and only then sees the options. Avoid that extra
+    // step whenever the menu can fit into WhatsApp's 3-button reply limit.
+    // A persistent Main Menu / Doctor Portal navigation row is deliberately
+    // omitted from the direct-button version; the numbered/text fallback and
+    // the universal navigation handler still provide navigation.
+    const directRows = rows.filter(function (row) {
+        return row &&
+            row.id !== "nav_main_menu" &&
+            row.id !== "nav_back";
+    });
+
+    const hasPagingRows = rows.some(function (row) {
+        const id = String(row && row.id || "");
+        return /(^|_)(prev|next)$/.test(id) ||
+            id.indexOf("_prev") !== -1 ||
+            id.indexOf("_next") !== -1;
+    });
+
+    if (
+        !forceList &&
+        directRows.length > 0 &&
+        directRows.length <= 3 &&
+        !hasPagingRows
+    ) {
+        return buildInteractiveButtonSpec(
+            directRows.slice(0, 3)
+        );
     }
 
     return {
@@ -121,9 +152,10 @@ function buildInteractiveButtonSpec(buttons) {
 function getPatientMainMenuSpec() {
 
     const fallbackText =
-        "1️⃣ Book Appointment\n" +
-        "2️⃣ My Appointments\n" +
-        "3️⃣ More (Cancel / Reschedule / Language)";
+        "📅 Book Appointment\n" +
+        "🩸 Home Sample Collection\n" +
+        "⋯ More Options\n\n" +
+        "Please tap an option above to continue.";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -132,12 +164,12 @@ function getPatientMainMenuSpec() {
                 title: "Book Appointment"
             },
             {
-                id: "2",
-                title: "My Appointments"
+                id: "home_collection",
+                title: "Home Sample Collection"
             },
             {
                 id: "menu_more",
-                title: "More"
+                title: "More Options"
             }
         ]);
 
@@ -151,46 +183,51 @@ function getPatientMainMenuSpec() {
 
 function getPatientMainMoreMenuSpec() {
 
-    const fallbackText =
-        "3️⃣ Cancel Appointment\n" +
-        "4️⃣ Reschedule Appointment\n" +
-        "5️⃣ Change Language\n" +
-        "6️⃣ Home Sample Collection";
-
+    // All remaining patient actions are shown in one native WhatsApp list.
+    // forceList=true prevents short lists from being converted into buttons.
     const rows = [
         {
-            id: "3",
-            title: "Cancel Appointment"
+            id: "2",
+            title: "My Appointments",
+            description: "View your upcoming appointments"
         },
         {
             id: "4",
-            title: "Reschedule"
+            title: "Reschedule Appointment",
+            description: "Change the date or time"
+        },
+        {
+            id: "3",
+            title: "Cancel Appointment",
+            description: "Cancel an existing appointment"
         },
         {
             id: "5",
-            title: "Change Language"
+            title: "Change Language",
+            description: "Choose your preferred language"
         },
         {
-            id: "6",
-            title: "Home Sample Collection",
-            description: "Blood sample pickup at your home"
+            id: "nav_main_menu",
+            title: "Main Menu",
+            description: "Return to the main menu"
         }
     ];
 
-    appendWhatsAppHomeNavRow(
-        rows,
-        "patient"
-    );
-
-    const interactive =
-        buildInteractiveListSpec(
-            rows,
-            "Choose"
-        );
+    const fallbackText =
+        "📋 My Appointments\n" +
+        "🔄 Reschedule Appointment\n" +
+        "❌ Cancel Appointment\n" +
+        "🌐 Change Language\n" +
+        "🏠 Main Menu\n\n" +
+        "Please tap an option above to continue.";
 
     return {
         fallbackText: fallbackText,
-        interactive: interactive
+        interactive: buildInteractiveListSpec(
+            rows,
+            "More Options",
+            true
+        )
     };
 }
 
@@ -199,9 +236,9 @@ function getPatientMainMoreMenuSpec() {
 function getDoctorMainMenuSpec() {
 
     const fallbackText =
-        "1️⃣ Today's Schedule\n" +
-        "2️⃣ Next Appointment\n" +
-        "3️⃣ More (schedule / availability / patients…)";
+        "Today's Schedule\n" +
+        "Next Appointment\n" +
+        "More (schedule / availability / patients…)";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -235,8 +272,8 @@ function getDoctorMainMenuMoreSpec(tier) {
     if (t === 1) {
 
         const fallbackText =
-            "3️⃣ This Week\n" +
-            "4️⃣ Schedule by Date\n" +
+            "This Week\n" +
+            "Schedule by Date\n" +
             "More → next page";
 
         const rows = [
@@ -274,8 +311,8 @@ function getDoctorMainMenuMoreSpec(tier) {
     if (t === 2) {
 
         const fallbackText =
-            "5️⃣ Manage Availability\n" +
-            "6️⃣ Manage Leaves\n" +
+            "Manage Availability\n" +
+            "Manage Leaves\n" +
             "More → next page";
 
         const rows = [
@@ -313,8 +350,8 @@ function getDoctorMainMenuMoreSpec(tier) {
     if (t === 3) {
 
         const fallbackText =
-            "7️⃣ My Patients\n" +
-            "8️⃣ Cancel Patient Appt\n" +
+            "My Patients\n" +
+            "Cancel Patient Appt\n" +
             "More → next page";
 
         const rows = [
@@ -350,7 +387,7 @@ function getDoctorMainMenuMoreSpec(tier) {
     }
 
     const fallbackText =
-        "9️⃣ Reschedule Patient Appt\n" +
+        "Reschedule Patient Appt\n" +
         "🔟 Mark Visit Status";
 
     const interactive =
@@ -382,12 +419,12 @@ function getLanguageMenuSpec() {
     // 6 languages exceeds WhatsApp's 3-button interactive limit, so this
     // uses a list menu (10-row limit) instead of buildInteractiveButtonSpec.
     const fallbackText =
-        "1️⃣ English\n" +
-        "2️⃣ తెలుగు\n" +
-        "3️⃣ हिन्दी\n" +
-        "4️⃣ ಕನ್ನಡ\n" +
-        "5️⃣ தமிழ்\n" +
-        "6️⃣ മലയാളം";
+        "English\n" +
+        "తెలుగు\n" +
+        "हिन्दी\n" +
+        "ಕನ್ನಡ\n" +
+        "தமிழ்\n" +
+        "മലയാളം";
 
     const interactive =
         buildInteractiveListSpec(
@@ -422,9 +459,9 @@ function getDateMenuSpec(mode) {
         Utilities.formatDate(tomorrow, TIMEZONE, "MMM dd, yyyy");
 
     const fallbackText =
-        "1️⃣ Today\n" +
-        "2️⃣ Tomorrow\n" +
-        "3️⃣ Enter another date";
+        "Today\n" +
+        "Tomorrow\n" +
+        "Enter another date";
 
     const rows = [
         {
@@ -464,129 +501,107 @@ function getDateMenuSpec(mode) {
 
 
 function getDoctorSelectionMenuSpec(page) {
-
     const doctors = getDoctors();
-
-    const total =
-        doctors.length;
+    const total = doctors.length;
 
     if (total === 0) {
         return null;
     }
 
-    const fallbackText =
-        buildDoctorSelectionFallbackText(
-            doctors
-        );
+    // All doctors live in one native WhatsApp list.
+    // Eight doctors per page leaves room for pagination and navigation rows.
+    const pageSize = 8;
+    const totalPages = Math.max(
+        1,
+        Math.ceil(total / pageSize)
+    );
 
-    // More than 9 doctors no longer means falling back to a plain
-    // numbered text list — paginate the same way the slot picker and
-    // appointment list already do, reusing their generic page-bounds
-    // math (it only cares about a count, not what the items are).
-    const pageInfo =
-        getSlotSelectionPageInfo(
-            total,
-            page || 0
-        );
+    let safePage = Number(page) || 0;
+    if (safePage < 0) safePage = 0;
+    if (safePage >= totalPages) safePage = totalPages - 1;
 
-    const visibleDoctors =
-        doctors.slice(
-            pageInfo.start,
-            pageInfo.end
-        );
+    const startIndex = safePage * pageSize;
+    const visibleDoctors = doctors.slice(
+        startIndex,
+        startIndex + pageSize
+    );
 
-    const rows =
-        visibleDoctors.map(
-            function (doctor) {
+    const rows = visibleDoctors.map(function (doctor) {
+        const description = [
+            doctor.specialization,
+            doctor.clinicName
+        ].filter(Boolean).join(" — ");
 
-                const description =
-                    [
-                        doctor.specialization,
-                        doctor.clinicName
-                    ]
-                        .filter(Boolean)
-                        .join(" — ");
+        return {
+            id:
+                "doctor_select_" +
+                encodeURIComponent(String(doctor.doctorId)),
+            title: doctor.doctorName,
+            description: description
+        };
+    });
 
-                return {
-                    // Use the real Doctor ID in the WhatsApp list so every
-                    // doctor maps directly to the correct Doctors-sheet row.
-                    // encodeURIComponent keeps spaces/special characters safe.
-                    id:
-                        "doctor_select_" +
-                        encodeURIComponent(
-                            String(doctor.doctorId)
-                        ),
-                    title: doctor.doctorName,
-                    description: description
-                };
-            }
-        );
-
-    if (pageInfo.hasPrev) {
-
+    if (safePage > 0) {
         rows.push({
-            id: "doctor_prev",
+            id: "doctor_more_prev",
             title: "Earlier doctors",
             description: "Previous page"
         });
     }
 
-    if (pageInfo.hasNext) {
-
+    if (safePage < totalPages - 1) {
         rows.push({
-            id: "doctor_next",
+            id: "doctor_more_next",
             title: "More doctors",
             description: "Next page"
         });
     }
 
-    appendWhatsAppHomeNavRow(
-        rows,
-        "patient"
-    );
+    appendWhatsAppHomeNavRow(rows, "patient");
 
-    const interactive =
-        buildInteractiveListSpec(
-            rows,
-            "Select doctor"
-        );
+    const fallbackLines = visibleDoctors.map(function (doctor, index) {
+        return (index + 1) + ". " + doctor.doctorName;
+    });
+
+    if (safePage < totalPages - 1) {
+        fallbackLines.push("9. More doctors");
+    }
 
     return {
-        fallbackText: fallbackText,
-        interactive: interactive,
-        page: pageInfo.page,
-        totalPages: pageInfo.totalPages,
-        hasPrev: pageInfo.hasPrev,
-        hasNext: pageInfo.hasNext
+        fallbackText: fallbackLines.join("\n"),
+        // Keep this as a native list even when only a few doctors exist.
+        interactive: buildInteractiveListSpec(
+            rows,
+            "Choose doctor",
+            true
+        ),
+        page: safePage,
+        totalPages: totalPages,
+        hasPrev: safePage > 0,
+        hasNext: safePage < totalPages - 1
     };
 }
 
 
 
-function getHomeCollectionTimeWindowSpec() {
+function getHomeCollectionTimeWindowSpec(dateString) {
+
+    const availableOptions =
+        getHomeCollectionTimeWindowOptionsForDate(dateString);
 
     const fallbackText =
-        "1️⃣ Morning (8 AM - 12 PM)\n" +
-        "2️⃣ Afternoon (12 PM - 4 PM)\n" +
-        "3️⃣ Evening (4 PM - 8 PM)";
+        availableOptions.map(function (option) {
+            return option.value;
+        }).join("\n");
 
-    const rows = [
-        {
-            id: "1",
-            title: "Morning",
-            description: "8 AM - 12 PM"
-        },
-        {
-            id: "2",
-            title: "Afternoon",
-            description: "12 PM - 4 PM"
-        },
-        {
-            id: "3",
-            title: "Evening",
-            description: "4 PM - 8 PM"
-        }
-    ];
+    const rows =
+        availableOptions.map(function (option) {
+            return {
+                id: option.id,
+                title: option.title,
+                description: option.description
+            };
+        });
 
     appendWhatsAppHomeNavRow(
         rows,
@@ -610,9 +625,9 @@ function getHomeCollectionTimeWindowSpec() {
 function getMyAppointmentActionSpec() {
 
     const fallbackText =
-        "1️⃣ Cancel Appointment\n" +
-        "2️⃣ Reschedule\n" +
-        "3️⃣ Main Menu";
+        "Cancel Appointment\n" +
+        "Reschedule\n" +
+        "Main Menu";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -947,8 +962,8 @@ function resolveSlotSelectionPage(session) {
 function getYesNoConfirmSpec(mode) {
 
     const fallbackText =
-        "1️⃣ Yes, cancel it\n" +
-        "2️⃣ No, go back";
+        "Yes, cancel it\n" +
+        "No, go back";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -980,9 +995,9 @@ function getYesNoConfirmSpec(mode) {
 function getRescheduleConfirmSpec(mode) {
 
     const fallbackText =
-        "1️⃣ Confirm\n" +
-        "2️⃣ Choose another time\n" +
-        "3️⃣ Cancel";
+        "Confirm\n" +
+        "Choose another time\n" +
+        "Cancel";
 
     const rows = [
         {
@@ -1028,8 +1043,8 @@ function getBookingConfirmSpec(mode) {
 function getDoctorStatusActionSpec() {
 
     const fallbackText =
-        "1️⃣ Completed\n" +
-        "2️⃣ No-Show";
+        "Completed\n" +
+        "No-Show";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -1058,8 +1073,8 @@ function getDoctorStatusActionSpec() {
 function getConfirmCancelSpec() {
 
     const fallbackText =
-        "1️⃣ Confirm\n" +
-        "2️⃣ Cancel";
+        "Confirm\n" +
+        "Cancel";
 
     const interactive =
         buildInteractiveButtonSpec([
@@ -1410,9 +1425,9 @@ function buildDoctorDayAvailabilityBody(
 function getDoctorDayAvailabilityActionSpec() {
 
     const fallbackText =
-        "1️⃣ Add session\n" +
-        "2️⃣ Remove session\n" +
-        "3️⃣ Clear entire day";
+        "Add session\n" +
+        "Remove session\n" +
+        "Clear entire day";
 
     const rows = [
         { id: "1", title: "Add session" },

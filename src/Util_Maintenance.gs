@@ -53,8 +53,7 @@ function archivePreviousDayAppointments() {
         );
         return {
             success: false,
-            message:
-                "Appointments sheet not found"
+            message: "Appointments sheet not found"
         };
     }
 
@@ -82,16 +81,32 @@ function archivePreviousDayAppointments() {
     );
 
     // ========================================================
-    // LOAD APPOINTMENTS
+    // LOAD APPOINTMENTS + EXISTING HISTORY IDS
     // ========================================================
 
     const appointmentData =
         appointmentSheet.getDataRange().getValues();
 
+    const historyData =
+        historySheet.getDataRange().getValues();
+
+    const archivedAppointmentIds = {};
+
+    for (let i = 1; i < historyData.length; i++) {
+        const id = String(historyData[i][0] || "").trim();
+        if (id) {
+            archivedAppointmentIds[id] = true;
+        }
+    }
+
     const rowsToArchive = [];
+    const archiveRows = [];
+    const skippedNonFinal = [];
+    const skippedAlreadyArchived = [];
     const archivedAt = new Date();
 
-    // Scan from end backwards to collect rows for yesterday
+    // Scan from end backwards to collect yesterday's rows.
+    // Only terminal statuses are eligible for movement.
     for (
         let i = appointmentData.length - 1;
         i >= 1;
@@ -100,9 +115,7 @@ function archivePreviousDayAppointments() {
 
         let appointmentDate = "";
 
-        if (
-            appointmentData[i][1] instanceof Date
-        ) {
+        if (appointmentData[i][1] instanceof Date) {
 
             appointmentDate =
                 Utilities.formatDate(
@@ -117,63 +130,100 @@ function archivePreviousDayAppointments() {
                 String(appointmentData[i][1] || "").trim();
         }
 
-        if (appointmentDate === yesterdayIso) {
+        if (appointmentDate !== yesterdayIso) {
+            continue;
+        }
 
-            // ====================================================
-            // Archive this row
-            // ====================================================
+        const appointmentId =
+            String(appointmentData[i][0] || "").trim();
 
-            const rowData = [
-                appointmentData[i][0],  // Appointment ID
-                appointmentData[i][1],  // Date
-                appointmentData[i][2],  // Time
-                appointmentData[i][3],  // Doctor ID
-                appointmentData[i][4],  // Patient Name
-                appointmentData[i][5],  // Phone
-                appointmentData[i][6],  // Status
-                appointmentData[i][7],  // Calendar Event ID
-                appointmentData[i][8],  // Patient ID
-                archivedAt              // Archived At
-            ];
+        const status =
+            normalizeAppointmentStatus(appointmentData[i][6]);
 
-            historySheet.appendRow(rowData);
-            rowsToArchive.push(i + 1);  // Store 1-indexed row numbers
+        if (!isArchiveEligibleAppointmentStatus(status)) {
+            skippedNonFinal.push({
+                appointmentId: appointmentId,
+                row: i + 1,
+                status: status
+            });
+            continue;
+        }
+
+        if (
+            appointmentId &&
+            archivedAppointmentIds[appointmentId]
+        ) {
+            skippedAlreadyArchived.push({
+                appointmentId: appointmentId,
+                row: i + 1
+            });
+            continue;
+        }
+
+        archiveRows.push([
+            appointmentData[i][0],  // Appointment ID
+            appointmentData[i][1],  // Date
+            appointmentData[i][2],  // Time
+            appointmentData[i][3],  // Doctor ID
+            appointmentData[i][4],  // Patient Name
+            appointmentData[i][5],  // Phone
+            status,                  // Normalized Status
+            appointmentData[i][7],  // Calendar Event ID
+            appointmentData[i][8],  // Patient ID
+            archivedAt              // Archived At
+        ]);
+
+        rowsToArchive.push(i + 1);
+
+        if (appointmentId) {
+            archivedAppointmentIds[appointmentId] = true;
         }
     }
 
     // ========================================================
-    // DELETE ARCHIVED ROWS
+    // WRITE ARCHIVE IN ONE BATCH
     // ========================================================
-    // Delete in forward order (HIGH to LOW row numbers)
-    // rowsToArchive is in descending order from backward collection loop:
-    // if rows 7, 12, 17 matched → array is [17, 12, 7]
-    // Forward iteration: delete 17 (highest), then 12, then 7 (lowest)
-    // This avoids row number shifts when deleting
 
-    for (
-        let j = 0;
-        j < rowsToArchive.length;
-        j++
-    ) {
+    if (archiveRows.length > 0) {
+        const firstRow =
+            Math.max(historySheet.getLastRow() + 1, 2);
 
-        appointmentSheet.deleteRow(
-            rowsToArchive[j]
-        );
+        historySheet
+            .getRange(
+                firstRow,
+                1,
+                archiveRows.length,
+                archiveRows[0].length
+            )
+            .setValues(archiveRows);
     }
 
     // ========================================================
-    // INVALIDATE CACHE
+    // DELETE ONLY SUCCESSFULLY ARCHIVED ROWS
     // ========================================================
-    // Clear any cached session state that references these appointments
 
-    CacheService.getScriptCache().removeAll([
-        "WA_APPOINTMENTS_CACHE",
-        "WA_DOCTOR_SCHEDULE_CACHE"
-    ]);
+    // rowsToArchive was collected from bottom to top, so deleting in
+    // this same order keeps all row numbers valid.
+    for (const row of rowsToArchive) {
+        appointmentSheet.deleteRow(row);
+    }
+
+    // ========================================================
+    // INVALIDATE CACHE ONLY WHEN ACTIVE DATA CHANGED
+    // ========================================================
+
+    if (rowsToArchive.length > 0) {
+        CacheService.getScriptCache().removeAll([
+            "WA_APPOINTMENTS_CACHE",
+            "WA_DOCTOR_SCHEDULE_CACHE"
+        ]);
+    }
 
     Logger.log(
         "archivePreviousDayAppointments: " +
         "Archived " + rowsToArchive.length +
+        ", skipped non-final " + skippedNonFinal.length +
+        ", already archived " + skippedAlreadyArchived.length +
         " appointments from " + yesterdayIso
     );
 
@@ -181,8 +231,12 @@ function archivePreviousDayAppointments() {
         success: true,
         message:
             "Archived " + rowsToArchive.length +
-            " appointments from " + yesterdayIso,
-        archivedCount: rowsToArchive.length
+            " finalized appointments from " + yesterdayIso,
+        archivedCount: rowsToArchive.length,
+        skippedNonFinalCount: skippedNonFinal.length,
+        skippedAlreadyArchivedCount: skippedAlreadyArchived.length,
+        skippedNonFinal: skippedNonFinal,
+        skippedAlreadyArchived: skippedAlreadyArchived
     };
 }
 
@@ -242,7 +296,9 @@ function createDailyArchiveTask(
     // ========================================================
     // CREATE NEW TRIGGER
     // ========================================================
-    // Time-based trigger that fires daily at specified time
+    // Apps Script time-driven triggers run approximately within the
+    // selected hour. The minute parameter is retained for backwards
+    // compatibility/documentation but cannot be enforced by atHour().
 
     ScriptApp.newTrigger("archivePreviousDayAppointments")
         .timeBased()
@@ -251,17 +307,17 @@ function createDailyArchiveTask(
         .create();
 
     Logger.log(
-        "createDailyArchiveTask: Created daily trigger at " +
-        String(hour).padStart(2, "0") + ":" +
-        String(minute).padStart(2, "0")
+        "createDailyArchiveTask: Created daily trigger around " +
+        String(hour).padStart(2, "0") + ":00 (minute " +
+        String(minute).padStart(2, "0") + " advisory)"
     );
 
     return {
         success: true,
         message:
-            "Daily archive task scheduled at " +
-            String(hour).padStart(2, "0") + ":" +
-            String(minute).padStart(2, "0")
+            "Daily archive task scheduled around " +
+            String(hour).padStart(2, "0") + ":00 (minute " +
+            String(minute).padStart(2, "0") + " is advisory)"
     };
 }
 

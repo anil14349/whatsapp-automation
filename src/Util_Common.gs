@@ -526,6 +526,8 @@ function writeAppointmentSheetSchedule(
             .getRange(row, 8)
             .setValue(String(eventId || ""));
     }
+
+    invalidateAppointmentExecutionCaches();
 }
 
 

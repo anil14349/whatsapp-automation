@@ -41,7 +41,11 @@ if (
 
         return true;
 
-    } else if (normalizedMessage === "0") {
+    } else if (
+        normalizedMessage === "nav_main_menu" ||
+        normalizedMessage === "doctor_portal" ||
+        normalizedMessage === "0"
+    ) {
 
         returnDoctorToMenu(
             ss,

@@ -1646,13 +1646,13 @@ function buildWhatsAppNavigationHintText(session) {
 
     const homeLabel =
         session.role === "DOCTOR"
-            ? "0️⃣ Doctor Portal"
-            : "0️⃣ Main Menu";
+            ? "Doctor Portal"
+            : "Main Menu";
 
     const hints = [homeLabel];
 
     if (whatsAppNavigationShowsBack(session)) {
-        hints.push("9️⃣ Back");
+        hints.push("Back");
     }
 
     return hints.join("\n");
@@ -1673,9 +1673,9 @@ function addWhatsAppNavigationOptions(session, message) {
         String(message || "");
 
     if (
-        text.indexOf("0️⃣ Main Menu") !== -1 ||
-        text.indexOf("0️⃣ Doctor Portal") !== -1 ||
-        text.indexOf("0️⃣ Back to Main Menu") !== -1
+        text.indexOf("Main Menu") !== -1 ||
+        text.indexOf("Doctor Portal") !== -1 ||
+        text.indexOf("Back to Main Menu") !== -1
     ) {
         return message;
     }
@@ -2111,7 +2111,7 @@ function handleDoctorPortalMenuChoice(
 
     if (choice === "1") {
 
-        returnDoctorToMenu(
+        sendDoctorInfoReply(
             ss,
             phone,
             doctorId,
@@ -2128,7 +2128,7 @@ function handleDoctorPortalMenuChoice(
 
     if (choice === "2") {
 
-        returnDoctorToMenu(
+        sendDoctorInfoReply(
             ss,
             phone,
             doctorId,
@@ -2144,7 +2144,7 @@ function handleDoctorPortalMenuChoice(
 
     if (choice === "3") {
 
-        returnDoctorToMenu(
+        sendDoctorInfoReply(
             ss,
             phone,
             doctorId,
@@ -2204,7 +2204,7 @@ function handleDoctorPortalMenuChoice(
 
     if (choice === "7") {
 
-        returnDoctorToMenu(
+        sendDoctorInfoReply(
             ss,
             phone,
             doctorId,
@@ -2287,6 +2287,14 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             returnToMainMenu(ss, phone);
             return;
 
+        case "BOOK_DOCTOR_MORE":
+            saveWhatsAppSession(phone, {
+                state: "BOOK_DOCTOR",
+                listPage: 0
+            });
+            sendDoctorSelectionReply(ss, phone);
+            return;
+
         case "PATIENT_MAIN_MORE":
             returnToMainMenu(
                 ss,
@@ -2306,12 +2314,14 @@ function goBackInWhatsAppFlow(ss, phone, session) {
         case "HOME_COLLECTION_LOCATION":
             saveWhatsAppSession(phone, {
                 state: "PATIENT_MAIN_MORE",
+                patientMenuTier: 1,
                 location: ""
             });
             sendPatientMainMoreMenuReply(
                 ss,
                 phone,
-                ""
+                "",
+                1
             );
             return;
 
@@ -2346,6 +2356,7 @@ function goBackInWhatsAppFlow(ss, phone, session) {
             );
             return;
 
+        case "BOOK_NO_SLOTS":
         case "BOOK_DATE":
             saveWhatsAppSession(phone, {
                 state: "BOOK_DOCTOR",
@@ -2811,10 +2822,28 @@ function proceedAfterBookingSlotSelected(
             }
         );
 
-        sendWhatsAppReply(
+        const bookNameInteractive =
+            buildInteractiveButtonSpec([
+                {
+                    id: "nav_main_menu",
+                    title: "Main Menu"
+                },
+                {
+                    id: "nav_back",
+                    title: "Back"
+                }
+            ]);
+
+        sendWhatsAppMenuReply(
             ss,
             senderPhone,
-            buildBookNamePrompt()
+            buildBookNamePrompt(),
+            {
+                fallbackText:
+                    buildBookNamePrompt() +
+                    "\n\nMain Menu\nBack",
+                interactive: bookNameInteractive
+            }
         );
 
         return;
@@ -2879,9 +2908,9 @@ function whatsAppShowSlotsForDate(
     ) {
 
         const fallbackText =
-            "1️⃣ Choose Another Date\n" +
-            "0️⃣ Main Menu\n" +
-            "9️⃣ Back";
+            "Choose Another Date\n" +
+            "Main Menu\n" +
+            "Back";
 
         const interactive =
             buildInteractiveButtonSpec([
@@ -2898,6 +2927,16 @@ function whatsAppShowSlotsForDate(
                     title: "Back"
                 }
             ]);
+
+        // Mark this as a recoverable no-slots state so the user can
+        // explicitly choose another date, go back, or return home.
+        saveWhatsAppSession(
+            senderPhone,
+            {
+                state: "BOOK_NO_SLOTS",
+                date: selectedDate
+            }
+        );
 
         sendWhatsAppMenuReply(
             ss,

@@ -368,6 +368,70 @@ function addDoctorAvailabilitySession(
         const sheet =
             ensureAvailabilitySheet();
 
+        // Prevent overlapping availability windows for the same doctor/day.
+        // This validation is intentionally inside the ScriptLock so two
+        // concurrent doctor requests cannot both pass the overlap check.
+        const existingSessions =
+            getDoctorDayAvailabilitySessions(
+                doctorId,
+                dayName
+            );
+
+        const sampleDate =
+            new Date(
+                buildISODatetimeWithTimezone(
+                    "2026-01-01",
+                    "00:00"
+                )
+            );
+
+        const newStartDate =
+            parseAvailabilityTimeValue(
+                start,
+                sampleDate
+            );
+
+        const newEndDate =
+            parseAvailabilityTimeValue(
+                end,
+                sampleDate
+            );
+
+        for (let i = 0; i < existingSessions.length; i++) {
+            const existing = existingSessions[i];
+
+            const existingStartDate =
+                parseAvailabilityTimeValue(
+                    existing.start,
+                    sampleDate
+                );
+
+            const existingEndDate =
+                parseAvailabilityTimeValue(
+                    existing.end,
+                    sampleDate
+                );
+
+            if (
+                existingStartDate &&
+                existingEndDate &&
+                newStartDate &&
+                newEndDate &&
+                newStartDate.getTime() < existingEndDate.getTime() &&
+                newEndDate.getTime() > existingStartDate.getTime()
+            ) {
+                return {
+                    success: false,
+                    message:
+                        "This availability overlaps an existing session (" +
+                        existing.start +
+                        " - " +
+                        existing.end +
+                        "). Please choose a different time."
+                };
+            }
+        }
+
         sheet.appendRow([
             String(doctorId).trim(),
             dayName,
@@ -2207,18 +2271,34 @@ function getDoctorNextAppointment(doctorId) {
 
 
 function findDoctorByWhatsAppPhone(phone) {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet()
-        .getSheetByName("Doctors");
-    if (!sheet) {
-        return { found: false, error: "sheet_error" };
-    }
 
     const target = normalizeWhatsAppPhone(phone);
+
     if (!target) {
         return { found: false, error: "invalid_phone" };
     }
 
+    // shouldBlockPatientForAfterHours() can call this on every inbound
+    // webhook. Reuse the result for the lifetime of this execution so a
+    // burst of messages does not repeatedly read the entire Doctors sheet.
+    if (Object.prototype.hasOwnProperty.call(
+        __doctorWhatsAppPhoneCache,
+        target
+    )) {
+        return __doctorWhatsAppPhoneCache[target];
+    }
+
+    const sheet = SpreadsheetApp.getActiveSpreadsheet()
+        .getSheetByName("Doctors");
+
+    if (!sheet) {
+        const sheetError = { found: false, error: "sheet_error" };
+        __doctorWhatsAppPhoneCache[target] = sheetError;
+        return sheetError;
+    }
+
     const data = sheet.getDataRange().getValues();
+    let result = { found: false, error: "not_found" };
 
     for (let i = 1; i < data.length; i++) {
 
@@ -2242,14 +2322,21 @@ function findDoctorByWhatsAppPhone(phone) {
         if (
             normalizeWhatsAppPhone(whatsappPhone) === target
         ) {
-            return {
+            result = {
                 found: true,
                 doctorId: doctorId,
                 doctorName: doctorName
             };
+            break;
         }
     }
-    return { found: false, error: "not_found" };
+
+    // Cache both positive and negative results. The cache lasts only for
+    // this Apps Script execution, so manual Doctors-sheet edits cannot leak
+    // into a later webhook execution.
+    __doctorWhatsAppPhoneCache[target] = result;
+
+    return result;
 }
 
 

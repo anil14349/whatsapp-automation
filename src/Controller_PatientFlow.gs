@@ -212,13 +212,35 @@ if (
 
 
 // ======================================================
+// MAIN MENU → HOME SAMPLE COLLECTION
+// ======================================================
+
+if (
+    normalizedMessage === "home_collection" &&
+    session &&
+    session.state === "MAIN_MENU"
+) {
+
+    beginWhatsAppHomeCollectionFlow(
+        ss,
+        senderPhone
+    );
+
+    return true;
+}
+
+
+// ======================================================
 // MAIN MENU → MY APPOINTMENTS
 // ======================================================
 
 if (
     normalizedMessage === "2" &&
     session &&
-    session.state === "MAIN_MENU"
+    (
+        session.state === "MAIN_MENU" ||
+        session.state === "PATIENT_MAIN_MORE"
+    )
 ) {
 
     const appointments =
@@ -301,13 +323,15 @@ if (
         senderPhone,
         {
             role: "PATIENT",
-            state: "PATIENT_MAIN_MORE"
+            state: "PATIENT_MAIN_MORE",
+            patientMenuTier: 1
         }
     );
 
     sendPatientMainMoreMenuReply(
         ss,
-        senderPhone
+        senderPhone,
+        ""
     );
 
     return true;
@@ -382,22 +406,6 @@ if (
 }
 
 
-// ======================================================
-// MORE → HOME SAMPLE COLLECTION
-// ======================================================
-
-if (
-    normalizedMessage === "6" &&
-    session &&
-    session.state === "PATIENT_MAIN_MORE"
-) {
-
-    beginWhatsAppHomeCollectionFlow(
-        ss,
-        senderPhone
-    );
-    return true;
-}
 
 
 // ======================================================
@@ -437,6 +445,116 @@ if (
 
 
 // ======================================================
+// ======================================================
+// BOOK_DOCTOR_MORE STATE
+// ======================================================
+
+if (
+    session &&
+    session.state === "BOOK_DOCTOR_MORE"
+) {
+
+    if (
+        normalizedMessage === "doctor_more_prev" ||
+        normalizedMessage === "doctor_more_next"
+    ) {
+        const currentPage = Number(session.listPage) || 0;
+        const nextPage =
+            normalizedMessage === "doctor_more_prev"
+                ? Math.max(currentPage - 1, 0)
+                : currentPage + 1;
+
+        saveWhatsAppSession(
+            senderPhone,
+            { listPage: nextPage }
+        );
+
+        sendDoctorMoreSelectionReply(
+            ss,
+            senderPhone,
+            nextPage
+        );
+        return true;
+    }
+
+    if (
+        normalizedMessage === "nav_main_menu"
+    ) {
+        returnToMainMenu(ss, senderPhone);
+        return true;
+    }
+
+    const selection = String(messageText || "").trim();
+    const doctors = getDoctors();
+    const remaining = doctors.slice(2);
+    const page = Number(session.listPage) || 0;
+    const pageSize = 8;
+    const startIndex = page * pageSize;
+
+    let doctor = null;
+
+    if (selection.indexOf("doctor_select_") === 0) {
+        const encodedDoctorId = selection.substring(
+            "doctor_select_".length
+        );
+        let selectedDoctorId = encodedDoctorId;
+
+        try {
+            selectedDoctorId = decodeURIComponent(encodedDoctorId);
+        } catch (decodeError) {}
+
+        doctor = doctors.find(function (item) {
+            return String(item.doctorId).trim() ===
+                String(selectedDoctorId).trim();
+        }) || null;
+    } else {
+        const doctorNumber = Number(selection);
+        if (
+            Number.isInteger(doctorNumber) &&
+            doctorNumber >= 1 &&
+            doctorNumber <= Math.min(
+                pageSize,
+                remaining.length - startIndex
+            )
+        ) {
+            doctor = remaining[startIndex + doctorNumber - 1] || null;
+        }
+    }
+
+    if (!doctor) {
+        sendDoctorMoreSelectionReply(
+            ss,
+            senderPhone,
+            page
+        );
+        return true;
+    }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "BOOK_DATE",
+            doctorId: doctor.doctorId,
+            date: "",
+            time: "",
+            appointmentId: "",
+            listPage: 0
+        }
+    );
+
+    showBookingDateSelection(
+        ss,
+        senderPhone,
+        {
+            doctorId: doctor.doctorId
+        }
+    );
+
+    return true;
+}
+
+
 // BOOK_DOCTOR STATE
 // ======================================================
 
@@ -444,17 +562,16 @@ if (
     session &&
     session.state === "BOOK_DOCTOR"
 ) {
-
+    // Pagination stays inside the same "Choose doctor" list.
     if (
-        normalizedMessage === "doctor_prev" ||
-        normalizedMessage === "doctor_next"
+        normalizedMessage === "doctor_more_prev" ||
+        normalizedMessage === "doctor_more_next"
     ) {
-
         const currentPage =
             Number(session.listPage) || 0;
 
         const nextPage =
-            normalizedMessage === "doctor_prev"
+            normalizedMessage === "doctor_more_prev"
                 ? Math.max(currentPage - 1, 0)
                 : currentPage + 1;
 
@@ -472,6 +589,11 @@ if (
         return true;
     }
 
+    if (normalizedMessage === "nav_main_menu") {
+        returnToMainMenu(ss, senderPhone);
+        return true;
+    }
+
     const selection =
         String(messageText || "").trim();
 
@@ -480,7 +602,7 @@ if (
 
     let doctor = null;
 
-    // Interactive WhatsApp doctor selection uses the actual Doctor ID.
+    // Interactive list selection uses the actual Doctor ID.
     if (
         selection.indexOf("doctor_select_") === 0
     ) {
@@ -489,49 +611,57 @@ if (
                 "doctor_select_".length
             );
 
-        let selectedDoctorId = "";
+        let selectedDoctorId =
+            encodedDoctorId;
 
         try {
             selectedDoctorId =
                 decodeURIComponent(
                     encodedDoctorId
                 );
-        } catch (decodeError) {
-            selectedDoctorId =
-                encodedDoctorId;
-        }
+        } catch (decodeError) {}
 
         doctor =
-            doctors.find(
-                function (item) {
-                    return String(
-                        item.doctorId
-                    ).trim() === String(
-                        selectedDoctorId
-                    ).trim();
-                }
-            ) || null;
-
+            doctors.find(function (item) {
+                return String(
+                    item.doctorId
+                ).trim() === String(
+                    selectedDoctorId
+                ).trim();
+            }) || null;
     } else {
-        // Keep typed-number fallback working for users who type 1, 2, 3...
+        // Typed-number fallback refers to the current list page.
         const doctorNumber =
             Number(selection);
 
-        doctor =
+        const page =
+            Number(session.listPage) || 0;
+
+        const pageSize = 8;
+        const startIndex =
+            page * pageSize;
+
+        const visibleCount =
+            Math.min(
+                pageSize,
+                doctors.length - startIndex
+            );
+
+        if (
             Number.isInteger(doctorNumber) &&
             doctorNumber >= 1 &&
-            doctorNumber <= doctors.length
-                ? doctors[doctorNumber - 1]
-                : null;
+            doctorNumber <= visibleCount
+        ) {
+            doctor =
+                doctors[
+                    startIndex +
+                    doctorNumber -
+                    1
+                ] || null;
+        }
     }
 
-
-    // ======================================================
-    // DOCTOR NOT FOUND
-    // ======================================================
-
     if (!doctor) {
-
         sendWhatsAppMenuReply(
             ss,
             senderPhone,
@@ -542,35 +672,31 @@ if (
                 Number(session.listPage) || 0
             )
         );
-
+        return true;
     }
 
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "BOOK_DATE",
+            doctorId:
+                doctor.doctorId,
+            date: "",
+            time: "",
+            appointmentId: "",
+            listPage: 0
+        }
+    );
 
-    // ======================================================
-    // DOCTOR FOUND
-    // ======================================================
-
-    else {
-
-        saveWhatsAppSession(
-            senderPhone,
-            {
-                role: "PATIENT",
-                state: "BOOK_DATE",
-                doctorId:
-                    doctor.doctorId
-            }
-        );
-
-
-        sendDateMenuReply(
-            ss,
-            senderPhone,
-            "👨‍⚕️ " +
-            doctor.doctorName +
-            "\n\nChoose an appointment date."
-        );
-    }
+    showBookingDateSelection(
+        ss,
+        senderPhone,
+        {
+            doctorId:
+                doctor.doctorId
+        }
+    );
 
     return true;
 }
@@ -703,6 +829,68 @@ if (
 
 
 // ======================================================
+// UPCOMING APPOINTMENT CONFLICT ACTIONS
+// ======================================================
+// A patient may have only one upcoming active appointment.
+// When a new booking hits that rule, offer direct actions on the existing
+// appointment instead of forcing the patient to navigate manually.
+
+if (
+    session &&
+    session.state === "BOOK_CONFIRM" &&
+    (
+        normalizedMessage === "same_day_reschedule" ||
+        normalizedMessage === "same_day_cancel"
+    )
+) {
+
+    const existingAppointment =
+        findActiveAppointmentOnDate(
+            senderPhone,
+            session.date
+        );
+
+    if (!existingAppointment) {
+        sendWhatsAppReply(
+            ss,
+            senderPhone,
+            "ℹ️ Your existing appointment could not be found.\n\nPlease send Hi to start again."
+        );
+        return true;
+    }
+
+    if (normalizedMessage === "same_day_reschedule") {
+        beginRescheduleDateSelection(
+            ss,
+            senderPhone,
+            existingAppointment
+        );
+        return true;
+    }
+
+    saveWhatsAppSession(
+        senderPhone,
+        {
+            role: "PATIENT",
+            state: "CANCEL_CONFIRM",
+            appointmentId: existingAppointment.appointmentId,
+            doctorId: existingAppointment.doctorId || "",
+            date: existingAppointment.date || "",
+            time: existingAppointment.time || ""
+        }
+    );
+
+    sendCancelConfirmMenuReply(
+        ss,
+        senderPhone,
+        existingAppointment
+    );
+
+    return true;
+}
+
+
+// ======================================================
 // BOOK_CONFIRM STATE
 // ======================================================
 
@@ -775,50 +963,81 @@ if (
                 }
             );
 
-            const reply =
-                "✅ Appointment confirmed!\n\n" +
-                "👨‍⚕️ " +
-                bookingResult.doctor +
-                "\n" +
-                "📅 " +
-                bookingResult.date +
-                "\n" +
-                "🕐 " +
-                bookingResult.time +
-                "\n\n" +
-                "Thank you for choosing {{CLINIC_NAME}}.";
+            // -------------------------------------------------------
+            // Appointment confirmation
+            // -------------------------------------------------------
+            // First try the visual PNG confirmation. If image generation,
+            // Google Slides export, WhatsApp media upload, or image delivery
+            // fails, DO NOT leave the patient without confirmation.
+            // Send a normal text confirmation as a guaranteed fallback.
+            const receiptAppointment = {
+                appointmentId:
+                    bookingResult.appointmentId,
+                patientName: patientName,
+                doctorId:
+                    session.doctorId,
+                doctor:
+                    bookingResult.doctor,
+                date:
+                    bookingResult.date,
+                time:
+                    bookingResult.time
+            };
 
-            sendWhatsAppReply(
-                ss,
-                senderPhone,
-                reply
-            );
+            let receiptSent = false;
 
-            // Send a shareable appointment receipt card after the
-            // booking confirmation. The recipient can use WhatsApp's
-            // native Forward action to share it with the patient.
             try {
+
                 sendAppointmentReceiptCard(
                     senderPhone,
-                    {
-                        appointmentId:
-                            bookingResult.appointmentId,
-                        patientName: patientName,
-                        doctorId:
-                            session.doctorId,
-                        doctor:
-                            bookingResult.doctor,
-                        date:
-                            bookingResult.date,
-                        time:
-                            bookingResult.time
-                    }
+                    receiptAppointment
                 );
+
+                receiptSent = true;
+
             } catch (receiptError) {
+
                 Logger.log(
-                    "Appointment receipt failed; booking remains successful: " +
-                    receiptError.message
+                    "Appointment receipt image failed: " +
+                    receiptError.message +
+                    " | appointmentId=" +
+                    bookingResult.appointmentId
                 );
+
+                // IMPORTANT:
+                // Booking is already saved in the sheet and calendar.
+                // Never silently finish the conversation here.
+                try {
+
+                    sendWhatsAppReply(
+                        ss,
+                        senderPhone,
+                        "✅ Appointment confirmed!\n\n" +
+                        "👤 " +
+                        patientName +
+                        "\n" +
+                        "👨‍⚕️ " +
+                        (bookingResult.doctor || "Doctor") +
+                        "\n" +
+                        "📅 " +
+                        bookingResult.date +
+                        "\n" +
+                        "🕐 " +
+                        bookingResult.time +
+                        "\n" +
+                        "🆔 " +
+                        bookingResult.appointmentId
+                    );
+
+                } catch (fallbackError) {
+
+                    Logger.log(
+                        "Appointment text fallback also failed: " +
+                        fallbackError.message +
+                        " | appointmentId=" +
+                        bookingResult.appointmentId
+                    );
+                }
             }
 
         } else {
@@ -831,36 +1050,54 @@ if (
 
             if (
                 errorMessage ===
-                "You already have an active appointment on this date."
+                "You already have an upcoming active appointment."
             ) {
 
+                const existingAppointment =
+                    findUpcomingActiveAppointmentByPhone(
+                        senderPhone
+                    );
+
+                const existingSummary =
+                    existingAppointment
+                        ? "\n\nYour existing appointment:\n" +
+                          "👨‍⚕️ " +
+                          (findDoctorById(existingAppointment.doctorId) || "Doctor") +
+                          "\n" +
+                          "📅 " +
+                          formatWhatsAppDisplayDate(existingAppointment.date) +
+                          "\n" +
+                          "🕐 " +
+                          String(existingAppointment.time || "")
+                        : "";
+
                 const fallbackText =
-                    "1️⃣ Choose Another Date\n" +
-                    "0️⃣ Main Menu\n" +
-                    "9️⃣ Back";
+                    "Reschedule Existing\n" +
+                    "Cancel Existing\n" +
+                    "Choose Another Date";
 
                 const interactive =
                     buildInteractiveButtonSpec([
                         {
+                            id: "same_day_reschedule",
+                            title: "Reschedule Existing"
+                        },
+                        {
+                            id: "same_day_cancel",
+                            title: "Cancel Existing"
+                        },
+                        {
                             id: "date_retry",
                             title: "Choose Another Date"
-                        },
-                        {
-                            id: "nav_main_menu",
-                            title: "Main Menu"
-                        },
-                        {
-                            id: "nav_back",
-                            title: "Back"
                         }
                     ]);
 
                 sendWhatsAppMenuReply(
                     ss,
                     senderPhone,
-                    "❌ You already have an active appointment on this date." +
-                    "\n\n" +
-                    "Please choose another date.",
+                    "❌ You already have an upcoming active appointment." +
+                    existingSummary +
+                    "\n\nYou can reschedule or cancel that appointment.",
                     {
                         fallbackText: fallbackText,
                         interactive: interactive

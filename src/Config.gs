@@ -444,6 +444,16 @@ function ensureSettingsSheet() {
             "HOME_COLLECTION_RADIUS_KM",
             "5"
         ]);
+
+        sheet.appendRow([
+            "HOME_COLLECTION_MIN_LEAD_HOURS",
+            "2"
+        ]);
+
+        sheet.appendRow([
+            "ENABLE_HOME_COLLECTION_NOTIFICATIONS",
+            "TRUE"
+        ]);
     } else {
         ensureSettingKey(
             sheet,
@@ -514,6 +524,16 @@ function ensureSettingsSheet() {
             sheet,
             "HOME_COLLECTION_RADIUS_KM",
             "5"
+        );
+        ensureSettingKey(
+            sheet,
+            "HOME_COLLECTION_MIN_LEAD_HOURS",
+            "2"
+        );
+        ensureSettingKey(
+            sheet,
+            "ENABLE_HOME_COLLECTION_NOTIFICATIONS",
+            "TRUE"
         );
     }
 

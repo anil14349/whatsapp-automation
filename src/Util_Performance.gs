@@ -48,8 +48,9 @@ function findPatientByPhoneWithCache(phone) {
         return null;
     }
 
-    // Check cache first
-    if (__patientPhoneCache[normalized]) {
+    // Check cache first. hasOwnProperty also treats a cached null
+    // (patient not found) as a genuine cache hit.
+    if (Object.prototype.hasOwnProperty.call(__patientPhoneCache, normalized)) {
         __performanceMetrics.patientCacheHits++;
         return __patientPhoneCache[normalized];
     }
@@ -170,8 +171,8 @@ function getWhatsAppSessionWithCache(phoneNumber) {
         return null;
     }
 
-    // Check cache first
-    if (__whatsAppSessionCache[normalized]) {
+    // Check cache first, including cached null (no-session) results.
+    if (Object.prototype.hasOwnProperty.call(__whatsAppSessionCache, normalized)) {
         __performanceMetrics.sessionCacheHits++;
         return __whatsAppSessionCache[normalized];
     }
@@ -209,7 +210,8 @@ function getAppointmentsByPhoneWithCache(phone) {
     }
 
     // Check cache first
-    if (__appointmentsByPhoneCache[normalized]) {
+    if (Object.prototype.hasOwnProperty.call(__appointmentsByPhoneCache, normalized)) {
+        __performanceMetrics.appointmentCacheHits++;
         return __appointmentsByPhoneCache[normalized];
     }
 
@@ -249,6 +251,7 @@ function getAppointmentsByPhoneWithCache(phone) {
                 time: data[i][2],
                 doctorId: data[i][3],
                 patientName: data[i][4],
+                patientPhone: data[i][5],
                 status: data[i][6]
             });
         }
@@ -483,13 +486,20 @@ function checkScalabilityStatus() {
 // But explicitly reset if needed for testing
 
 function resetExecutionCache() {
+    __doctorRecordCache = {};
+    __doctorWhatsAppPhoneCache = {};
     __patientPhoneCache = {};
     __appointmentIdCache = {};
+    __whatsAppSessionCache = {};
+    __appointmentsByPhoneCache = {};
+    __appointmentsByDateCache = {};
     __performanceMetrics = {
         patientLookups: 0,
         patientCacheHits: 0,
         appointmentLookups: 0,
         appointmentCacheHits: 0,
+        sessionLookups: 0,
+        sessionCacheHits: 0,
         slowQueries: []
     };
     Logger.log("Execution cache reset");

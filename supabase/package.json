@@ -1,0 +1,22 @@
+{
+  "name": "abc-clinic-whatsapp-edge-functions",
+  "version": "1.0.0",
+  "description": "Supabase Edge Functions for ABC Clinic WhatsApp automation",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "dev": "supabase functions serve",
+    "deploy": "supabase functions deploy",
+    "logs": "supabase functions list && supabase functions logs webhook",
+    "test": "deno test --allow-all"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.38.0"
+  },
+  "devDependencies": {
+    "@types/deno": "^1.45.0",
+    "supabase": "^1.139.0"
+  }
+}

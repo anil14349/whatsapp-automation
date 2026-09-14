@@ -61,11 +61,11 @@ function sendFeedbackSurvey(
         "How was your experience with " +
         "Dr. " + doctorName + "?\n\n" +
         "Please rate 1-5 stars:\n" +
-        "1️⃣ Poor\n" +
-        "2️⃣ Fair\n" +
-        "3️⃣ Good\n" +
-        "4️⃣ Very Good\n" +
-        "5️⃣ Excellent\n\n" +
+        "Poor\n" +
+        "Fair\n" +
+        "Good\n" +
+        "Very Good\n" +
+        "Excellent\n\n" +
         "(Just reply with the number)";
 
     try {

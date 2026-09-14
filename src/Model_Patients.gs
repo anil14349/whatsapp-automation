@@ -178,6 +178,8 @@ function upsertPatient(
                 sheet.getRange(existing.row, 7).getValue()
             ]]);
 
+            invalidatePatientExecutionCache(phone);
+
             return {
                 success: true,
                 patientId: existing.patientId,
@@ -196,6 +198,8 @@ function upsertPatient(
             opts.updateLastVisit === false ? "" : now,
             ""
         ]);
+
+        invalidatePatientExecutionCache(phone);
 
         return {
             success: true,
@@ -219,7 +223,8 @@ function upsertPatient(
 function registerPatientForBooking(
     phone,
     name,
-    language
+    language,
+    options
 ) {
 
     let lang =
@@ -232,7 +237,7 @@ function registerPatientForBooking(
     ) {
 
         const existing =
-            findPatientByPhone(phone);
+            findPatientByPhoneWithCache(phone);
 
         lang =
             existing &&
@@ -243,16 +248,18 @@ function registerPatientForBooking(
                 : "EN";
     }
 
-    // Note: this runs on the hottest concurrency path (patient booking),
-    // where duplicate/retried WhatsApp webhook deliveries make a
-    // check-then-act race on Patients rows most likely — do NOT skip
-    // the lock here.
+    // Patient booking already holds the script lock across the critical
+    // booking transaction. In that path we can safely skip a second lock
+    // acquisition; standalone callers still use the normal upsert lock.
+    const opts = options || {};
+
     return upsertPatient(
         phone,
         name,
         lang,
         {
-            updateLastVisit: true
+            updateLastVisit: true,
+            skipLock: opts.skipLock === true
         }
     );
 }
@@ -261,7 +268,7 @@ function registerPatientForBooking(
 function resolveKnownPatientName(phone) {
 
     const patient =
-        findPatientByPhone(phone);
+        findPatientByPhoneWithCache(phone);
 
     if (
         patient &&
@@ -373,7 +380,7 @@ function ensurePatientRecordFromHistory(
     language
 ) {
 
-    if (findPatientByPhone(phone)) {
+    if (findPatientByPhoneWithCache(phone)) {
         return;
     }
 
@@ -410,7 +417,7 @@ function syncPatientLanguagePreference(
     }
 
     const existing =
-        findPatientByPhone(phone);
+        findPatientByPhoneWithCache(phone);
 
     if (existing) {
 
@@ -469,8 +476,12 @@ function resolvePatientLanguage(phone, session) {
         return sessionLang;
     }
 
+    // OPTIMIZATION: language resolution is a read-only hot path.
+    // Reuse the execution-scoped patient cache instead of scanning
+    // the Patients sheet again. Authoritative patient writes still
+    // use findPatientByPhone() directly inside upsertPatient().
     const patient =
-        findPatientByPhone(phone);
+        findPatientByPhoneWithCache(phone);
 
     if (
         patient &&

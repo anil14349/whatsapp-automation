@@ -103,9 +103,13 @@ function buildPatientAppointmentListBody(
         (prefix
             ? String(prefix) + "\n\n"
             : "") +
-        title +
-        "\n\n" +
-        selectLine;
+        title;
+
+    if (selectLine) {
+        body +=
+            "\n\n" +
+            selectLine;
+    }
 
     if (
         pageInfo &&
@@ -129,8 +133,8 @@ function buildMyAppointmentsListBody(
 ) {
 
     return buildPatientAppointmentListBody(
-        "📋 Your appointments",
-        "Select an appointment.",
+        "📋 Your upcoming appointment",
+        "",
         pageInfo,
         prefix
     );
@@ -500,10 +504,23 @@ function buildDoctorStatusActionMessage(chosen) {
 
 
 
-function formatWhatsAppDisplayDate(isoDate) {
+function formatWhatsAppDisplayDate(value) {
 
-    if (!isValidISODate(isoDate)) {
-        return String(isoDate || "").trim();
+    // Google Sheets date cells arrive as Date objects. Never stringify
+    // those directly because that produces values such as:
+    // "Mon Sep 14 2026 00:00:00 GMT+0530 (India Standard Time)".
+    if (value instanceof Date && !isNaN(value.getTime())) {
+        return Utilities.formatDate(
+            value,
+            TIMEZONE,
+            "dd-MMM-yyyy"
+        );
+    }
+
+    const isoDate = normalizeAppointmentDate(value);
+
+    if (!isoDate) {
+        return String(value || "").trim();
     }
 
     return Utilities.formatDate(
@@ -1345,10 +1362,10 @@ function formatDoctorLeavesMenu() {
 
     return (
         "🏖 Manage Leaves\n\n" +
-        "1️⃣ Add single-day leave\n" +
-        "2️⃣ View upcoming leaves\n" +
-        "3️⃣ Cancel a leave\n" +
-        "4️⃣ Add leave range"
+        "Add single-day leave\n" +
+        "View upcoming leaves\n" +
+        "Cancel a leave\n" +
+        "Add leave range"
     );
 }
 

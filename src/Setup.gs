@@ -188,14 +188,115 @@ function initializeWhatsAppBotSheets() {
     );
 
     ensure(
-        "Doctor_Leaves",
-        ensureDoctorLeavesSheet
+        "Home_Collection_Persons",
+        ensureHomeCollectionPersonsSheet
     );
 
     ensure(
         "Home_Collection_Requests",
         ensureHomeCollectionSheet
     );
+
+    ensure(
+        "Home_Collection_History",
+        ensureHomeCollectionHistorySheet
+    );
+
+    ensure(
+        "Doctor_Leaves",
+        ensureDoctorLeavesSheet
+    );
+
+    // Non-destructive schema migrations for existing sheets.
+    // These functions only add missing header/structure columns;
+    // they do not delete existing rows or clear existing data.
+    ensureDoctorProfileColumns();
+    ensureDoctorSpecializationColumn(
+        ss.getSheetByName("Doctors")
+    );
+    ensureNotificationPrefColumns();
+
+    const sessionSheet =
+        ss.getSheetByName("WhatsApp_Sessions");
+
+    if (sessionSheet) {
+        ensureWhatsAppSessionLanguageColumn(sessionSheet);
+        ensureWhatsAppSessionPatientNameColumn(sessionSheet);
+        ensureWhatsAppSessionSlotPageColumn(sessionSheet);
+        ensureWhatsAppSessionAppointmentPageColumn(sessionSheet);
+        ensureWhatsAppSessionDoctorMenuTierColumn(sessionSheet);
+        ensureWhatsAppSessionListPageColumn(sessionSheet);
+        ensureWhatsAppSessionLocationColumn(sessionSheet);
+    }
+
+    // Operational/history sheets used by the booking, reminder,
+    // deduplication, waitlist, feedback, and reporting workflows.
+    // Each ensure function only creates the sheet when it is missing;
+    // existing sheet data is not deleted.
+    ensure(
+        "Message_Deduplication",
+        ensureIdempotencySheet
+    );
+
+    ensure(
+        "Appointment_History",
+        ensureAppointmentHistorySheet
+    );
+
+    ensure(
+        "Slot_Reservations",
+        ensureSlotReservationSheet
+    );
+
+    ensure(
+        "Reminder_Queue",
+        ensureAppointmentRemindersSheet
+    );
+
+    ensure(
+        "Waitlist",
+        ensureWaitlistSheet
+    );
+
+    ensure(
+        "Feedback",
+        ensureFeedbackSheet
+    );
+
+    // Report/dashboard sheets.
+    // Existing dashboard data is preserved; only missing sheets are created.
+    // createVisualDashboard() is intentionally NOT called here because that
+    // function clears an existing Dashboard before rebuilding it.
+
+    // Reporting sheets: initializeMonitoringDashboard() creates
+    // Cost_Dashboard only when it is missing and does not clear
+    // an existing Cost_Dashboard sheet.
+    const costDashboardExisted =
+        !!ss.getSheetByName("Cost_Dashboard");
+    initializeMonitoringDashboard();
+    results.push({
+        sheet: "Cost_Dashboard",
+        created: !costDashboardExisted
+    });
+
+    // Create the visual Dashboard only if it does not already exist.
+    // IMPORTANT: createVisualDashboard() clears an existing Dashboard,
+    // so it must NOT be called during non-destructive initialization.
+    const dashboardExisted =
+        !!ss.getSheetByName("Dashboard");
+
+    if (!dashboardExisted) {
+        ss.insertSheet("Dashboard");
+    }
+
+    results.push({
+        sheet: "Dashboard",
+        created: !dashboardExisted
+    });
+
+    // Populate/refresh monitoring data without duplicating a daily metrics
+    // row when initialization is run again.
+    ensureMonitoringDashboardPopulated();
 
     Logger.log(
         "initializeWhatsAppBotSheets: " +
@@ -343,27 +444,14 @@ function uploadWhatsAppMediaFromDriveFile(driveFileId) {
 
 function createAutoCleanupTriggers() {
 
-    // Delete existing triggers to avoid duplicates
-    const triggers = ScriptApp.getProjectTriggers();
+    // This function remains the public cleanup-trigger setup entry point.
+    // It now reports the actual schedules that it creates.
+    deleteTriggersByHandler([
+        "cleanupExpiredDeduplicationRecordsAuto",
+        "cleanupExpiredWaitlistEntries",
+        "cleanupExpiredSlotReservationsAuto"
+    ]);
 
-    for (const trigger of triggers) {
-
-        if (
-            trigger.getHandlerFunction() ===
-            "cleanupExpiredDeduplicationRecordsAuto" ||
-            trigger.getHandlerFunction() ===
-            "cleanupExpiredWaitlistEntries" ||
-            trigger.getHandlerFunction() ===
-            "cleanupExpiredSlotReservationsAuto"
-        ) {
-
-            ScriptApp.deleteTrigger(trigger);
-        }
-    }
-
-    // Create new triggers for auto-cleanup
-
-    // 1. Message deduplication: Daily at 2 AM (UTC)
     ScriptApp.newTrigger(
         "cleanupExpiredDeduplicationRecordsAuto"
     )
@@ -372,7 +460,6 @@ function createAutoCleanupTriggers() {
         .everyDays(1)
         .create();
 
-    // 2. Waitlist cleanup: Daily at 4 AM (UTC) — prevent unbounded growth
     ScriptApp.newTrigger(
         "cleanupExpiredWaitlistEntries"
     )
@@ -381,7 +468,6 @@ function createAutoCleanupTriggers() {
         .everyDays(1)
         .create();
 
-    // 3. Slot reservations: Every hour — prevent accumulation at scale
     ScriptApp.newTrigger(
         "cleanupExpiredSlotReservationsAuto"
     )
@@ -390,15 +476,16 @@ function createAutoCleanupTriggers() {
         .create();
 
     Logger.log(
-        "Auto-cleanup triggers created successfully"
+        "Auto-cleanup triggers created: dedup daily ~02:00, " +
+        "waitlist daily ~04:00, slot reservations hourly"
     );
 
     return {
         success: true,
         triggers: [
-            "cleanupExpiredDeduplicationRecordsAuto (daily at 2 AM UTC)",
-            "cleanupExpiredWaitlistEntries (weekly on Sunday at 3 AM UTC)",
-            "cleanupExpiredSlotReservationsAuto (every 6 hours)"
+            "cleanupExpiredDeduplicationRecordsAuto (daily around 2 AM)",
+            "cleanupExpiredWaitlistEntries (daily around 4 AM)",
+            "cleanupExpiredSlotReservationsAuto (every hour)"
         ]
     };
 }
