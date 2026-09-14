@@ -56,6 +56,15 @@ interface CreateAppointmentRequest {
 }
 
 /**
+ * Validate email format
+ */
+function isValidEmail(email: string): boolean {
+  // Basic email validation regex
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+/**
  * List appointments for clinic
  */
 async function listAppointments(
@@ -128,6 +137,13 @@ function validateCreateRequest(body: unknown): { valid: boolean; error?: string;
 
   if (!req.appointmentTime || typeof req.appointmentTime !== "string") {
     return { valid: false, error: "appointmentTime required (HH:MM)" };
+  }
+
+  // Validate email format if provided
+  if (req.patientEmail && typeof req.patientEmail === "string") {
+    if (!isValidEmail(req.patientEmail)) {
+      return { valid: false, error: "patientEmail must be a valid email address" };
+    }
   }
 
   return {

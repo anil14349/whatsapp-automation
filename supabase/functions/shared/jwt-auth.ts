@@ -8,7 +8,15 @@
 import { create, verify, decode } from "https://deno.land/x/djwt@v3.0.2/mod.ts";
 import { debug } from "./logger.ts";
 
-const JWT_SECRET = Deno.env.get("JWT_SECRET") || "default-secret-change-in-production";
+// JWT_SECRET is required - fail fast if not configured
+const JWT_SECRET = Deno.env.get("JWT_SECRET");
+if (!JWT_SECRET) {
+  throw new Error(
+    "JWT_SECRET environment variable is required and must be at least 32 characters. " +
+    "Generate with: openssl rand -base64 32"
+  );
+}
+
 const TOKEN_EXPIRY_HOURS = 24;
 
 export interface TokenPayload {
