@@ -99,7 +99,11 @@ export function isValidPatientMenuButton(buttonId: string): boolean {
 }
 
 /**
- * Check if a button ID is valid for language selection
+ * Check if a button ID is one of the declared language IDs.
+ *
+ * Declared is not the same as supported: use isSupportedLanguageButton()
+ * from languages.ts to gate user input, otherwise an untranslated language
+ * is accepted and silently served in the fallback language.
  */
 export function isValidLanguageButton(buttonId: string): boolean {
     return Object.values(BUTTON_IDS.LANGUAGE).includes(buttonId as any);

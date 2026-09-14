@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppMessage, WhatsAppSession, ExtractedMessage } from "../types.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
-import { BUTTON_IDS, isValidLanguageButton, isValidPatientMenuButton, isValidConfirmationButton, isValidDateSelectButton } from "../button-ids.ts";
+import { BUTTON_IDS, isValidPatientMenuButton, isValidConfirmationButton, isValidDateSelectButton } from "../button-ids.ts";
 import {
     bookAppointment,
     cancelAppointment,
@@ -13,6 +13,11 @@ import { debug, info, recordAuditEvent } from "../logger.ts";
 import { isValidPatientName, normalizePhoneNumber, isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
 import { AppointmentHistoryHandler } from "./appointment-history-handler.ts";
 import { getClinicConfig, getClinicGreeting } from "../clinic-config.ts";
+import {
+    isSupportedLanguageButton,
+    resolveLanguageCode,
+    sendLanguagePrompt
+} from "../languages.ts";
 
 /**
  * Patient Flow Handler - Manages all patient conversation states
@@ -140,13 +145,13 @@ export class PatientFlowHandler {
         const buttonId = message.text.trim();
 
         // Validate button ID
-        if (!isValidLanguageButton(buttonId)) {
+        if (!isSupportedLanguageButton(buttonId)) {
             await this.askLanguage(phone);
             return;
         }
 
         // Parse selected language
-        const selectedLanguage = buttonId === BUTTON_IDS.LANGUAGE.EN ? "EN" : "HI";
+        const selectedLanguage = resolveLanguageCode(buttonId);
 
         // Remember it so returning patients are not asked again.
         try {
@@ -1160,13 +1165,11 @@ export class PatientFlowHandler {
      * Helper: Prompt for language selection
      */
     private async askLanguage(phone: string): Promise<void> {
-        await this.whatsappClient.sendInteractiveButtonMessage(
+        await sendLanguagePrompt(
+            this.whatsappClient,
             phone,
             "Please select your language / कृपया अपनी भाषा चुनें:",
-            [
-                { id: BUTTON_IDS.LANGUAGE.EN, title: "🇬🇧 English" },
-                { id: BUTTON_IDS.LANGUAGE.HI, title: "🇮🇳 हिंदी" }
-            ]
+            this.supabase
         );
     }
 

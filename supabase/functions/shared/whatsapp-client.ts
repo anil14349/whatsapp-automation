@@ -93,6 +93,25 @@ export class WhatsAppClient {
         }>,
         supabase?: SupabaseClient
     ): Promise<string> {
+        // Limits per WhatsApp Cloud API interactive list spec.
+        const totalRows = sections.reduce((count, section) => count + section.rows.length, 0);
+
+        if (totalRows === 0) {
+            throw new Error("Interactive list messages require at least one row");
+        }
+
+        if (sections.length > 10) {
+            throw new Error("Interactive list messages support max 10 sections");
+        }
+
+        if (totalRows > 10) {
+            throw new Error("Interactive list messages support max 10 rows across all sections");
+        }
+
+        if (buttonTitle.length > 20) {
+            throw new Error("Interactive list button title supports max 20 characters");
+        }
+
         const payload = {
             messaging_product: "whatsapp",
             to: recipientPhone,

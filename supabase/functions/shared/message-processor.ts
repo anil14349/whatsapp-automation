@@ -8,6 +8,7 @@ import { DoctorFlowHandler } from "./handlers/doctor-handler.ts";
 import { HomeCollectionHandler } from "./handlers/home-collection-handler.ts";
 import { getRoleByPhone } from "./config.ts";
 import { getClinicConfig, isClinicOpen, getAfterHoursMessage } from "./clinic-config.ts";
+import { sendLanguagePrompt } from "./languages.ts";
 import { getPinEntryPrompt } from "./doctor-auth.ts";
 import { BUTTON_IDS } from "./button-ids.ts";
 
@@ -311,8 +312,8 @@ async function handleGreeting(
         await whatsappClient.sendTextMessage(
             phone,
             language === "EN"
-                ? "📍 Please share your location to register for home sample collection:\n\n1️⃣ Share GPS location\n2️⃣ Enter address manually"
-                : "📍 होम सैंपल कलेक्शन के लिए कृपया अपना स्थान साझा करें:\n\n1️⃣ GPS स्थान साझा करें\n2️⃣ पता मैन्युअल रूप से दर्ज करें",
+                ? "📍 Please share your location to register for home sample collection:\n\n• Attach your GPS location, or\n• Type your address"
+                : "📍 होम सैंपल कलेक्शन के लिए कृपया अपना स्थान साझा करें:\n\n• GPS स्थान साझा करें, या\n• अपना पता लिखें",
             supabase
         );
     } else {
@@ -348,9 +349,10 @@ async function handleGreeting(
         // Send greeting response
         const clinic = await getClinicConfig(supabase, session.clinic_id);
 
-        await whatsappClient.sendTextMessage(
+        await sendLanguagePrompt(
+            whatsappClient,
             phone,
-            `👋 Welcome to ${clinic.clinic_name}!\n\nPlease select your language:\n\n1️⃣ English\n2️⃣ हिंदी\n3️⃣ తెలుగు`,
+            `👋 Welcome to ${clinic.clinic_name}!\n\nPlease select your language:`,
             supabase
         );
     }

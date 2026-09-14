@@ -145,7 +145,7 @@ export class HomeCollectionHandler {
             // Request location
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "Please share your location or type your address for home blood collection.\n\nYou can:\n1️⃣ Share location via WhatsApp\n2️⃣ Type your address"
+                "Please share your location or type your address for home blood collection.\n\nYou can:\n• Attach your location in WhatsApp, or\n• Type your address"
             );
         }
     }
@@ -178,9 +178,14 @@ export class HomeCollectionHandler {
                 });
 
                 // Show date selection menu
-                await this.whatsappClient.sendTextMessage(
+                await this.whatsappClient.sendInteractiveButtonMessage(
                     phone,
-                    "📅 Please select a preferred date for home collection:\n\n1️⃣ Today\n2️⃣ Tomorrow\n3️⃣ Other Date"
+                    "📅 Please select a preferred date for home collection:",
+                    [
+                        { id: BUTTON_IDS.DATE_SELECT.TODAY, title: "Today" },
+                        { id: BUTTON_IDS.DATE_SELECT.TOMORROW, title: "Tomorrow" },
+                        { id: BUTTON_IDS.DATE_SELECT.OTHER, title: "Other Date" }
+                    ]
                 );
             } else if (buttonId === BUTTON_IDS.CONFIRMATION.NO) {
                 // Request new location
@@ -236,15 +241,15 @@ export class HomeCollectionHandler {
 
         let selectedDate: string;
 
-        if (buttonId === "1" || buttonId === "today") {
+        if (buttonId === BUTTON_IDS.DATE_SELECT.TODAY || buttonId === "1" || buttonId === "today") {
             // Today
             selectedDate = this.formatDate(today);
-        } else if (buttonId === "2" || buttonId === "tomorrow") {
+        } else if (buttonId === BUTTON_IDS.DATE_SELECT.TOMORROW || buttonId === "2" || buttonId === "tomorrow") {
             // Tomorrow
             const tomorrow = new Date(today);
             tomorrow.setDate(tomorrow.getDate() + 1);
             selectedDate = this.formatDate(tomorrow);
-        } else if (buttonId === "3" || buttonId === "other") {
+        } else if (buttonId === BUTTON_IDS.DATE_SELECT.OTHER || buttonId === "3" || buttonId === "other") {
             // Ask for custom date
             await this.whatsappClient.sendTextMessage(
                 phone,

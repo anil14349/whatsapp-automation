@@ -199,5 +199,5 @@ export function getAfterHoursMessage(config: ClinicConfig): string {
  * Get clinic greeting
  */
 export function getClinicGreeting(config: ClinicConfig): string {
-    return `👋 Welcome to ${config.clinic_name}!\n\nPlease select your language:\n\n1️⃣ English\n2️⃣ हिंदी\n3️⃣ తెలుగు`;
+    return `👋 Welcome to ${config.clinic_name}!\n\nPlease select your language:`;
 }
