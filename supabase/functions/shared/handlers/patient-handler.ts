@@ -9,7 +9,7 @@ import {
     getAvailableSlots
 } from "../appointments.ts";
 import { debug, info, recordAuditEvent } from "../logger.ts";
-import { isValidPatientName, normalizePhoneNumber } from "../validators.ts";
+import { isValidPatientName, normalizePhoneNumber, isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
 import { AppointmentHistoryHandler } from "./appointment-history-handler.ts";
 import { getClinicConfig, getClinicGreeting } from "../clinic-config.ts";
 
@@ -57,6 +57,10 @@ export class PatientFlowHandler {
 
                 case "BOOK_DATE":
                     await this.handleBookDate(phone, message, session);
+                    break;
+
+                case "BOOK_DATE_CUSTOM":
+                    await this.handleBookDateCustom(phone, message, session);
                     break;
 
                 case "BOOK_TIME":
@@ -263,6 +267,7 @@ export class PatientFlowHandler {
 
     /**
      * BOOK_DATE - Select appointment date (Today, Tomorrow, or Other)
+     * Max 1 week in advance (0-7 days from today)
      */
     private async handleBookDate(
         phone: string,
@@ -278,6 +283,8 @@ export class PatientFlowHandler {
         // If button ID, parse date option
         if (isValidDateSelectButton(buttonId)) {
             const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
             let selectedDate: string;
 
             if (buttonId === BUTTON_IDS.DATE_SELECT.TODAY) {
@@ -291,8 +298,8 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "📅 Please enter your preferred date (YYYY-MM-DD):"
-                        : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):"
+                        ? "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
+                        : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप 7 दिन पहले तक बुक कर सकते हैं)"
                 );
                 await this.updateSession(phone, "BOOK_DATE_CUSTOM", {
                     language,
@@ -331,14 +338,19 @@ export class PatientFlowHandler {
 
             await this.showAvailableSlots(phone, language, slots, 0);
         } else if (/^\d{4}-\d{2}-\d{2}$/.test(buttonId)) {
-            // Custom date input
-            const dateObj = new Date(buttonId);
-            if (dateObj < new Date()) {
+            // Custom date input - validate format and range
+            const dateValidation = isValidBookingDate(buttonId);
+
+            if (!dateValidation.valid) {
+                const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", language);
+                await this.whatsappClient.sendTextMessage(phone, errorMsg);
+
+                // Prompt to retry
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "❌ Please select a future date."
-                        : "❌ कृपया एक भविष्य की तारीख चुनें।"
+                        ? "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
+                        : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप 7 दिन पहले तक बुक कर सकते हैं)"
                 );
                 return;
             }
@@ -348,6 +360,91 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
+                        ? "❌ No available slots on that date. Please try another date."
+                        : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
+                );
+                return;
+            }
+
+            await this.updateSession(phone, "BOOK_TIME", {
+                language,
+                selectedDoctorId: doctorId,
+                selectedDoctorName: session.data?.selectedDoctorName,
+                selectedDate: buttonId,
+                locationType,
+                slotPage: 0
+            });
+
+            await this.showAvailableSlots(phone, language, slots, 0);
+        } else {
+            await this.showDateMenu(phone, language);
+        }
+    }
+
+    /**
+     * BOOK_DATE_CUSTOM - Handle custom date input (intermediate state)
+     * Validates date format and range, then routes to time selection
+     */
+    private async handleBookDateCustom(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        const language = session.data?.language || "EN";
+        const dateString = message.text.trim();
+        const doctorId = session.data?.selectedDoctorId;
+        const locationType = session.data?.locationType || "clinic";
+        const clinicId = session.clinic_id;
+
+        // Validate date format and range
+        const dateValidation = isValidBookingDate(dateString);
+
+        if (!dateValidation.valid) {
+            const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", language);
+            await this.whatsappClient.sendTextMessage(phone, errorMsg);
+
+            // Prompt to retry
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
+                    : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप 7 दिन पहले तक बुक कर सकते हैं)"
+            );
+            return;
+        }
+
+        // Check availability
+        const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, dateString, locationType);
+        if (!slots || slots.length === 0) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "❌ No available slots on that date. Please try another date."
+                    : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
+            );
+
+            // Offer to try another date
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "📅 Please enter another date (YYYY-MM-DD):"
+                    : "📅 कृपया कोई अन्य तारीख दर्ज करें (YYYY-MM-DD):"
+            );
+            return;
+        }
+
+        // Move to time selection
+        await this.updateSession(phone, "BOOK_TIME", {
+            language,
+            selectedDoctorId: doctorId,
+            selectedDoctorName: session.data?.selectedDoctorName,
+            selectedDate: dateString,
+            locationType,
+            slotPage: 0
+        });
+
+        await this.showAvailableSlots(phone, language, slots, 0);
+    }
                         ? "❌ No available slots on that date. Please try another date."
                         : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
                 );

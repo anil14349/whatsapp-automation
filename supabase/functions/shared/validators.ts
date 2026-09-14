@@ -100,6 +100,68 @@ export function isValidISODate(dateString: string): boolean {
 }
 
 /**
+ * Validate booking date is within allowed range (today to max 7 days from today)
+ * Returns: { valid: boolean, error?: string }
+ * Error messages:
+ * - "past" if date is in the past
+ * - "too_far" if date is more than 7 days in the future
+ */
+export function isValidBookingDate(dateString: string): { valid: boolean; error?: string } {
+    // Validate ISO format first
+    if (!isValidISODate(dateString)) {
+        return { valid: false, error: "invalid_format" };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Normalize to start of day
+
+    const bookingDate = new Date(dateString + "T00:00:00Z");
+    bookingDate.setUTCHours(0, 0, 0, 0); // Normalize to UTC start of day
+
+    // Check if date is in the past
+    if (bookingDate < today) {
+        return { valid: false, error: "past" };
+    }
+
+    // Check if date is more than 7 days in the future
+    const maxDate = new Date(today);
+    maxDate.setDate(maxDate.getDate() + 7);
+
+    if (bookingDate > maxDate) {
+        return { valid: false, error: "too_far" };
+    }
+
+    return { valid: true };
+}
+
+/**
+ * Format booking date validation error message for user display
+ */
+export function formatBookingDateErrorMessage(error: string, language: string = "EN"): string {
+    if (error === "past") {
+        return language === "EN"
+            ? "❌ Cannot book appointments in the past. Please select a future date."
+            : "❌ अतीत में नियुक्तियों को बुक नहीं कर सकते। कृपया भविष्य की तारीख चुनें।";
+    }
+
+    if (error === "too_far") {
+        return language === "EN"
+            ? "❌ Appointments can only be booked up to 7 days in advance. Please select an earlier date."
+            : "❌ नियुक्तियों को केवल 7 दिन पहले बुक किया जा सकता है। कृपया पहली तारीख चुनें।";
+    }
+
+    if (error === "invalid_format") {
+        return language === "EN"
+            ? "❌ Invalid date format. Please use YYYY-MM-DD (e.g., 2026-09-20)"
+            : "❌ अमान्य तारीख प्रारूप। कृपया YYYY-MM-DD का उपयोग करें (उदा. 2026-09-20)";
+    }
+
+    return language === "EN"
+        ? "❌ Invalid date. Please try again."
+        : "❌ अमान्य तारीख। कृपया दोबारा कोशिश करें।";
+}
+
+/**
  * Validate time string (HH:MM or H:MM)
  */
 export function isValidTimeString(timeString: string): boolean {

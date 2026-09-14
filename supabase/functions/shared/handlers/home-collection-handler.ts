@@ -3,6 +3,7 @@ import { WhatsAppSession, ExtractedMessage } from "../types.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 import { BUTTON_IDS, isValidConfirmationButton } from "../button-ids.ts";
 import { debug } from "../logger.ts";
+import { isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
 
 /**
  * Home Collection Handler - Manages blood collection requests
@@ -44,6 +45,14 @@ export class HomeCollectionHandler {
 
                 case "LOCATION_VERIFY":
                     await this.handleLocationVerify(phone, message, session);
+                    break;
+
+                case "REQUEST_DATE":
+                    await this.handleRequestDate(phone, message, session);
+                    break;
+
+                case "REQUEST_DATE_CUSTOM":
+                    await this.handleRequestDateCustom(phone, message, session);
                     break;
 
                 case "REQUEST_CONFIRM":
@@ -144,15 +153,19 @@ export class HomeCollectionHandler {
         // Check if this is a button response
         if (isValidConfirmationButton(buttonId)) {
             if (buttonId === BUTTON_IDS.CONFIRMATION.YES) {
-                // Location confirmed, move to request confirmation
-                await this.updateSession(phone, "REQUEST_CONFIRM", {
+                // Location confirmed, move to date selection
+                await this.updateSession(phone, "REQUEST_DATE", {
                     latitude: session.data?.latitude,
                     longitude: session.data?.longitude,
                     address: session.data?.address,
                     locationType: session.data?.locationType
                 });
 
-                await this.showRequestConfirmation(phone, session.data);
+                // Show date selection menu
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "📅 Please select a preferred date for home collection:\n\n1️⃣ Today\n2️⃣ Tomorrow\n3️⃣ Other Date"
+                );
             } else if (buttonId === BUTTON_IDS.CONFIRMATION.NO) {
                 // Request new location
                 await this.updateSession(phone, "LOCATION_SELECT");
@@ -184,6 +197,149 @@ export class HomeCollectionHandler {
                 "Please tap a button or provide your address:"
             );
         }
+    }
+
+    /**
+     * REQUEST_DATE - Select preferred date for home collection
+     * Max 1 week in advance (0-7 days from today)
+     */
+    private async handleRequestDate(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        // GUARD: Explicit state validation
+        if (session.state !== "REQUEST_DATE") {
+            await this.whatsappClient.sendTextMessage(phone, "Please select a date:");
+            return;
+        }
+
+        const buttonId = message.text?.trim() || "";
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        let selectedDate: string;
+
+        if (buttonId === "1" || buttonId === "today") {
+            // Today
+            selectedDate = this.formatDate(today);
+        } else if (buttonId === "2" || buttonId === "tomorrow") {
+            // Tomorrow
+            const tomorrow = new Date(today);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            selectedDate = this.formatDate(tomorrow);
+        } else if (buttonId === "3" || buttonId === "other") {
+            // Ask for custom date
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can schedule up to 7 days in advance)"
+            );
+            await this.updateSession(phone, "REQUEST_DATE_CUSTOM", {
+                latitude: session.data?.latitude,
+                longitude: session.data?.longitude,
+                address: session.data?.address,
+                locationType: session.data?.locationType
+            });
+            return;
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(buttonId)) {
+            // Custom date input - validate format and range
+            const dateValidation = isValidBookingDate(buttonId);
+
+            if (!dateValidation.valid) {
+                const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", "EN");
+                await this.whatsappClient.sendTextMessage(phone, errorMsg);
+
+                // Prompt to retry
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can schedule up to 7 days in advance)"
+                );
+                return;
+            }
+
+            selectedDate = buttonId;
+        } else {
+            // Invalid input
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "Please select an option or enter a date (YYYY-MM-DD):"
+            );
+            return;
+        }
+
+        // Move to confirmation
+        await this.updateSession(phone, "REQUEST_CONFIRM", {
+            latitude: session.data?.latitude,
+            longitude: session.data?.longitude,
+            address: session.data?.address,
+            locationType: session.data?.locationType,
+            requestDate: selectedDate
+        });
+
+        // Show confirmation with date included
+        await this.whatsappClient.sendTextMessage(
+            phone,
+            `📍 Location: ${session.data?.address || "Verified"}\n📅 Date: ${selectedDate}\n\nIs this correct?`
+        );
+
+        await this.whatsappClient.sendInteractiveButtonMessage(
+            phone,
+            "Please confirm your home collection request details:",
+            [
+                { id: BUTTON_IDS.CONFIRMATION.YES, title: "Yes, Confirm" },
+                { id: BUTTON_IDS.CONFIRMATION.NO, title: "No, Change" }
+            ]
+        );
+    }
+
+    /**
+     * REQUEST_DATE_CUSTOM - Handle custom date input for home collection
+     */
+    private async handleRequestDateCustom(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        const dateString = message.text?.trim() || "";
+
+        // Validate date format and range
+        const dateValidation = isValidBookingDate(dateString);
+
+        if (!dateValidation.valid) {
+            const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", "EN");
+            await this.whatsappClient.sendTextMessage(phone, errorMsg);
+
+            // Prompt to retry
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can schedule up to 7 days in advance)"
+            );
+            return;
+        }
+
+        // Move to confirmation
+        await this.updateSession(phone, "REQUEST_CONFIRM", {
+            latitude: session.data?.latitude,
+            longitude: session.data?.longitude,
+            address: session.data?.address,
+            locationType: session.data?.locationType,
+            requestDate: dateString
+        });
+
+        // Show confirmation with date included
+        await this.whatsappClient.sendTextMessage(
+            phone,
+            `📍 Location: ${session.data?.address || "Verified"}\n📅 Date: ${dateString}\n\nIs this correct?`
+        );
+
+        await this.whatsappClient.sendInteractiveButtonMessage(
+            phone,
+            "Please confirm your home collection request details:",
+            [
+                { id: BUTTON_IDS.CONFIRMATION.YES, title: "Yes, Confirm" },
+                { id: BUTTON_IDS.CONFIRMATION.NO, title: "No, Change" }
+            ]
+        );
     }
 
     /**
@@ -335,6 +491,7 @@ export class HomeCollectionHandler {
                 latitude: locationData?.latitude || null,
                 longitude: locationData?.longitude || null,
                 location_type: locationData?.locationType || "TEXT",
+                appointment_date: locationData?.requestDate || null,
                 status: "PENDING",
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
@@ -473,5 +630,15 @@ export class HomeCollectionHandler {
         if (error) {
             debug("homeCollectionFlow", "Error updating session", { error: error.message });
         }
+    }
+
+    /**
+     * Helper: Format date as YYYY-MM-DD
+     */
+    private formatDate(date: Date): string {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
     }
 }
