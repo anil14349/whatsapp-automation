@@ -26,11 +26,13 @@ export async function processMessage(
     // GET OR CREATE SESSION
     // ============================================================
 
-    const session = await getOrCreateSession(supabase, senderPhone);
+    const clinicId = Deno.env.get("DEFAULT_CLINIC_ID") || "default-clinic";
+    const session = await getOrCreateSession(supabase, senderPhone, clinicId);
 
     debug("processMessage", "Session loaded", {
         state: session.state,
-        role: session.role
+        role: session.role,
+        clinic_id: session.clinic_id
     });
 
     // ============================================================
@@ -87,7 +89,8 @@ export async function processMessage(
  */
 async function getOrCreateSession(
     supabase: SupabaseClient,
-    phone: string
+    phone: string,
+    clinicId: string
 ): Promise<WhatsAppSession> {
     try {
         // Try to fetch existing session
@@ -95,6 +98,7 @@ async function getOrCreateSession(
             .from("whatsapp_sessions")
             .select("*")
             .eq("phone", phone)
+            .eq("clinic_id", clinicId)
             .maybeSingle();
 
         if (existing) {
@@ -112,6 +116,7 @@ async function getOrCreateSession(
             .from("whatsapp_sessions")
             .insert({
                 phone,
+                clinic_id: clinicId,
                 role: "PATIENT",
                 state: "LANGUAGE_SELECT",
                 data: {},
@@ -128,6 +133,7 @@ async function getOrCreateSession(
         return {
             id: "default",
             phone,
+            clinic_id: clinicId,
             role: "PATIENT",
             state: "LANGUAGE_SELECT",
             data: {},

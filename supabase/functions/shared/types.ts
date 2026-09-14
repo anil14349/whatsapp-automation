@@ -52,6 +52,7 @@ export interface ExtractedMessage {
 export interface WhatsAppSession {
     id: string;
     phone: string;
+    clinic_id: string;
     role: "PATIENT" | "DOCTOR" | "HOME_COLLECTION_PERSON";
     state: string;
     data: Record<string, any>;

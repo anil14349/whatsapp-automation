@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { WhatsAppMessage, WhatsAppSession, ExtractedMessage } from "../types.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
+import { BUTTON_IDS, isValidLanguageButton, isValidPatientMenuButton } from "../button-ids.ts";
 import {
     bookAppointment,
     cancelAppointment,
@@ -119,22 +120,23 @@ export class PatientFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
-        const language = message.text.toUpperCase().trim();
+        const buttonId = message.text.trim();
 
-        // Support: EN, HI
-        if (!["EN", "HI", "1", "2"].includes(language)) {
+        // Validate button ID
+        if (!isValidLanguageButton(buttonId)) {
             await this.whatsappClient.sendInteractiveButtonMessage(
                 phone,
-                "Welcome to ABC Clinic! Please select your language:\n\n1️⃣ English\n2️⃣ हिंदी",
+                "Welcome to ABC Clinic! Please select your language:\n\n🇬🇧 English\n🇮🇳 हिंदी",
                 [
-                    { id: "lang_en", title: "English (EN)" },
-                    { id: "lang_hi", title: "हिंदी (HI)" }
+                    { id: BUTTON_IDS.LANGUAGE.EN, title: "🇬🇧 English" },
+                    { id: BUTTON_IDS.LANGUAGE.HI, title: "🇮🇳 हिंदी" }
                 ]
             );
             return;
         }
 
-        const selectedLanguage = language === "EN" || language === "1" ? "EN" : "HI";
+        // Parse selected language
+        const selectedLanguage = buttonId === BUTTON_IDS.LANGUAGE.EN ? "EN" : "HI";
 
         // Update session
         await this.updateSession(phone, "MAIN_MENU", { language: selectedLanguage });
@@ -143,12 +145,12 @@ export class PatientFlowHandler {
         if (selectedLanguage === "EN") {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "Thank you! You're all set. What would you like to do today?"
+                "👋 Welcome to ABC Clinic!\n\nWhat would you like to do today?"
             );
         } else {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "धन्यवाद! आप तैयार हैं। आज आप क्या करना चाहते हैं?"
+                "👋 ABC क्लीनिक में आपका स्वागत है!\n\nआज आप क्या करना चाहते हैं?"
             );
         }
 
@@ -165,23 +167,39 @@ export class PatientFlowHandler {
         session: WhatsAppSession
     ): Promise<void> {
         const language = session.data?.language || "EN";
-        const choice = message.text.toLowerCase().trim();
+        const buttonId = message.text.trim();
+        const clinicId = session.clinic_id;
+
+        // Validate button ID
+        if (!isValidPatientMenuButton(buttonId)) {
+            await this.showMainMenu(phone, language);
+            return;
+        }
 
         // Parse menu choice
-        if (choice === "book" || choice === "1" || choice === "बुक करें") {
-            await this.updateSession(phone, "BOOK_DOCTOR");
-            await this.showDoctorList(phone, language);
-        } else if (choice === "myappointments" || choice === "2" || choice === "मेरी नियुक्तियाँ") {
-            await this.updateSession(phone, "MY_APPOINTMENTS");
-            await this.showMyAppointments(phone, language);
-        } else if (choice === "cancel" || choice === "3" || choice === "रद्द करें") {
-            await this.updateSession(phone, "CANCEL_SELECT");
-            await this.showCancelOptions(phone, language);
-        } else if (choice === "reschedule" || choice === "4" || choice === "पुनः समय निर्धारित करें") {
-            await this.updateSession(phone, "RESCHEDULE_SELECT");
-            await this.showRescheduleOptions(phone, language);
-        } else {
-            await this.showMainMenu(phone, language);
+        switch (buttonId) {
+            case BUTTON_IDS.PATIENT_MENU.BOOK:
+                await this.updateSession(phone, "BOOK_DOCTOR");
+                await this.showDoctorList(phone, language, clinicId);
+                break;
+
+            case BUTTON_IDS.PATIENT_MENU.APPOINTMENTS:
+                await this.updateSession(phone, "MY_APPOINTMENTS");
+                await this.showMyAppointments(phone, language, clinicId);
+                break;
+
+            case BUTTON_IDS.PATIENT_MENU.CANCEL:
+                await this.updateSession(phone, "CANCEL_SELECT");
+                await this.showCancelOptions(phone, language, clinicId);
+                break;
+
+            case BUTTON_IDS.PATIENT_MENU.RESCHEDULE:
+                await this.updateSession(phone, "RESCHEDULE_SELECT");
+                await this.showRescheduleOptions(phone, language, clinicId);
+                break;
+
+            default:
+                await this.showMainMenu(phone, language);
         }
     }
 
@@ -194,19 +212,21 @@ export class PatientFlowHandler {
         session: WhatsAppSession
     ): Promise<void> {
         const language = session.data?.language || "EN";
+        const clinicId = session.clinic_id;
         const doctorId = message.text.trim();
 
-        // Validate doctor ID
-        const doctor = await this.sheets.getDoctorById(doctorId);
+        // Validate doctor ID and fetch from database
+        const doctors = await this.supabaseClient.getDoctors(clinicId);
+        const doctor = doctors.find(d => d.doctor_id === doctorId);
 
         if (!doctor) {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "Invalid doctor selection. Please select a valid doctor ID."
-                    : "अमान्य डॉक्टर चयन। कृपया एक वैध डॉक्टर आईडी चुनें।"
+                    ? "❌ Invalid doctor selection. Please select a valid doctor."
+                    : "❌ अमान्य डॉक्टर चयन। कृपया एक वैध डॉक्टर चुनें।"
             );
-            await this.showDoctorList(phone, language);
+            await this.showDoctorList(phone, language, clinicId);
             return;
         }
 
@@ -220,8 +240,8 @@ export class PatientFlowHandler {
         await this.whatsappClient.sendTextMessage(
             phone,
             language === "EN"
-                ? `Great! You've selected Dr. ${doctor.name}.\n\nPlease provide your preferred appointment date (YYYY-MM-DD):`
-                : `बहुत अच्छा! आपने डॉ. ${doctor.name} का चयन किया है।\n\nकृपया अपनी पसंदीदा नियुक्ति तारीख दें (YYYY-MM-DD):`
+                ? `✅ You've selected Dr. ${doctor.name}.\n\nPlease provide your preferred appointment date (YYYY-MM-DD):`
+                : `✅ आपने डॉ. ${doctor.name} का चयन किया है।\n\nकृपया अपनी पसंदीदा नियुक्ति तारीख दें (YYYY-MM-DD):`
         );
     }
 
@@ -661,41 +681,41 @@ export class PatientFlowHandler {
     private async showMainMenu(phone: string, language: string): Promise<void> {
         const message =
             language === "EN"
-                ? "What would you like to do?\n\n1️⃣ Book Appointment\n2️⃣ My Appointments\n3️⃣ Cancel Appointment\n4️⃣ Reschedule Appointment"
-                : "आप क्या करना चाहते हैं?\n\n1️⃣ नियुक्ति बुक करें\n2️⃣ मेरी नियुक्तियाँ\n3️⃣ नियुक्ति रद्द करें\n4️⃣ नियुक्ति पुनः समय निर्धारित करें";
+                ? "📋 What would you like to do?\n\n🔖 Tap a button to choose:"
+                : "📋 आप क्या करना चाहते हैं?\n\n🔖 चुनने के लिए बटन दबाएं:";
 
         await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
-            { id: "menu_book", title: language === "EN" ? "Book" : "बुक करें" },
-            { id: "menu_my_appts", title: language === "EN" ? "My Appointments" : "मेरी नियुक्तियाँ" },
-            { id: "menu_cancel", title: language === "EN" ? "Cancel" : "रद्द करें" },
-            { id: "menu_reschedule", title: language === "EN" ? "Reschedule" : "पुनः समय निर्धारित करें" }
+            { id: BUTTON_IDS.PATIENT_MENU.BOOK, title: language === "EN" ? "📅 Book Appointment" : "📅 नियुक्ति बुक करें" },
+            { id: BUTTON_IDS.PATIENT_MENU.APPOINTMENTS, title: language === "EN" ? "📝 My Appointments" : "📝 मेरी नियुक्तियाँ" },
+            { id: BUTTON_IDS.PATIENT_MENU.CANCEL, title: language === "EN" ? "❌ Cancel" : "❌ रद्द करें" },
+            { id: BUTTON_IDS.PATIENT_MENU.RESCHEDULE, title: language === "EN" ? "🔄 Reschedule" : "🔄 पुनः समय निर्धारित करें" }
         ]);
     }
 
     /**
      * Helper: Show available doctors
      */
-    private async showDoctorList(phone: string, language: string): Promise<void> {
+    private async showDoctorList(phone: string, language: string, clinicId: string): Promise<void> {
         try {
-            const doctors = await this.sheets.getDoctors();
+            const doctors = await this.supabaseClient.getDoctors(clinicId);
 
             if (!doctors || doctors.length === 0) {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "No doctors available at the moment."
-                        : "इस समय कोई डॉक्टर उपलब्ध नहीं है।"
+                        ? "❌ No doctors available at the moment."
+                        : "❌ इस समय कोई डॉक्टर उपलब्ध नहीं है।"
                 );
                 return;
             }
 
-            let message = language === "EN" ? "Select a doctor:\n\n" : "एक डॉक्टर चुनें:\n\n";
+            let message = language === "EN" ? "👨‍⚕️ Select a doctor:\n\n" : "👨‍⚕️ एक डॉक्टर चुनें:\n\n";
 
             doctors.forEach((doc: any, idx: number) => {
-                message += `${idx + 1}. Dr. ${doc.name} (ID: ${doc.id})\n`;
+                message += `${idx + 1}. Dr. ${doc.name}\n`;
             });
 
-            message += language === "EN" ? "\nReply with doctor ID or number" : "\nडॉक्टर आईडी या नंबर के साथ उत्तर दें";
+            message += language === "EN" ? "\nTap a doctor to book an appointment" : "\nनियुक्ति बुक करने के लिए एक डॉक्टर दबाएं";
 
             await this.whatsappClient.sendTextMessage(phone, message);
         } catch (error) {
@@ -706,8 +726,8 @@ export class PatientFlowHandler {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "Error loading doctors. Please try again."
-                    : "डॉक्टर लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।"
+                    ? "❌ Error loading doctors. Please try again."
+                    : "❌ डॉक्टर लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।"
             );
         }
     }
@@ -791,22 +811,22 @@ export class PatientFlowHandler {
     /**
      * Helper: Show patient's appointments
      */
-    private async showMyAppointments(phone: string, language: string): Promise<void> {
+    private async showMyAppointments(phone: string, language: string, clinicId: string): Promise<void> {
         try {
-            const appointments = await this.sheets.getPatientAppointments(phone);
+            const appointments = await this.supabaseClient.getPatientAppointments(clinicId, phone, true);
 
             if (!appointments || appointments.length === 0) {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "You have no upcoming appointments."
-                        : "आपके पास कोई आने वाली नियुक्तियाँ नहीं हैं।"
+                        ? "📋 You have no upcoming appointments."
+                        : "📋 आपके पास कोई आने वाली नियुक्तियाँ नहीं हैं।"
                 );
             } else {
-                let message = language === "EN" ? "Your Appointments:\n\n" : "आपकी नियुक्तियाँ:\n\n";
+                let message = language === "EN" ? "📋 Your Appointments:\n\n" : "📋 आपकी नियुक्तियाँ:\n\n";
 
                 appointments.forEach((apt: any, idx: number) => {
-                    message += `${idx + 1}. Dr. ${apt.doctorName}\n   📅 ${apt.date} @ ${apt.time}\n   Status: ${apt.status}\n\n`;
+                    message += `${idx + 1}. Dr. ${apt.doctor_name || "Unknown"}\n   📅 ${apt.appointment_date} @ ${apt.appointment_time}\n   Status: ${apt.status}\n\n`;
                 });
 
                 await this.whatsappClient.sendTextMessage(phone, message);
@@ -819,8 +839,8 @@ export class PatientFlowHandler {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "Error loading appointments. Please try again."
-                    : "नियुक्तियाँ लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।"
+                    ? "❌ Error loading appointments. Please try again."
+                    : "❌ नियुक्तियाँ लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।"
             );
         }
     }
@@ -828,7 +848,7 @@ export class PatientFlowHandler {
     /**
      * Helper: Show cancel options
      */
-    private async showCancelOptions(phone: string, language: string): Promise<void> {
+    private async showCancelOptions(phone: string, language: string, clinicId: string): Promise<void> {
         await this.whatsappClient.sendTextMessage(
             phone,
             language === "EN"
@@ -840,7 +860,7 @@ export class PatientFlowHandler {
     /**
      * Helper: Show reschedule options
      */
-    private async showRescheduleOptions(phone: string, language: string): Promise<void> {
+    private async showRescheduleOptions(phone: string, language: string, clinicId: string): Promise<void> {
         await this.whatsappClient.sendTextMessage(
             phone,
             language === "EN"

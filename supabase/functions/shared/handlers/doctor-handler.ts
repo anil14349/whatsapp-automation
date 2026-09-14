@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { WhatsAppSession, ExtractedMessage } from "../types.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
+import { BUTTON_IDS, isValidDoctorMenuButton } from "../button-ids.ts";
 import { debug } from "../logger.ts";
 
 /**
@@ -90,6 +91,7 @@ export class DoctorFlowHandler {
     ): Promise<void> {
         const pin = message.text.trim();
         const doctorPin = Deno.env.get("DOCTOR_PORTAL_PIN") || "1234";
+        const clinicId = session.clinic_id;
 
         // Validate PIN
         if (pin !== doctorPin) {
@@ -100,8 +102,8 @@ export class DoctorFlowHandler {
             return;
         }
 
-        // Get doctor details from phone
-        const doctors = await this.sheets.getDoctors();
+        // Get doctor details from phone and clinic
+        const doctors = await this.supabaseClient.getDoctors(clinicId);
         const doctor = doctors?.find((d: any) => d.phone === phone);
 
         if (!doctor) {
@@ -114,14 +116,14 @@ export class DoctorFlowHandler {
 
         // Update session
         await this.updateSession(phone, "DOCTOR_MENU", {
-            doctorId: doctor.id,
+            doctorId: doctor.doctor_id,
             doctorName: doctor.name,
             authenticated: true
         });
 
         await this.whatsappClient.sendTextMessage(
             phone,
-            `Welcome, Dr. ${doctor.name}! 👋\n\nYou are now logged into the doctor portal.`
+            `✅ Welcome, Dr. ${doctor.name}! 👋\n\nYou are now logged into the doctor portal.`
         );
 
         await this.showMenu(phone);
@@ -144,28 +146,52 @@ export class DoctorFlowHandler {
             return;
         }
 
-        const choice = message.text.toLowerCase().trim();
+        const buttonId = message.text.trim();
 
-        if (choice === "1" || choice === "availability") {
-            await this.updateSession(phone, "DOCTOR_AVAILABILITY", {
-                doctorId: session.data?.doctorId,
-                doctorName: session.data?.doctorName,
-                authenticated: true
-            });
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                "Please provide your availability for today (format: HH:MM-HH:MM, e.g., 09:00-17:00):"
-            );
-        } else if (choice === "2" || choice === "leave") {
-            await this.updateSession(phone, "DOCTOR_LEAVE", {
-                doctorId: session.data?.doctorId,
-                doctorName: session.data?.doctorName,
-                authenticated: true
-            });
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                "Please provide leave dates (format: YYYY-MM-DD to YYYY-MM-DD):"
-            );
+        // Validate button ID
+        if (!isValidDoctorMenuButton(buttonId)) {
+            await this.showMenu(phone);
+            return;
+        }
+
+        switch (buttonId) {
+            case BUTTON_IDS.DOCTOR_MENU.AVAILABILITY:
+                await this.updateSession(phone, "DOCTOR_AVAILABILITY", {
+                    doctorId: session.data?.doctorId,
+                    doctorName: session.data?.doctorName,
+                    authenticated: true
+                });
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "📅 Please provide your availability for today (format: HH:MM-HH:MM, e.g., 09:00-17:00):"
+                );
+                break;
+
+            case BUTTON_IDS.DOCTOR_MENU.LEAVE:
+                await this.updateSession(phone, "DOCTOR_LEAVE", {
+                    doctorId: session.data?.doctorId,
+                    doctorName: session.data?.doctorName,
+                    authenticated: true
+                });
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "🗓️ Please provide leave dates (format: YYYY-MM-DD to YYYY-MM-DD):"
+                );
+                break;
+
+            case BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS:
+                await this.showAppointments(phone, session);
+                break;
+
+            case BUTTON_IDS.DOCTOR_MENU.CANCEL:
+                await this.updateSession(phone, "DOCTOR_MENU");
+                await this.showMenu(phone);
+                break;
+
+            default:
+                await this.showMenu(phone);
+        }
+    }
         } else if (choice === "3" || choice === "appointments") {
             await this.updateSession(phone, "DOCTOR_APPOINTMENTS", {
                 doctorId: session.data?.doctorId,
@@ -432,13 +458,13 @@ export class DoctorFlowHandler {
      * Helper: Show doctor portal menu
      */
     private async showMenu(phone: string): Promise<void> {
-        const message = `Doctor Portal Menu:\n\n1️⃣ Set Availability\n2️⃣ Apply for Leave\n3️⃣ Today's Appointments\n4️⃣ Logout`;
+        const message = `👨‍⚕️ Doctor Portal Menu:\n\nTap an option below:`;
 
         await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
-            { id: "doc_avail", title: "Availability" },
-            { id: "doc_leave", title: "Leave" },
-            { id: "doc_appts", title: "Appointments" },
-            { id: "doc_logout", title: "Logout" }
+            { id: BUTTON_IDS.DOCTOR_MENU.AVAILABILITY, title: "📅 Availability" },
+            { id: BUTTON_IDS.DOCTOR_MENU.LEAVE, title: "🗓️ Leave" },
+            { id: BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS, title: "📋 Appointments" },
+            { id: BUTTON_IDS.DOCTOR_MENU.CANCEL, title: "🚪 Logout" }
         ]);
     }
 
