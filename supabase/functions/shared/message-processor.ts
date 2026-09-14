@@ -1,4 +1,5 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppClient } from "./whatsapp-client.ts";
 import { ProcessMessageContext, WhatsAppSession, ExtractedMessage } from "./types.ts";
 import { info, debug } from "./logger.ts";

@@ -5,7 +5,7 @@
  * per user/clinic combination and implementing temporary lockouts
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { debug } from "./logger.ts";
 
 export interface RateLimitConfig {

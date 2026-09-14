@@ -1,4 +1,4 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppSession } from "../types.ts";
 import { BUTTON_IDS } from "../button-ids.ts";
 import { debug } from "../logger.ts";

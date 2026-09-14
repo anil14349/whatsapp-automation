@@ -1,0 +1,17 @@
+{
+  "tasks": {
+    "start": "deno run --allow-net --allow-env --allow-read --allow-write supabase start",
+    "test": "deno test --allow-all",
+    "check": "deno check --all ."
+  },
+  "imports": {
+    "supabase": "https://esm.sh/@supabase/supabase-js@2",
+    "bcrypt": "https://deno.land/x/bcrypt@v0.4.1/mod.ts",
+    "std/": "https://deno.land/std@0.190.0/"
+  },
+  "compilerOptions": {
+    "lib": ["deno.window", "dom", "dom.iterable"],
+    "jsx": "react-jsx",
+    "jsxImportSource": "https://esm.sh/react@18.2.0"
+  }
+}

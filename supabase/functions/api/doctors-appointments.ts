@@ -24,7 +24,7 @@
  * }
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withAuth, successResponse, errorResponse, badRequestResponse } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
 import { debug } from "../shared/logger.ts";
@@ -221,7 +221,7 @@ async function handleGetAppointments(
     debug("doctorAppointments", "Error handling request", {
       error: error instanceof Error ? error.message : String(error)
     });
-    return errorResponse(error);
+    return errorResponse(error instanceof Error ? error : new Error(String(error)));
   }
 }
 

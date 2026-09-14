@@ -6,7 +6,7 @@
  * Idempotency: Tracked via appointment_reminders table (UNIQUE on appointment_id + reminder_type)
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as types from "./multi-clinic-types.ts";
 import { debug } from "./logger.ts";
 

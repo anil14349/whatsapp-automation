@@ -1,4 +1,4 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { validatePin, PIN_CONFIG } from "../config.ts";
 import { debug } from "../logger.ts";
 

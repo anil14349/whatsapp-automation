@@ -11,7 +11,7 @@
  * 4. Scheduler processes all clinics' pending reminders in parallel
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { debug } from "./logger.ts";
 import { 
     getPendingHomeCollectionReminders,

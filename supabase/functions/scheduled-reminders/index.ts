@@ -12,7 +12,7 @@
  * - Auth Header: Authorization: Bearer <SCHEDULER_AUTH_TOKEN>
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppClient } from "../shared/whatsapp-client.ts";
 import { runReminderScheduler } from "../shared/appointment-reminder-scheduler.ts";
 import { runHomeCollectionReminderScheduler } from "../shared/home-collection-reminder-scheduler.ts";

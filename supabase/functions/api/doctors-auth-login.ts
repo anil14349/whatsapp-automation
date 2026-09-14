@@ -24,12 +24,11 @@
  * }
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createJwtToken } from "../shared/jwt-auth.ts";
 import { badRequestResponse, errorResponse, successResponse } from "../shared/auth-middleware.ts";
 import { debug } from "../shared/logger.ts";
-import { verifyPassword } from "../shared/bcrypt-password.ts";
-import { isRateLimited, recordFailedAttempt, clearFailedAttempts, getRemainingLockoutTime, DEFAULT_RATE_LIMIT } from "../shared/rate-limiting.ts";
 import { verifyPassword } from "../shared/bcrypt-password.ts";
 import { isRateLimited, recordFailedAttempt, clearFailedAttempts, getRemainingLockoutTime } from "../shared/rate-limiting.ts";
 
@@ -184,7 +183,7 @@ export async function handleDoctorLogin(req: Request): Promise<Response> {
     debug("doctorLogin", "Error handling login", {
       error: error instanceof Error ? error.message : String(error)
     });
-    return errorResponse(error);
+    return errorResponse(error instanceof Error ? error : new Error(String(error)));
   }
 }
 

@@ -24,7 +24,7 @@
  * }
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createJwtToken } from "../shared/jwt-auth.ts";
 import { badRequestResponse, errorResponse, successResponse } from "../shared/auth-middleware.ts";
 import { debug } from "../shared/logger.ts";
@@ -194,7 +194,7 @@ export async function handleReceptionistLogin(req: Request): Promise<Response> {
     debug("receptionistLogin", "Error handling login", {
       error: error instanceof Error ? error.message : String(error)
     });
-    return errorResponse(error);
+    return errorResponse(error instanceof Error ? error : new Error(String(error)));
   }
 }
 

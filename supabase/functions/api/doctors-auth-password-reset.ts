@@ -8,7 +8,7 @@
  * Confirm password reset with token and new PIN
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { badRequestResponse, errorResponse, successResponse, withAuth } from "../shared/auth-middleware.ts";
 import { debug } from "../shared/logger.ts";
 import { hashPassword, validatePinStrength } from "../shared/bcrypt-password.ts";

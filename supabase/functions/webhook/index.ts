@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { verifyWebhookToken, extractInboundMessage } from "../shared/validators.ts";
 import { logWhatsAppMessage } from "../shared/logger.ts";
 import { processMessage } from "../shared/message-processor.ts";

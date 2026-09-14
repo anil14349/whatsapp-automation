@@ -158,7 +158,7 @@ export async function withAuth(
     debug("authMiddleware", "Handler error", {
       error: error instanceof Error ? error.message : String(error)
     });
-    return errorResponse(error);
+    return errorResponse(error instanceof Error ? error : new Error(String(error)));
   }
 }
 

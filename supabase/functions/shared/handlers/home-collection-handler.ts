@@ -1,4 +1,4 @@
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppSession, ExtractedMessage } from "../types.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 import { BUTTON_IDS, isValidConfirmationButton } from "../button-ids.ts";

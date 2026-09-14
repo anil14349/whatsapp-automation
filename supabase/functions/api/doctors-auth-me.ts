@@ -16,7 +16,7 @@
  * }
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withAuth, successResponse, errorResponse } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
 import { debug } from "../shared/logger.ts";
@@ -83,7 +83,7 @@ async function handleGetProfile(user: TokenPayload): Promise<Response> {
     debug("doctorProfile", "Error fetching profile", {
       error: error instanceof Error ? error.message : String(error)
     });
-    return errorResponse(error);
+    return errorResponse(error instanceof Error ? error : new Error(String(error)));
   }
 }
 

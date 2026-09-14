@@ -1,4 +1,5 @@
-import { SupabaseClient, createClient } from "@supabase/supabase-js";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
     bookAppointment,
     cancelAppointment,

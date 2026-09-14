@@ -6,7 +6,7 @@
  * or call from webhook handler
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppClient } from "./whatsapp-client.ts";
 import * as types from "./multi-clinic-types.ts";
 import {
