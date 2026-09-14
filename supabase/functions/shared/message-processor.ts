@@ -7,6 +7,7 @@ import { PatientFlowHandler } from "./handlers/patient-handler.ts";
 import { DoctorFlowHandler } from "./handlers/doctor-handler.ts";
 import { HomeCollectionHandler } from "./handlers/home-collection-handler.ts";
 import { getRoleByPhone } from "./config.ts";
+import { getClinicConfig } from "./clinic-config.ts";
 import { getPinEntryPrompt } from "./doctor-auth.ts";
 import { BUTTON_IDS } from "./button-ids.ts";
 
@@ -270,9 +271,11 @@ async function handleGreeting(
         });
 
         // Send greeting response
+        const clinic = await getClinicConfig(supabase, session.clinic_id);
+
         await whatsappClient.sendTextMessage(
             phone,
-            "👋 Welcome to ABC Clinic!\n\nPlease select your language:\n\n1️⃣ English\n2️⃣ हिंदी\n3️⃣ తెలుగు",
+            `👋 Welcome to ${clinic.clinic_name}!\n\nPlease select your language:\n\n1️⃣ English\n2️⃣ हिंदी\n3️⃣ తెలుగు`,
             supabase
         );
     }

@@ -40,7 +40,7 @@ export async function getClinicConfig(
         const { data, error } = await supabase
             .from("clinics")
             .select("*")
-            .eq("clinic_id", clinicId)
+            .eq("id", clinicId)
             .maybeSingle();
 
         if (error || !data) {
@@ -54,10 +54,10 @@ export async function getClinicConfig(
         }
 
         const config: ClinicConfig = {
-            clinic_id: data.clinic_id || clinicId,
-            clinic_name: data.clinic_name || "ABC Clinic",
-            clinic_phone: data.clinic_phone || "+91-9999999999",
-            clinic_email: data.clinic_email || "info@clinic.com",
+            clinic_id: data.id || clinicId,
+            clinic_name: data.name || "ABC Clinic",
+            clinic_phone: data.phone || "+91-9999999999",
+            clinic_email: data.email || "info@clinic.com",
             open_time: data.open_time || "09:00",
             close_time: data.close_time || "18:00",
             working_days: data.working_days || "Mon,Tue,Wed,Thu,Fri,Sat",
