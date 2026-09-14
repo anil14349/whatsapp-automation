@@ -238,7 +238,7 @@ export class PatientFlowHandler {
 
         // Validate doctor ID and fetch from database
         const doctors = await this.supabaseClient.getDoctors(clinicId);
-        const doctor = doctors.find(d => d.doctor_id === doctorId);
+        const doctor = doctors.find(d => d.id === doctorId);
 
         if (!doctor) {
             await this.whatsappClient.sendTextMessage(
@@ -289,11 +289,11 @@ export class PatientFlowHandler {
             let selectedDate: string;
 
             if (buttonId === BUTTON_IDS.DATE_SELECT.TODAY) {
-                selectedDate = this.formatDate(today);
+                selectedDate = this.toISODate(today);
             } else if (buttonId === BUTTON_IDS.DATE_SELECT.TOMORROW) {
                 const tomorrow = new Date(today);
                 tomorrow.setDate(tomorrow.getDate() + 1);
-                selectedDate = this.formatDate(tomorrow);
+                selectedDate = this.toISODate(tomorrow);
             } else if (buttonId === BUTTON_IDS.DATE_SELECT.OTHER) {
                 // Ask for custom date
                 await this.whatsappClient.sendTextMessage(
@@ -496,7 +496,9 @@ export class PatientFlowHandler {
         session: WhatsAppSession
     ): Promise<void> {
         const language = session.data?.language || "EN";
-        const selectedTime = message.text.trim();
+        // Buttons arrive as "slot_HH:MM"; typed replies as "HH:MM".
+        const rawTime = message.text.trim();
+        const selectedTime = rawTime.startsWith("slot_") ? rawTime.substring(5) : rawTime;
         const doctorId = session.data?.selectedDoctorId;
         const selectedDate = session.data?.selectedDate;
         const clinicId = session.clinic_id;
@@ -515,7 +517,9 @@ export class PatientFlowHandler {
 
         // Verify slot still available
         const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, selectedDate, locationType);
-        const slotExists = slots?.some((s: any) => s.start_time === selectedTime);
+        const slotExists = slots?.some(
+            (s: any) => (typeof s === "string" ? s : s.start_time || s.time) === selectedTime
+        );
 
         if (!slotExists) {
             await this.whatsappClient.sendTextMessage(
@@ -606,18 +610,21 @@ export class PatientFlowHandler {
         if (buttonId === BUTTON_IDS.CONFIRMATION.YES) {
             // Proceed with booking
             try {
-                const appointmentId = await this.supabaseClient.createAppointment(
-                    clinicId,
-                    {
-                        patient_phone: phone,
-                        patient_name: session.data?.patientName || "Patient",
-                        doctor_id: session.data?.selectedDoctorId,
-                        appointment_date: session.data?.selectedDate,
-                        appointment_time: session.data?.selectedTime,
-                        location_type: session.data?.locationType || "clinic",
-                        preferred_language: language  // Store patient's language preference for reminders
-                    }
-                );
+                const serviceTypeId = await this.supabaseClient.getServiceTypeIdByCode("CONSULTATION");
+
+                const appointment = await this.supabaseClient.createAppointment({
+                    clinic_id: clinicId,
+                    patient_phone: phone,
+                    patient_name: session.data?.patientName || "Patient",
+                    doctor_id: session.data?.selectedDoctorId,
+                    service_type_id: serviceTypeId as string,
+                    appointment_date: session.data?.selectedDate,
+                    appointment_time: session.data?.selectedTime,
+                    location_type: session.data?.locationType || "clinic",
+                    preferred_language: language  // Store patient's language preference for reminders
+                });
+
+                const appointmentId = appointment.id;
 
                 // Create appointment reminders (24-hour and 1-hour before)
                 const reminderResult = await createAppointmentReminders(
@@ -1189,6 +1196,16 @@ export class PatientFlowHandler {
     /**
      * Helper: Format date for display
      */
+    /**
+     * Helper: Format a Date as YYYY-MM-DD for storage and slot lookups
+     */
+    private toISODate(date: Date): string {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    }
+
     private formatDate(dateString: string): string {
         try {
             const date = new Date(dateString);
@@ -1271,13 +1288,19 @@ export class PatientFlowHandler {
     }
 
     private async updateSession(phone: string, newState: string, data?: any): Promise<void> {
+        // Omitting `data` must preserve the existing payload, not clear it.
+        const patch: Record<string, unknown> = {
+            state: newState,
+            updated_at: new Date().toISOString()
+        };
+
+        if (data !== undefined) {
+            patch.data = data;
+        }
+
         const { error } = await this.supabase
             .from("whatsapp_sessions")
-            .update({
-                state: newState,
-                data: data || {},
-                updated_at: new Date().toISOString()
-            })
+            .update(patch)
             .eq("phone", phone);
 
         if (error) {

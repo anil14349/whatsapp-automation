@@ -73,6 +73,17 @@ export class MultiClinicSupabaseClient {
     return data;
   }
 
+  async getServiceTypeIdByCode(code: string): Promise<string | null> {
+    const { data, error } = await this.supabase
+      .from("service_types")
+      .select("id")
+      .eq("code", code)
+      .maybeSingle();
+
+    if (error) throw new types.ClinicError(`Failed to fetch service type: ${error.message}`);
+    return data?.id ?? null;
+  }
+
   async getDoctorServices(
     clinicId: string,
     doctorId: string,
@@ -288,7 +299,7 @@ export class MultiClinicSupabaseClient {
   ): Promise<types.Appointment> {
     const { data, error } = await this.supabase
       .from("appointments")
-      .select("*, service_type:service_types(*), doctor:doctors(*), patient:patients(*)")
+      .select("*, service_type:service_types(*), doctor:doctors(*)")
       .eq("clinic_id", clinicId)
       .eq("id", appointmentId)
       .single();
@@ -328,7 +339,7 @@ export class MultiClinicSupabaseClient {
   ): Promise<types.Appointment[]> {
     const { data, error } = await this.supabase
       .from("appointments")
-      .select("*, patient:patients(*), service_type:service_types(*)")
+      .select("*, service_type:service_types(*)")
       .eq("clinic_id", clinicId)
       .eq("doctor_id", doctorId)
       .eq("appointment_date", date)
