@@ -116,13 +116,6 @@ export function isValidDoctorMenuButton(buttonId: string): boolean {
 }
 
 /**
- * Check if a button ID is valid for confirmation
- */
-export function isValidConfirmationButton(buttonId: string): boolean {
-    return Object.values(BUTTON_IDS.CONFIRMATION).includes(buttonId as any);
-}
-
-/**
  * Check if a button ID is valid for date selection
  */
 export function isValidDateSelectButton(buttonId: string): boolean {

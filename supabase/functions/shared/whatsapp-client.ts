@@ -10,7 +10,7 @@ export class WhatsAppClient {
     private readonly accessToken: string;
     private readonly phoneNumberId: string;
     private readonly apiVersion = "v18.0";
-    private readonly baseUrl = "https://graph.instagram.com";
+    private readonly baseUrl = "https://graph.facebook.com";
 
     constructor(accessToken: string, phoneNumberId: string) {
         this.accessToken = accessToken;

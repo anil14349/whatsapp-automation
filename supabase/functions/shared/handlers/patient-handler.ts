@@ -1272,7 +1272,6 @@ export class PatientFlowHandler {
 
     private async updateSession(phone: string, newState: string, data?: any): Promise<void> {
         const { error } = await this.supabase
-        const { error } = await this.supabase
             .from("whatsapp_sessions")
             .update({
                 state: newState,
