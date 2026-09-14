@@ -5,8 +5,8 @@ import { processMessage } from "../shared/message-processor.ts";
 import { WhatsAppClient } from "../shared/whatsapp-client.ts";
 
 // Initialize Supabase client
-const supabaseUrl = Deno.env.get("SB_URL")!;
-const supabaseKey = Deno.env.get("SB_SERVICE_ROLE_KEY")!;
+const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Initialize WhatsApp client

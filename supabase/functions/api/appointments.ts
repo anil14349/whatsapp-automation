@@ -20,8 +20,8 @@ import { logWhatsAppMessage, logError } from "../shared/logger.ts";
 
 // Initialize Supabase client
 const supabase = createClient(
-    Deno.env.get("SB_URL")!,
-    Deno.env.get("SB_SERVICE_ROLE_KEY")!
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
 );
 
 // Create a mock WhatsApp client

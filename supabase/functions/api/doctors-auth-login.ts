@@ -102,8 +102,8 @@ export async function handleDoctorLogin(req: Request): Promise<Response> {
     debug("doctorLogin", "Login attempt", { email: body.email, clinicId: body.clinicId });
 
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get("SB_URL");
-    const supabaseKey = Deno.env.get("SB_SERVICE_ROLE_KEY");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
     if (!supabaseUrl || !supabaseKey) {
       return errorResponse("Server configuration error", 500);

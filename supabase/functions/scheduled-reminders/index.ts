@@ -45,8 +45,8 @@ Deno.serve(async (req: Request) => {
         }
 
         // Initialize Supabase client
-        const supabaseUrl = Deno.env.get("SB_URL");
-        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_KEY");
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
         if (!supabaseUrl || !supabaseServiceKey) {
             debug("scheduledReminders", "Missing Supabase configuration");
