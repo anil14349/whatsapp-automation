@@ -42,6 +42,48 @@ export const BUTTON_IDS = {
         CONFIRM: "collection_confirm",
         REJECT: "collection_reject",
     },
+
+    // Date selection
+    DATE_SELECT: {
+        TODAY: "date_today",
+        TOMORROW: "date_tomorrow",
+        OTHER: "date_other",
+    },
+
+    // Location type (Clinic vs Home)
+    LOCATION_TYPE: {
+        CLINIC: "loc_clinic",
+        HOME: "loc_home",
+    },
+
+    // Time window for home collection
+    TIME_WINDOW: {
+        MORNING: "time_morning",
+        AFTERNOON: "time_afternoon",
+        EVENING: "time_evening",
+    },
+
+    // Doctor appointment status
+    APPOINTMENT_STATUS: {
+        COMPLETED: "status_completed",
+        NO_SHOW: "status_noshow",
+    },
+
+    // Navigation
+    NAVIGATION: {
+        MORE: "nav_more",
+        EARLIER: "nav_earlier",
+        MAIN_MENU: "nav_menu",
+        BACK: "nav_back",
+    },
+
+    // Generic actions
+    ACTION: {
+        NEXT: "action_next",
+        PREVIOUS: "action_prev",
+        SELECT: "action_select",
+        SKIP: "action_skip",
+    },
 } as const;
 
 /**
@@ -70,4 +112,53 @@ export function isValidConfirmationButton(buttonId: string): boolean {
  */
 export function isValidDoctorMenuButton(buttonId: string): boolean {
     return Object.values(BUTTON_IDS.DOCTOR_MENU).includes(buttonId as any);
+}
+
+/**
+ * Check if a button ID is valid for confirmation
+ */
+export function isValidConfirmationButton(buttonId: string): boolean {
+    return Object.values(BUTTON_IDS.CONFIRMATION).includes(buttonId as any);
+}
+
+/**
+ * Check if a button ID is valid for date selection
+ */
+export function isValidDateSelectButton(buttonId: string): boolean {
+    return Object.values(BUTTON_IDS.DATE_SELECT).includes(buttonId as any);
+}
+
+/**
+ * Check if a button ID is valid for location type
+ */
+export function isValidLocationTypeButton(buttonId: string): boolean {
+    return Object.values(BUTTON_IDS.LOCATION_TYPE).includes(buttonId as any);
+}
+
+/**
+ * Check if a button ID is valid for time window
+ */
+export function isValidTimeWindowButton(buttonId: string): boolean {
+    return Object.values(BUTTON_IDS.TIME_WINDOW).includes(buttonId as any);
+}
+
+/**
+ * Check if a button ID is valid for appointment status
+ */
+export function isValidStatusButton(buttonId: string): boolean {
+    return Object.values(BUTTON_IDS.APPOINTMENT_STATUS).includes(buttonId as any);
+}
+
+/**
+ * Check if a button ID is valid for navigation
+ */
+export function isValidNavigationButton(buttonId: string): boolean {
+    return Object.values(BUTTON_IDS.NAVIGATION).includes(buttonId as any);
+}
+
+/**
+ * Check if a button ID is valid for home collection
+ */
+export function isValidHomeCollectionButton(buttonId: string): boolean {
+    return Object.values(BUTTON_IDS.HOME_COLLECTION_MENU).includes(buttonId as any);
 }

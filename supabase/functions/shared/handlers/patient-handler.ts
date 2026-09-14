@@ -1,7 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { WhatsAppMessage, WhatsAppSession, ExtractedMessage } from "../types.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
-import { BUTTON_IDS, isValidLanguageButton, isValidPatientMenuButton } from "../button-ids.ts";
+import { BUTTON_IDS, isValidLanguageButton, isValidPatientMenuButton, isValidConfirmationButton, isValidDateSelectButton } from "../button-ids.ts";
 import {
     bookAppointment,
     cancelAppointment,
@@ -246,7 +246,7 @@ export class PatientFlowHandler {
     }
 
     /**
-     * BOOK_DATE - Select appointment date
+     * BOOK_DATE - Select appointment date (Today, Tomorrow, or Other)
      */
     private async handleBookDate(
         phone: string,
@@ -254,45 +254,107 @@ export class PatientFlowHandler {
         session: WhatsAppSession
     ): Promise<void> {
         const language = session.data?.language || "EN";
+        const buttonId = message.text.trim();
+        const locationType = session.data?.locationType || "clinic";
         const doctorId = session.data?.selectedDoctorId;
-        const selectedDate = message.text.trim();
+        const clinicId = session.clinic_id;
 
-        // Validate date format
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                language === "EN"
-                    ? "Invalid date format. Please use YYYY-MM-DD (e.g., 2026-09-20)"
-                    : "अमान्य तारीख प्रारूप। कृपया YYYY-MM-DD का उपयोग करें (उदा. 2026-09-20)"
-            );
-            return;
+        // If button ID, parse date option
+        if (isValidDateSelectButton(buttonId)) {
+            const today = new Date();
+            let selectedDate: string;
+
+            if (buttonId === BUTTON_IDS.DATE_SELECT.TODAY) {
+                selectedDate = this.formatDate(today);
+            } else if (buttonId === BUTTON_IDS.DATE_SELECT.TOMORROW) {
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                selectedDate = this.formatDate(tomorrow);
+            } else if (buttonId === BUTTON_IDS.DATE_SELECT.OTHER) {
+                // Ask for custom date
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    language === "EN"
+                        ? "📅 Please enter your preferred date (YYYY-MM-DD):"
+                        : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):"
+                );
+                await this.updateSession(phone, "BOOK_DATE_CUSTOM", {
+                    language,
+                    selectedDoctorId: doctorId,
+                    selectedDoctorName: session.data?.selectedDoctorName,
+                    locationType
+                });
+                return;
+            } else {
+                await this.showDateMenu(phone, language);
+                return;
+            }
+
+            // Check availability for selected date
+            const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, selectedDate, locationType);
+            if (!slots || slots.length === 0) {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    language === "EN"
+                        ? "❌ No available slots on that date. Please try another date."
+                        : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
+                );
+                await this.showDateMenu(phone, language);
+                return;
+            }
+
+            // Move to time selection
+            await this.updateSession(phone, "BOOK_TIME", {
+                language,
+                selectedDoctorId: doctorId,
+                selectedDoctorName: session.data?.selectedDoctorName,
+                selectedDate,
+                locationType,
+                slotPage: 0
+            });
+
+            await this.showAvailableSlots(phone, language, slots, 0);
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(buttonId)) {
+            // Custom date input
+            const dateObj = new Date(buttonId);
+            if (dateObj < new Date()) {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    language === "EN"
+                        ? "❌ Please select a future date."
+                        : "❌ कृपया एक भविष्य की तारीख चुनें।"
+                );
+                return;
+            }
+
+            const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, buttonId, locationType);
+            if (!slots || slots.length === 0) {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    language === "EN"
+                        ? "❌ No available slots on that date. Please try another date."
+                        : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
+                );
+                return;
+            }
+
+            await this.updateSession(phone, "BOOK_TIME", {
+                language,
+                selectedDoctorId: doctorId,
+                selectedDoctorName: session.data?.selectedDoctorName,
+                selectedDate: buttonId,
+                locationType,
+                slotPage: 0
+            });
+
+            await this.showAvailableSlots(phone, language, slots, 0);
+        } else {
+            await this.showDateMenu(phone, language);
         }
-
-        // Check if date is in future
-        const dateObj = new Date(selectedDate);
-        if (dateObj < new Date()) {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                language === "EN"
-                    ? "Please select a future date."
-                    : "कृपया एक भविष्य की तारीख चुनें।"
-            );
-            return;
-        }
-
-        // Move to time selection
-        await this.updateSession(phone, "BOOK_TIME", {
-            language,
-            selectedDoctorId: doctorId,
-            selectedDoctorName: session.data?.selectedDoctorName,
-            selectedDate
-        });
-
-        await this.showAvailableTimes(phone, doctorId, selectedDate, language);
     }
 
     /**
-     * BOOK_TIME - Select appointment time
+     * BOOK_TIME - Select appointment time from available slots
      */
     private async handleBookTime(
         phone: string,
@@ -300,18 +362,35 @@ export class PatientFlowHandler {
         session: WhatsAppSession
     ): Promise<void> {
         const language = session.data?.language || "EN";
+        const selectedTime = message.text.trim();
         const doctorId = session.data?.selectedDoctorId;
         const selectedDate = session.data?.selectedDate;
-        const selectedTime = message.text.trim();
+        const clinicId = session.clinic_id;
+        const locationType = session.data?.locationType || "clinic";
 
-        // Validate time format
+        // Validate time format (HH:MM)
         if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(selectedTime)) {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "Invalid time format. Please use HH:MM (e.g., 14:30)"
-                    : "अमान्य समय प्रारूप। कृपया HH:MM का उपयोग करें (उदा. 14:30)"
+                    ? "❌ Invalid time format. Please use HH:MM (e.g., 14:30)"
+                    : "❌ अमान्य समय प्रारूप। कृपया HH:MM का उपयोग करें (उदा. 14:30)"
             );
+            return;
+        }
+
+        // Verify slot still available
+        const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, selectedDate, locationType);
+        const slotExists = slots?.some((s: any) => s.start_time === selectedTime);
+
+        if (!slotExists) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "❌ That time slot is no longer available. Please choose another:"
+                    : "❌ वह समय स्लॉट अब उपलब्ध नहीं है। कृपया दूसरा चुनें:"
+            );
+            await this.showAvailableSlots(phone, language, slots, 0);
             return;
         }
 
@@ -321,14 +400,15 @@ export class PatientFlowHandler {
             selectedDoctorId: doctorId,
             selectedDoctorName: session.data?.selectedDoctorName,
             selectedDate,
-            selectedTime
+            selectedTime,
+            locationType
         });
 
         await this.whatsappClient.sendTextMessage(
             phone,
             language === "EN"
-                ? `Selected time: ${selectedTime}\n\nPlease confirm or provide your full name:`
-                : `चयनित समय: ${selectedTime}\n\nकृपया अपना पूरा नाम पुष्टि करें या प्रदान करें:`
+                ? `✅ Time selected: ${selectedTime}\n\n📝 Please provide your full name:`
+                : `✅ समय चुना गया: ${selectedTime}\n\n📝 कृपया अपना पूरा नाम प्रदान करें:`
         );
     }
 
@@ -368,7 +448,7 @@ export class PatientFlowHandler {
     }
 
     /**
-     * BOOK_CONFIRM - Final confirmation before booking
+     * BOOK_CONFIRM - Final confirmation before booking with buttons
      */
     private async handleBookConfirm(
         phone: string,
@@ -376,58 +456,68 @@ export class PatientFlowHandler {
         session: WhatsAppSession
     ): Promise<void> {
         const language = session.data?.language || "EN";
-        const confirmation = message.text.toLowerCase().trim();
+        const buttonId = message.text.trim();
+        const clinicId = session.clinic_id;
 
-        if (confirmation === "yes" || confirmation === "y" || confirmation === "हाँ") {
+        // Validate button ID
+        if (!isValidConfirmationButton(buttonId)) {
+            await this.showBookingConfirmation(phone, session.data, language);
+            return;
+        }
+
+        if (buttonId === BUTTON_IDS.CONFIRMATION.YES) {
             // Proceed with booking
-            const result = await bookAppointment(this.supabase, this.whatsappClient, {
-                patientPhone: phone,
-                patientName: session.data?.patientName,
-                doctorId: session.data?.selectedDoctorId,
-                date: session.data?.selectedDate,
-                time: session.data?.selectedTime
-            });
+            try {
+                const appointmentId = await this.supabaseClient.createAppointment(
+                    clinicId,
+                    {
+                        patient_phone: phone,
+                        patient_name: session.data?.patientName || "Patient",
+                        doctor_id: session.data?.selectedDoctorId,
+                        appointment_date: session.data?.selectedDate,
+                        appointment_time: session.data?.selectedTime,
+                        location_type: session.data?.locationType || "clinic",
+                        status: "confirmed"
+                    }
+                );
 
-            if (result.success) {
                 await this.updateSession(phone, "MAIN_MENU", {
                     language,
-                    lastAppointmentId: result.appointmentId
+                    lastAppointmentId: appointmentId
                 });
 
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? `✅ Appointment confirmed!\n\nDoctor: ${session.data?.selectedDoctorName}\nDate: ${session.data?.selectedDate}\nTime: ${session.data?.selectedTime}\n\nBooking ID: ${result.appointmentId}`
-                        : `✅ नियुक्ति की पुष्टि हुई!\n\nडॉक्टर: ${session.data?.selectedDoctorName}\nतारीख: ${session.data?.selectedDate}\nसमय: ${session.data?.selectedTime}\n\nबुकिंग ID: ${result.appointmentId}`
+                        ? `✅ Appointment confirmed!\n\n👨‍⚕️ Doctor: ${session.data?.selectedDoctorName}\n📅 Date: ${session.data?.selectedDate}\n🕐 Time: ${session.data?.selectedTime}\n📍 Location: ${session.data?.locationType === "home" ? "Home Visit" : "Clinic Visit"}\n\n📌 Booking ID: ${appointmentId}`
+                        : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${session.data?.locationType === "home" ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}`
                 );
-            } else {
+
+                // Notify doctor
+                await this.notifyDoctorNewBooking(session.data?.selectedDoctorId, clinicId, session.data, language);
+            } catch (error) {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? `❌ Booking failed: ${result.message}`
-                        : `❌ बुकिंग विफल: ${result.message}`
+                        ? `❌ Booking failed: ${error instanceof Error ? error.message : "Unknown error"}`
+                        : `❌ बुकिंग विफल: ${error instanceof Error ? error.message : "अज्ञात त्रुटि"}`
                 );
 
                 await this.updateSession(phone, "MAIN_MENU", { language });
             }
 
             await this.showMainMenu(phone, language);
-        } else if (confirmation === "no" || confirmation === "n" || confirmation === "नहीं") {
+        } else if (buttonId === BUTTON_IDS.CONFIRMATION.NO) {
             await this.updateSession(phone, "MAIN_MENU", { language });
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "Booking cancelled. Returning to main menu..."
-                    : "बुकिंग रद्द की गई। मुख्य मेनू पर जा रहे हैं..."
+                    ? "❌ Booking cancelled. Returning to main menu..."
+                    : "❌ बुकिंग रद्द की गई। मुख्य मेनू पर जा रहे हैं..."
             );
             await this.showMainMenu(phone, language);
         } else {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                language === "EN"
-                    ? "Please reply with 'yes' or 'no'"
-                    : "कृपया 'हाँ' या 'नहीं' के साथ जवाब दें"
-            );
+            await this.showBookingConfirmation(phone, session.data, language);
         }
     }
 
@@ -789,24 +879,7 @@ export class PatientFlowHandler {
         }
     }
 
-    /**
-     * Helper: Show booking confirmation details
-     */
-    private async showBookingConfirmation(
-        phone: string,
-        data: any,
-        language: string
-    ): Promise<void> {
-        const message =
-            language === "EN"
-                ? `Please confirm your appointment details:\n\n👨‍⚕️ Doctor: ${data.selectedDoctorName}\n📅 Date: ${data.selectedDate}\n⏰ Time: ${data.selectedTime}\n👤 Name: ${data.patientName}\n\nConfirm? (yes/no)`
-                : `कृपया अपनी नियुक्ति विवरण की पुष्टि करें:\n\n👨‍⚕️ डॉक्टर: ${data.selectedDoctorName}\n📅 तारीख: ${data.selectedDate}\n⏰ समय: ${data.selectedTime}\n👤 नाम: ${data.patientName}\n\nपुष्टि करें? (हाँ/नहीं)`;
 
-        await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
-            { id: "confirm_yes", title: language === "EN" ? "Yes, Confirm" : "हाँ, पुष्टि करें" },
-            { id: "confirm_no", title: language === "EN" ? "No, Cancel" : "नहीं, रद्द करें" }
-        ]);
-    }
 
     /**
      * Helper: Show patient's appointments
@@ -872,7 +945,18 @@ export class PatientFlowHandler {
     /**
      * Helper: Update session state and data
      */
-    private async updateSession(phone: string, newState: string, data?: any): Promise<void> {
+    /**
+     * Helper: Show booking confirmation details with button options
+     */
+    private async showBookingConfirmation(
+        phone: string,
+        data: any,
+        language: string
+    ): Promise<void> {
+        const message =
+            language === "EN"
+                ? `\ud83d\udcc4 Please confirm your appointment details:\n\n👨‍⚕️ Doctor: ${data?.selectedDoctorName || "Unknown"}\n📅 Date: ${data?.selectedDate || "TBD"}\n⏰ Time: ${data?.selectedTime || "TBD"}\n👤 Name: ${data?.patientName || "Patient"}\n📍 Type: ${data?.locationType === "home" ? "Home Visit" : "Clinic Visit"}\n\nIs everything correct?`
+                : `\ud83d\udcc4 \u0915\u0915\u0943\u092a\u092f\u093e \u0905\u092a\u0928\u0940 \u0928\u093f\u092f\u0941\u0915\u094d\u0924\u093f \u0935\u093f\u0935\u0930\u0923 \u0915\u0940 \u092a\u0941\u0937\u094d\u091f\u093f \u0915\u0930\u0947\u0902:\n\n👨‍⚕️ \u0921\u0949\u0915\u094d\u091f\u0930: ${data?.selectedDoctorName || "Unknown"}\n📅 \u0924\u093e\u0930\u0940\u0916: ${data?.selectedDate || "TBD"}\n⏰ \u0938\u092e\u092f: ${data?.selectedTime || "TBD"}\n👤 \u0928\u093e\u092e: ${data?.patientName || "Patient"}\n📍 \u092a\u094d\u0930\u0915\u093e\u0930: ${data?.locationType === "home" ? "\u0918\u0930 \u092a\u0930 \u092e\u0941\u0932\u093e\u0915\u093e\u0924" : "\u0915\u094d\u0932\u093f\u0928\u093f\u0915 \u092e\u0947\u0902"}\n\n\u0915\u094d\u092f\u093e \u0938\u092c \u0915\u0941\u0921 \u0920\u0940\u0915 \u0939\u0948?`;\n\n        await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [\n            { id: BUTTON_IDS.CONFIRMATION.YES, title: language === \"EN\" ? \"✅ Yes, Confirm\" : \"✅ \u0939\u093e\u0901, \u092a\u0941\u0937\u094d\u091f\u093f \u0915\u0930\u0947\u0902\" },\n            { id: BUTTON_IDS.CONFIRMATION.NO, title: language === \"EN\" ? \"❌ No, Cancel\" : \"❌ \u0928\u0939\u0940\u0902, \u0930\u0926\u094d\u0926 \u0915\u0930\u0947\u0902\" }\n        ]);\n    }\n\n    /**\n     * Helper: Show date selection menu (Today, Tomorrow, Other)\n     */\n    private async showDateMenu(phone: string, language: string): Promise<void> {\n        const message = language === \"EN\"\n            ? \"📅 When would you like your appointment?\"\n            : \"📅 \u0906\u092a \u0905\u092a\u0928\u0940 \u0928\u093f\u092f\u0941\u0915\u094d\u0924\u093f \u0915\u092c \u0932\u0947\u0928\u0940 \u091a\u0941\u0928\u0947\u0902\u0917\u0947?\";\n\n        await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [\n            { id: BUTTON_IDS.DATE_SELECT.TODAY, title: language === \"EN\" ? \"📌 Today\" : \"📌 \u0906\u091c\" },\n            { id: BUTTON_IDS.DATE_SELECT.TOMORROW, title: language === \"EN\" ? \"📌 Tomorrow\" : \"📌 \u0915\u0932\" },\n            { id: BUTTON_IDS.DATE_SELECT.OTHER, title: language === \"EN\" ? \"📅 Other Date\" : \"📅 \u0915\u0941\u0932 \u0924\u093e\u0930\u0940\u0916\" }\n        ]);\n    }\n\n    /**\n     * Helper: Show available time slots\n     */\n    private async showAvailableSlots(\n        phone: string,\n        language: string,\n        slots: any[],\n        page: number = 0\n    ): Promise<void> {\n        if (!slots || slots.length === 0) {\n            await this.whatsappClient.sendTextMessage(\n                phone,\n                language === \"EN\"\n                    ? \"\u274c No slots available for this date.\"\n                    : \"\u274c \u0907\u0938 \u0924\u093e\u0930\u0940\u0916 \u0915\u0947 \u0932\u093f\u090f \u0915\u094b\u0908 \u0938\u094d\u0932\u0949\u091f \u0938\u0940 \u0908 \u0909\u092a\u0932\u092c\u094d\u0927 \u0928\u0939\u0940\u0902 \u0939\u0948\u0964\"\n            );\n            return;\n        }\n\n        const itemsPerPage = 9;\n        const start = page * itemsPerPage;\n        const end = start + itemsPerPage;\n        const pageSlots = slots.slice(start, end);\n\n        let message = language === \"EN\" ? \"⏰ Select your preferred time:\\n\\n\" : \"⏰ \u0905\u092a\u0935\u0939 \u0938\u092e\u092f \u091a\u0941\u0928\u0947\u0902:\\n\\n\";\n\n        const buttons: any[] = [];\n        pageSlots.forEach((slot: any, idx: number) => {\n            const slotNumber = start + idx + 1;\n            const time = typeof slot === \"string\" ? slot : slot.start_time || slot.time;\n            message += `${slotNumber}. ${time}\\n`;\n            buttons.push({\n                id: `slot_${time}`,\n                title: time\n            });\n        });\n\n        // Add pagination buttons if needed\n        if (page > 0) {\n            buttons.push({\n                id: BUTTON_IDS.NAVIGATION.EARLIER,\n                title: language === \"EN\" ? \"⬅️ Earlier\" : \"⬅️ \u092a\u0939\u0932\u0947\"\n            });\n        }\n\n        if (end < slots.length) {\n            buttons.push({\n                id: BUTTON_IDS.NAVIGATION.MORE,\n                title: language === \"EN\" ? \"➡️ More\" : \"➡️ \u0926\u0942\u0938\u0930\u0947\"\n            });\n        }\n\n        if (buttons.length <= 3) {\n            await this.whatsappClient.sendInteractiveButtonMessage(phone, message, buttons);\n        } else {\n            // Use list menu for more options\n            const listItems = pageSlots.map((slot: any, idx: number) => {\n                const time = typeof slot === \"string\" ? slot : slot.start_time || slot.time;\n                return {\n                    id: time,\n                    title: time,\n                    description: `Slot ${start + idx + 1}`\n                };\n            });\n\n            await this.whatsappClient.sendInteractiveListMessage(\n                phone,\n                message,\n                listItems,\n                language === \"EN\" ? \"Select a time\" : \"\u0938\u092e\u092f \u091a\u0941\u0928\u0947\u0902\"\n            );\n        }\n    }\n\n    /**\n     * Helper: Format date as YYYY-MM-DD\n     */\n    private formatDate(date: Date): string {\n        const year = date.getFullYear();\n        const month = String(date.getMonth() + 1).padStart(2, \"0\");\n        const day = String(date.getDate()).padStart(2, \"0\");\n        return `${year}-${month}-${day}`;\n    }\n\n    /**\n     * Helper: Notify doctor of new booking\n     */\n    private async notifyDoctorNewBooking(\n        doctorId: string,\n        clinicId: string,\n        bookingData: any,\n        language: string\n    ): Promise<void> {\n        try {\n            const doctor = (await this.supabaseClient.getDoctors(clinicId))?.find(\n                (d: any) => d.doctor_id === doctorId\n            );\n\n            if (!doctor || !doctor.phone) return;\n\n            const message = language === \"EN\"\n                ? `\ud83d\udd14 New Appointment Booking\\n\\nPatient: ${bookingData?.patientName}\\nDate: ${bookingData?.selectedDate}\\nTime: ${bookingData?.selectedTime}\\nType: ${bookingData?.locationType === \"home\" ? \"Home Visit\" : \"Clinic\"}`\n                : `\ud83d\udd14 \u0928\u092f\u0940 \u0928\u093f\u092f\u0941\u0915\u094d\u0924\u093f\\n\\n\u0930\u094b\u0917\u0940: ${bookingData?.patientName}\\n\u0924\u093e\u0930\u0940\u0916: ${bookingData?.selectedDate}\\n\u0938\u092e\u092f: ${bookingData?.selectedTime}\\n\u092a\u094d\u0930\u0915\u093e\u0930: ${bookingData?.locationType === \"home\" ? \"\u0918\u0930 \u0935\u093f\u0938\u0948\" : \"\u0915\u094d\u0932\u093f\u0928\u093f\u0915\"}`;\n\n            await this.whatsappClient.sendTextMessage(doctor.phone, message);\n        } catch (error) {\n            debug(\"patientFlow\", \"Error notifying doctor of booking\", {\n                error: error instanceof Error ? error.message : String(error)\n            });\n        }\n    }\n\n    private async updateSession(phone: string, newState: string, data?: any): Promise<void> {
         const { error } = await this.supabase
             .from("whatsapp_sessions")
             .update({
