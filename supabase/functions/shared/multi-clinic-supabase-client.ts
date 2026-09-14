@@ -266,6 +266,7 @@ export class MultiClinicSupabaseClient {
         appointment_date: req.appointment_date,
         appointment_time: req.appointment_time,
         location_type: req.location_type,
+        preferred_language: req.preferred_language || "EN",
         service_address: req.service_address,
         service_latitude: req.service_latitude,
         service_longitude: req.service_longitude,

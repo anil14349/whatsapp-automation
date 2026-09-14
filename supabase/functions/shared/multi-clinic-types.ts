@@ -488,6 +488,7 @@ export interface CreateAppointmentRequest {
   appointment_date: string;
   appointment_time: string;
   location_type: string;
+  preferred_language?: string;  // "EN" or "HI" for reminder messages
   service_address?: string;
   service_latitude?: number;
   service_longitude?: number;
@@ -518,6 +519,46 @@ export interface UpdateHomeVisitTrackingRequest {
   visit_notes?: string;
   visit_distance_km?: number;
   visit_travel_time_minutes?: number;
+}
+
+// ============================================================================
+// APPOINTMENT REMINDERS
+// ============================================================================
+
+export interface AppointmentReminder {
+  id: string;
+  clinic_id: string;
+  appointment_id: string;
+  patient_phone: string;
+  
+  reminder_type: '24_HOUR' | '1_HOUR';
+  scheduled_time: string;
+  sent_at?: string;
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED';
+  
+  message_id?: string;
+  error_message?: string;
+  
+  attempts: number;
+  max_attempts: number;
+  
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SendReminderRequest {
+  clinic_id: string;
+  appointment_id: string;
+  reminder_type: '24_HOUR' | '1_HOUR';
+}
+
+export interface ReminderMessageContent {
+  reminderType: '24_HOUR' | '1_HOUR';
+  patientName: string;
+  doctorName: string;
+  appointmentDate: string;
+  appointmentTime: string;
+  language: string;  // "EN" or "HI"
 }
 
 // ============================================================================

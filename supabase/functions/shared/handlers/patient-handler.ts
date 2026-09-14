@@ -8,6 +8,7 @@ import {
     rescheduleAppointment,
     getAvailableSlots
 } from "../appointments.ts";
+import { createAppointmentReminders, markReminderAsSkipped } from "../appointment-reminders.ts";
 import { debug, info, recordAuditEvent } from "../logger.ts";
 import { isValidPatientName, normalizePhoneNumber, isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
 import { AppointmentHistoryHandler } from "./appointment-history-handler.ts";
@@ -631,9 +632,26 @@ export class PatientFlowHandler {
                         appointment_date: session.data?.selectedDate,
                         appointment_time: session.data?.selectedTime,
                         location_type: session.data?.locationType || "clinic",
-                        status: "confirmed"
+                        preferred_language: language  // Store patient's language preference for reminders
                     }
                 );
+
+                // Create appointment reminders (24-hour and 1-hour before)
+                const reminderResult = await createAppointmentReminders(
+                    this.supabase,
+                    clinicId,
+                    appointmentId,
+                    session.data?.selectedDate,
+                    session.data?.selectedTime
+                );
+
+                if (!reminderResult.success) {
+                    debug("patientFlow", "Warning: Failed to create reminders", {
+                        appointmentId,
+                        error: reminderResult.error
+                    });
+                    // Don't fail the appointment booking even if reminders fail
+                }
 
                 await this.updateSession(phone, "MAIN_MENU", {
                     language,
@@ -643,8 +661,8 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? `✅ Appointment confirmed!\n\n👨‍⚕️ Doctor: ${session.data?.selectedDoctorName}\n📅 Date: ${session.data?.selectedDate}\n🕐 Time: ${session.data?.selectedTime}\n📍 Location: ${session.data?.locationType === "home" ? "Home Visit" : "Clinic Visit"}\n\n📌 Booking ID: ${appointmentId}`
-                        : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${session.data?.locationType === "home" ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}`
+                        ? `✅ Appointment confirmed!\n\n👨‍⚕️ Doctor: ${session.data?.selectedDoctorName}\n📅 Date: ${session.data?.selectedDate}\n🕐 Time: ${session.data?.selectedTime}\n📍 Location: ${session.data?.locationType === "home" ? "Home Visit" : "Clinic Visit"}\n\n📌 Booking ID: ${appointmentId}\n\n⏰ You'll receive reminders before your appointment.`
+                        : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${session.data?.locationType === "home" ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}\n\n⏰ आपको अपॉइंटमेंट से पहले रिमाइंडर मिलेंगे।`
                 );
 
                 // Notify doctor
@@ -775,13 +793,20 @@ export class PatientFlowHandler {
         const confirmation = message.text.toLowerCase().trim();
 
         if (confirmation === "yes" || confirmation === "y" || confirmation === "हाँ") {
+            const appointmentId = session.data?.selectedAppointmentId;
+            const clinicId = session.clinic_id;
+
             const result = await cancelAppointment(
                 this.supabase,
-                session.data?.selectedAppointmentId,
+                appointmentId,
                 "Patient initiated cancellation"
             );
 
             if (result.success) {
+                // Mark reminders as skipped (don't send reminders for cancelled appointments)
+                await markReminderAsSkipped(this.supabase, appointmentId, "24_HOUR");
+                await markReminderAsSkipped(this.supabase, appointmentId, "1_HOUR");
+
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
