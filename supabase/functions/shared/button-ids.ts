@@ -4,10 +4,14 @@
  */
 
 export const BUTTON_IDS = {
-    // Language selection
+    // Language selection (6 languages)
     LANGUAGE: {
         EN: "lang_en",
+        TE: "lang_te",
         HI: "lang_hi",
+        KN: "lang_kn",
+        TA: "lang_ta",
+        ML: "lang_ml",
     },
     
     // Patient main menu
