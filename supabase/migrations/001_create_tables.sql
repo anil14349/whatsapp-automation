@@ -13,7 +13,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- Stores conversation state for each phone number
 
 CREATE TABLE IF NOT EXISTS whatsapp_sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Phone number (WhatsApp format: country code + number)
     phone TEXT NOT NULL UNIQUE,
@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS whatsapp_sessions (
     deleted_at TIMESTAMP WITH TIME ZONE
 );
 
+-- Ensure pre-existing installations receive the session expiry column.
+ALTER TABLE whatsapp_sessions
+    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP WITH TIME ZONE
+        DEFAULT (NOW() + INTERVAL '24 hours');
+
 CREATE INDEX idx_whatsapp_sessions_phone ON whatsapp_sessions(phone);
 CREATE INDEX idx_whatsapp_sessions_role ON whatsapp_sessions(role);
 CREATE INDEX idx_whatsapp_sessions_expires_at ON whatsapp_sessions(expires_at);
@@ -57,7 +62,7 @@ CREATE INDEX idx_whatsapp_sessions_updated_at ON whatsapp_sessions(updated_at DE
 -- Logs all inbound/outbound messages and errors
 
 CREATE TABLE IF NOT EXISTS whatsapp_log (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Direction: "INBOUND", "OUTBOUND", "WEBHOOK", "ERROR"
     direction TEXT NOT NULL,
@@ -100,7 +105,7 @@ CREATE INDEX idx_whatsapp_log_message_id ON whatsapp_log(message_id);
 -- Replaces Apps Script cache-based idempotency
 
 CREATE TABLE IF NOT EXISTS message_dedup (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- WhatsApp message ID (unique per message)
     message_id TEXT NOT NULL UNIQUE,
@@ -134,7 +139,7 @@ CREATE INDEX idx_message_dedup_status ON message_dedup(status);
 -- Replaces Apps Script global variables and caches
 
 CREATE TABLE IF NOT EXISTS session_cache (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Cache key (composite: scope:identifier)
     -- Examples:
@@ -163,7 +168,7 @@ CREATE INDEX idx_session_cache_expires_at ON session_cache(expires_at);
 -- Tracks all appointments changes for audit trail
 
 CREATE TABLE IF NOT EXISTS audit_log (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- What changed: "appointment_created", "appointment_cancelled", etc.
     action TEXT NOT NULL,
@@ -197,7 +202,7 @@ CREATE INDEX idx_audit_log_created_at ON audit_log(created_at DESC);
 -- Track metrics for monitoring dashboard
 
 CREATE TABLE IF NOT EXISTS analytics_events (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Event type: "message_received", "appointment_booked", "reminder_sent", etc.
     event_type TEXT NOT NULL,
@@ -225,7 +230,7 @@ CREATE INDEX idx_analytics_events_phone ON analytics_events(phone);
 -- Application configuration (replaces Settings sheet)
 
 CREATE TABLE IF NOT EXISTS app_settings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     
     -- Setting key
     key TEXT NOT NULL UNIQUE,

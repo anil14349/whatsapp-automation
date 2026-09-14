@@ -9,7 +9,7 @@
 CREATE TABLE appointment_reminders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   clinic_id UUID NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
-  appointment_id UUID NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+  appointment_id TEXT NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
   patient_phone VARCHAR(20) NOT NULL,
   
   -- Reminder type
