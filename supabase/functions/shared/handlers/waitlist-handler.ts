@@ -46,8 +46,8 @@ export class WaitlistHandler {
             phone,
             message,
             [
-                { id: "waitlist_yes", title: "Yes, Add to Waitlist" },
-                { id: "waitlist_no", title: "Choose Different Time" }
+                { id: "waitlist_yes", title: "Join Waitlist" },
+                { id: "waitlist_no", title: "Pick Another Date" }
             ],
             this.supabase
         );
@@ -96,7 +96,9 @@ export class WaitlistHandler {
                 );
 
                 // Reset session to main menu
-                await this.updateSession(phone, "MAIN_MENU", {});
+                await this.updateSession(phone, "MAIN_MENU", {
+                    language: session.data?.language || "EN"
+                });
             } else {
                 await this.whatsappClient.sendTextMessage(
                     phone,
@@ -104,15 +106,17 @@ export class WaitlistHandler {
                 );
             }
         } else if (buttonId === "waitlist_no" || buttonId === BUTTON_IDS.CONFIRMATION.NO) {
-            // Return to book date to choose different time
+            // Key names must match what PatientFlowHandler reads in BOOK_DATE.
             await this.updateSession(phone, "BOOK_DATE", {
-                doctorId: session.data?.doctorId,
-                doctorName: session.data?.doctorName
+                language: session.data?.language || "EN",
+                selectedDoctorId: session.data?.doctorId,
+                selectedDoctorName: session.data?.doctorName
             });
 
             await this.whatsappClient.sendTextMessage(
                 phone,
-                `Please select a different date:`
+                `Please select a different date (YYYY-MM-DD):`,
+                this.supabase
             );
         }
 
@@ -240,14 +244,17 @@ export class WaitlistHandler {
             }
 
             // Notify the patient
+            const timeLine = !time || time === "ANY" ? "" : `🕐 Time: ${time}\n`;
+
             await this.whatsappClient.sendTextMessage(
                 data.phone,
                 `🎉 Good news!\n\n` +
                     `A slot has become available that you were waiting for.\n\n` +
                     `📅 Date: ${date}\n` +
-                    `🕐 Time: ${time}\n\n` +
-                    `Would you like to book this appointment?\n\n` +
-                    `Send "Hi" to start booking.`
+                    timeLine +
+                    `\nWould you like to book this appointment?\n\n` +
+                    `Send "Hi" to start booking.`,
+                this.supabase
             );
 
             // Mark as notified

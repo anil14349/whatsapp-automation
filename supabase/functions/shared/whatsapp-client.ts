@@ -50,6 +50,15 @@ export class WhatsAppClient {
             throw new Error("Interactive button messages support max 3 buttons");
         }
 
+        // Meta rejects the whole message if any title exceeds 20 characters.
+        const longTitle = buttons.find((btn) => [...btn.title].length > 20);
+
+        if (longTitle) {
+            throw new Error(
+                `Interactive button titles support max 20 characters: "${longTitle.title}"`
+            );
+        }
+
         const payload = {
             messaging_product: "whatsapp",
             to: recipientPhone,
@@ -110,6 +119,17 @@ export class WhatsAppClient {
 
         if (buttonTitle.length > 20) {
             throw new Error("Interactive list button title supports max 20 characters");
+        }
+
+        // Meta rejects the whole message if any row title exceeds 24 characters.
+        const longRow = sections
+            .flatMap((section) => section.rows)
+            .find((row) => [...row.title].length > 24);
+
+        if (longRow) {
+            throw new Error(
+                `Interactive list row titles support max 24 characters: "${longRow.title}"`
+            );
         }
 
         const payload = {

@@ -431,11 +431,13 @@ export class PatientFlowHandler {
 
             const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, buttonId, locationType);
             if (!slots || slots.length === 0) {
-                await this.whatsappClient.sendTextMessage(
+                await this.offerWaitlist(
                     phone,
-                    language === "EN"
-                        ? "❌ No available slots on that date. Please try another date."
-                        : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
+                    language,
+                    doctorId,
+                    session.data?.selectedDoctorName || "the doctor",
+                    buttonId,
+                    session
                 );
                 return;
             }
@@ -509,12 +511,15 @@ export class PatientFlowHandler {
                         : `❌ ${statusMessage}। कृपया किसी अन्य डॉक्टर या तारीख को आजमाएं।`
                 );
             } else {
-                await this.whatsappClient.sendTextMessage(
+                await this.offerWaitlist(
                     phone,
-                    language === "EN"
-                        ? "❌ No available slots on that date. Please try another date."
-                        : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
+                    language,
+                    doctorId,
+                    session.data?.selectedDoctorName || "the doctor",
+                    dateString,
+                    session
                 );
+                return;
             }
 
             // Offer to try another date
