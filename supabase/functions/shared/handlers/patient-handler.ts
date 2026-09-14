@@ -284,36 +284,57 @@ export class PatientFlowHandler {
         }
         const language = session.data?.language || "EN";
         const clinicId = session.clinic_id;
-        const doctorId = message.text.trim();
+        const reply = message.text.trim();
+        const doctorPage = session.data?.doctorPage || 0;
 
-        // Validate doctor ID and fetch from database
+        if (reply === BUTTON_IDS.PAGINATION.MORE_DOCTORS) {
+            await this.updateSession(phone, "BOOK_DOCTOR", {
+                ...session.data,
+                language,
+                doctorPage: doctorPage + 1
+            });
+            await this.showDoctorList(phone, language, clinicId, doctorPage + 1);
+            return;
+        }
+
+        // Accept the list row id, a raw id, or the position shown in the list.
         const doctors = await this.supabaseClient.getDoctors(clinicId);
-        const doctor = doctors.find(d => d.id === doctorId);
+        const doctorId = reply.startsWith("doctor_") ? reply.substring(7) : reply;
+
+        let doctor = doctors.find((d) => d.id === doctorId);
+
+        if (!doctor && /^\d+$/.test(reply)) {
+            doctor = doctors[doctorPage * 9 + Number(reply) - 1];
+        }
 
         if (!doctor) {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
                     ? "❌ Invalid doctor selection. Please select a valid doctor."
-                    : "❌ अमान्य डॉक्टर चयन। कृपया एक वैध डॉक्टर चुनें।"
+                    : "❌ अमान्य डॉक्टर चयन। कृपया एक वैध डॉक्टर चुनें।",
+                this.supabase
             );
-            await this.showDoctorList(phone, language, clinicId);
+            await this.showDoctorList(phone, language, clinicId, doctorPage);
             return;
         }
 
         // Store selected doctor and move to date selection
         await this.updateSession(phone, "BOOK_DATE", {
             language,
-            selectedDoctorId: doctorId,
+            selectedDoctorId: doctor.id,
             selectedDoctorName: doctor.name
         });
 
         await this.whatsappClient.sendTextMessage(
             phone,
             language === "EN"
-                ? `✅ You've selected Dr. ${doctor.name}.\n\nPlease provide your preferred appointment date (YYYY-MM-DD):`
-                : `✅ आपने डॉ. ${doctor.name} का चयन किया है।\n\nकृपया अपनी पसंदीदा नियुक्ति तारीख दें (YYYY-MM-DD):`
+                ? `✅ You've selected Dr. ${doctor.name}.`
+                : `✅ आपने डॉ. ${doctor.name} का चयन किया है।`,
+            this.supabase
         );
+
+        await this.showDateMenu(phone, language);
     }
 
     /**
@@ -561,6 +582,15 @@ export class PatientFlowHandler {
         const selectedDate = session.data?.selectedDate;
         const clinicId = session.clinic_id;
         const locationType = session.data?.locationType || "clinic";
+
+        if (rawTime === BUTTON_IDS.PAGINATION.MORE_SLOTS) {
+            const nextPage = (session.data?.slotPage || 0) + 1;
+            const allSlots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, selectedDate, locationType);
+
+            await this.updateSession(phone, "BOOK_TIME", { ...session.data, slotPage: nextPage });
+            await this.showAvailableSlots(phone, language, allSlots, nextPage);
+            return;
+        }
 
         // Validate time format (HH:MM)
         if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(selectedTime)) {
@@ -1038,18 +1068,42 @@ export class PatientFlowHandler {
             return;
         }
 
+        // The new time must come from the same doctor's real availability.
+        const { data: appointment } = await this.supabase
+            .from("appointments")
+            .select("doctor_id")
+            .eq("id", session.data?.selectedAppointmentId)
+            .maybeSingle();
+
+        const slots = appointment
+            ? await this.supabaseClient.getAvailableSlots(
+                  session.clinic_id,
+                  appointment.doctor_id,
+                  newDate,
+                  "clinic"
+              )
+            : [];
+
+        if (!slots || slots.length === 0) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "❌ No available slots on that date. Please enter another date (YYYY-MM-DD):"
+                    : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया कोई अन्य तारीख दर्ज करें (YYYY-MM-DD):",
+                this.supabase
+            );
+            return;
+        }
+
         await this.updateSession(phone, "RESCHEDULE_TIME", {
             language,
             selectedAppointmentId: session.data?.selectedAppointmentId,
-            newDate
+            rescheduleDoctorId: appointment?.doctor_id,
+            newDate,
+            slotPage: 0
         });
 
-        await this.whatsappClient.sendTextMessage(
-            phone,
-            language === "EN"
-                ? "Please provide the new appointment time (HH:MM):"
-                : "कृपया नई नियुक्ति समय दें (HH:MM):"
-        );
+        await this.showAvailableSlots(phone, language, slots, 0);
     }
 
     /**
@@ -1067,30 +1121,78 @@ export class PatientFlowHandler {
         }
 
         const language = session.data?.language || "EN";
-        const newTime = message.text.trim();
+        const rawTime = message.text.trim();
+        const newTime = rawTime.startsWith("slot_") ? rawTime.substring(5) : rawTime;
+        const doctorId = session.data?.rescheduleDoctorId;
+        const newDate = session.data?.newDate;
+
+        if (rawTime === BUTTON_IDS.PAGINATION.MORE_SLOTS) {
+            const nextPage = (session.data?.slotPage || 0) + 1;
+            const allSlots = await this.supabaseClient.getAvailableSlots(
+                session.clinic_id,
+                doctorId,
+                newDate,
+                "clinic"
+            );
+
+            await this.updateSession(phone, "RESCHEDULE_TIME", { ...session.data, slotPage: nextPage });
+            await this.showAvailableSlots(phone, language, allSlots, nextPage);
+            return;
+        }
 
         if (!/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/.test(newTime)) {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
                     ? "Invalid time format. Please use HH:MM"
-                    : "अमान्य समय प्रारूप। कृपया HH:MM का उपयोग करें"
+                    : "अमान्य समय प्रारूप। कृपया HH:MM का उपयोग करें",
+                this.supabase
             );
+            return;
+        }
+
+        // Guard against typed times that are not actually free.
+        const slots = await this.supabaseClient.getAvailableSlots(
+            session.clinic_id,
+            doctorId,
+            newDate,
+            "clinic"
+        );
+
+        const slotFree = slots?.some(
+            (s: any) => (typeof s === "string" ? s : s.start_time || s.time) === newTime
+        );
+
+        if (!slotFree) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "❌ That time is not available. Please pick one of these:"
+                    : "❌ वह समय उपलब्ध नहीं है। कृपया इनमें से चुनें:",
+                this.supabase
+            );
+            await this.showAvailableSlots(phone, language, slots, 0);
             return;
         }
 
         await this.updateSession(phone, "RESCHEDULE_CONFIRM", {
             language,
             selectedAppointmentId: session.data?.selectedAppointmentId,
-            newDate: session.data?.newDate,
+            rescheduleDoctorId: doctorId,
+            newDate,
             newTime
         });
 
-        await this.whatsappClient.sendTextMessage(
+        await this.whatsappClient.sendInteractiveButtonMessage(
             phone,
             language === "EN"
-                ? `New appointment time: ${session.data?.newDate} at ${newTime}\n\nConfirm? (yes/no)`
-                : `नई नियुक्ति समय: ${session.data?.newDate} को ${newTime}\n\nपुष्टि करें? (हाँ/नहीं)`
+                ? `New appointment time: ${newDate} at ${newTime}\n\nConfirm?`
+                : `नई नियुक्ति समय: ${newDate} को ${newTime}\n\nपुष्टि करें?`,
+            [
+                { id: BUTTON_IDS.CONFIRMATION.YES, title: language === "EN" ? "Yes, Confirm" : "हाँ, पुष्टि करें" },
+                { id: BUTTON_IDS.CONFIRMATION.NO, title: language === "EN" ? "No, Cancel" : "नहीं, रद्द करें" }
+            ],
+            this.supabase
         );
     }
 
@@ -1282,7 +1384,12 @@ export class PatientFlowHandler {
     /**
      * Helper: Show available doctors
      */
-    private async showDoctorList(phone: string, language: string, clinicId: string): Promise<void> {
+    private async showDoctorList(
+        phone: string,
+        language: string,
+        clinicId: string,
+        page = 0
+    ): Promise<void> {
         try {
             const doctors = await this.supabaseClient.getDoctors(clinicId);
 
@@ -1291,40 +1398,71 @@ export class PatientFlowHandler {
                     phone,
                     language === "EN"
                         ? "❌ No doctors available at the moment."
-                        : "❌ इस समय कोई डॉक्टर उपलब्ध नहीं है।"
+                        : "❌ इस समय कोई डॉक्टर उपलब्ध नहीं है।",
+                    this.supabase
                 );
                 return;
             }
 
-            let message = language === "EN" ? "👨‍⚕️ Select a doctor:\n\n" : "👨‍⚕️ एक डॉक्टर चुनें:\n\n";
+            // 10 rows max per list, so the last row is reserved for paging.
+            const pageSize = 9;
+            const start = page * pageSize;
+            const pageDoctors = doctors.slice(start, start + pageSize);
+            const hasMore = doctors.length > start + pageSize;
 
-            doctors.forEach((doc: any, idx: number) => {
-                // Add status indicator
-                const availableStatuses = ['AVAILABLE', 'IN_CONSULTATION'];
-                const statusIndicator = availableStatuses.includes(doc.availability_status) 
-                    ? "✅" 
-                    : "⚠️";
-                
-                message += `${idx + 1}. ${statusIndicator} Dr. ${doc.name}`;
-                
-                // Add status hint for unavailable doctors
-                if (!availableStatuses.includes(doc.availability_status)) {
-                    const statusLabel = 
-                        doc.availability_status === 'ON_BREAK' 
-                            ? (language === "EN" ? "(On break)" : "(ब्रेक पर)")
-                            : doc.availability_status === 'BUSY'
-                            ? (language === "EN" ? "(Busy)" : "(व्यस्त)")
-                            : (language === "EN" ? "(Offline)" : "(ऑफलाइन)");
-                    message += ` ${statusLabel}`;
-                }
-                message += "\n";
+            if (pageDoctors.length === 0) {
+                await this.showDoctorList(phone, language, clinicId, 0);
+                return;
+            }
+
+            const availableStatuses = ["AVAILABLE", "IN_CONSULTATION"];
+
+            const rows = pageDoctors.map((doc: any) => {
+                const available = availableStatuses.includes(doc.availability_status);
+
+                const statusLabel = available
+                    ? language === "EN"
+                        ? "Available"
+                        : "उपलब्ध"
+                    : doc.availability_status === "ON_BREAK"
+                      ? language === "EN"
+                          ? "On break"
+                          : "ब्रेक पर"
+                      : doc.availability_status === "BUSY"
+                        ? language === "EN"
+                            ? "Busy"
+                            : "व्यस्त"
+                        : language === "EN"
+                          ? "Offline"
+                          : "ऑफलाइन";
+
+                return {
+                    id: `doctor_${doc.id}`,
+                    title: this.truncate(`${available ? "✅" : "⚠️"} Dr. ${doc.name}`, 24),
+                    description: this.truncate(
+                        doc.specialization ? `${doc.specialization} · ${statusLabel}` : statusLabel,
+                        72
+                    )
+                };
             });
 
-            message += language === "EN" 
-                ? "\nTap a doctor to book an appointment" 
-                : "\nनियुक्ति बुक करने के लिए एक डॉक्टर दबाएं";
+            if (hasMore) {
+                rows.push({
+                    id: BUTTON_IDS.PAGINATION.MORE_DOCTORS,
+                    title: language === "EN" ? "➡️ More doctors" : "➡️ और डॉक्टर",
+                    description: language === "EN" ? "Show the next doctors" : "अगले डॉक्टर दिखाएं"
+                });
+            }
 
-            await this.whatsappClient.sendTextMessage(phone, message);
+            const body = language === "EN" ? "👨‍⚕️ Select a doctor:" : "👨‍⚕️ एक डॉक्टर चुनें:";
+
+            await this.whatsappClient.sendInteractiveListMessage(
+                phone,
+                body,
+                language === "EN" ? "Doctors" : "डॉक्टर",
+                [{ title: language === "EN" ? "Doctors" : "डॉक्टर", rows }],
+                this.supabase
+            );
         } catch (error) {
             debug("patientFlow", "Error loading doctors", {
                 error: error instanceof Error ? error.message : String(error)
@@ -1334,9 +1472,15 @@ export class PatientFlowHandler {
                 phone,
                 language === "EN"
                     ? "❌ Error loading doctors. Please try again."
-                    : "❌ डॉक्टर लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।"
+                    : "❌ डॉक्टर लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।",
+                this.supabase
             );
         }
+    }
+
+    private truncate(value: string, max: number): string {
+        const characters = [...value];
+        return characters.length <= max ? value : characters.slice(0, max - 1).join("") + "…";
     }
 
     /**
@@ -1569,12 +1713,44 @@ export class PatientFlowHandler {
     }
 
     private async showAvailableSlots(phone: string, language: string, slots: any[], page = 0): Promise<void> {
-        const message = language === "EN" ? "Please select an available time." : "कृपया उपलब्ध समय चुनें।";
-        const buttons = slots.slice(page * 3, page * 3 + 3).map((slot: any) => {
-            const time = typeof slot === "string" ? slot : slot.start_time || slot.time;
-            return { id: `slot_${time}`, title: time };
-        });
-        await this.whatsappClient.sendInteractiveButtonMessage(phone, message, buttons);
+        const times = (slots || []).map((slot: any) =>
+            typeof slot === "string" ? slot : slot.start_time || slot.time
+        );
+
+        if (times.length === 0) {
+            return;
+        }
+
+        // 10 rows max per list, so the last row is reserved for paging.
+        const pageSize = 9;
+        const start = page * pageSize;
+        const pageTimes = times.slice(start, start + pageSize);
+        const hasMore = times.length > start + pageSize;
+
+        const rows = pageTimes.map((time: string) => ({
+            id: `slot_${time}`,
+            title: time
+        }));
+
+        if (hasMore) {
+            rows.push({
+                id: BUTTON_IDS.PAGINATION.MORE_SLOTS,
+                title: language === "EN" ? "➡️ More times" : "➡️ और समय"
+            });
+        }
+
+        const body =
+            language === "EN"
+                ? `Please select an available time (${times.length} available):`
+                : `कृपया उपलब्ध समय चुनें (${times.length} उपलब्ध):`;
+
+        await this.whatsappClient.sendInteractiveListMessage(
+            phone,
+            body,
+            language === "EN" ? "Times" : "समय",
+            [{ title: language === "EN" ? "Available times" : "उपलब्ध समय", rows }],
+            this.supabase
+        );
     }
 
     private async updateSession(phone: string, newState: string, data?: any): Promise<void> {

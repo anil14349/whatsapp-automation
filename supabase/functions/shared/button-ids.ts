@@ -55,6 +55,12 @@ export const BUTTON_IDS = {
         OTHER: "date_other",
     },
 
+    // Paging through lists that exceed WhatsApp's 10-row limit
+    PAGINATION: {
+        MORE_DOCTORS: "doctors_more",
+        MORE_SLOTS: "slots_more",
+    },
+
     // Location type (Clinic vs Home)
     LOCATION_TYPE: {
         CLINIC: "loc_clinic",
