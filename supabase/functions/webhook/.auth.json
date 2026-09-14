@@ -1,0 +1,8 @@
+{
+  "claims": {
+    "iss": "https://supabase.com/auth/v1",
+    "aud": "authenticated",
+    "role": "authenticated"
+  },
+  "allowedAuthenticators": ["anon", "service_role"]
+}
