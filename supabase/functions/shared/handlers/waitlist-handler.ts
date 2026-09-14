@@ -35,14 +35,22 @@ export class WaitlistHandler {
         doctorName: string,
         session: WhatsAppSession
     ): Promise<void> {
+        // A whole date can be full, in which case there is no specific time.
+        const slotText = !time || time === "ANY" ? `on ${date}` : `on ${date} at ${time}`;
+
         const message =
-            `❌ No slots available for ${doctorName} on ${date} at ${time}.\n\n` +
+            `❌ No slots available for ${doctorName} ${slotText}.\n\n` +
             `Would you like to join the waitlist? We'll notify you if a slot becomes available.`;
 
-        await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
-            { id: "waitlist_yes", title: "Yes, Add to Waitlist" },
-            { id: "waitlist_no", title: "Choose Different Time" }
-        ]);
+        await this.whatsappClient.sendInteractiveButtonMessage(
+            phone,
+            message,
+            [
+                { id: "waitlist_yes", title: "Yes, Add to Waitlist" },
+                { id: "waitlist_no", title: "Choose Different Time" }
+            ],
+            this.supabase
+        );
     }
 
     /**

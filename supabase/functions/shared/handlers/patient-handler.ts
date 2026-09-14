@@ -12,6 +12,7 @@ import { createAppointmentReminders, markReminderAsSkipped } from "../appointmen
 import { debug, info, recordAuditEvent } from "../logger.ts";
 import { isValidPatientName, normalizePhoneNumber, isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
 import { AppointmentHistoryHandler } from "./appointment-history-handler.ts";
+import { WaitlistHandler } from "./waitlist-handler.ts";
 import { getClinicConfig, getClinicGreeting } from "../clinic-config.ts";
 import {
     isSupportedLanguageButton,
@@ -66,6 +67,11 @@ export class PatientFlowHandler {
 
                 case "MAIN_MENU":
                     await this.handleMainMenu(phone, message, session);
+                    break;
+
+                case "WAITLIST_CONFIRM":
+                    await new WaitlistHandler(this.supabase, this.whatsappClient)
+                        .handleWaitlistConfirm(phone, session, message.text?.trim() || "");
                     break;
 
                 case "BOOK_DOCTOR":
@@ -380,12 +386,15 @@ export class PatientFlowHandler {
                             : `❌ ${statusMessage}। कृपया किसी अन्य डॉक्टर या तारीख को आजमाएं।`
                     );
                 } else {
-                    await this.whatsappClient.sendTextMessage(
+                    await this.offerWaitlist(
                         phone,
-                        language === "EN"
-                            ? "❌ No available slots on that date. Please try another date."
-                            : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
+                        language,
+                        doctorId,
+                        session.data?.selectedDoctorName || "the doctor",
+                        selectedDate,
+                        session
                     );
+                    return;
                 }
                 await this.showDateMenu(phone, language);
                 return;
@@ -879,6 +888,13 @@ export class PatientFlowHandler {
             const appointmentId = session.data?.selectedAppointmentId;
             const clinicId = session.clinic_id;
 
+            // Captured before cancelling so the freed slot can be offered on.
+            const { data: cancelled } = await this.supabase
+                .from("appointments")
+                .select("doctor_id, appointment_date, appointment_time")
+                .eq("id", appointmentId)
+                .maybeSingle();
+
             const result = await cancelAppointment(
                 this.supabase,
                 appointmentId,
@@ -889,6 +905,25 @@ export class PatientFlowHandler {
                 // Mark reminders as skipped (don't send reminders for cancelled appointments)
                 await markReminderAsSkipped(this.supabase, appointmentId, "24_HOUR");
                 await markReminderAsSkipped(this.supabase, appointmentId, "1_HOUR");
+
+                if (cancelled) {
+                    const waitlist = new WaitlistHandler(this.supabase, this.whatsappClient);
+
+                    await waitlist.notifyWaitlistOnCancellation(
+                        cancelled.doctor_id,
+                        cancelled.appointment_date,
+                        cancelled.appointment_time,
+                        clinicId
+                    );
+
+                    // Patients on the date-level waitlist are waiting on "ANY" time.
+                    await waitlist.notifyWaitlistOnCancellation(
+                        cancelled.doctor_id,
+                        cancelled.appointment_date,
+                        "ANY",
+                        clinicId
+                    );
+                }
 
                 await this.whatsappClient.sendTextMessage(
                     phone,
@@ -1120,6 +1155,36 @@ export class PatientFlowHandler {
     /**
      * Helper: Show main menu options
      */
+    /**
+     * Offer the waitlist when a date is fully booked.
+     * Session keys here must match what WaitlistHandler reads.
+     */
+    private async offerWaitlist(
+        phone: string,
+        language: string,
+        doctorId: string,
+        doctorName: string,
+        date: string,
+        session: WhatsAppSession
+    ): Promise<void> {
+        await this.updateSession(phone, "WAITLIST_CONFIRM", {
+            language,
+            doctorId,
+            doctorName,
+            date,
+            time: "ANY"
+        });
+
+        await new WaitlistHandler(this.supabase, this.whatsappClient).showWaitlistOffer(
+            phone,
+            doctorId,
+            date,
+            "ANY",
+            doctorName,
+            session
+        );
+    }
+
     private async showMainMenu(phone: string, language: string): Promise<void> {
         const message =
             language === "EN"
