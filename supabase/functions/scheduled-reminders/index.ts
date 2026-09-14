@@ -60,10 +60,10 @@ Deno.serve(async (req: Request) => {
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // Initialize WhatsApp client
-        const businessAccountId = Deno.env.get("WHATSAPP_BUSINESS_ACCOUNT_ID");
-        const accessToken = Deno.env.get("WHATSAPP_API_ACCESS_TOKEN");
+        const accessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
+        const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
 
-        if (!businessAccountId || !accessToken) {
+        if (!accessToken || !phoneNumberId) {
             debug("scheduledReminders", "Missing WhatsApp configuration");
 
             return new Response(
@@ -72,7 +72,7 @@ Deno.serve(async (req: Request) => {
             );
         }
 
-        const whatsappClient = new WhatsAppClient(businessAccountId, accessToken);
+        const whatsappClient = new WhatsAppClient(accessToken, phoneNumberId);
 
         // Get clinic IDs to process
         const clinicIdsStr = Deno.env.get("CLINIC_IDS") || "";

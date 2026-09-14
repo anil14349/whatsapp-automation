@@ -355,17 +355,17 @@ export async function handleScheduledReminders(req: Request): Promise<Response> 
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // Initialize WhatsApp client
-        const businessAccountId = Deno.env.get("WHATSAPP_BUSINESS_ACCOUNT_ID");
-        const accessToken = Deno.env.get("WHATSAPP_API_ACCESS_TOKEN");
+        const accessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN");
+        const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID");
 
-        if (!businessAccountId || !accessToken) {
+        if (!accessToken || !phoneNumberId) {
             return new Response(
                 JSON.stringify({ error: "Missing WhatsApp config" }),
                 { status: 500, headers: { "Content-Type": "application/json" } }
             );
         }
 
-        const whatsappClient = new WhatsAppClient(businessAccountId, accessToken);
+        const whatsappClient = new WhatsAppClient(accessToken, phoneNumberId);
 
         // Get clinic IDs to process
         const clinicIdsStr = Deno.env.get("CLINIC_IDS") || "";
