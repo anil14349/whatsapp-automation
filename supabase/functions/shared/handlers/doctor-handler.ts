@@ -211,7 +211,7 @@ export class DoctorFlowHandler {
     }
 
     /**
-     * DOCTOR_AVAILABILITY - Set working hours
+     * DOCTOR_AVAILABILITY - Set working hours (free text: HH:MM-HH:MM)
      */
     private async handleAvailability(
         phone: string,
@@ -224,7 +224,7 @@ export class DoctorFlowHandler {
         if (!/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(timeRange)) {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "Invalid format. Please use HH:MM-HH:MM (e.g., 09:00-17:00):"
+                "⚠️ Invalid format. Please use HH:MM-HH:MM (e.g., 09:00-17:00):"
             );
             return;
         }
@@ -234,10 +234,10 @@ export class DoctorFlowHandler {
         const [startHour, startMin] = startTime.split(":").map(Number);
         const [endHour, endMin] = endTime.split(":").map(Number);
 
-        if (startHour >= endHour) {
+        if (startHour >= endHour || (startHour === endHour && startMin >= endMin)) {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "End time must be after start time. Please try again:"
+                "⚠️ End time must be after start time. Please try again:"
             );
             return;
         }
@@ -248,6 +248,7 @@ export class DoctorFlowHandler {
             doctorName: session.data?.doctorName,
             authenticated: true,
             availabilityStart: startTime,
+            availabilityEnd: endTime
             availabilityEnd: endTime
         });
 
