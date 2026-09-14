@@ -1,4 +1,0 @@
-# Supabase Functions Configuration
-
-[functions.webhook]
-verify_jwt = false
