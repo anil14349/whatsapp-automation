@@ -6,6 +6,7 @@ import { PatientFlowHandler } from "./handlers/patient-handler.ts";
 import { DoctorFlowHandler } from "./handlers/doctor-handler.ts";
 import { HomeCollectionHandler } from "./handlers/home-collection-handler.ts";
 import { getRoleByPhone } from "./config.ts";
+import { getPinEntryPrompt } from "./doctor-auth.ts";
 
 /**
  * Main message processing pipeline
@@ -205,20 +206,46 @@ async function handleGreeting(
     phone: string,
     session: WhatsAppSession
 ): Promise<void> {
-    debug("handleGreeting", `Greeting from ${phone}`);
+    debug("handleGreeting", `Greeting from ${phone}`, { role: session.role });
 
-    // Reset to main flow
-    await updateSession(supabase, phone, {
-        state: "LANGUAGE_SELECT",
-        data: {}
-    });
+    // Different greeting for doctors vs patients
+    if (session.role === "DOCTOR") {
+        // For doctors, keep them in DOCTOR_LOGIN and prompt for PIN
+        const clinicId = session.clinic_id;
+        const language = session.data?.language || "EN";
 
-    // Send greeting response
-    await whatsappClient.sendTextMessage(
-        phone,
-        "👋 Welcome to ABC Clinic!\n\nPlease select your language:\n\n1️⃣ English\n2️⃣ हिंदी\n3️⃣ తెలుగు",
-        supabase
-    );
+        // Don't reset session for doctors, keep DOCTOR_LOGIN state
+        const pinPrompt = getPinEntryPrompt(phone, clinicId, language);
+        await whatsappClient.sendTextMessage(phone, pinPrompt, supabase);
+    } else if (session.role === "HOME_COLLECTION_PERSON") {
+        // For sample collectors, reset to location selection
+        await updateSession(supabase, phone, {
+            state: "LOCATION_SELECT",
+            data: {}
+        });
+
+        const language = session.data?.language || "EN";
+        await whatsappClient.sendTextMessage(
+            phone,
+            language === "EN"
+                ? "📍 Please share your location to register for home sample collection:\n\n1️⃣ Share GPS location\n2️⃣ Enter address manually"
+                : "📍 होम सैंपल कलेक्शन के लिए कृपया अपना स्थान साझा करें:\n\n1️⃣ GPS स्थान साझा करें\n2️⃣ पता मैन्युअल रूप से दर्ज करें",
+            supabase
+        );
+    } else {
+        // For patients, reset to language selection
+        await updateSession(supabase, phone, {
+            state: "LANGUAGE_SELECT",
+            data: {}
+        });
+
+        // Send greeting response
+        await whatsappClient.sendTextMessage(
+            phone,
+            "👋 Welcome to ABC Clinic!\n\nPlease select your language:\n\n1️⃣ English\n2️⃣ हिंदी\n3️⃣ తెలుగు",
+            supabase
+        );
+    }
 }
 
 /**

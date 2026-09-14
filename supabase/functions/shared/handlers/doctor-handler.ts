@@ -3,6 +3,13 @@ import { WhatsAppSession, ExtractedMessage } from "../types.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 import { BUTTON_IDS, isValidDoctorMenuButton, isValidConfirmationButton } from "../button-ids.ts";
 import { debug } from "../logger.ts";
+import {
+    verifyDoctorPin,
+    isAccountLocked,
+    getRemainingAttempts,
+    formatAuthErrorMessage,
+    getPinEntryPrompt
+} from "../doctor-auth.ts";
 
 /**
  * Doctor Flow Handler - Manages doctor portal interactions
@@ -83,51 +90,119 @@ export class DoctorFlowHandler {
 
     /**
      * DOCTOR_LOGIN - Authenticate doctor with PIN
+     * Uses rate limiting to prevent brute force attacks
+     * Max 3 attempts, then 15-minute lockout
      */
     private async handleLogin(
         phone: string,
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
-        // Explicit state validation - prevent collision with old menu buttons
+        // GUARD: Explicit state validation
         if (session.state && session.state !== "DOCTOR_LOGIN") {
             await this.handleLogin(phone, message, { ...session, state: "DOCTOR_LOGIN" });
             return;
         }
 
-        const pin = message.text.trim();
-        const doctorPin = Deno.env.get("DOCTOR_PORTAL_PIN") || "1234";
         const clinicId = session.clinic_id;
+        const providedPin = message.text?.trim() || "";
+        const language = session.data?.language || "EN";
 
-        // Validate PIN
-        if (pin !== doctorPin) {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                "❌ Invalid PIN. Please try again."
-            );
+        // Check if account is locked
+        if (isAccountLocked(phone, clinicId)) {
+            const errorMsg = formatAuthErrorMessage(`account_locked_15`, language);
+            await this.whatsappClient.sendTextMessage(phone, errorMsg);
             return;
         }
 
-        // Get doctor details from phone and clinic
-        const doctors = await this.supabaseClient.getDoctors(clinicId);
-        const doctor = doctors?.find((d: any) => d.phone === phone);
-
-        if (!doctor) {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                "❌ You are not registered as a doctor. Please contact clinic administration."
-            );
+        // If message looks like empty or very short random text (not a PIN attempt),
+        // send PIN prompt (handles edge case of first message not being greeting)
+        if (providedPin.length === 0) {
+            const pinPrompt = getPinEntryPrompt(phone, clinicId, language);
+            await this.whatsappClient.sendTextMessage(phone, pinPrompt);
             return;
         }
 
-        // Update session
-        await this.updateSession(phone, "DOCTOR_MENU", {
-            doctorId: doctor.doctor_id,
-            doctorName: doctor.name,
-            authenticated: true
-        });
+        // Verify PIN with rate limiting
+        const authResult = await verifyDoctorPin(this.supabase, phone, clinicId, providedPin);
 
-        await this.whatsappClient.sendTextMessage(
+        if (!authResult.success) {
+            // Authentication failed
+            const errorMsg = formatAuthErrorMessage(authResult.error || "invalid_pin", language);
+            const remainingAttempts = getRemainingAttempts(phone, clinicId);
+
+            let fullMessage = errorMsg;
+            if (remainingAttempts > 0) {
+                fullMessage +=
+                    "\n\n" +
+                    (language === "EN"
+                        ? `${remainingAttempts} attempts remaining`
+                        : `${remainingAttempts} प्रयास शेष`);
+            }
+
+            await this.whatsappClient.sendTextMessage(phone, fullMessage);
+
+            // If locked, stop here
+            if (authResult.error?.startsWith("account_locked")) {
+                return;
+            }
+
+            // Otherwise, prompt for retry
+            const retryPrompt = getPinEntryPrompt(phone, clinicId, language);
+            await this.whatsappClient.sendTextMessage(phone, retryPrompt);
+            return;
+        }
+
+        // PIN is valid - get doctor details
+        try {
+            const doctors = await this.supabaseClient.getDoctors(clinicId);
+            const doctor = doctors?.find((d: any) => d.phone === phone || d.whatsapp_phone === phone);
+
+            if (!doctor) {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    language === "EN"
+                        ? "❌ You are not registered as a doctor. Please contact clinic administration."
+                        : "❌ आप एक डॉक्टर के रूप में पंजीकृत नहीं हैं। कृपया क्लिनिक प्रशासन से संपर्क करें।"
+                );
+                return;
+            }
+
+            // Authentication successful - update session
+            await this.updateSession(phone, "DOCTOR_MENU", {
+                doctorId: doctor.doctor_id || doctor.id,
+                doctorName: doctor.name,
+                language: language,
+                authenticated: true
+            });
+
+            debug("doctorFlow", "Doctor authenticated successfully", {
+                phone,
+                doctorId: doctor.doctor_id
+            });
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? `✅ Welcome, Dr. ${doctor.name}!\n\nYou are now logged in to your portal.`
+                    : `✅ स्वागत है, डॉ. ${doctor.name}!\n\nआप अब अपने पोर्टल में लॉगिन हैं।`
+            );
+
+            // Show doctor menu
+            await this.showMenu(phone);
+        } catch (error) {
+            debug("doctorFlow", "Error during doctor lookup", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "❌ Error loading doctor details. Please try again."
+                    : "❌ डॉक्टर विवरण लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।"
+            );
+        }
+    }
             phone,
             `✅ Welcome, Dr. ${doctor.name}! 👋\n\nYou are now logged into the doctor portal.`
         );
