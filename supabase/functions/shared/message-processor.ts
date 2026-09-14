@@ -5,6 +5,7 @@ import { info, debug } from "./logger.ts";
 import { PatientFlowHandler } from "./handlers/patient-handler.ts";
 import { DoctorFlowHandler } from "./handlers/doctor-handler.ts";
 import { HomeCollectionHandler } from "./handlers/home-collection-handler.ts";
+import { getRoleByPhone } from "./config.ts";
 
 /**
  * Main message processing pipeline
@@ -111,14 +112,22 @@ async function getOrCreateSession(
             return existing;
         }
 
-        // Create new session
+        // Create new session with role determined by phone number
+        const role = getRoleByPhone(phone);
+        const initialState =
+            role === "DOCTOR"
+                ? "DOCTOR_LOGIN"
+                : role === "HOME_COLLECTION_PERSON"
+                  ? "LOCATION_SELECT"
+                  : "LANGUAGE_SELECT";
+
         const { data: newSession } = await supabase
             .from("whatsapp_sessions")
             .insert({
                 phone,
                 clinic_id: clinicId,
-                role: "PATIENT",
-                state: "LANGUAGE_SELECT",
+                role,
+                state: initialState,
                 data: {},
                 metadata: {}
             })
@@ -130,12 +139,20 @@ async function getOrCreateSession(
         console.error("Failed to get/create session:", error);
 
         // Return default session (should not happen in production)
+        const role = getRoleByPhone(phone);
+        const initialState =
+            role === "DOCTOR"
+                ? "DOCTOR_LOGIN"
+                : role === "HOME_COLLECTION_PERSON"
+                  ? "LOCATION_SELECT"
+                  : "LANGUAGE_SELECT";
+
         return {
             id: "default",
             phone,
             clinic_id: clinicId,
-            role: "PATIENT",
-            state: "LANGUAGE_SELECT",
+            role,
+            state: initialState,
             data: {},
             metadata: {},
             created_at: new Date().toISOString(),
