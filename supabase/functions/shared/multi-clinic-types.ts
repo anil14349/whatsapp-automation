@@ -562,6 +562,31 @@ export interface ReminderMessageContent {
 }
 
 // ============================================================================
+// HOME COLLECTION REMINDERS
+// ============================================================================
+
+export interface HomeCollectionReminder {
+  id: string;
+  clinic_id: string;
+  request_id: string;
+  patient_phone: string;
+  
+  scheduled_time: string;
+  sent_at?: string;
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'SKIPPED';
+  
+  message_id?: string;
+  error_message?: string;
+  preferred_language: string; // "EN" or "HI"
+  
+  attempts: number;
+  max_attempts: number;
+  
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================================================
 // ERROR TYPES
 // ============================================================================
 

@@ -2,7 +2,7 @@
  * Supabase Edge Function: scheduled-reminders
  * 
  * Triggered by Cloud Scheduler every minute
- * Sends pending appointment reminders via WhatsApp
+ * Sends pending appointment reminders AND home collection reminders via WhatsApp
  * 
  * Deploy: supabase functions deploy scheduled-reminders
  * 
@@ -15,6 +15,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { WhatsAppClient } from "../shared/whatsapp-client.ts";
 import { runReminderScheduler } from "../shared/appointment-reminder-scheduler.ts";
+import { runHomeCollectionReminderScheduler } from "../shared/home-collection-reminder-scheduler.ts";
 import { debug } from "../shared/logger.ts";
 
 Deno.serve(async (req: Request) => {
@@ -94,14 +95,29 @@ Deno.serve(async (req: Request) => {
             clinic_count: clinicIds.length
         });
 
-        // Run scheduler
-        const result = await runReminderScheduler(supabase, whatsappClient, {
+        // Run both schedulers
+        const appointmentResult = await runReminderScheduler(supabase, whatsappClient, {
             clinicIds,
             maxConcurrent: 5
         });
 
-        return new Response(JSON.stringify(result), {
-            status: result.success ? 200 : 500,
+        const homeCollectionResult = await runHomeCollectionReminderScheduler(supabase, whatsappClient, {
+            clinicIds,
+            maxConcurrent: 5
+        });
+
+        // Combine results
+        const combinedResult = {
+            success: appointmentResult.success && homeCollectionResult.success,
+            appointment_reminders: appointmentResult,
+            home_collection_reminders: homeCollectionResult,
+            total_reminders_sent: appointmentResult.reminders_sent + homeCollectionResult.reminders_sent,
+            total_reminders_failed: appointmentResult.reminders_failed + homeCollectionResult.reminders_failed,
+            total_errors: (appointmentResult.errors?.length || 0) + (homeCollectionResult.errors?.length || 0)
+        };
+
+        return new Response(JSON.stringify(combinedResult), {
+            status: combinedResult.success ? 200 : 500,
             headers: {
                 "Content-Type": "application/json",
                 "Cache-Control": "no-cache, no-store, must-revalidate"

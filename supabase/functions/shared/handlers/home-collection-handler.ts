@@ -4,6 +4,7 @@ import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 import { BUTTON_IDS, isValidConfirmationButton } from "../button-ids.ts";
 import { debug } from "../logger.ts";
 import { isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
+import { createHomeCollectionReminder, markHomeCollectionRemindersAsSkipped } from "../home-collection-reminders.ts";
 
 /**
  * Home Collection Handler - Manages blood collection requests
@@ -473,6 +474,7 @@ export class HomeCollectionHandler {
 
     /**
      * Helper: Create home collection request in Supabase
+     * Also creates a reminder for the collection date
      */
     private async createHomeCollectionRequest(
         phone: string,
@@ -481,6 +483,7 @@ export class HomeCollectionHandler {
     ): Promise<{ success: boolean; requestId?: string; error?: string }> {
         try {
             const requestId = `HC_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const collectionDate = locationData?.requestDate || new Date().toISOString().split("T")[0];
 
             // Call Supabase to create home collection request
             const { error } = await this.supabase.from("home_collection_requests").insert({
@@ -491,8 +494,9 @@ export class HomeCollectionHandler {
                 latitude: locationData?.latitude || null,
                 longitude: locationData?.longitude || null,
                 location_type: locationData?.locationType || "TEXT",
-                appointment_date: locationData?.requestDate || null,
+                appointment_date: collectionDate,
                 status: "PENDING",
+                preferred_language: locationData?.language || "EN",
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
             });
@@ -509,6 +513,25 @@ export class HomeCollectionHandler {
             }
 
             debug("homeCollectionFlow", "Created home collection request", { requestId });
+
+            // Create reminder for collection date (fire at 08:00 AM on that day)
+            try {
+                await createHomeCollectionReminder(
+                    this.supabase,
+                    clinicId,
+                    requestId,
+                    collectionDate,
+                    phone,
+                    locationData?.language || "EN"
+                );
+                debug("homeCollectionFlow", "Reminder created for collection request", { requestId });
+            } catch (reminderError) {
+                // Log but don't fail the request - reminder creation is not critical
+                debug("homeCollectionFlow", "Warning: Failed to create reminder", {
+                    error: reminderError instanceof Error ? reminderError.message : String(reminderError),
+                    requestId
+                });
+            }
 
             return { success: true, requestId };
         } catch (error) {
