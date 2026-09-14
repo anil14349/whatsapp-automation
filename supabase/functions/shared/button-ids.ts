@@ -20,6 +20,7 @@ export const BUTTON_IDS = {
         APPOINTMENTS: "menu_appointments",
         CANCEL: "menu_cancel",
         RESCHEDULE: "menu_reschedule",
+        HOME_COLLECTION: "menu_home_collection",
     },
     
     // Confirmation

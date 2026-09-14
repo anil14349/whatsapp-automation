@@ -215,6 +215,14 @@ export class PatientFlowHandler {
                 await this.showRescheduleOptions(phone, language, clinicId);
                 break;
 
+            case BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION:
+                await this.updateSession(phone, "LOCATION_SELECT", { language });
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "Please share your location or type your address for home sample collection."
+                );
+                break;
+
             default:
                 await this.showMainMenu(phone, language);
         }

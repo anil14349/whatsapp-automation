@@ -8,6 +8,17 @@ import { DoctorFlowHandler } from "./handlers/doctor-handler.ts";
 import { HomeCollectionHandler } from "./handlers/home-collection-handler.ts";
 import { getRoleByPhone } from "./config.ts";
 import { getPinEntryPrompt } from "./doctor-auth.ts";
+import { BUTTON_IDS } from "./button-ids.ts";
+
+// These states belong to the home-collection flow whoever is in them.
+const HOME_COLLECTION_STATES = new Set([
+    "LOCATION_SELECT",
+    "LOCATION_VERIFY",
+    "REQUEST_DATE",
+    "REQUEST_DATE_CUSTOM",
+    "REQUEST_CONFIRM",
+    "REQUEST_TRACKING"
+]);
 
 /**
  * Main message processing pipeline
@@ -51,6 +62,24 @@ export async function processMessage(
     }
 
     // Route by role
+    const dispatchReply =
+        messageText.trim().startsWith(BUTTON_IDS.HOME_COLLECTION_MENU.CONFIRM + ":") ||
+        messageText.trim().startsWith(BUTTON_IDS.HOME_COLLECTION_MENU.REJECT + ":");
+
+    // Dispatch replies arrive unprompted, and patients can be mid collection request.
+    if (dispatchReply || HOME_COLLECTION_STATES.has(session.state)) {
+        await handleHomeCollectionMessage(
+            supabase,
+            whatsappClient,
+            senderPhone,
+            senderName,
+            messageText,
+            normalizedMessage,
+            session
+        );
+        return;
+    }
+
     if (session.role === "DOCTOR") {
         await handleDoctorMessage(
             supabase,
