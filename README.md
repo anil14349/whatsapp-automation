@@ -4,6 +4,20 @@ Google Apps Script project for ABC Clinic appointment booking over WhatsApp, bac
 
 ---
 
+## 📚 Documentation
+
+All documentation has been organized in the `/docs` folder. **Start here:**
+
+- **📖 [Documentation Index](./docs/INDEX.md)** — Complete guide to all documentation
+- **🚀 [Getting Started](./docs/GETTING_STARTED.md)** — Setup & configuration
+- **🔐 [Security Guide](./docs/SECURITY/SECURITY_FEATURES_IMPLEMENTATION.md)** — Bcrypt, rate limiting, password reset
+- **🌐 [Deployment Guide](./docs/DEPLOYMENT/DEPLOYMENT_GUIDE.md)** — Step-by-step deployment
+- **✅ [Testing Guide](./docs/TESTING/TESTING_GUIDE.md)** — Test strategy & verification
+
+Or browse by category: [Architecture](./docs/ARCHITECTURE/) · [Security](./docs/SECURITY/) · [Deployment](./docs/DEPLOYMENT/) · [Testing](./docs/TESTING/) · [Reference](./docs/REFERENCE/)
+
+---
+
 ## Apps Script files
 
 There are two equivalent ways to source the production code — pick **one**, don't bind both:
