@@ -12,6 +12,19 @@
   "compilerOptions": {
     "lib": ["deno.window", "dom", "dom.iterable"],
     "jsx": "react-jsx",
-    "jsxImportSource": "https://esm.sh/react@18.2.0"
+    "jsxImportSource": "https://esm.sh/react@18.2.0",
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    }
+  },
+  "fmt": {
+    "indentWidth": 2,
+    "semiColons": true,
+    "singleQuote": false
   }
 }
