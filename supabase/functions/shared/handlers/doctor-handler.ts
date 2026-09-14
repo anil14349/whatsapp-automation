@@ -1,7 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { WhatsAppSession, ExtractedMessage } from "../types.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
-import { BUTTON_IDS, isValidDoctorMenuButton } from "../button-ids.ts";
+import { BUTTON_IDS, isValidDoctorMenuButton, isValidConfirmationButton } from "../button-ids.ts";
 import { debug } from "../logger.ts";
 
 /**
@@ -249,13 +249,9 @@ export class DoctorFlowHandler {
             authenticated: true,
             availabilityStart: startTime,
             availabilityEnd: endTime
-            availabilityEnd: endTime
         });
 
-        await this.whatsappClient.sendTextMessage(
-            phone,
-            `Confirm availability: ${startTime} - ${endTime}?\n\nReply: yes/no`
-        );
+        await this.showAvailabilityConfirmation(phone, startTime, endTime);
     }
 
     /**
@@ -266,43 +262,58 @@ export class DoctorFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
-        const confirmation = message.text.toLowerCase().trim();
+        const buttonId = message.text.trim();
+        const clinicId = session.clinic_id;
+        const doctorId = session.data?.doctorId;
 
-        if (confirmation === "yes" || confirmation === "y") {
-            // TODO: Update doctor availability in Google Sheets
-            // This requires writing to the Availability sheet
-            // For now, just confirm the operation
+        if (!isValidConfirmationButton(buttonId)) {
+            await this.showAvailabilityConfirmation(
+                phone,
+                session.data?.availabilityStart,
+                session.data?.availabilityEnd
+            );
+            return;
+        }
 
+        if (buttonId === BUTTON_IDS.CONFIRMATION.YES) {
+            try {
+                // Save availability to database
+                await this.supabaseClient.addDoctorOperatingHours(
+                    clinicId,
+                    doctorId,
+                    `${session.data?.availabilityStart}-${session.data?.availabilityEnd}`
+                );
+
+                await this.updateSession(phone, "DOCTOR_MENU", {
+                    doctorId,
+                    doctorName: session.data?.doctorName,
+                    authenticated: true
+                });
+
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    `✅ Availability updated: ${session.data?.availabilityStart} - ${session.data?.availabilityEnd}`
+                );
+
+                await this.showMenu(phone);
+            } catch (error) {
+                debug("doctorFlow", "Error saving availability", {
+                    error: error instanceof Error ? error.message : String(error)
+                });
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "Error updating availability. Please try again."
+                );
+            }
+        } else if (buttonId === BUTTON_IDS.CONFIRMATION.NO) {
             await this.updateSession(phone, "DOCTOR_MENU", {
                 doctorId: session.data?.doctorId,
                 doctorName: session.data?.doctorName,
                 authenticated: true
             });
 
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                `✅ Availability updated: ${session.data?.availabilityStart} - ${session.data?.availabilityEnd}`
-            );
-
+            await this.whatsappClient.sendTextMessage(phone, "❌ Cancelled.");
             await this.showMenu(phone);
-        } else if (confirmation === "no" || confirmation === "n") {
-            await this.updateSession(phone, "DOCTOR_MENU", {
-                doctorId: session.data?.doctorId,
-                doctorName: session.data?.doctorName,
-                authenticated: true
-            });
-
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                "Availability update cancelled."
-            );
-
-            await this.showMenu(phone);
-        } else {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                "Please reply with 'yes' or 'no':"
-            );
         }
     }
 
@@ -357,10 +368,7 @@ export class DoctorFlowHandler {
             leaveEnd: endDate
         });
 
-        await this.whatsappClient.sendTextMessage(
-            phone,
-            `Confirm leave: ${startDate} to ${endDate}?\n\nReply: yes/no`
-        );
+        await this.showLeaveConfirmation(phone, startDate, endDate);
     }
 
     /**
@@ -371,42 +379,61 @@ export class DoctorFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
-        const confirmation = message.text.toLowerCase().trim();
+        const buttonId = message.text.trim();
+        const clinicId = session.clinic_id;
+        const doctorId = session.data?.doctorId;
 
-        if (confirmation === "yes" || confirmation === "y") {
-            // TODO: Create leave record in Google Sheets
-            // This requires writing to the Doctor_Leaves sheet
+        if (!isValidConfirmationButton(buttonId)) {
+            await this.showLeaveConfirmation(
+                phone,
+                session.data?.leaveStart,
+                session.data?.leaveEnd
+            );
+            return;
+        }
 
+        if (buttonId === BUTTON_IDS.CONFIRMATION.YES) {
+            try {
+                // Save leave to database
+                await this.supabaseClient.addDoctorLeave(
+                    clinicId,
+                    doctorId,
+                    session.data?.leaveStart,
+                    session.data?.leaveEnd
+                );
+
+                await this.updateSession(phone, "DOCTOR_MENU", {
+                    doctorId,
+                    doctorName: session.data?.doctorName,
+                    authenticated: true
+                });
+
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    `✅ Leave approved: ${session.data?.leaveStart} to ${session.data?.leaveEnd}`
+                );
+
+                await this.showMenu(phone);
+            } catch (error) {
+                debug("doctorFlow", "Error saving leave", {
+                    error: error instanceof Error ? error.message : String(error)
+                });
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "Error applying for leave. Please try again."
+                );
+            }
+        } else if (buttonId === BUTTON_IDS.CONFIRMATION.NO) {
             await this.updateSession(phone, "DOCTOR_MENU", {
                 doctorId: session.data?.doctorId,
                 doctorName: session.data?.doctorName,
                 authenticated: true
             });
 
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                `✅ Leave approved: ${session.data?.leaveStart} to ${session.data?.leaveEnd}`
-            );
-
+            await this.whatsappClient.sendTextMessage(phone, "❌ Cancelled.");
             await this.showMenu(phone);
-        } else if (confirmation === "no" || confirmation === "n") {
-            await this.updateSession(phone, "DOCTOR_MENU", {
-                doctorId: session.data?.doctorId,
-                doctorName: session.data?.doctorName,
-                authenticated: true
-            });
-
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                "Leave application cancelled."
-            );
-
-            await this.showMenu(phone);
-        } else {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                "Please reply with 'yes' or 'no':"
-            );
+        }
+    }
         }
     }
 
@@ -466,6 +493,38 @@ export class DoctorFlowHandler {
             { id: BUTTON_IDS.DOCTOR_MENU.LEAVE, title: "🗓️ Leave" },
             { id: BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS, title: "📋 Appointments" },
             { id: BUTTON_IDS.DOCTOR_MENU.CANCEL, title: "🚪 Logout" }
+        ]);
+    }
+
+    /**
+     * Helper: Show availability confirmation menu
+     */
+    private async showAvailabilityConfirmation(
+        phone: string,
+        startTime: string,
+        endTime: string
+    ): Promise<void> {
+        const message = `Confirm availability:\n${startTime} - ${endTime}\n\nTap to confirm:`;
+        
+        await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
+            { id: BUTTON_IDS.CONFIRMATION.YES, title: "✅ Confirm" },
+            { id: BUTTON_IDS.CONFIRMATION.NO, title: "❌ Cancel" }
+        ]);
+    }
+
+    /**
+     * Helper: Show leave confirmation menu
+     */
+    private async showLeaveConfirmation(
+        phone: string,
+        startDate: string,
+        endDate: string
+    ): Promise<void> {
+        const message = `Confirm leave:\n${startDate} to ${endDate}\n\nTap to confirm:`;
+        
+        await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
+            { id: BUTTON_IDS.CONFIRMATION.YES, title: "✅ Confirm" },
+            { id: BUTTON_IDS.CONFIRMATION.NO, title: "❌ Cancel" }
         ]);
     }
 
