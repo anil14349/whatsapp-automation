@@ -301,20 +301,16 @@ export async function cancelAppointment(
     appointmentId: string,
     reason?: string
 ): Promise<AppointmentResponse> {
-    const client = new MultiClinicSupabaseClient(
-        Deno.env.get("SUPABASE_URL") || "",
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
-    );
-
     try {
-        // Fetch appointment details
-        const appointment = await client.getAppointment("DEFAULT_CLINIC", appointmentId);
+        const { data: existing, error: fetchError } = await supabase
+            .from("appointments")
+            .select("id, status")
+            .eq("id", appointmentId)
+            .maybeSingle();
 
-        const appointmentRow = allAppointments.find(
-            (row: any[]) => row[0] === appointmentId
-        );
+        if (fetchError) throw fetchError;
 
-        if (!appointmentRow) {
+        if (!existing) {
             return {
                 success: false,
                 message: "Appointment not found",
@@ -322,45 +318,32 @@ export async function cancelAppointment(
             };
         }
 
-        const [, doctorId, , patientName, , , status, , , eventId] =
-            appointmentRow;
-
-        // Get doctor calendar ID
-        const doctor = await sheets.getDoctorById(doctorId);
-        if (!doctor) {
+        if (existing.status === "CANCELLED" || existing.status === "COMPLETED") {
             return {
                 success: false,
-                message: "Doctor not found",
-                error: "Doctor calendar not accessible"
+                message: `Cannot cancel ${String(existing.status).toLowerCase()} appointment`,
+                error: "Invalid appointment status"
             };
         }
 
-        // Delete from calendar
-        if (eventId) {
-            await calendar.deleteEvent(doctor.calendarId, eventId);
-        }
+        const { error: updateError } = await supabase
+            .from("appointments")
+            .update({
+                status: "CANCELLED",
+                cancellation_reason: reason || null,
+                updated_at: new Date().toISOString()
+            })
+            .eq("id", appointmentId);
 
-        // Update status in Sheets
-        const updated = await sheets.updateAppointmentStatus(
-            appointmentId,
-            "CANCELLED"
-        );
-
-        if (!updated) {
-            return {
-                success: false,
-                message: "Failed to cancel appointment",
-                error: "Status update failed"
-            };
-        }
+        if (updateError) throw updateError;
 
         // Log in Supabase
         await recordAuditEvent(supabase, {
             action: "appointment_cancelled",
-            actor: "admin",
+            actor: "patient",
             entityType: "appointment",
             entityId: appointmentId,
-            beforeState: { status },
+            beforeState: { status: existing.status },
             afterState: { status: "CANCELLED", reason }
         });
 
@@ -406,17 +389,15 @@ export async function rescheduleAppointment(
             };
         }
 
-        // Fetch appointment details
-        const allAppointments = await sheets.readRange(
-            "Appointments",
-            "A:J"
-        );
+        const { data: existing, error: fetchError } = await supabase
+            .from("appointments")
+            .select("id, status, clinic_id, doctor_id, patient_phone, appointment_date, appointment_time")
+            .eq("id", appointmentId)
+            .maybeSingle();
 
-        const appointmentRow = allAppointments.find(
-            (row: any[]) => row[0] === appointmentId
-        );
+        if (fetchError) throw fetchError;
 
-        if (!appointmentRow) {
+        if (!existing) {
             return {
                 success: false,
                 message: "Appointment not found",
@@ -424,34 +405,20 @@ export async function rescheduleAppointment(
             };
         }
 
-        const [, doctorId, patientPhone, patientName, oldDate, oldTime, status, notes, , eventId] =
-            appointmentRow;
-
         // Can't reschedule completed or cancelled appointments
-        if (status === "CANCELLED" || status === "COMPLETED") {
+        if (existing.status === "CANCELLED" || existing.status === "COMPLETED") {
             return {
                 success: false,
-                message: `Cannot reschedule ${status.toLowerCase()} appointment`,
+                message: `Cannot reschedule ${String(existing.status).toLowerCase()} appointment`,
                 error: "Invalid appointment status"
             };
         }
 
-        // Get doctor details
-        const doctor = await sheets.getDoctorById(doctorId);
-        if (!doctor) {
-            return {
-                success: false,
-                message: "Doctor not found",
-                error: "Doctor calendar not accessible"
-            };
-        }
-
-        // Check if new slot is available
-        const slotAvailable = await calendar.isSlotAvailable(
-            doctor.calendarId,
+        const slotAvailable = await client.isSlotAvailable(
+            existing.clinic_id,
+            existing.doctor_id,
             newDate,
-            newTime,
-            30
+            newTime
         );
 
         if (!slotAvailable) {
@@ -462,37 +429,24 @@ export async function rescheduleAppointment(
             };
         }
 
-        // Update calendar event
-        const calendarUpdated = await calendar.updateEvent(
-            doctor.calendarId,
-            eventId,
-            {
-                startDate: newDate,
-                startTime: newTime,
-                endDate: newDate,
-                endTime: getEndTime(newTime, 30)
-            }
-        );
+        const { error: updateError } = await supabase
+            .from("appointments")
+            .update({
+                appointment_date: newDate,
+                appointment_time: newTime,
+                updated_at: new Date().toISOString()
+            })
+            .eq("id", appointmentId);
 
-        if (!calendarUpdated) {
-            return {
-                success: false,
-                message: "Failed to update calendar event",
-                error: "Calendar update failed"
-            };
-        }
-
-        // TODO: Update appointment in Google Sheets
-        // This requires finding the row and updating multiple columns
-        // For now, log the successful reschedule
+        if (updateError) throw updateError;
 
         // Log in Supabase
         await recordAuditEvent(supabase, {
             action: "appointment_rescheduled",
-            actor: patientPhone,
+            actor: existing.patient_phone,
             entityType: "appointment",
             entityId: appointmentId,
-            beforeState: { date: oldDate, time: oldTime },
+            beforeState: { date: existing.appointment_date, time: existing.appointment_time },
             afterState: { date: newDate, time: newTime }
         });
 

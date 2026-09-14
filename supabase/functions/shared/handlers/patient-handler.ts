@@ -749,7 +749,14 @@ export class PatientFlowHandler {
         }
 
         const language = session.data?.language || "EN";
-        const appointmentId = message.text.trim();
+        const clinicId = session.clinic_id;
+        // The list is numbered, so "2" must be mapped back to its appointment id.
+        const appointmentId = await this.resolveAppointmentId(phone, clinicId, message.text);
+
+        if (!appointmentId) {
+            await this.showCancelOptions(phone, language, clinicId);
+            return;
+        }
 
         // Store selected appointment for cancellation
         await this.updateSession(phone, "CANCEL_CONFIRM", {
@@ -780,7 +787,8 @@ export class PatientFlowHandler {
         }
 
         const language = session.data?.language || "EN";
-        const confirmation = message.text.toLowerCase().trim();
+        // Accept tapped buttons (confirm_yes/confirm_no) as well as typed replies.
+        const confirmation = this.normalizeConfirmation(message.text);
 
         if (confirmation === "yes" || confirmation === "y" || confirmation === "à¤¹à¤¾à¤") {
             const appointmentId = session.data?.selectedAppointmentId;
@@ -848,7 +856,14 @@ export class PatientFlowHandler {
         }
 
         const language = session.data?.language || "EN";
-        const appointmentId = message.text.trim();
+        const clinicId = session.clinic_id;
+        // The list is numbered, so "2" must be mapped back to its appointment id.
+        const appointmentId = await this.resolveAppointmentId(phone, clinicId, message.text);
+
+        if (!appointmentId) {
+            await this.showRescheduleOptions(phone, language, clinicId);
+            return;
+        }
 
         await this.updateSession(phone, "RESCHEDULE_DATE", {
             language,
@@ -959,7 +974,8 @@ export class PatientFlowHandler {
         }
 
         const language = session.data?.language || "EN";
-        const confirmation = message.text.toLowerCase().trim();
+        // Accept tapped buttons (confirm_yes/confirm_no) as well as typed replies.
+        const confirmation = this.normalizeConfirmation(message.text);
 
         if (confirmation === "yes" || confirmation === "y" || confirmation === "à¤¹à¤¾à¤") {
             const result = await rescheduleAppointment(
@@ -1196,6 +1212,40 @@ export class PatientFlowHandler {
     /**
      * Helper: Format date for display
      */
+    /**
+     * Helper: Map a position from the numbered list onto an appointment id
+     */
+    private async resolveAppointmentId(
+        phone: string,
+        clinicId: string,
+        input: string
+    ): Promise<string | null> {
+        const raw = (input || "").trim();
+
+        if (!/^\d+$/.test(raw)) {
+            return raw || null;
+        }
+
+        const appointments = await this.supabaseClient.getPatientAppointments(clinicId, phone, true);
+        const index = parseInt(raw, 10) - 1;
+
+        if (!appointments || index < 0 || index >= appointments.length) {
+            return null;
+        }
+
+        return appointments[index].id;
+    }
+
+    /**
+     * Helper: Map confirmation button IDs onto plain yes/no replies
+     */
+    private normalizeConfirmation(text: string): string {
+        const raw = (text || "").trim();
+        if (raw === BUTTON_IDS.CONFIRMATION.YES) return "yes";
+        if (raw === BUTTON_IDS.CONFIRMATION.NO) return "no";
+        return raw.toLowerCase();
+    }
+
     /**
      * Helper: Format a Date as YYYY-MM-DD for storage and slot lookups
      */
