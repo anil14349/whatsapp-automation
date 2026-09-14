@@ -21,6 +21,9 @@ export const BUTTON_IDS = {
         CANCEL: "menu_cancel",
         RESCHEDULE: "menu_reschedule",
         HOME_COLLECTION: "menu_home_collection",
+        MORE: "menu_more",
+        CHANGE_LANGUAGE: "menu_change_language",
+        MAIN_MENU: "menu_main",
     },
     
     // Confirmation

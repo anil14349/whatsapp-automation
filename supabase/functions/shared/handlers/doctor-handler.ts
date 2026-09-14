@@ -604,12 +604,18 @@ export class DoctorFlowHandler {
     private async showMenu(phone: string): Promise<void> {
         const message = `👨‍⚕️ Doctor Portal Menu:\n\nTap an option below:`;
 
-        await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
-            { id: BUTTON_IDS.DOCTOR_MENU.AVAILABILITY, title: "📅 Availability" },
-            { id: BUTTON_IDS.DOCTOR_MENU.LEAVE, title: "🗓️ Leave" },
-            { id: BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS, title: "📋 Appointments" },
-            { id: BUTTON_IDS.DOCTOR_MENU.MARK_STATUS, title: "✅ Mark Status" },
-            { id: BUTTON_IDS.DOCTOR_MENU.LOGOUT, title: "🚪 Logout" }
+        // Five options exceed the 3-button limit, so use a list message.
+        await this.whatsappClient.sendInteractiveListMessage(phone, message, "Menu", [
+            {
+                title: "Doctor Portal",
+                rows: [
+                    { id: BUTTON_IDS.DOCTOR_MENU.AVAILABILITY, title: "📅 Availability" },
+                    { id: BUTTON_IDS.DOCTOR_MENU.LEAVE, title: "🗓️ Leave" },
+                    { id: BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS, title: "📋 Appointments" },
+                    { id: BUTTON_IDS.DOCTOR_MENU.MARK_STATUS, title: "✅ Mark Status" },
+                    { id: BUTTON_IDS.DOCTOR_MENU.LOGOUT, title: "🚪 Logout" }
+                ]
+            }
         ]);
     }
 

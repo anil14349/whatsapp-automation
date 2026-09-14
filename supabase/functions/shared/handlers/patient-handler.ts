@@ -141,14 +141,7 @@ export class PatientFlowHandler {
 
         // Validate button ID
         if (!isValidLanguageButton(buttonId)) {
-            await this.whatsappClient.sendInteractiveButtonMessage(
-                phone,
-                "Welcome to ABC Clinic! Please select your language:\n\nðŸ‡¬ðŸ‡§ English\nðŸ‡®ðŸ‡³ à¤¹à¤¿à¤‚à¤¦à¥€",
-                [
-                    { id: BUTTON_IDS.LANGUAGE.EN, title: "ðŸ‡¬ðŸ‡§ English" },
-                    { id: BUTTON_IDS.LANGUAGE.HI, title: "ðŸ‡®ðŸ‡³ à¤¹à¤¿à¤‚à¤¦à¥€" }
-                ]
-            );
+            await this.askLanguage(phone);
             return;
         }
 
@@ -171,12 +164,12 @@ export class PatientFlowHandler {
         if (selectedLanguage === "EN") {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "ðŸ‘‹ Welcome to ABC Clinic!\n\nWhat would you like to do today?"
+                "👋 Welcome to ABC Clinic!\n\nWhat would you like to do today?"
             );
         } else {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "ðŸ‘‹ ABC à¤•à¥à¤²à¥€à¤¨à¤¿à¤• à¤®à¥‡à¤‚ à¤†à¤ªà¤•à¤¾ à¤¸à¥à¤µà¤¾à¤—à¤¤ à¤¹à¥ˆ!\n\nà¤†à¤œ à¤†à¤ª à¤•à¥à¤¯à¤¾ à¤•à¤°à¤¨à¤¾ à¤šà¤¾à¤¹à¤¤à¥‡ à¤¹à¥ˆà¤‚?"
+                "👋 ABC क्लीनिक में आपका स्वागत है!\n\nआज आप क्या करना चाहते हैं?"
             );
         }
 
@@ -228,8 +221,23 @@ export class PatientFlowHandler {
                 await this.updateSession(phone, "LOCATION_SELECT", { language });
                 await this.whatsappClient.sendTextMessage(
                     phone,
-                    "Please share your location or type your address for home sample collection."
+                    language === "EN"
+                        ? "Please share your location or type your address for home sample collection."
+                        : "कृपया घर से सैंपल लेने के लिए अपना स्थान साझा करें या पता लिखें।"
                 );
+                break;
+
+            case BUTTON_IDS.PATIENT_MENU.MORE:
+                await this.showMoreMenu(phone, language);
+                break;
+
+            case BUTTON_IDS.PATIENT_MENU.CHANGE_LANGUAGE:
+                await this.updateSession(phone, "LANGUAGE_SELECT", { language });
+                await this.askLanguage(phone);
+                break;
+
+            case BUTTON_IDS.PATIENT_MENU.MAIN_MENU:
+                await this.showMainMenu(phone, language);
                 break;
 
             default:
@@ -261,8 +269,8 @@ export class PatientFlowHandler {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "âŒ Invalid doctor selection. Please select a valid doctor."
-                    : "âŒ à¤…à¤®à¤¾à¤¨à¥à¤¯ à¤¡à¥‰à¤•à¥à¤Ÿà¤° à¤šà¤¯à¤¨à¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤à¤• à¤µà¥ˆà¤§ à¤¡à¥‰à¤•à¥à¤Ÿà¤° à¤šà¥à¤¨à¥‡à¤‚à¥¤"
+                    ? "❌ Invalid doctor selection. Please select a valid doctor."
+                    : "❌ अमान्य डॉक्टर चयन। कृपया एक वैध डॉक्टर चुनें।"
             );
             await this.showDoctorList(phone, language, clinicId);
             return;
@@ -278,8 +286,8 @@ export class PatientFlowHandler {
         await this.whatsappClient.sendTextMessage(
             phone,
             language === "EN"
-                ? `âœ… You've selected Dr. ${doctor.name}.\n\nPlease provide your preferred appointment date (YYYY-MM-DD):`
-                : `âœ… à¤†à¤ªà¤¨à¥‡ à¤¡à¥‰. ${doctor.name} à¤•à¤¾ à¤šà¤¯à¤¨ à¤•à¤¿à¤¯à¤¾ à¤¹à¥ˆà¥¤\n\nà¤•à¥ƒà¤ªà¤¯à¤¾ à¤…à¤ªà¤¨à¥€ à¤ªà¤¸à¤‚à¤¦à¥€à¤¦à¤¾ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤¤à¤¾à¤°à¥€à¤– à¤¦à¥‡à¤‚ (YYYY-MM-DD):`
+                ? `✅ You've selected Dr. ${doctor.name}.\n\nPlease provide your preferred appointment date (YYYY-MM-DD):`
+                : `✅ आपने डॉ. ${doctor.name} का चयन किया है।\n\nकृपया अपनी पसंदीदा नियुक्ति तारीख दें (YYYY-MM-DD):`
         );
     }
 
@@ -316,8 +324,8 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "ðŸ“… Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
-                        : "ðŸ“… à¤•à¥ƒà¤ªà¤¯à¤¾ à¤…à¤ªà¤¨à¥€ à¤ªà¤¸à¤‚à¤¦à¥€à¤¦à¤¾ à¤¤à¤¾à¤°à¥€à¤– à¤¦à¤°à¥à¤œ à¤•à¤°à¥‡à¤‚ (YYYY-MM-DD):\n\n(à¤†à¤ª 7 à¤¦à¤¿à¤¨ à¤ªà¤¹à¤²à¥‡ à¤¤à¤• à¤¬à¥à¤• à¤•à¤° à¤¸à¤•à¤¤à¥‡ à¤¹à¥ˆà¤‚)"
+                        ? "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
+                        : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप 7 दिन पहले तक बुक कर सकते हैं)"
                 );
                 await this.updateSession(phone, "BOOK_DATE_CUSTOM", {
                     language,
@@ -341,23 +349,23 @@ export class PatientFlowHandler {
                     const doctorStatus = await this.supabaseClient.getDoctorAvailabilityStatus(clinicId, doctorId);
                     const statusMessage = 
                         doctorStatus === 'ON_BREAK'
-                            ? (language === "EN" ? "Dr. is currently on break" : "à¤¡à¥‰. à¤µà¤°à¥à¤¤à¤®à¤¾à¤¨ à¤®à¥‡à¤‚ à¤¬à¥à¤°à¥‡à¤• à¤ªà¤° à¤¹à¥ˆà¤‚")
+                            ? (language === "EN" ? "Dr. is currently on break" : "डॉ. वर्तमान में ब्रेक पर हैं")
                             : doctorStatus === 'BUSY'
-                            ? (language === "EN" ? "Dr. is currently busy" : "à¤¡à¥‰. à¤µà¤°à¥à¤¤à¤®à¤¾à¤¨ à¤®à¥‡à¤‚ à¤µà¥à¤¯à¤¸à¥à¤¤ à¤¹à¥ˆà¤‚")
-                            : (language === "EN" ? "Dr. is not available" : "à¤¡à¥‰. à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¤‚");
+                            ? (language === "EN" ? "Dr. is currently busy" : "डॉ. वर्तमान में व्यस्त हैं")
+                            : (language === "EN" ? "Dr. is not available" : "डॉ. उपलब्ध नहीं हैं");
                     
                     await this.whatsappClient.sendTextMessage(
                         phone,
                         language === "EN"
-                            ? `âŒ ${statusMessage}. Please try another doctor or date.`
-                            : `âŒ ${statusMessage}à¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤•à¤¿à¤¸à¥€ à¤…à¤¨à¥à¤¯ à¤¡à¥‰à¤•à¥à¤Ÿà¤° à¤¯à¤¾ à¤¤à¤¾à¤°à¥€à¤– à¤•à¥‹ à¤†à¤œà¤®à¤¾à¤à¤‚à¥¤`
+                            ? `❌ ${statusMessage}. Please try another doctor or date.`
+                            : `❌ ${statusMessage}। कृपया किसी अन्य डॉक्टर या तारीख को आजमाएं।`
                     );
                 } else {
                     await this.whatsappClient.sendTextMessage(
                         phone,
                         language === "EN"
-                            ? "âŒ No available slots on that date. Please try another date."
-                            : "âŒ à¤‰à¤¸ à¤¤à¤¾à¤°à¥€à¤– à¤ªà¤° à¤•à¥‹à¤ˆ à¤¸à¥à¤²à¥‰à¤Ÿ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤•à¤¿à¤¸à¥€ à¤…à¤¨à¥à¤¯ à¤¤à¤¾à¤°à¥€à¤– à¤•à¥‹ à¤†à¤œà¤®à¤¾à¤à¤‚à¥¤"
+                            ? "❌ No available slots on that date. Please try another date."
+                            : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
                     );
                 }
                 await this.showDateMenu(phone, language);
@@ -387,8 +395,8 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "ðŸ“… Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
-                        : "ðŸ“… à¤•à¥ƒà¤ªà¤¯à¤¾ à¤…à¤ªà¤¨à¥€ à¤ªà¤¸à¤‚à¤¦à¥€à¤¦à¤¾ à¤¤à¤¾à¤°à¥€à¤– à¤¦à¤°à¥à¤œ à¤•à¤°à¥‡à¤‚ (YYYY-MM-DD):\n\n(à¤†à¤ª 7 à¤¦à¤¿à¤¨ à¤ªà¤¹à¤²à¥‡ à¤¤à¤• à¤¬à¥à¤• à¤•à¤° à¤¸à¤•à¤¤à¥‡ à¤¹à¥ˆà¤‚)"
+                        ? "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
+                        : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप 7 दिन पहले तक बुक कर सकते हैं)"
                 );
                 return;
             }
@@ -398,8 +406,8 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "âŒ No available slots on that date. Please try another date."
-                        : "âŒ à¤‰à¤¸ à¤¤à¤¾à¤°à¥€à¤– à¤ªà¤° à¤•à¥‹à¤ˆ à¤¸à¥à¤²à¥‰à¤Ÿ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤•à¤¿à¤¸à¥€ à¤…à¤¨à¥à¤¯ à¤¤à¤¾à¤°à¥€à¤– à¤•à¥‹ à¤†à¤œà¤®à¤¾à¤à¤‚à¥¤"
+                        ? "❌ No available slots on that date. Please try another date."
+                        : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
                 );
                 return;
             }
@@ -445,8 +453,8 @@ export class PatientFlowHandler {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "ðŸ“… Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
-                    : "ðŸ“… à¤•à¥ƒà¤ªà¤¯à¤¾ à¤…à¤ªà¤¨à¥€ à¤ªà¤¸à¤‚à¤¦à¥€à¤¦à¤¾ à¤¤à¤¾à¤°à¥€à¤– à¤¦à¤°à¥à¤œ à¤•à¤°à¥‡à¤‚ (YYYY-MM-DD):\n\n(à¤†à¤ª 7 à¤¦à¤¿à¤¨ à¤ªà¤¹à¤²à¥‡ à¤¤à¤• à¤¬à¥à¤• à¤•à¤° à¤¸à¤•à¤¤à¥‡ à¤¹à¥ˆà¤‚)"
+                    ? "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
+                    : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप 7 दिन पहले तक बुक कर सकते हैं)"
             );
             return;
         }
@@ -461,23 +469,23 @@ export class PatientFlowHandler {
                 const doctorStatus = await this.supabaseClient.getDoctorAvailabilityStatus(clinicId, doctorId);
                 const statusMessage = 
                     doctorStatus === 'ON_BREAK'
-                        ? (language === "EN" ? "Dr. is currently on break" : "à¤¡à¥‰. à¤µà¤°à¥à¤¤à¤®à¤¾à¤¨ à¤®à¥‡à¤‚ à¤¬à¥à¤°à¥‡à¤• à¤ªà¤° à¤¹à¥ˆà¤‚")
+                        ? (language === "EN" ? "Dr. is currently on break" : "डॉ. वर्तमान में ब्रेक पर हैं")
                         : doctorStatus === 'BUSY'
-                        ? (language === "EN" ? "Dr. is currently busy" : "à¤¡à¥‰. à¤µà¤°à¥à¤¤à¤®à¤¾à¤¨ à¤®à¥‡à¤‚ à¤µà¥à¤¯à¤¸à¥à¤¤ à¤¹à¥ˆà¤‚")
-                        : (language === "EN" ? "Dr. is not available" : "à¤¡à¥‰. à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¤‚");
+                        ? (language === "EN" ? "Dr. is currently busy" : "डॉ. वर्तमान में व्यस्त हैं")
+                        : (language === "EN" ? "Dr. is not available" : "डॉ. उपलब्ध नहीं हैं");
                 
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? `âŒ ${statusMessage}. Please try another doctor or date.`
-                        : `âŒ ${statusMessage}à¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤•à¤¿à¤¸à¥€ à¤…à¤¨à¥à¤¯ à¤¡à¥‰à¤•à¥à¤Ÿà¤° à¤¯à¤¾ à¤¤à¤¾à¤°à¥€à¤– à¤•à¥‹ à¤†à¤œà¤®à¤¾à¤à¤‚à¥¤`
+                        ? `❌ ${statusMessage}. Please try another doctor or date.`
+                        : `❌ ${statusMessage}। कृपया किसी अन्य डॉक्टर या तारीख को आजमाएं।`
                 );
             } else {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "âŒ No available slots on that date. Please try another date."
-                        : "âŒ à¤‰à¤¸ à¤¤à¤¾à¤°à¥€à¤– à¤ªà¤° à¤•à¥‹à¤ˆ à¤¸à¥à¤²à¥‰à¤Ÿ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤•à¤¿à¤¸à¥€ à¤…à¤¨à¥à¤¯ à¤¤à¤¾à¤°à¥€à¤– à¤•à¥‹ à¤†à¤œà¤®à¤¾à¤à¤‚à¥¤"
+                        ? "❌ No available slots on that date. Please try another date."
+                        : "❌ उस तारीख पर कोई स्लॉट उपलब्ध नहीं है। कृपया किसी अन्य तारीख को आजमाएं।"
                 );
             }
 
@@ -485,8 +493,8 @@ export class PatientFlowHandler {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "ðŸ“… Please enter another date (YYYY-MM-DD):"
-                    : "ðŸ“… à¤•à¥ƒà¤ªà¤¯à¤¾ à¤•à¥‹à¤ˆ à¤…à¤¨à¥à¤¯ à¤¤à¤¾à¤°à¥€à¤– à¤¦à¤°à¥à¤œ à¤•à¤°à¥‡à¤‚ (YYYY-MM-DD):"
+                    ? "📅 Please enter another date (YYYY-MM-DD):"
+                    : "📅 कृपया कोई अन्य तारीख दर्ज करें (YYYY-MM-DD):"
             );
             return;
         }
@@ -526,8 +534,8 @@ export class PatientFlowHandler {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "âŒ Invalid time format. Please use HH:MM (e.g., 14:30)"
-                    : "âŒ à¤…à¤®à¤¾à¤¨à¥à¤¯ à¤¸à¤®à¤¯ à¤ªà¥à¤°à¤¾à¤°à¥‚à¤ªà¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ HH:MM à¤•à¤¾ à¤‰à¤ªà¤¯à¥‹à¤— à¤•à¤°à¥‡à¤‚ (à¤‰à¤¦à¤¾. 14:30)"
+                    ? "❌ Invalid time format. Please use HH:MM (e.g., 14:30)"
+                    : "❌ अमान्य समय प्रारूप। कृपया HH:MM का उपयोग करें (उदा. 14:30)"
             );
             return;
         }
@@ -542,8 +550,8 @@ export class PatientFlowHandler {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "âŒ That time slot is no longer available. Please choose another:"
-                    : "âŒ à¤µà¤¹ à¤¸à¤®à¤¯ à¤¸à¥à¤²à¥‰à¤Ÿ à¤…à¤¬ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤¦à¥‚à¤¸à¤°à¤¾ à¤šà¥à¤¨à¥‡à¤‚:"
+                    ? "❌ That time slot is no longer available. Please choose another:"
+                    : "❌ वह समय स्लॉट अब उपलब्ध नहीं है। कृपया दूसरा चुनें:"
             );
             await this.showAvailableSlots(phone, language, slots, 0);
             return;
@@ -562,8 +570,8 @@ export class PatientFlowHandler {
         await this.whatsappClient.sendTextMessage(
             phone,
             language === "EN"
-                ? `âœ… Time selected: ${selectedTime}\n\nðŸ“ Please provide your full name:`
-                : `âœ… à¤¸à¤®à¤¯ à¤šà¥à¤¨à¤¾ à¤—à¤¯à¤¾: ${selectedTime}\n\nðŸ“ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤…à¤ªà¤¨à¤¾ à¤ªà¥‚à¤°à¤¾ à¤¨à¤¾à¤® à¤ªà¥à¤°à¤¦à¤¾à¤¨ à¤•à¤°à¥‡à¤‚:`
+                ? `✅ Time selected: ${selectedTime}\n\n📝 Please provide your full name:`
+                : `✅ समय चुना गया: ${selectedTime}\n\n📝 कृपया अपना पूरा नाम प्रदान करें:`
         );
     }
 
@@ -588,7 +596,7 @@ export class PatientFlowHandler {
                 phone,
                 language === "EN"
                     ? "Please provide a valid name (2-100 characters)"
-                    : "à¤•à¥ƒà¤ªà¤¯à¤¾ à¤à¤• à¤µà¥ˆà¤§ à¤¨à¤¾à¤® à¤ªà¥à¤°à¤¦à¤¾à¤¨ à¤•à¤°à¥‡à¤‚ (2-100 à¤µà¤°à¥à¤£)"
+                    : "कृपया एक वैध नाम प्रदान करें (2-100 वर्ण)"
             );
             return;
         }
@@ -697,8 +705,8 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? `âœ… Appointment confirmed!\n\nðŸ‘¨â€âš•ï¸ Doctor: ${session.data?.selectedDoctorName}\nðŸ“… Date: ${session.data?.selectedDate}\nðŸ• Time: ${session.data?.selectedTime}\nðŸ“ Location: ${session.data?.locationType === "home" ? "Home Visit" : "Clinic Visit"}\n\nðŸ“Œ Booking ID: ${appointmentId}\n\nâ° You'll receive reminders before your appointment.`
-                        : `âœ… à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤•à¥€ à¤ªà¥à¤·à¥à¤Ÿà¤¿ à¤¹à¥à¤ˆ!\n\nðŸ‘¨â€âš•ï¸ à¤¡à¥‰à¤•à¥à¤Ÿà¤°: ${session.data?.selectedDoctorName}\nðŸ“… à¤¤à¤¾à¤°à¥€à¤–: ${session.data?.selectedDate}\nðŸ• à¤¸à¤®à¤¯: ${session.data?.selectedTime}\nðŸ“ à¤¸à¥à¤¥à¤¾à¤¨: ${session.data?.locationType === "home" ? "à¤˜à¤° à¤ªà¤° à¤®à¥à¤²à¤¾à¤•à¤¾à¤¤" : "à¤•à¥à¤²à¤¿à¤¨à¤¿à¤• à¤®à¥‡à¤‚"}\n\nðŸ“Œ à¤¬à¥à¤•à¤¿à¤‚à¤— ID: ${appointmentId}\n\nâ° à¤†à¤ªà¤•à¥‹ à¤…à¤ªà¥‰à¤‡à¤‚à¤Ÿà¤®à¥‡à¤‚à¤Ÿ à¤¸à¥‡ à¤ªà¤¹à¤²à¥‡ à¤°à¤¿à¤®à¤¾à¤‡à¤‚à¤¡à¤° à¤®à¤¿à¤²à¥‡à¤‚à¤—à¥‡à¥¤`
+                        ? `✅ Appointment confirmed!\n\n👨‍⚕️ Doctor: ${session.data?.selectedDoctorName}\n📅 Date: ${session.data?.selectedDate}\n🕐 Time: ${session.data?.selectedTime}\n📍 Location: ${session.data?.locationType === "home" ? "Home Visit" : "Clinic Visit"}\n\n📌 Booking ID: ${appointmentId}\n\n⏰ You'll receive reminders before your appointment.`
+                        : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${session.data?.locationType === "home" ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}\n\n⏰ आपको अपॉइंटमेंट से पहले रिमाइंडर मिलेंगे।`
                 );
 
                 // Notify doctor
@@ -719,8 +727,8 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? `âŒ Booking failed: ${error instanceof Error ? error.message : "Unknown error"}`
-                        : `âŒ à¤¬à¥à¤•à¤¿à¤‚à¤— à¤µà¤¿à¤«à¤²: ${error instanceof Error ? error.message : "à¤…à¤œà¥à¤žà¤¾à¤¤ à¤¤à¥à¤°à¥à¤Ÿà¤¿"}`
+                        ? `❌ Booking failed: ${error instanceof Error ? error.message : "Unknown error"}`
+                        : `❌ बुकिंग विफल: ${error instanceof Error ? error.message : "अज्ञात त्रुटि"}`
                 );
 
                 await this.updateSession(phone, "MAIN_MENU", { language });
@@ -732,8 +740,8 @@ export class PatientFlowHandler {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "âŒ Booking cancelled. Returning to main menu..."
-                    : "âŒ à¤¬à¥à¤•à¤¿à¤‚à¤— à¤°à¤¦à¥à¤¦ à¤•à¥€ à¤—à¤ˆà¥¤ à¤®à¥à¤–à¥à¤¯ à¤®à¥‡à¤¨à¥‚ à¤ªà¤° à¤œà¤¾ à¤°à¤¹à¥‡ à¤¹à¥ˆà¤‚..."
+                    ? "❌ Booking cancelled. Returning to main menu..."
+                    : "❌ बुकिंग रद्द की गई। मुख्य मेनू पर जा रहे हैं..."
             );
             await this.showMainMenu(phone, language);
         } else {
@@ -826,7 +834,7 @@ export class PatientFlowHandler {
             phone,
             language === "EN"
                 ? `Are you sure you want to cancel appointment ${appointmentId}? (yes/no)`
-                : `à¤•à¥à¤¯à¤¾ à¤†à¤ª à¤¨à¤¿à¤¶à¥à¤šà¤¿à¤¤ à¤°à¥‚à¤ª à¤¸à¥‡ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ ${appointmentId} à¤•à¥‹ à¤°à¤¦à¥à¤¦ à¤•à¤°à¤¨à¤¾ à¤šà¤¾à¤¹à¤¤à¥‡ à¤¹à¥ˆà¤‚? (à¤¹à¤¾à¤/à¤¨à¤¹à¥€à¤‚)`
+                : `क्या आप निश्चित रूप से नियुक्ति ${appointmentId} को रद्द करना चाहते हैं? (हाँ/नहीं)`
         );
     }
 
@@ -848,7 +856,7 @@ export class PatientFlowHandler {
         // Accept tapped buttons (confirm_yes/confirm_no) as well as typed replies.
         const confirmation = this.normalizeConfirmation(message.text);
 
-        if (confirmation === "yes" || confirmation === "y" || confirmation === "à¤¹à¤¾à¤") {
+        if (confirmation === "yes" || confirmation === "y" || confirmation === "हाँ") {
             const appointmentId = session.data?.selectedAppointmentId;
             const clinicId = session.clinic_id;
 
@@ -866,27 +874,27 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "âœ… Appointment cancelled successfully."
-                        : "âœ… à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤¸à¤«à¤²à¤¤à¤¾à¤ªà¥‚à¤°à¥à¤µà¤• à¤°à¤¦à¥à¤¦ à¤•à¥€ à¤—à¤ˆà¥¤"
+                        ? "✅ Appointment cancelled successfully."
+                        : "✅ नियुक्ति सफलतापूर्वक रद्द की गई।"
                 );
             } else {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? `âŒ Cancellation failed: ${result.message}`
-                        : `âŒ à¤°à¤¦à¥à¤¦à¥€à¤•à¤°à¤£ à¤µà¤¿à¤«à¤²: ${result.message}`
+                        ? `❌ Cancellation failed: ${result.message}`
+                        : `❌ रद्दीकरण विफल: ${result.message}`
                 );
             }
 
             await this.updateSession(phone, "MAIN_MENU", { language });
             await this.showMainMenu(phone, language);
-        } else if (confirmation === "no" || confirmation === "n" || confirmation === "à¤¨à¤¹à¥€à¤‚") {
+        } else if (confirmation === "no" || confirmation === "n" || confirmation === "नहीं") {
             await this.updateSession(phone, "MAIN_MENU", { language });
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
                     ? "Cancellation aborted."
-                    : "à¤°à¤¦à¥à¤¦à¥€à¤•à¤°à¤£ à¤°à¤¦à¥à¤¦ à¤•à¤¿à¤¯à¤¾ à¤—à¤¯à¤¾à¥¤"
+                    : "रद्दीकरण रद्द किया गया।"
             );
             await this.showMainMenu(phone, language);
         } else {
@@ -894,7 +902,7 @@ export class PatientFlowHandler {
                 phone,
                 language === "EN"
                     ? "Please reply with 'yes' or 'no'"
-                    : "à¤•à¥ƒà¤ªà¤¯à¤¾ 'à¤¹à¤¾à¤' à¤¯à¤¾ 'à¤¨à¤¹à¥€à¤‚' à¤•à¥‡ à¤¸à¤¾à¤¥ à¤œà¤µà¤¾à¤¬ à¤¦à¥‡à¤‚"
+                    : "कृपया 'हाँ' या 'नहीं' के साथ जवाब दें"
             );
         }
     }
@@ -932,7 +940,7 @@ export class PatientFlowHandler {
             phone,
             language === "EN"
                 ? "Please provide the new appointment date (YYYY-MM-DD):"
-                : "à¤•à¥ƒà¤ªà¤¯à¤¾ à¤¨à¤ˆ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤¤à¤¾à¤°à¥€à¤– à¤¦à¥‡à¤‚ (YYYY-MM-DD):"
+                : "कृपया नई नियुक्ति तारीख दें (YYYY-MM-DD):"
         );
     }
 
@@ -966,7 +974,7 @@ export class PatientFlowHandler {
                 phone,
                 language === "EN"
                     ? "Invalid date format. Please use YYYY-MM-DD"
-                    : "à¤…à¤®à¤¾à¤¨à¥à¤¯ à¤¤à¤¾à¤°à¥€à¤– à¤ªà¥à¤°à¤¾à¤°à¥‚à¤ªà¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ YYYY-MM-DD à¤•à¤¾ à¤‰à¤ªà¤¯à¥‹à¤— à¤•à¤°à¥‡à¤‚"
+                    : "अमान्य तारीख प्रारूप। कृपया YYYY-MM-DD का उपयोग करें"
             );
             return;
         }
@@ -981,7 +989,7 @@ export class PatientFlowHandler {
             phone,
             language === "EN"
                 ? "Please provide the new appointment time (HH:MM):"
-                : "à¤•à¥ƒà¤ªà¤¯à¤¾ à¤¨à¤ˆ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤¸à¤®à¤¯ à¤¦à¥‡à¤‚ (HH:MM):"
+                : "कृपया नई नियुक्ति समय दें (HH:MM):"
         );
     }
 
@@ -1007,7 +1015,7 @@ export class PatientFlowHandler {
                 phone,
                 language === "EN"
                     ? "Invalid time format. Please use HH:MM"
-                    : "à¤…à¤®à¤¾à¤¨à¥à¤¯ à¤¸à¤®à¤¯ à¤ªà¥à¤°à¤¾à¤°à¥‚à¤ªà¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ HH:MM à¤•à¤¾ à¤‰à¤ªà¤¯à¥‹à¤— à¤•à¤°à¥‡à¤‚"
+                    : "अमान्य समय प्रारूप। कृपया HH:MM का उपयोग करें"
             );
             return;
         }
@@ -1023,7 +1031,7 @@ export class PatientFlowHandler {
             phone,
             language === "EN"
                 ? `New appointment time: ${session.data?.newDate} at ${newTime}\n\nConfirm? (yes/no)`
-                : `à¤¨à¤ˆ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤¸à¤®à¤¯: ${session.data?.newDate} à¤•à¥‹ ${newTime}\n\nà¤ªà¥à¤·à¥à¤Ÿà¤¿ à¤•à¤°à¥‡à¤‚? (à¤¹à¤¾à¤/à¤¨à¤¹à¥€à¤‚)`
+                : `नई नियुक्ति समय: ${session.data?.newDate} को ${newTime}\n\nपुष्टि करें? (हाँ/नहीं)`
         );
     }
 
@@ -1045,7 +1053,7 @@ export class PatientFlowHandler {
         // Accept tapped buttons (confirm_yes/confirm_no) as well as typed replies.
         const confirmation = this.normalizeConfirmation(message.text);
 
-        if (confirmation === "yes" || confirmation === "y" || confirmation === "à¤¹à¤¾à¤") {
+        if (confirmation === "yes" || confirmation === "y" || confirmation === "हाँ") {
             const result = await rescheduleAppointment(
                 this.supabase,
                 session.data?.selectedAppointmentId,
@@ -1057,27 +1065,27 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? `âœ… Appointment rescheduled to ${session.data?.newDate} at ${session.data?.newTime}`
-                        : `âœ… à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤•à¥‹ ${session.data?.newDate} à¤•à¥‹ ${session.data?.newTime} à¤ªà¤° à¤ªà¥à¤¨à¤ƒ à¤¸à¤®à¤¯ à¤¨à¤¿à¤°à¥à¤§à¤¾à¤°à¤¿à¤¤ à¤•à¤¿à¤¯à¤¾ à¤—à¤¯à¤¾`
+                        ? `✅ Appointment rescheduled to ${session.data?.newDate} at ${session.data?.newTime}`
+                        : `✅ नियुक्ति को ${session.data?.newDate} को ${session.data?.newTime} पर पुनः समय निर्धारित किया गया`
                 );
             } else {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? `âŒ Rescheduling failed: ${result.message}`
-                        : `âŒ à¤ªà¥à¤¨à¤ƒ à¤¸à¤®à¤¯ à¤¨à¤¿à¤°à¥à¤§à¤¾à¤°à¤£ à¤µà¤¿à¤«à¤²: ${result.message}`
+                        ? `❌ Rescheduling failed: ${result.message}`
+                        : `❌ पुनः समय निर्धारण विफल: ${result.message}`
                 );
             }
 
             await this.updateSession(phone, "MAIN_MENU", { language });
             await this.showMainMenu(phone, language);
-        } else if (confirmation === "no" || confirmation === "n" || confirmation === "à¤¨à¤¹à¥€à¤‚") {
+        } else if (confirmation === "no" || confirmation === "n" || confirmation === "नहीं") {
             await this.updateSession(phone, "MAIN_MENU", { language });
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
                     ? "Rescheduling aborted."
-                    : "à¤ªà¥à¤¨à¤ƒ à¤¸à¤®à¤¯ à¤¨à¤¿à¤°à¥à¤§à¤¾à¤°à¤£ à¤°à¤¦à¥à¤¦ à¤•à¤¿à¤¯à¤¾ à¤—à¤¯à¤¾à¥¤"
+                    : "पुनः समय निर्धारण रद्द किया गया।"
             );
             await this.showMainMenu(phone, language);
         } else {
@@ -1085,7 +1093,7 @@ export class PatientFlowHandler {
                 phone,
                 language === "EN"
                     ? "Please reply with 'yes' or 'no'"
-                    : "à¤•à¥ƒà¤ªà¤¯à¤¾ 'à¤¹à¤¾à¤' à¤¯à¤¾ 'à¤¨à¤¹à¥€à¤‚' à¤•à¥‡ à¤¸à¤¾à¤¥ à¤œà¤µà¤¾à¤¬ à¤¦à¥‡à¤‚"
+                    : "कृपया 'हाँ' या 'नहीं' के साथ जवाब दें"
             );
         }
     }
@@ -1096,15 +1104,70 @@ export class PatientFlowHandler {
     private async showMainMenu(phone: string, language: string): Promise<void> {
         const message =
             language === "EN"
-                ? "ðŸ“‹ What would you like to do?\n\nðŸ”– Tap a button to choose:"
-                : "ðŸ“‹ à¤†à¤ª à¤•à¥à¤¯à¤¾ à¤•à¤°à¤¨à¤¾ à¤šà¤¾à¤¹à¤¤à¥‡ à¤¹à¥ˆà¤‚?\n\nðŸ”– à¤šà¥à¤¨à¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤ à¤¬à¤Ÿà¤¨ à¤¦à¤¬à¤¾à¤à¤‚:";
+                ? "📋 What would you like to do?\n\n🔖 Tap a button to choose:"
+                : "📋 आप क्या करना चाहते हैं?\n\n🔖 चुनने के लिए बटन दबाएं:";
 
+        // WhatsApp allows a maximum of 3 reply buttons, so the less common
+        // actions live behind "More Options".
         await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
-            { id: BUTTON_IDS.PATIENT_MENU.BOOK, title: language === "EN" ? "ðŸ“… Book Appointment" : "ðŸ“… à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤¬à¥à¤• à¤•à¤°à¥‡à¤‚" },
-            { id: BUTTON_IDS.PATIENT_MENU.APPOINTMENTS, title: language === "EN" ? "ðŸ“ My Appointments" : "ðŸ“ à¤®à¥‡à¤°à¥€ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿à¤¯à¤¾à¤" },
-            { id: BUTTON_IDS.PATIENT_MENU.CANCEL, title: language === "EN" ? "âŒ Cancel" : "âŒ à¤°à¤¦à¥à¤¦ à¤•à¤°à¥‡à¤‚" },
-            { id: BUTTON_IDS.PATIENT_MENU.RESCHEDULE, title: language === "EN" ? "ðŸ”„ Reschedule" : "ðŸ”„ à¤ªà¥à¤¨à¤ƒ à¤¸à¤®à¤¯ à¤¨à¤¿à¤°à¥à¤§à¤¾à¤°à¤¿à¤¤ à¤•à¤°à¥‡à¤‚" }
+            { id: BUTTON_IDS.PATIENT_MENU.BOOK, title: language === "EN" ? "📅 Book Appointment" : "📅 नियुक्ति बुक करें" },
+            { id: BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION, title: language === "EN" ? "🏠 Home Collection" : "🏠 घर से सैंपल" },
+            { id: BUTTON_IDS.PATIENT_MENU.MORE, title: language === "EN" ? "➕ More Options" : "➕ अन्य विकल्प" }
         ]);
+    }
+
+    /**
+     * Helper: Show the secondary menu (actions that do not fit in 3 buttons)
+     */
+    private async showMoreMenu(phone: string, language: string): Promise<void> {
+        const isEn = language === "EN";
+
+        await this.whatsappClient.sendInteractiveListMessage(
+            phone,
+            isEn ? "📋 More options:" : "📋 अन्य विकल्प:",
+            isEn ? "Choose" : "चुनें",
+            [
+                {
+                    title: isEn ? "Options" : "विकल्प",
+                    rows: [
+                        {
+                            id: BUTTON_IDS.PATIENT_MENU.APPOINTMENTS,
+                            title: isEn ? "📝 My Appointments" : "📝 मेरी नियुक्तियाँ"
+                        },
+                        {
+                            id: BUTTON_IDS.PATIENT_MENU.RESCHEDULE,
+                            title: isEn ? "🔄 Reschedule" : "🔄 समय बदलें"
+                        },
+                        {
+                            id: BUTTON_IDS.PATIENT_MENU.CANCEL,
+                            title: isEn ? "❌ Cancel Appointment" : "❌ नियुक्ति रद्द करें"
+                        },
+                        {
+                            id: BUTTON_IDS.PATIENT_MENU.CHANGE_LANGUAGE,
+                            title: isEn ? "🌐 Change Language" : "🌐 भाषा बदलें"
+                        },
+                        {
+                            id: BUTTON_IDS.PATIENT_MENU.MAIN_MENU,
+                            title: isEn ? "↩️ Main Menu" : "↩️ मुख्य मेनू"
+                        }
+                    ]
+                }
+            ]
+        );
+    }
+
+    /**
+     * Helper: Prompt for language selection
+     */
+    private async askLanguage(phone: string): Promise<void> {
+        await this.whatsappClient.sendInteractiveButtonMessage(
+            phone,
+            "Please select your language / कृपया अपनी भाषा चुनें:",
+            [
+                { id: BUTTON_IDS.LANGUAGE.EN, title: "🇬🇧 English" },
+                { id: BUTTON_IDS.LANGUAGE.HI, title: "🇮🇳 हिंदी" }
+            ]
+        );
     }
 
     /**
@@ -1118,20 +1181,20 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "âŒ No doctors available at the moment."
-                        : "âŒ à¤‡à¤¸ à¤¸à¤®à¤¯ à¤•à¥‹à¤ˆ à¤¡à¥‰à¤•à¥à¤Ÿà¤° à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤"
+                        ? "❌ No doctors available at the moment."
+                        : "❌ इस समय कोई डॉक्टर उपलब्ध नहीं है।"
                 );
                 return;
             }
 
-            let message = language === "EN" ? "ðŸ‘¨â€âš•ï¸ Select a doctor:\n\n" : "ðŸ‘¨â€âš•ï¸ à¤à¤• à¤¡à¥‰à¤•à¥à¤Ÿà¤° à¤šà¥à¤¨à¥‡à¤‚:\n\n";
+            let message = language === "EN" ? "👨‍⚕️ Select a doctor:\n\n" : "👨‍⚕️ एक डॉक्टर चुनें:\n\n";
 
             doctors.forEach((doc: any, idx: number) => {
                 // Add status indicator
                 const availableStatuses = ['AVAILABLE', 'IN_CONSULTATION'];
                 const statusIndicator = availableStatuses.includes(doc.availability_status) 
-                    ? "âœ…" 
-                    : "âš ï¸";
+                    ? "✅" 
+                    : "⚠️";
                 
                 message += `${idx + 1}. ${statusIndicator} Dr. ${doc.name}`;
                 
@@ -1139,10 +1202,10 @@ export class PatientFlowHandler {
                 if (!availableStatuses.includes(doc.availability_status)) {
                     const statusLabel = 
                         doc.availability_status === 'ON_BREAK' 
-                            ? (language === "EN" ? "(On break)" : "(à¤¬à¥à¤°à¥‡à¤• à¤ªà¤°)")
+                            ? (language === "EN" ? "(On break)" : "(ब्रेक पर)")
                             : doc.availability_status === 'BUSY'
-                            ? (language === "EN" ? "(Busy)" : "(à¤µà¥à¤¯à¤¸à¥à¤¤)")
-                            : (language === "EN" ? "(Offline)" : "(à¤‘à¤«à¤²à¤¾à¤‡à¤¨)");
+                            ? (language === "EN" ? "(Busy)" : "(व्यस्त)")
+                            : (language === "EN" ? "(Offline)" : "(ऑफलाइन)");
                     message += ` ${statusLabel}`;
                 }
                 message += "\n";
@@ -1150,7 +1213,7 @@ export class PatientFlowHandler {
 
             message += language === "EN" 
                 ? "\nTap a doctor to book an appointment" 
-                : "\nà¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤¬à¥à¤• à¤•à¤°à¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤ à¤à¤• à¤¡à¥‰à¤•à¥à¤Ÿà¤° à¤¦à¤¬à¤¾à¤à¤‚";
+                : "\nनियुक्ति बुक करने के लिए एक डॉक्टर दबाएं";
 
             await this.whatsappClient.sendTextMessage(phone, message);
         } catch (error) {
@@ -1161,8 +1224,8 @@ export class PatientFlowHandler {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "âŒ Error loading doctors. Please try again."
-                    : "âŒ à¤¡à¥‰à¤•à¥à¤Ÿà¤° à¤²à¥‹à¤¡ à¤•à¤°à¤¨à¥‡ à¤®à¥‡à¤‚ à¤¤à¥à¤°à¥à¤Ÿà¤¿à¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤¦à¥‹à¤¬à¤¾à¤°à¤¾ à¤•à¥‹à¤¶à¤¿à¤¶ à¤•à¤°à¥‡à¤‚à¥¤"
+                    ? "❌ Error loading doctors. Please try again."
+                    : "❌ डॉक्टर लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।"
             );
         }
     }
@@ -1184,7 +1247,7 @@ export class PatientFlowHandler {
                     phone,
                     language === "EN"
                         ? `No slots available on ${date}. Please select another date.`
-                        : `${date} à¤ªà¤° à¤•à¥‹à¤ˆ à¤¸à¥à¤²à¥‰à¤Ÿ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤¦à¥‚à¤¸à¤°à¥€ à¤¤à¤¾à¤°à¥€à¤– à¤šà¥à¤¨à¥‡à¤‚à¥¤`
+                        : `${date} पर कोई स्लॉट उपलब्ध नहीं है। कृपया दूसरी तारीख चुनें।`
                 );
 
                 await this.updateSession(phone, "BOOK_DATE", {
@@ -1196,18 +1259,18 @@ export class PatientFlowHandler {
                     phone,
                     language === "EN"
                         ? "Please provide a new date (YYYY-MM-DD):"
-                        : "à¤•à¥ƒà¤ªà¤¯à¤¾ à¤¨à¤ˆ à¤¤à¤¾à¤°à¥€à¤– à¤¦à¥‡à¤‚ (YYYY-MM-DD):"
+                        : "कृपया नई तारीख दें (YYYY-MM-DD):"
                 );
                 return;
             }
 
-            let message = language === "EN" ? `Available times on ${date}:\n\n` : `${date} à¤ªà¤° à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¸à¤®à¤¯:\n\n`;
+            let message = language === "EN" ? `Available times on ${date}:\n\n` : `${date} पर उपलब्ध समय:\n\n`;
 
             slots.slice(0, 8).forEach((slot, idx) => {
                 message += `${idx + 1}. ${slot}\n`;
             });
 
-            message += language === "EN" ? "\nReply with your preferred time (HH:MM)" : "\nà¤…à¤ªà¤¨à¤¾ à¤ªà¤¸à¤‚à¤¦à¥€à¤¦à¤¾ à¤¸à¤®à¤¯ (HH:MM) à¤•à¥‡ à¤¸à¤¾à¤¥ à¤‰à¤¤à¥à¤¤à¤° à¤¦à¥‡à¤‚";
+            message += language === "EN" ? "\nReply with your preferred time (HH:MM)" : "\nअपना पसंदीदा समय (HH:MM) के साथ उत्तर दें";
 
             await this.whatsappClient.sendTextMessage(phone, message);
         } catch (error) {
@@ -1219,7 +1282,7 @@ export class PatientFlowHandler {
                 phone,
                 language === "EN"
                     ? "Error loading available times. Please try again."
-                    : "à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¸à¤®à¤¯ à¤²à¥‹à¤¡ à¤•à¤°à¤¨à¥‡ à¤®à¥‡à¤‚ à¤¤à¥à¤°à¥à¤Ÿà¤¿à¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤¦à¥‹à¤¬à¤¾à¤°à¤¾ à¤•à¥‹à¤¶à¤¿à¤¶ à¤•à¤°à¥‡à¤‚à¥¤"
+                    : "उपलब्ध समय लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।"
             );
         }
     }
@@ -1237,20 +1300,20 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendInteractiveButtonMessage(
                     phone,
                     language === "EN"
-                        ? "ðŸ“‹ You have no upcoming appointments.\n\nWould you like to book one?"
-                        : "ðŸ“‹ à¤†à¤ªà¤•à¥‡ à¤ªà¤¾à¤¸ à¤•à¥‹à¤ˆ à¤†à¤¨à¥‡ à¤µà¤¾à¤²à¥€ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿à¤¯à¤¾à¤ à¤¨à¤¹à¥€à¤‚ à¤¹à¥ˆà¤‚à¥¤\n\nà¤•à¥à¤¯à¤¾ à¤†à¤ª à¤à¤• à¤¬à¥à¤• à¤•à¤°à¤¨à¤¾ à¤šà¤¾à¤¹à¥‡à¤‚à¤—à¥‡?",
+                        ? "📋 You have no upcoming appointments.\n\nWould you like to book one?"
+                        : "📋 आपके पास कोई आने वाली नियुक्तियाँ नहीं हैं।\n\nक्या आप एक बुक करना चाहेंगे?",
                     [
-                        { id: "menu_book", title: "ðŸ“… Book Appointment" },
-                        { id: "nav_menu", title: "ðŸ  Main Menu" }
+                        { id: "menu_book", title: "📅 Book Appointment" },
+                        { id: "nav_menu", title: "🏠 Main Menu" }
                     ]
                 );
             } else {
                 let message = language === "EN" 
-                    ? "ðŸ“‹ Your Upcoming Appointments:\n\n" 
-                    : "ðŸ“‹ à¤†à¤ªà¤•à¥€ à¤†à¤¨à¥‡ à¤µà¤¾à¤²à¥€ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿à¤¯à¤¾à¤:\n\n";
+                    ? "📋 Your Upcoming Appointments:\n\n" 
+                    : "📋 आपकी आने वाली नियुक्तियाँ:\n\n";
 
                 appointments.forEach((apt: any, idx: number) => {
-                    message += `${idx + 1}. ðŸ©º Dr. ${apt.doctor_name || "Unknown"}\n   ðŸ“… ${this.formatDate(apt.appointment_date)}\n   ðŸ• ${apt.appointment_time}\n   Status: ${apt.status}\n\n`;
+                    message += `${idx + 1}. 🩺 Dr. ${apt.doctor_name || "Unknown"}\n   📅 ${this.formatDate(apt.appointment_date)}\n   🕐 ${apt.appointment_time}\n   Status: ${apt.status}\n\n`;
                 });
 
                 // Show with history and menu buttons
@@ -1258,8 +1321,8 @@ export class PatientFlowHandler {
                     phone,
                     message,
                     [
-                        { id: "appt_history", title: "ðŸ“œ View History" },
-                        { id: "nav_menu", title: "ðŸ  Main Menu" }
+                        { id: "appt_history", title: "📜 View History" },
+                        { id: "nav_menu", title: "🏠 Main Menu" }
                     ]
                 );
             }
@@ -1271,8 +1334,8 @@ export class PatientFlowHandler {
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "âŒ Error loading appointments. Please try again."
-                    : "âŒ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿à¤¯à¤¾à¤ à¤²à¥‹à¤¡ à¤•à¤°à¤¨à¥‡ à¤®à¥‡à¤‚ à¤¤à¥à¤°à¥à¤Ÿà¤¿à¥¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤¦à¥‹à¤¬à¤¾à¤°à¤¾ à¤•à¥‹à¤¶à¤¿à¤¶ à¤•à¤°à¥‡à¤‚à¥¤"
+                    ? "❌ Error loading appointments. Please try again."
+                    : "❌ नियुक्तियाँ लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।"
             );
         }
     }
@@ -1346,7 +1409,7 @@ export class PatientFlowHandler {
             phone,
             language === "EN"
                 ? "Please provide the appointment ID to cancel:"
-                : "à¤°à¤¦à¥à¤¦ à¤•à¤°à¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤†à¤ˆà¤¡à¥€ à¤ªà¥à¤°à¤¦à¤¾à¤¨ à¤•à¤°à¥‡à¤‚:"
+                : "रद्द करने के लिए कृपया नियुक्ति आईडी प्रदान करें:"
         );
     }
 
@@ -1358,7 +1421,7 @@ export class PatientFlowHandler {
             phone,
             language === "EN"
                 ? "Please provide the appointment ID to reschedule:"
-                : "à¤ªà¥à¤¨à¤ƒ à¤¸à¤®à¤¯ à¤¨à¤¿à¤°à¥à¤§à¤¾à¤°à¤¿à¤¤ à¤•à¤°à¤¨à¥‡ à¤•à¥‡ à¤²à¤¿à¤ à¤•à¥ƒà¤ªà¤¯à¤¾ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤†à¤ˆà¤¡à¥€ à¤ªà¥à¤°à¤¦à¤¾à¤¨ à¤•à¤°à¥‡à¤‚:"
+                : "पुनः समय निर्धारित करने के लिए कृपया नियुक्ति आईडी प्रदान करें:"
         );
     }
 
@@ -1375,11 +1438,11 @@ export class PatientFlowHandler {
     ): Promise<void> {
         const message = language === "EN"
             ? "Please confirm your appointment details."
-            : "à¤•à¥ƒà¤ªà¤¯à¤¾ à¤…à¤ªà¤¨à¥€ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤µà¤¿à¤µà¤°à¤£ à¤•à¥€ à¤ªà¥à¤·à¥à¤Ÿà¤¿ à¤•à¤°à¥‡à¤‚à¥¤";
+            : "कृपया अपनी नियुक्ति विवरण की पुष्टि करें।";
 
         await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
-            { id: BUTTON_IDS.CONFIRMATION.YES, title: language === "EN" ? "Yes, Confirm" : "à¤¹à¤¾à¤, à¤ªà¥à¤·à¥à¤Ÿà¤¿ à¤•à¤°à¥‡à¤‚" },
-            { id: BUTTON_IDS.CONFIRMATION.NO, title: language === "EN" ? "No, Cancel" : "à¤¨à¤¹à¥€à¤‚, à¤°à¤¦à¥à¤¦ à¤•à¤°à¥‡à¤‚" }
+            { id: BUTTON_IDS.CONFIRMATION.YES, title: language === "EN" ? "Yes, Confirm" : "हाँ, पुष्टि करें" },
+            { id: BUTTON_IDS.CONFIRMATION.NO, title: language === "EN" ? "No, Cancel" : "नहीं, रद्द करें" }
         ]);
 
     }
@@ -1387,17 +1450,17 @@ export class PatientFlowHandler {
     private async showDateMenu(phone: string, language: string): Promise<void> {
         const message = language === "EN"
             ? "When would you like your appointment?"
-            : "à¤•à¥ƒà¤ªà¤¯à¤¾ à¤…à¤ªà¤¨à¥€ à¤¨à¤¿à¤¯à¥à¤•à¥à¤¤à¤¿ à¤•à¥€ à¤¤à¤¾à¤°à¥€à¤– à¤šà¥à¤¨à¥‡à¤‚à¥¤";
+            : "कृपया अपनी नियुक्ति की तारीख चुनें।";
 
         await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
-            { id: BUTTON_IDS.DATE_SELECT.TODAY, title: language === "EN" ? "Today" : "à¤†à¤œ" },
-            { id: BUTTON_IDS.DATE_SELECT.TOMORROW, title: language === "EN" ? "Tomorrow" : "à¤•à¤²" },
-            { id: BUTTON_IDS.DATE_SELECT.OTHER, title: language === "EN" ? "Other date" : "à¤…à¤¨à¥à¤¯ à¤¤à¤¾à¤°à¥€à¤–" }
+            { id: BUTTON_IDS.DATE_SELECT.TODAY, title: language === "EN" ? "Today" : "आज" },
+            { id: BUTTON_IDS.DATE_SELECT.TOMORROW, title: language === "EN" ? "Tomorrow" : "कल" },
+            { id: BUTTON_IDS.DATE_SELECT.OTHER, title: language === "EN" ? "Other date" : "अन्य तारीख" }
         ]);
     }
 
     private async showAvailableSlots(phone: string, language: string, slots: any[], page = 0): Promise<void> {
-        const message = language === "EN" ? "Please select an available time." : "à¤•à¥ƒà¤ªà¤¯à¤¾ à¤‰à¤ªà¤²à¤¬à¥à¤§ à¤¸à¤®à¤¯ à¤šà¥à¤¨à¥‡à¤‚à¥¤";
+        const message = language === "EN" ? "Please select an available time." : "कृपया उपलब्ध समय चुनें।";
         const buttons = slots.slice(page * 3, page * 3 + 3).map((slot: any) => {
             const time = typeof slot === "string" ? slot : slot.start_time || slot.time;
             return { id: `slot_${time}`, title: time };
