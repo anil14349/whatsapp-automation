@@ -89,6 +89,12 @@ export class DoctorFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state && session.state !== "DOCTOR_LOGIN") {
+            await this.handleLogin(phone, message, { ...session, state: "DOCTOR_LOGIN" });
+            return;
+        }
+
         const pin = message.text.trim();
         const doctorPin = Deno.env.get("DOCTOR_PORTAL_PIN") || "1234";
         const clinicId = session.clinic_id;
@@ -218,6 +224,12 @@ export class DoctorFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "DOCTOR_AVAILABILITY") {
+            await this.showMenu(phone);
+            return;
+        }
+
         const timeRange = message.text.trim();
 
         // Validate format (HH:MM-HH:MM)
@@ -262,6 +274,12 @@ export class DoctorFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "DOCTOR_AVAILABILITY_CONFIRM") {
+            await this.showMenu(phone);
+            return;
+        }
+
         const buttonId = message.text.trim();
         const clinicId = session.clinic_id;
         const doctorId = session.data?.doctorId;
@@ -325,6 +343,12 @@ export class DoctorFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "DOCTOR_LEAVE") {
+            await this.showMenu(phone);
+            return;
+        }
+
         const dateRange = message.text.trim();
 
         // Validate format (YYYY-MM-DD to YYYY-MM-DD)
@@ -379,6 +403,12 @@ export class DoctorFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "DOCTOR_LEAVE_CONFIRM") {
+            await this.showMenu(phone);
+            return;
+        }
+
         const buttonId = message.text.trim();
         const clinicId = session.clinic_id;
         const doctorId = session.data?.doctorId;
@@ -445,6 +475,12 @@ export class DoctorFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "DOCTOR_APPOINTMENTS") {
+            await this.showMenu(phone);
+            return;
+        }
+
         await this.updateSession(phone, "DOCTOR_MENU", {
             doctorId: session.data?.doctorId,
             doctorName: session.data?.doctorName,
@@ -463,6 +499,12 @@ export class DoctorFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "DOCTOR_CANCEL") {
+            await this.showMenu(phone);
+            return;
+        }
+
         const appointmentId = message.text.trim();
 
         // TODO: Implement appointment cancellation by doctor

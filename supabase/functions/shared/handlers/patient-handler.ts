@@ -120,6 +120,12 @@ export class PatientFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "LANGUAGE_SELECT") {
+            await this.handleMainMenu(phone, message, session);
+            return;
+        }
+
         const buttonId = message.text.trim();
 
         // Validate button ID
@@ -210,7 +216,11 @@ export class PatientFlowHandler {
         phone: string,
         message: ExtractedMessage,
         session: WhatsAppSession
-    ): Promise<void> {
+    ): Promise<void> {        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "BOOK_DOCTOR") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
         const language = session.data?.language || "EN";
         const clinicId = session.clinic_id;
         const doctorId = message.text.trim();
@@ -419,7 +429,11 @@ export class PatientFlowHandler {
         phone: string,
         message: ExtractedMessage,
         session: WhatsAppSession
-    ): Promise<void> {
+    ): Promise<void> {        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "BOOK_NAME") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
         const language = session.data?.language || "EN";
         const patientName = message.text.trim();
 
@@ -542,6 +556,12 @@ export class PatientFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "CANCEL_SELECT") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
+
         const language = session.data?.language || "EN";
         const appointmentId = message.text.trim();
 
@@ -567,6 +587,12 @@ export class PatientFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "CANCEL_CONFIRM") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
+
         const language = session.data?.language || "EN";
         const confirmation = message.text.toLowerCase().trim();
 
@@ -622,6 +648,12 @@ export class PatientFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "RESCHEDULE_SELECT") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
+
         const language = session.data?.language || "EN";
         const appointmentId = message.text.trim();
 
@@ -645,7 +677,11 @@ export class PatientFlowHandler {
         phone: string,
         message: ExtractedMessage,
         session: WhatsAppSession
-    ): Promise<void> {
+    ): Promise<void> {        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "RESCHEDULE_DATE") {
+            await this.showDateMenu(phone, session.data?.language || "EN");
+            return;
+        }
         const language = session.data?.language || "EN";
         const newDate = message.text.trim();
 
@@ -681,6 +717,12 @@ export class PatientFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "RESCHEDULE_TIME") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
+
         const language = session.data?.language || "EN";
         const newTime = message.text.trim();
 
@@ -717,6 +759,12 @@ export class PatientFlowHandler {
         message: ExtractedMessage,
         session: WhatsAppSession
     ): Promise<void> {
+        // Explicit state validation - prevent collision with old menu buttons
+        if (session.state !== "RESCHEDULE_CONFIRM") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
+
         const language = session.data?.language || "EN";
         const confirmation = message.text.toLowerCase().trim();
 
