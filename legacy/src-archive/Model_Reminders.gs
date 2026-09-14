@@ -501,3 +501,71 @@ function installAppointmentReminderTrigger() {
             "Appointment reminder trigger installed (every 30 minutes)."
     };
 }
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function claimAppointmentReminder(
+    appointmentId,
+    hoursBefore,
+    phone
+) {
+
+    const lock = LockService.getScriptLock();
+    lock.waitLock(30000);
+
+    try {
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        const sheet = ensureWhatsAppLogSheet(ss);
+        const data = sheet.getDataRange().getValues();
+        const targetId = String(appointmentId || "").trim();
+        const targetHours = Number(hoursBefore);
+        const now = new Date();
+
+        for (let i = 1; i < data.length; i++) {
+            if (
+                data[i][1] !== "REMINDER" ||
+                String(data[i][6] || "").trim() !== targetId ||
+                Number(data[i][7]) !== targetHours
+            ) {
+                continue;
+            }
+
+            const status = String(data[i][4] || "").trim().toUpperCase();
+
+            if (status === "SUCCESS") {
+                return false;
+            }
+
+            if (status === "PROCESSING") {
+                const claimedAt = data[i][0] instanceof Date
+                    ? data[i][0]
+                    : new Date(data[i][0]);
+
+                if (
+                    !isNaN(claimedAt.getTime()) &&
+                    now.getTime() - claimedAt.getTime() < 10 * 60 * 1000
+                ) {
+                    return false;
+                }
+            }
+        }
+
+        sheet.appendRow([
+            now,
+            "REMINDER",
+            phone,
+            "",
+            "PROCESSING",
+            "",
+            appointmentId,
+            hoursBefore,
+            ""
+        ]);
+
+        return true;
+    } finally {
+        if (lock.hasLock()) {
+            lock.releaseLock();
+        }
+    }
+}

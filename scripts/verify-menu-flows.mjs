@@ -11,10 +11,20 @@ import { spawnSync } from "child_process";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 
-// Reads legacy/src-archive/, which is byte-identical to the monolith for the
-// 449 functions they share but is missing the 39 monolith-only ones.
+// Checks run against the monolith, which is what actually gets deployed.
+// Apps Script merges every .gs file into one global scope, so the old
+// per-file reads were only ever a convenience.
+const MONOLITH = fs.readFileSync(
+    path.join(ROOT, "ABC_Clinic_WhatsApp_Complete.gs"),
+    "utf8"
+);
 
 function read(relPath) {
+    // Flow logic is checked against the monolith; other files are read as-is.
+    if (!relPath || relPath.startsWith("legacy/src-archive/")) {
+        return MONOLITH;
+    }
+
     return fs.readFileSync(path.join(ROOT, relPath), "utf8");
 }
 
@@ -155,20 +165,21 @@ mustInclude(
     "tests cover doctor semantic ids"
 );
 
-// --- Sync guard is active ---
-// The monolith is the source of truth and is ahead of the archive, so the
-// sync script must refuse to run rather than delete monolith-only functions.
+// --- Sync guard ---
+// The monolith is the source of truth. The sync script must either run clean
+// or refuse outright; it must never quietly drop monolith-only functions.
 const sync = spawnSync(
     process.execPath,
     ["scripts/sync-monolith-from-src.js", "--check"],
     { cwd: ROOT, encoding: "utf8" }
 );
 
+const syncOutput = (sync.stdout || "") + (sync.stderr || "");
+
 assert(
-    "sync script refuses to overwrite monolith-only functions",
-    sync.status !== 0 &&
-        ((sync.stdout || "") + (sync.stderr || "")).includes("Refusing to sync"),
-    `expected the guard to fire, got exit ${sync.status}`
+    "sync script is clean or refuses to drop functions",
+    sync.status === 0 || syncOutput.includes("Refusing to sync"),
+    `exit ${sync.status}: ${syncOutput.trim().slice(0, 400)}`
 );
 
 if (failures.length === 0) {

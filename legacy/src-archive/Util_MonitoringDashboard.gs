@@ -514,3 +514,28 @@ function setupMonitoringDashboard() {
         ui.alert("❌ Error: " + error.message);
     }
 }
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function ensureMonitoringDashboardPopulated() {
+
+    const sheet = initializeMonitoringDashboard();
+
+    const dataRows = Math.max(sheet.getLastRow() - 1, 0);
+
+    if (dataRows === 0) {
+        // First initialization: create one baseline metrics snapshot so the
+        // Dashboard is useful immediately. Future initialization runs do not
+        // append duplicate daily rows.
+        logDailyMetrics();
+        return { action: "initial_metrics_logged_and_dashboard_refreshed" };
+    }
+
+    try {
+        createVisualDashboard();
+        return { action: "dashboard_refreshed" };
+    } catch (error) {
+        Logger.log("ensureMonitoringDashboardPopulated: " + error.message);
+        return { action: "dashboard_refresh_failed", error: error.message };
+    }
+}

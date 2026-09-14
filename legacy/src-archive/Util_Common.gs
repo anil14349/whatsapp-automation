@@ -769,3 +769,24 @@ function shouldRejectPlainTextInput(messageType, session) {
 function isStateProtectedFromNavigation(state) {
     return PROTECTED_BOOKING_STATES.indexOf(state) !== -1;
 }
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function formatHomeCollectionDate(value) {
+    if (value instanceof Date && !isNaN(value.getTime())) {
+        return Utilities.formatDate(value, TIMEZONE, "yyyy-MM-dd");
+    }
+    const text = String(value || "").trim();
+    if (!text) return "";
+
+    // Handle an ISO date/time string such as 2026-09-13T00:00:00.000Z.
+    const isoMatch = text.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (isoMatch) return isoMatch[1];
+
+    // Handle common slash-formatted dates without changing already-valid text.
+    const parsed = new Date(text);
+    if (!isNaN(parsed.getTime())) {
+        return Utilities.formatDate(parsed, TIMEZONE, "yyyy-MM-dd");
+    }
+    return text;
+}

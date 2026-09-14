@@ -30,11 +30,11 @@ Bind `ABC_Clinic_WhatsApp_Complete.gs`. It is the single source of truth.
 
 ### Archived — the `legacy/src-archive/` split
 
-> **Do not deploy this and do not sync from it.** It is kept for reference only.
+> **Don't bind this alongside the monolith** — every function would be declared twice. Kept for reference only.
 >
-> The archive holds the same code split into 23 files. It is **39 functions behind** the monolith — the whole home-collection collector flow, trigger installation and `initializeClinicSystem` exist only in the monolith. It also calls 27 functions it does not define, so it would throw `ReferenceError` at runtime if bound.
+> The archive holds the same code split into 23 files. It now contains all **498** functions the monolith has, so it is complete and self-contained (no undefined calls). Since Apps Script merges every `.gs` file into one global scope, the split has no runtime benefit over the single file.
 >
-> `scripts/sync-monolith-from-src.js` copies the archive **into** the monolith and would delete those 39 functions. The script now refuses to run for that reason. Since Apps Script merges every `.gs` file into one global scope anyway, the split had no runtime benefit.
+> `scripts/sync-monolith-from-src.js` copies the archive **into** the monolith. It has a guard that refuses to write if that would delete any function the monolith already has. Re-sync the archive from the monolith before ever running it, or the guard will (correctly) block you.
 
 <details>
 <summary>Archived file layout</summary>
@@ -556,10 +556,10 @@ legacy/src-archive/                ← ARCHIVED split layout — do not deploy o
 landing/                           ← marketing website (Vercel / Replit)
 marketing/                         ← brochure, one-pager, offboarding docs
 scripts/
-  sync-monolith-from-src.js        ← DISABLED by a guard; would delete monolith-only functions
+  sync-monolith-from-src.js        ← copies archive into monolith; guarded against dropping functions
   verify-menu-flows.mjs            ← static checks for interactive menu wiring
   verify-flow-coverage.mjs         ← static checks that every session state is reachable
 README.md                          ← this file
 ```
 
-The monolith is the source of truth. `scripts/sync-monolith-from-src.js` copies `legacy/src-archive/` **into** the monolith, which would delete the 39 functions that exist only in the monolith — it now refuses to run and lists them. Don't use it unless you first port those functions into the archive.
+The monolith is the source of truth. `scripts/sync-monolith-from-src.js` copies `legacy/src-archive/` **into** the monolith and is guarded: it refuses to write if the sync would delete any function the monolith already has. Use `--check` for a dry run.

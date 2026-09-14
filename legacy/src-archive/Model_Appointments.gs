@@ -2668,3 +2668,208 @@ function formatReceiptDate(isoDate) {
         return value;
     }
 }
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function findActiveAppointmentOnDate(
+    patientPhone,
+    dateString,
+    excludedAppointmentId
+) {
+
+    const targetDateIso =
+        normalizeAppointmentDate(dateString);
+
+    if (!targetDateIso) {
+        return null;
+    }
+
+    const ss =
+        SpreadsheetApp.getActiveSpreadsheet();
+
+    const sheet =
+        ss.getSheetByName("Appointments");
+
+    if (!sheet) {
+        throw new Error(
+            "Appointments sheet not found."
+        );
+    }
+
+    const data =
+        sheet.getDataRange().getValues();
+
+    const excludedId =
+        String(excludedAppointmentId || "").trim();
+
+    // Scan from the end because active appointments are normally recent.
+    for (
+        let i = data.length - 1;
+        i >= 1;
+        i--
+    ) {
+
+        const status =
+            String(data[i][6] || "")
+                .trim()
+                .toLowerCase();
+
+        const isInactive =
+            status === "cancelled" ||
+            status === "canceled" ||
+            status === "completed" ||
+            status === "no-show" ||
+            status === "noshow" ||
+            status === "no show";
+
+        const rowDateIso =
+            normalizeAppointmentDate(
+                data[i][1]
+            );
+
+        if (
+            String(data[i][0] || "").trim() !== excludedId &&
+            phonesMatch(
+                data[i][5],
+                patientPhone
+            ) &&
+            rowDateIso === targetDateIso &&
+            !isInactive
+        ) {
+            return {
+                row: i + 1,
+                appointmentId: data[i][0],
+                date: data[i][1],
+                time: data[i][2],
+                doctorId: data[i][3],
+                patientName: data[i][4],
+                phone: data[i][5],
+                status: data[i][6]
+            };
+        }
+    }
+
+    return null;
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function findUpcomingActiveAppointmentByPhone(
+    patientPhone,
+    excludedAppointmentId
+) {
+
+    // OPTIMIZATION: reuse the execution-scoped phone index instead of
+    // scanning the entire Appointments sheet on every lookup.
+    const cachedAppointments =
+        getAppointmentsByPhoneWithCache(patientPhone);
+
+    const excludedId =
+        String(excludedAppointmentId || "").trim();
+
+    const now =
+        new Date();
+
+    let latestUpcoming = null;
+
+    for (const appointment of cachedAppointments) {
+
+        const appointmentId =
+            String(appointment.appointmentId || "").trim();
+
+        if (
+            appointmentId &&
+            appointmentId === excludedId
+        ) {
+            continue;
+        }
+
+        if (
+            isInactiveAppointmentStatus(
+                appointment.status
+            )
+        ) {
+            continue;
+        }
+
+        const startTime =
+            getAppointmentStartDateTime(
+                appointment.date,
+                appointment.time
+            );
+
+        if (
+            !startTime ||
+            startTime.getTime() <= now.getTime()
+        ) {
+            continue;
+        }
+
+        if (
+            !latestUpcoming ||
+            startTime.getTime() <
+            latestUpcoming.startTime.getTime()
+        ) {
+            latestUpcoming = {
+                row: appointment.row,
+                appointmentId: appointment.appointmentId,
+                date: appointment.date,
+                time: appointment.time,
+                doctorId: appointment.doctorId,
+                patientName: appointment.patientName,
+                phone: appointment.patientPhone,
+                status: appointment.status,
+                startTime: startTime
+            };
+        }
+    }
+
+    return latestUpcoming;
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function getAppointmentStartDateTime(
+    dateValue,
+    timeValue
+) {
+
+    const dateIso =
+        normalizeAppointmentDate(dateValue);
+
+    if (!dateIso) {
+        return null;
+    }
+
+    let time24 = "";
+
+    if (timeValue instanceof Date) {
+        time24 =
+            Utilities.formatDate(
+                timeValue,
+                TIMEZONE,
+                "HH:mm"
+            );
+    } else {
+        time24 =
+            convert12HourTo24Hour(
+                timeValue
+            );
+    }
+
+    if (!time24) {
+        return null;
+    }
+
+    const dateTime =
+        new Date(
+            buildISODatetimeWithTimezone(
+                dateIso,
+                time24
+            )
+        );
+
+    return isNaN(dateTime.getTime())
+        ? null
+        : dateTime;
+}

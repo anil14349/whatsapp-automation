@@ -1181,3 +1181,131 @@ function localizeInteractiveMenuForSession(
         interactive
     );
 }
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function sendDoctorMoreSelectionReply(ss, phone, page) {
+
+    const menuSpec = getDoctorMoreMenuSpec(page || 0);
+
+    if (!menuSpec) {
+        sendDoctorSelectionReply(ss, phone);
+        return;
+    }
+
+    let body = "📅 Book Appointment\n\nChoose another doctor.";
+
+    if (menuSpec.totalPages > 1) {
+        body +=
+            "\n\nPage " +
+            (menuSpec.page + 1) +
+            " of " +
+            menuSpec.totalPages;
+    }
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        body,
+        menuSpec
+    );
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function sendHomeCollectionPersonMenuReply(ss, phone, personName, prefix) {
+    const body = (prefix ? String(prefix) + "\n\n" : "") +
+        "🩸 Home Collection Portal" +
+        (personName ? "\nHello " + personName + "." : "") +
+        "\n\nChoose an option.";
+    sendWhatsAppMenuReply(ss, phone, body, getHomeCollectionPersonMenuSpec());
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function sendDoctorInfoReply(
+    ss,
+    phone,
+    doctorId,
+    message
+) {
+
+    sendWhatsAppMenuReply(
+        ss,
+        phone,
+        String(message || ""),
+        {
+            fallbackText: String(message || "") + "\n\nDoctor Portal",
+            interactive: buildInteractiveButtonSpec([
+                {
+                    id: "nav_main_menu",
+                    title: "Doctor Portal"
+                }
+            ])
+        }
+    );
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function sendHomeCollectionRequestsListReply(ss, phone, title, requests) {
+    if (!requests || requests.length === 0) {
+        sendHomeCollectionPersonMenuReply(ss, phone,
+            (getWhatsAppSession(phone) || {}).collectorName || "",
+            "No home sample collection requests found.");
+        return;
+    }
+    const visible = requests.slice(0, 10);
+    const rows = visible.map(function(r) {
+        // Use the sheet row as the transport key. This is more robust than
+        // relying on the request ID surviving every WhatsApp client/gateway.
+        return { id: "hc_view_row_" + r.row,
+            title: r.patientName || r.requestId,
+            description: r.date + " • " + r.timeWindow + " • " + r.status };
+    });
+    const body = "🩸 " + title + "\n\n" + visible.map(function(r,i) {
+        return (i+1) + ". " + (r.patientName || r.requestId) +
+            " — " + r.date + " — " + r.timeWindow + " — " + r.status;
+    }).join("\n") + (requests.length > 10 ? "\n\nShowing first 10." : "");
+    sendWhatsAppMenuReply(ss, phone, body, {
+        fallbackText: body,
+        interactive: buildInteractiveListSpec(rows, "Choose")
+    });
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function sendHomeCollectionRequestDetailReply(ss, phone, request) {
+    if (!request) {
+        sendHomeCollectionPersonMenuReply(ss, phone,
+            (getWhatsAppSession(phone) || {}).collectorName || "",
+            "❌ Collection request not found.");
+        return;
+    }
+    const buttons = [];
+    const requestStatus = String(request.status || "Pending").toLowerCase();
+    if (requestStatus === "pending") {
+        buttons.push({ id: "hc_accept_row_" + request.row, title: "Accept Collection" });
+    } else if (requestStatus === "accepted") {
+        buttons.push({ id: "hc_complete_row_" + request.row, title: "Mark Completed" });
+    }
+    buttons.push({ id: "hc_today", title: "Today's Collections" });
+    buttons.push({ id: "nav_main_menu", title: "Main Menu" });
+    const body = "🩸 Home Collection\n\n" +
+        "👤 " + request.patientName + "\n" +
+        "📞 " + request.phone + "\n" +
+        "📅 " + request.date + "\n" +
+        "🕐 " + request.timeWindow + "\n" +
+        "📏 " + Number(request.distanceKm || 0).toFixed(1) + " km\n" +
+        "📍 Patient location:\n" + (request.mapsUrl || "Location unavailable") + "\n" +
+        "Status: " + request.status +
+        "\n\n" + (requestStatus === "completed"
+            ? "This collection is already completed."
+            : requestStatus === "pending"
+                ? "Tap Accept Collection to take this request."
+                : "After collecting the sample, tap Mark Completed.");
+    sendWhatsAppMenuReply(ss, phone, body, {
+        fallbackText: body,
+        interactive: buildInteractiveButtonSpec(buttons)
+    });
+}

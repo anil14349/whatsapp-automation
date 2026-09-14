@@ -10,10 +10,20 @@ import { fileURLToPath } from "url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, "..");
 
-// Reads legacy/src-archive/, which is byte-identical to the monolith for the
-// 449 functions they share but is missing the 39 monolith-only ones.
+// Checks run against the monolith, which is what actually gets deployed.
+// Apps Script merges every .gs file into one global scope, so the old
+// per-file reads were only ever a convenience.
+const MONOLITH = fs.readFileSync(
+    path.join(ROOT, "ABC_Clinic_WhatsApp_Complete.gs"),
+    "utf8"
+);
 
 function read(relPath) {
+    // Flow logic is checked against the monolith; other files are read as-is.
+    if (!relPath || relPath.startsWith("legacy/src-archive/")) {
+        return MONOLITH;
+    }
+
     return fs.readFileSync(path.join(ROOT, relPath), "utf8");
 }
 

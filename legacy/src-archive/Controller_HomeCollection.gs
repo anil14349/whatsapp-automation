@@ -925,3 +925,260 @@ function handleWhatsAppHomeCollectionMessage(
 
     return false;
 }
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function handleWhatsAppHomeCollectionPersonMessage(ss, senderPhone, senderName, messageText, normalizedMessage, session) {
+    if (!session || session.role !== "HOME_COLLECTION_PERSON") return false;
+    const collector = findHomeCollectionPersonByWhatsAppPhone(senderPhone);
+    if (!collector.found) return false;
+
+    if (normalizedMessage === "hc_today" || normalizedMessage === "1") {
+        const today = Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd");
+        sendHomeCollectionRequestsListReply(ss, senderPhone, "Today's Collections",
+            getHomeCollectionRequestsForCollector(false, collector.personId).filter(function(r) { return r.date === today; }));
+        return true;
+    }
+
+    if (normalizedMessage === "hc_upcoming" || normalizedMessage === "2") {
+        const today = Utilities.formatDate(new Date(), TIMEZONE, "yyyy-MM-dd");
+        sendHomeCollectionRequestsListReply(ss, senderPhone, "Upcoming Collections",
+            getHomeCollectionRequestsForCollector(false, collector.personId).filter(function(r) { return r.date >= today; }));
+        return true;
+    }
+
+    if (normalizedMessage === "hc_more" || normalizedMessage === "3") {
+        sendWhatsAppMenuReply(ss, senderPhone, "More options", {
+            fallbackText: "All Pending Collections\nMain Menu",
+            interactive: buildInteractiveButtonSpec([
+                { id: "hc_all_pending", title: "All Pending" },
+                { id: "nav_main_menu", title: "Main Menu" }
+            ])
+        });
+        return true;
+    }
+
+    if (normalizedMessage === "hc_all_pending") {
+        sendHomeCollectionRequestsListReply(ss, senderPhone, "All Pending Collections",
+            getHomeCollectionRequestsForCollector(false, collector.personId).filter(function(r) {
+                return String(r.status || "").toLowerCase() === "pending";
+            }));
+        return true;
+    }
+
+    if (normalizedMessage.indexOf("hc_accept_row_") === 0) {
+        const rowNumber = normalizedMessage.substring("hc_accept_row_".length);
+        const result = acceptHomeCollectionRequestByRow(rowNumber, collector.personId);
+
+        if (result.ok) {
+            const request = result.request;
+            sendHomeCollectionPersonMenuReply(
+                ss,
+                senderPhone,
+                collector.name,
+                "✅ Collection accepted.\n\n" +
+                "Request: " + request.requestId + "\n" +
+                "👤 " + (request.patientName || "Patient") + "\n" +
+                "📅 " + request.date + "\n" +
+                "🕐 " + request.timeWindow + "\n\n" +
+                "This collection is now assigned to you."
+            );
+            return true;
+        }
+
+        if (result.reason === "already_accepted_by_self") {
+            sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+                "✅ This collection is already assigned to you.");
+            return true;
+        }
+
+        if (result.reason === "already_accepted") {
+            sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+                "ℹ️ This collection has already been assigned to another collection person.");
+            return true;
+        }
+
+        if (result.reason === "already_completed") {
+            sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+                "ℹ️ This collection has already been completed.");
+            return true;
+        }
+
+        sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+            "❌ Collection request not found or is no longer available.");
+        return true;
+    }
+
+    if (normalizedMessage.indexOf("hc_view_row_") === 0) {
+        const rowNumber = normalizedMessage.substring("hc_view_row_".length);
+        const request = getHomeCollectionRequestByRow(rowNumber);
+        if (request && request.acceptedBy && request.acceptedBy !== collector.personId) {
+            sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+                "ℹ️ This collection has already been assigned to another collection person.");
+            return true;
+        }
+        sendHomeCollectionRequestDetailReply(ss, senderPhone, request);
+        return true;
+    }
+
+    // Backward compatibility for older list messages.
+    if (normalizedMessage.indexOf("hc_view_") === 0) {
+        const request = getHomeCollectionRequestById(
+            normalizedMessage.substring(8)
+        );
+        if (request && request.acceptedBy && request.acceptedBy !== collector.personId) {
+            sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+                "ℹ️ This collection has already been assigned to another collection person.");
+            return true;
+        }
+        sendHomeCollectionRequestDetailReply(ss, senderPhone, request);
+        return true;
+    }
+
+    if (normalizedMessage.indexOf("hc_complete_row_") === 0) {
+        const rowNumber = normalizedMessage.substring("hc_complete_row_".length);
+        const result = markHomeCollectionRequestCompletedByRow(
+            rowNumber, collector.name, collector.personId);
+        const msg = result.ok
+            ? "✅ Collection " + (result.requestId || "") + " marked Completed."
+            : result.reason === "already_completed"
+                ? "ℹ️ This collection has already been marked Completed."
+                : result.reason === "assigned_to_other"
+                    ? "ℹ️ This collection is assigned to another collection person."
+                    : result.reason === "not_accepted"
+                        ? "ℹ️ Please accept this collection before marking it Completed."
+                        : "❌ Collection request not found.";
+        sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name, msg);
+        return true;
+    }
+
+    if (normalizedMessage.indexOf("hc_complete_") === 0) {
+        const requestId = normalizedMessage.substring("hc_complete_".length);
+        const result = markHomeCollectionRequestCompleted(
+            requestId, collector.name, collector.personId);
+        const msg = result.ok
+            ? "✅ Collection " + requestId + " marked Completed."
+            : result.reason === "already_completed"
+                ? "ℹ️ This collection has already been marked Completed."
+                : result.reason === "assigned_to_other"
+                    ? "ℹ️ This collection is assigned to another collection person."
+                    : result.reason === "not_accepted"
+                        ? "ℹ️ Please accept this collection before marking it Completed."
+                        : "❌ Collection request not found.";
+        sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name, msg);
+        return true;
+    }
+
+    sendHomeCollectionPersonMenuReply(ss, senderPhone, collector.name,
+        "❌ Please choose one of the available options.");
+    return true;
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function notifyHomeCollectionPersons(requestId, details) {
+    const people = getActiveHomeCollectionPersons();
+    if (!people.length) return;
+
+    // Resolve the authoritative request from the sheet. The patient name,
+    // phone, date, time window and location in the notification all come
+    // from the saved request record, not from inbound WhatsApp text.
+    const requestRecord = getHomeCollectionRequestById(requestId);
+    if (!requestRecord) {
+        Logger.log("Home collection notification skipped: request not found " + requestId);
+        return;
+    }
+
+    const body = "🩸 New Home Sample Collection\n\n" +
+        "Request: " + requestRecord.requestId + "\n" +
+        "👤 " + (requestRecord.patientName || "Patient") + "\n" +
+        "📞 " + (requestRecord.phone || "") + "\n" +
+        "📅 " + requestRecord.date + "\n" +
+        "🕐 " + requestRecord.timeWindow + "\n" +
+        "📏 " + Number(requestRecord.distanceKm || 0).toFixed(1) + " km\n\n" +
+        "📍 Patient location:\n" + (requestRecord.mapsUrl || "Location unavailable") + "\n\n" +
+        "Please review and accept the request.";
+
+    const requestRow = requestRecord.row;
+
+    const inboundMessageId = getWhatsAppInboundMessageId();
+    clearWhatsAppInboundMessageContext();
+
+    try {
+        people.forEach(function(person) {
+            try {
+                sendWhatsAppMenuReply(SpreadsheetApp.getActiveSpreadsheet(), person.whatsapp, body, {
+                    fallbackText: body,
+                    interactive: buildInteractiveButtonSpec([
+                        {
+                            id: "hc_accept_row_" + requestRow,
+                            title: "Accept Collection"
+                        },
+                        {
+                            id: "hc_view_row_" + requestRow,
+                            title: "View Details"
+                        },
+                        {
+                            id: "nav_main_menu",
+                            title: "Main Menu"
+                        }
+                    ])
+                });
+            } catch (error) {
+                Logger.log("Home collection notification failed for " + person.personId + ": " + error.message);
+            }
+        });
+    } finally {
+        if (inboundMessageId) {
+            setWhatsAppInboundMessageContext(inboundMessageId);
+        }
+    }
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function notifyHomeCollectionCancellationToCollector(requestRecord) {
+    if (!requestRecord || !requestRecord.acceptedBy) {
+        return;
+    }
+
+    const people = getActiveHomeCollectionPersons();
+    const collector = people.find(function(person) {
+        return String(person.personId || "").trim() ===
+            String(requestRecord.acceptedBy || "").trim();
+    });
+
+    if (!collector || !collector.whatsapp) {
+        Logger.log(
+            "Home collection cancellation notification skipped: assigned collector not found " +
+            String(requestRecord.acceptedBy || "")
+        );
+        return;
+    }
+
+    const body =
+        "❌ Home Sample Collection Cancelled\n\n" +
+        "Request: " + (requestRecord.requestId || "") + "\n" +
+        "👤 " + (requestRecord.patientName || "Patient") + "\n" +
+        "📞 " + (requestRecord.phone || "") + "\n" +
+        "📅 " + (requestRecord.date || "") + "\n" +
+        "🕐 " + (requestRecord.timeWindow || "") + "\n\n" +
+        "The patient has cancelled this home sample collection request.\n" +
+        "No collection action is required.";
+
+    const inboundMessageId = getWhatsAppInboundMessageId();
+    clearWhatsAppInboundMessageContext();
+
+    try {
+        sendWhatsAppText(collector.whatsapp, body);
+    } catch (error) {
+        Logger.log(
+            "Home collection cancellation notification failed for " +
+            collector.personId + ": " + error.message
+        );
+    } finally {
+        if (inboundMessageId) {
+            setWhatsAppInboundMessageContext(inboundMessageId);
+        }
+    }
+}

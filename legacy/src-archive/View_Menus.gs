@@ -1658,3 +1658,51 @@ function getDoctorLeaveListMenuSpec(leaves) {
             )
     };
 }
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function getHomeCollectionCompletionMenuSpec() {
+
+    // An active home-collection request is a special situation.
+    // The most useful actions here are to cancel that request or manage
+    // a regular doctor appointment — not to start another booking flow.
+    const fallbackText =
+        "Cancel Collection\n" +
+        "Reschedule Collection";
+
+    const interactive =
+        buildInteractiveButtonSpec([
+            {
+                id: "cancel_home_collection",
+                title: "Cancel Collection"
+            },
+            {
+                id: "reschedule_home_collection",
+                title: "Reschedule Collection"
+            }
+        ]);
+
+    return {
+        fallbackText: fallbackText,
+        interactive: interactive
+    };
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function getHomeCollectionPersonMenuSpec() {
+    return {
+        fallbackText: "Today's Collections\nUpcoming Collections\nMore",
+        interactive: buildInteractiveButtonSpec([
+            { id: "hc_today", title: "Today's Collections" },
+            { id: "hc_upcoming", title: "Upcoming" },
+            { id: "hc_more", title: "More" }
+        ])
+    };
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function getDoctorMoreMenuSpec(page) {
+    return getDoctorSelectionMenuSpec(page || 0);
+}

@@ -400,3 +400,17 @@ function installAutoCompletePastAppointmentsTrigger() {
             "Daily auto-complete trigger installed (11 PM)."
     };
 }
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function isArchiveEligibleAppointmentStatus(status) {
+
+    const normalized =
+        normalizeAppointmentStatus(status);
+
+    return (
+        normalized === APPOINTMENT_STATUS.COMPLETED ||
+        normalized === APPOINTMENT_STATUS.NO_SHOW ||
+        normalized === APPOINTMENT_STATUS.CANCELLED
+    );
+}

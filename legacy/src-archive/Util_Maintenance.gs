@@ -359,3 +359,114 @@ function removeDailyArchiveTask() {
             "Removed " + removedCount + " daily archive trigger(s)"
     };
 }
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function deleteTriggersByHandler(handlerNames) {
+
+    const names = {};
+    (handlerNames || []).forEach(function(name) {
+        names[String(name)] = true;
+    });
+
+    let removed = 0;
+
+    ScriptApp.getProjectTriggers().forEach(function(trigger) {
+        if (names[trigger.getHandlerFunction()]) {
+            ScriptApp.deleteTrigger(trigger);
+            removed++;
+        }
+    });
+
+    return removed;
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function installProductionAutomationTriggers() {
+
+    const results = [];
+
+    results.push(installProductionLogCleanupTrigger());
+    results.push(installAppointmentReminderTrigger());
+    results.push(installAutoCompletePastAppointmentsTrigger());
+    results.push(setupDailyMetricsLogging());
+    results.push(createAutoCleanupTriggers());
+    results.push(createDailyArchiveTask(1, 0));
+    results.push(createDailyHomeCollectionArchiveTask(1, 0));
+
+    return {
+        success: results.every(function(result) {
+            return result && result.success !== false;
+        }),
+        message:
+            "Production automation triggers installed. " +
+            "Appointment archive and home collection history run daily around 01:00; " +
+            "appointment reminders run every 30 minutes. Legacy Reminder_Queue processing is not " +
+            "installed because the current reminder engine does not use it.",
+        results: results,
+        registry: getProductionTriggerRegistry()
+    };
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function getProductionTriggerStatus() {
+
+    const active = {};
+
+    ScriptApp.getProjectTriggers().forEach(function(trigger) {
+        const handler = trigger.getHandlerFunction();
+        if (!active[handler]) {
+            active[handler] = 0;
+        }
+        active[handler]++;
+    });
+
+    return PRODUCTION_TRIGGER_REGISTRY.map(function(item) {
+        return {
+            handler: item.handler,
+            schedule: item.schedule,
+            purpose: item.purpose,
+            activeCount: active[item.handler] || 0,
+            healthy: (active[item.handler] || 0) === 1
+        };
+    });
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function getProductionTriggerRegistry() {
+    return PRODUCTION_TRIGGER_REGISTRY.map(function(item) {
+        return {
+            handler: item.handler,
+            schedule: item.schedule,
+            purpose: item.purpose
+        };
+    });
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function installProductionLogCleanupTrigger() {
+
+    // Production-safe variant: log retention is an operational safeguard,
+    // so it must not depend on DEBUG_MODE being enabled.
+    deleteTriggersByHandler([
+        "cleanupAllWhatsAppLogs"
+    ]);
+
+    ScriptApp.newTrigger(
+        "cleanupAllWhatsAppLogs"
+    )
+        .timeBased()
+        .everyDays(1)
+        .atHour(3)
+        .create();
+
+    return {
+        success: true,
+        message:
+            "WhatsApp log cleanup trigger installed (daily around 3 AM)."
+    };
+}

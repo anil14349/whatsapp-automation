@@ -504,3 +504,27 @@ function resetExecutionCache() {
     };
     Logger.log("Execution cache reset");
 }
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function invalidateAppointmentExecutionCaches() {
+
+    // Appointment writes can affect both phone- and date-based indexes.
+    // Clear the execution-scoped indexes so later reads in the same webhook
+    // execution cannot observe stale appointment data.
+    __appointmentIdCache = {};
+    __appointmentsByPhoneCache = {};
+    __appointmentsByDateCache = {};
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function invalidatePatientExecutionCache(phone) {
+
+    const normalized =
+        normalizeWhatsAppPhone(phone);
+
+    if (normalized) {
+        delete __patientPhoneCache[normalized];
+    }
+}

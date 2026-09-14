@@ -502,3 +502,147 @@ function cleanupExpiredDeduplicationRecordsAuto() {
 function cleanupExpiredSlotReservationsAuto() {
     return cleanupExpiredSlotReservations();
 }
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function initializeClinicSystem() {
+    const report = {
+        success: false,
+        initializedAt: new Date(),
+        sheets: null,
+        triggers: null,
+        triggerStatus: null,
+        errors: []
+    };
+
+    try {
+        // 1. Ensure all required sheets/columns exist.
+        // This is intentionally non-destructive.
+        report.sheets = initializeWhatsAppBotSheets();
+
+        if (!report.sheets || report.sheets.success !== true) {
+            throw new Error(
+                "Sheet initialization failed."
+            );
+        }
+
+        // 2. Install the fixed-cadence production automation triggers.
+        report.triggers =
+            installProductionAutomationTriggers();
+
+        if (!report.triggers || report.triggers.success !== true) {
+            throw new Error(
+                "Production trigger installation failed: " +
+                (
+                    report.triggers &&
+                    report.triggers.message
+                        ? report.triggers.message
+                        : "Unknown error"
+                )
+            );
+        }
+
+        // 3. Verify the resulting trigger state.
+        report.triggerStatus =
+            getProductionTriggerStatus();
+
+        const unhealthy =
+            report.triggerStatus.filter(function (item) {
+                return !item.healthy;
+            });
+
+        report.success = unhealthy.length === 0;
+
+        if (unhealthy.length > 0) {
+            report.errors.push(
+                "Some production triggers are not healthy: " +
+                unhealthy.map(function (item) {
+                    return item.handler +
+                        " (active=" +
+                        item.activeCount +
+                        ")";
+                }).join(", ")
+            );
+        }
+
+        Logger.log(
+            "initializeClinicSystem: " +
+            JSON.stringify(report)
+        );
+
+        return report;
+
+    } catch (error) {
+        report.success = false;
+        report.errors.push(
+            error && error.message
+                ? error.message
+                : String(error)
+        );
+
+        Logger.log(
+            "initializeClinicSystem ERROR: " +
+            JSON.stringify(report)
+        );
+
+        return report;
+    }
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function onOpen(e) {
+    // Spreadsheet-bound simple trigger. This runs in the Sheet UI context,
+    // so the custom Admin Dashboard menu is added automatically on open.
+    addAdminMenuItems();
+}
+
+
+// Ported from ABC_Clinic_WhatsApp_Complete.gs (monolith is the source of truth).
+function testAppointmentReceiptPipeline() {
+
+    const testPhone =
+        String(
+            getScriptProperty(
+                "TEST_RECEIPT_PHONE",
+                ""
+            ) || ""
+        ).trim();
+
+    if (!testPhone) {
+        throw new Error(
+            "Set TEST_RECEIPT_PHONE in Script Properties before running this test."
+        );
+    }
+
+    const result =
+        sendAppointmentReceiptCard(
+            testPhone,
+            {
+                appointmentId: "TEST-RECEIPT",
+                patientName: "Test Patient",
+                doctorId: "",
+                doctor: "Test Doctor",
+                date: Utilities.formatDate(
+                    new Date(),
+                    TIMEZONE,
+                    "dd-MMM-yyyy"
+                ),
+                time: Utilities.formatDate(
+                    new Date(
+                        Date.now() +
+                        60 * 60 * 1000
+                    ),
+                    TIMEZONE,
+                    "hh:mm a"
+                )
+            }
+        );
+
+    Logger.log(
+        "Appointment receipt pipeline test succeeded. Media ID: " +
+        result
+    );
+
+    return result;
+}
