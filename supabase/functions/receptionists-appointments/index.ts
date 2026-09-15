@@ -311,10 +311,11 @@ async function createAppointment(
  */
 async function handleRequest(user: TokenPayload, req: Request): Promise<Response> {
   try {
-    // Verify user is RECEPTIONIST and belongs to clinic
-    if (user.role !== "RECEPTIONIST") {
+    // A clinic owner runs the front desk too; a platform ADMIN has no clinic
+    // of their own so has nothing to scope this to.
+    if (user.role !== "RECEPTIONIST" && user.role !== "CLINIC_OWNER") {
       return new Response(
-        JSON.stringify({ error: "Only receptionists can access this endpoint" }),
+        JSON.stringify({ error: "Only clinic staff can access this endpoint" }),
         { status: 403, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -440,5 +441,5 @@ Deno.serve(withCors(async (req: Request) => {
     );
   }
 
-  return withAuth(req, "RECEPTIONIST", (user) => handleRequest(user, req));
+  return withAuth(req, ["RECEPTIONIST", "CLINIC_OWNER"], (user) => handleRequest(user, req));
 }));

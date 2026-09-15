@@ -7,7 +7,7 @@
 
 import { redirect } from "next/navigation";
 import { callAsUser, readSession } from "@/lib/portal";
-import { SignOutButton } from "./sign-out";
+import { PortalNav } from "@/app/nav";
 import { WalkInForm, type DoctorOption } from "./walk-in-form";
 
 interface Row {
@@ -52,10 +52,11 @@ export default async function AppointmentsPage({
         redirect("/login");
     }
 
-    const doctors: DoctorOption[] =
-        session.role === "RECEPTIONIST"
-            ? (await callAsUser("receptionists-appointments?resource=doctors")).data?.doctors ?? []
-            : [];
+    const canBook = session.role === "RECEPTIONIST" || session.role === "CLINIC_OWNER";
+
+    const doctors: DoctorOption[] = canBook
+        ? (await callAsUser("receptionists-appointments?resource=doctors")).data?.doctors ?? []
+        : [];
 
     const rows: Row[] = result.ok
         ? (result.data.appointments ?? []).map((a: any) => ({
@@ -72,15 +73,9 @@ export default async function AppointmentsPage({
 
     return (
         <main className="mx-auto max-w-5xl p-6">
-            <header className="mb-6 flex items-center justify-between">
-                <div>
-                    <h1 className="text-xl font-semibold">Appointments</h1>
-                    <p className="text-sm text-slate-500">
-                        {session.name} · {session.role.toLowerCase().replace("_", " ")}
-                    </p>
-                </div>
-                <SignOutButton />
-            </header>
+            <PortalNav session={session} />
+
+            <h1 className="mb-4 text-xl font-semibold">Appointments</h1>
 
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <form className="flex items-center gap-2">
@@ -95,7 +90,7 @@ export default async function AppointmentsPage({
                     </button>
                 </form>
 
-                {session.role === "RECEPTIONIST" && (
+                {canBook && (
                     <div className="text-sm text-slate-500">
                         {rows.length} booked ·{" "}
                         {rows.filter((r) => r.status === "CONFIRMED").length} still to be seen
@@ -103,7 +98,7 @@ export default async function AppointmentsPage({
                 )}
             </div>
 
-            {session.role === "RECEPTIONIST" && (
+            {canBook && (
                 <div className="mb-6">
                     <WalkInForm doctors={doctors} date={date} />
                 </div>
