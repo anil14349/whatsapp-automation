@@ -172,8 +172,8 @@ export async function getHomeCollectionDetailsForReminder(
   try {
     const { data, error } = await supabase
       .from("home_collection_requests")
-      .select("request_id, phone, appointment_date, clinic:clinics(name)")
-      .eq("request_id", requestId)
+      .select("id, patient_phone, requested_date, preferred_language, clinic:clinics(name)")
+      .eq("id", requestId)
       .single();
 
     if (error || !data) {
@@ -183,18 +183,19 @@ export async function getHomeCollectionDetailsForReminder(
 
     // PostgREST returns an object for a to-one embed.
     const row = data as unknown as {
-      request_id: string;
-      phone: string;
-      appointment_date: string | null;
+      id: string;
+      patient_phone: string;
+      requested_date: string | null;
+      preferred_language: string | null;
       clinic: { name: string } | null;
     };
 
     return {
-      requestId: row.request_id,
-      patientPhone: row.phone,
-      collectionDate: row.appointment_date || new Date().toISOString().split("T")[0],
+      requestId: row.id,
+      patientPhone: row.patient_phone,
+      collectionDate: row.requested_date || new Date().toISOString().split("T")[0],
       clinicName: row.clinic?.name || "Clinic",
-      preferredLanguage: "EN" // Default to EN, can be extended to fetch from patient record
+      preferredLanguage: row.preferred_language || "EN"
     };
   } catch (error) {
     debug("homeCollectionReminder", "Error fetching request details", {

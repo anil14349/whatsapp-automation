@@ -52,15 +52,25 @@ function sourceFiles(dir) {
  *
  * Only `.from("x").select(...)` / `.eq("col", ...)` chains are considered;
  * anything dynamic is skipped rather than guessed at.
+ *
+ * Each `.from(` is located by index and given its own window. A single regex
+ * with a lookahead used to consume the gap between two calls, which silently
+ * skipped whole queries: a broken home collection lookup passed for weeks
+ * because the scanner never saw it.
  */
 function extractReferences(source, file) {
     const refs = [];
-    const chain = /\.from\(\s*["'`]([a-z_]+)["'`]\s*\)([\s\S]{0,1200}?)(?=\.from\(|\n\s*(?:async\s+)?function |\n}\n|$)/g;
+    const starts = [...source.matchAll(/\.from\(\s*["'`]([a-z_]+)["'`]\s*\)/g)];
 
-    let match;
-    while ((match = chain.exec(source)) !== null) {
+    for (let i = 0; i < starts.length; i++) {
+        const match = starts[i];
         const table = match[1];
-        const body = match[2];
+        const from = match.index + match[0].length;
+
+        // Stop at the next .from( so one query's columns are never read as
+        // another's, and cap the window so a whole file is not swallowed.
+        const nextFrom = i + 1 < starts.length ? starts[i + 1].index : source.length;
+        const body = source.slice(from, Math.min(nextFrom, from + 1200));
         const line = source.slice(0, match.index).split("\n").length;
 
         // .select("a, b, embed:other(x)") - embeds belong to the other table.
@@ -98,7 +108,19 @@ function extractReferences(source, file) {
         while ((p = payload.exec(body)) !== null) {
             if (p[1].includes("...")) continue;
 
-            const keys = p[1].matchAll(/(?:^|,)\s*([a-z_][a-z0-9_]*)\s*:/g);
+            // Only top level keys are columns. A jsonb column like
+            // whatsapp_sessions.data holds arbitrary keys that are not.
+            let depth = 0;
+            let topLevel = "";
+
+            for (const char of p[1]) {
+                if (char === "{" || char === "[" || char === "(") depth++;
+                else if (char === "}" || char === "]" || char === ")") depth--;
+                else if (depth === 0) topLevel += char;
+                if (depth === 0 && (char === "}" || char === "]" || char === ")")) topLevel += ",";
+            }
+
+            const keys = topLevel.matchAll(/(?:^|,)\s*([a-z_][a-z0-9_]*)\s*:/g);
 
             for (const k of keys) {
                 refs.push({ table, column: k[1], file, line });

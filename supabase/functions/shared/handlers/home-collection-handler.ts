@@ -817,7 +817,7 @@ export class HomeCollectionHandler {
             const { data, error } = await this.supabase
                 .from("home_collection_requests")
                 .select("*")
-                .eq("request_id", requestId)
+                .eq("id", requestId)
                 .eq("clinic_id", clinicId)
                 .maybeSingle();
 
