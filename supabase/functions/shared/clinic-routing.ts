@@ -1,0 +1,214 @@
+import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { debug } from "./logger.ts";
+
+/**
+ * Clinic routing for the multi-tenant webhook.
+ *
+ * Each clinic runs its own Meta app and WhatsApp Business Account, so the
+ * verify token, the inbound ?token= and the sending credentials all differ
+ * per clinic. Everything is resolved from the request itself; the env vars
+ * remain only as a fallback for the original single-clinic deployment.
+ */
+
+export interface ClinicRoute {
+    clinicId: string;
+    clinicName: string;
+    phoneNumberId: string;
+    accessToken: string;
+}
+
+interface CacheEntry {
+    route: ClinicRoute | null;
+    expiresAt: number;
+}
+
+// Warm isolates are reused, so cached credentials must expire.
+const ROUTE_TTL_MS = 60_000;
+const routeCache: Record<string, CacheEntry> = {};
+
+function cached(key: string): ClinicRoute | null | undefined {
+    const entry = routeCache[key];
+
+    if (entry && entry.expiresAt > Date.now()) {
+        return entry.route;
+    }
+
+    return undefined;
+}
+
+function remember(key: string, route: ClinicRoute | null): void {
+    routeCache[key] = { route, expiresAt: Date.now() + ROUTE_TTL_MS };
+}
+
+function toRoute(row: Record<string, any> | null): ClinicRoute | null {
+    if (!row) {
+        return null;
+    }
+
+    const accessToken = row.whatsapp_access_token || Deno.env.get("WHATSAPP_ACCESS_TOKEN") || "";
+    const phoneNumberId =
+        row.whatsapp_phone_number_id || Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+
+    if (!accessToken || !phoneNumberId) {
+        debug("clinicRouting", "Clinic has no usable WhatsApp credentials", {
+            clinicId: row.id
+        });
+        return null;
+    }
+
+    return {
+        clinicId: row.id,
+        clinicName: row.name || "the clinic",
+        phoneNumberId,
+        accessToken
+    };
+}
+
+/**
+ * Credentials from the environment, used when the database cannot answer
+ * (columns not migrated yet, transient error, or a single-clinic install).
+ */
+function envRoute(): ClinicRoute | null {
+    const accessToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN") || "";
+    const phoneNumberId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID") || "";
+    const clinicId = Deno.env.get("DEFAULT_CLINIC_ID") || "";
+
+    if (!accessToken || !phoneNumberId || !clinicId) {
+        return null;
+    }
+
+    return { clinicId, clinicName: "the clinic", phoneNumberId, accessToken };
+}
+
+/**
+ * Resolve the clinic that owns the WhatsApp number a message arrived on.
+ * Falls back to DEFAULT_CLINIC_ID so an existing single-clinic setup keeps working.
+ */
+export async function getClinicByPhoneNumberId(
+    supabase: SupabaseClient,
+    phoneNumberId: string
+): Promise<ClinicRoute | null> {
+    const key = `phone:${phoneNumberId}`;
+    const hit = cached(key);
+
+    if (hit !== undefined) {
+        return hit;
+    }
+
+    let route: ClinicRoute | null = null;
+
+    if (phoneNumberId) {
+        const { data, error } = await supabase
+            .from("clinics")
+            .select("id, name, whatsapp_phone_number_id, whatsapp_access_token")
+            .eq("whatsapp_phone_number_id", phoneNumberId)
+            .eq("is_active", true)
+            .maybeSingle();
+
+        if (error) {
+            // Never take the bot offline because routing could not be read.
+            debug("clinicRouting", "Clinic lookup failed, using env credentials", {
+                phoneNumberId,
+                error: error.message
+            });
+
+            const fallback = envRoute();
+            remember(key, fallback);
+            return fallback;
+        }
+
+        route = toRoute(data);
+    }
+
+    if (!route) {
+        route = await getDefaultClinic(supabase);
+
+        if (route) {
+            debug("clinicRouting", "Falling back to default clinic", { phoneNumberId });
+        }
+    }
+
+    remember(key, route);
+    return route;
+}
+
+async function getDefaultClinic(supabase: SupabaseClient): Promise<ClinicRoute | null> {
+    const defaultId = Deno.env.get("DEFAULT_CLINIC_ID");
+
+    if (!defaultId) {
+        return null;
+    }
+
+    const { data, error } = await supabase
+        .from("clinics")
+        .select("id, name, whatsapp_phone_number_id, whatsapp_access_token")
+        .eq("id", defaultId)
+        .maybeSingle();
+
+    if (error) {
+        return envRoute();
+    }
+
+    return toRoute(data) || envRoute();
+}
+
+/**
+ * True when the token matches any clinic's verify token, or the env fallback.
+ * Used only for the Meta subscription handshake.
+ */
+export async function isValidVerifyToken(
+    supabase: SupabaseClient,
+    token: string
+): Promise<boolean> {
+    if (!token) {
+        return false;
+    }
+
+    if (token === Deno.env.get("WHATSAPP_VERIFY_TOKEN")) {
+        return true;
+    }
+
+    const { data, error } = await supabase
+        .from("clinics")
+        .select("id")
+        .eq("whatsapp_verify_token", token)
+        .eq("is_active", true)
+        .maybeSingle();
+
+    if (error) {
+        return false;
+    }
+
+    return Boolean(data);
+}
+
+/**
+ * True when the ?token= authorises an inbound POST for any clinic.
+ */
+export async function isValidWebhookToken(
+    supabase: SupabaseClient,
+    token: string | null
+): Promise<boolean> {
+    if (!token) {
+        return false;
+    }
+
+    const envToken = Deno.env.get("WHATSAPP_WEBHOOK_POST_TOKEN");
+
+    if (envToken && token === envToken) {
+        return true;
+    }
+
+    const { data, error } = await supabase
+        .from("clinics")
+        .select("id")
+        .eq("whatsapp_webhook_token", token)
+        .eq("is_active", true)
+        .maybeSingle();
+
+    if (error) {
+        return false;
+    }
+
+    return Boolean(data);
+}

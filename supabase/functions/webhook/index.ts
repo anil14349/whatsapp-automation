@@ -1,18 +1,18 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { verifyWebhookToken, extractInboundMessage } from "../shared/validators.ts";
+import { extractInboundMessage } from "../shared/validators.ts";
 import { logWhatsAppMessage } from "../shared/logger.ts";
 import { processMessage } from "../shared/message-processor.ts";
 import { WhatsAppClient } from "../shared/whatsapp-client.ts";
+import {
+    getClinicByPhoneNumberId,
+    isValidVerifyToken,
+    isValidWebhookToken
+} from "../shared/clinic-routing.ts";
 
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const supabase = createClient(supabaseUrl, supabaseKey);
-
-// Initialize WhatsApp client
-const whatsappToken = Deno.env.get("WHATSAPP_ACCESS_TOKEN")!;
-const whatsappPhoneId = Deno.env.get("WHATSAPP_PHONE_NUMBER_ID")!;
-const whatsappClient = new WhatsAppClient(whatsappToken, whatsappPhoneId);
 
 /**
  * Main webhook handler for WhatsApp messages
@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
         // GET: WhatsApp Webhook Verification
         // ============================================================
         if (method === "GET") {
-            return handleWebhookVerification(req);
+            return await handleWebhookVerification(req);
         }
 
         // ============================================================
@@ -66,21 +66,14 @@ Deno.serve(async (req) => {
  * Handle WhatsApp webhook verification (GET request)
  * Meta sends this during webhook configuration
  */
-function handleWebhookVerification(req: Request) {
+async function handleWebhookVerification(req: Request) {
     const url = new URL(req.url);
     const mode = url.searchParams.get("hub.mode");
-    const token = url.searchParams.get("hub.verify_token");
+    const token = url.searchParams.get("hub.verify_token") || "";
     const challenge = url.searchParams.get("hub.challenge");
 
-    const verifyToken = Deno.env.get("WHATSAPP_VERIFY_TOKEN");
-
-    // Fail closed: if verify token not configured, reject verification
-    if (!verifyToken) {
-        console.error("WHATSAPP_VERIFY_TOKEN is not configured");
-        return new Response("Verification failed", { status: 403 });
-    }
-
-    if (mode === "subscribe" && token === verifyToken) {
+    // Each clinic runs its own Meta app, so any clinic's verify token is valid.
+    if (mode === "subscribe" && (await isValidVerifyToken(supabase, token))) {
         console.log("Webhook verified successfully");
         return new Response(challenge, { status: 200 });
     }
@@ -101,7 +94,7 @@ async function handleInboundMessage(req: Request) {
     const webhookToken = url.searchParams.get("token");
 
     // Verify webhook token
-    if (!verifyWebhookToken(webhookToken)) {
+    if (!(await isValidWebhookToken(supabase, webhookToken))) {
         console.error("Invalid webhook token");
         return new Response("Unauthorized", { status: 401 });
     }
@@ -137,6 +130,21 @@ async function handleInboundMessage(req: Request) {
         value.metadata?.phone_number_id || "";
 
     console.log(`Processing message ${messageId} from ${senderPhone}`);
+
+    // ============================================================
+    // RESOLVE CLINIC
+    // ============================================================
+
+    const clinic = await getClinicByPhoneNumberId(supabase, phoneNumberId);
+
+    if (!clinic) {
+        console.error("No clinic owns this WhatsApp number", { phoneNumberId });
+        // 200 so Meta does not retry a message we can never route.
+        return new Response("EVENT_RECEIVED", { status: 200 });
+    }
+
+    // Replies must come from the clinic's own number, using its own token.
+    const whatsappClient = new WhatsAppClient(clinic.accessToken, clinic.phoneNumberId);
 
     // ============================================================
     // IDEMPOTENCY CHECK
@@ -206,7 +214,8 @@ async function handleInboundMessage(req: Request) {
                     messageText,
                     messageType,
                     latitude: inbound.latitude,
-                    longitude: inbound.longitude
+                    longitude: inbound.longitude,
+                    clinicId: clinic.clinicId
                 }
             );
         }

@@ -88,6 +88,8 @@ export interface ProcessMessageContext {
     messageType: string;
     latitude?: number;
     longitude?: number;
+    /** Clinic that owns the WhatsApp number the message arrived on. */
+    clinicId?: string;
 }
 
 // ============================================================

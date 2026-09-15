@@ -43,7 +43,8 @@ export async function processMessage(
     // GET OR CREATE SESSION
     // ============================================================
 
-    const clinicId = Deno.env.get("DEFAULT_CLINIC_ID") || "default-clinic";
+    const clinicId =
+        context.clinicId || Deno.env.get("DEFAULT_CLINIC_ID") || "default-clinic";
     const session = await getOrCreateSession(supabase, senderPhone, clinicId);
 
     debug("processMessage", "Session loaded", {
