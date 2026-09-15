@@ -10,7 +10,7 @@ import {
     formatAuthErrorMessage,
     getPinEntryPrompt
 } from "../doctor-auth.ts";
-import { hashPassword } from "../bcrypt-password.ts";
+import { hashPassword, validatePinStrength } from "../bcrypt-password.ts";
 
 /**
  * Doctor Flow Handler - Manages doctor portal interactions
@@ -965,20 +965,13 @@ export class DoctorFlowHandler {
     ): Promise<void> {
         const pin = message.text?.trim() || "";
 
-        if (!/^\d{4,6}$/.test(pin)) {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                "PIN must be 4 to 6 digits. Please try again:",
-                this.supabase
-            );
-            return;
-        }
+        // Same rules as the portal API, so a PIN set here is never rejected there.
+        const strength = validatePinStrength(pin);
 
-        // Obvious sequences and repeats are the first thing an attacker tries.
-        if (/^(\d)\1+$/.test(pin) || "0123456789".includes(pin) || "9876543210".includes(pin)) {
+        if (!strength.valid) {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "That PIN is too easy to guess. Please choose another:",
+                `${strength.errors[0]}. Please try again:`,
                 this.supabase
             );
             return;

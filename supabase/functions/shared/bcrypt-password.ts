@@ -127,13 +127,16 @@ export function validatePasswordStrength(password: string): { valid: boolean; er
  * Validate PIN strength (simpler than passwords)
  * 
  * Requirements:
- * - Exactly 4 digits
+ * - 4 to 6 digits
  * - Cannot be sequential (1234, 4567, etc)
  * - Cannot be repeating (1111, 2222, etc)
  * 
  * @param pin - The PIN to validate (string)
  * @returns { valid: boolean; errors: string[] }
  */
+export const PIN_MIN_LENGTH = 4;
+export const PIN_MAX_LENGTH = 6;
+
 export function validatePinStrength(pin: string): { valid: boolean; errors: string[] } {
   const errors: string[] = [];
 
@@ -141,30 +144,29 @@ export function validatePinStrength(pin: string): { valid: boolean; errors: stri
     return { valid: false, errors: ["PIN cannot be empty"] };
   }
 
-  if (pin.length !== 4) {
-    errors.push("PIN must be exactly 4 digits");
-  }
-
-  if (!/^\d{4}$/.test(pin)) {
+  if (!/^\d+$/.test(pin)) {
     errors.push("PIN must contain only digits");
   }
 
-  // Check for sequential pattern (1234, 4567, etc)
+  if (pin.length < PIN_MIN_LENGTH || pin.length > PIN_MAX_LENGTH) {
+    errors.push(`PIN must be ${PIN_MIN_LENGTH} to ${PIN_MAX_LENGTH} digits`);
+  }
+
+  // Runs of consecutive digits in either direction: 1234, 4321, 345678.
   const digits = pin.split("").map(Number);
-  let isSequential = true;
-  for (let i = 1; i < digits.length; i++) {
-    if (Math.abs(digits[i] - digits[i - 1]) !== 1) {
+  let isSequential = digits.length > 1 && !digits.some(Number.isNaN);
+
+  for (let i = 1; i < digits.length && isSequential; i++) {
+    if (digits[i] - digits[i - 1] !== digits[1] - digits[0]) {
       isSequential = false;
-      break;
     }
   }
 
-  if (isSequential && digits.length === 4) {
-    errors.push("PIN cannot be sequential (1234, 4567, etc)");
+  if (isSequential && Math.abs(digits[1] - digits[0]) === 1) {
+    errors.push("PIN cannot be sequential (1234, 4321, etc)");
   }
 
-  // Check for repeating pattern (1111, 2222, etc)
-  if (/^(\d)\1{3}$/.test(pin)) {
+  if (/^(\d)\1*$/.test(pin)) {
     errors.push("PIN cannot be all the same digit");
   }
 

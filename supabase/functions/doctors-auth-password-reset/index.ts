@@ -12,6 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { badRequestResponse, errorResponse, successResponse, withAuth } from "../shared/auth-middleware.ts";
 import { debug } from "../shared/logger.ts";
+import { sendPasswordResetEmail } from "../shared/email.ts";
 import { withCors } from "../shared/cors.ts";
 import { hashPassword, validatePinStrength } from "../shared/bcrypt-password.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
@@ -96,11 +97,26 @@ export async function handleDoctorPasswordResetRequest(req: Request): Promise<Re
       return errorResponse("Failed to initiate password reset", 500);
     }
 
-    // TODO: Send reset email with token
-    // For now, just log it
+    // Send the link. Failures are logged but never revealed, so the response
+    // stays identical whether or not the address exists.
+    const { data: clinic } = await supabase
+      .from("clinics")
+      .select("name")
+      .eq("id", body.clinicId)
+      .maybeSingle();
+
+    const delivery = await sendPasswordResetEmail(
+      doctor.email,
+      doctor.name,
+      resetToken,
+      "doctor",
+      clinic?.name || "your clinic"
+    );
+
     debug("doctorPasswordReset", "Reset token generated", {
       doctorId: doctor.id,
-      token: resetToken.substring(0, 8) + "..." // Log only first 8 chars
+      emailSent: delivery.sent,
+      emailError: delivery.error
     });
 
     return successResponse({ message: "If email exists, reset link will be sent" });
