@@ -1,54 +1,71 @@
 -- Let each clinic choose which services it offers.
 --
--- service_types is a GLOBAL catalogue keyed by code (CONSULTATION, BLOOD_TEST,
--- ...). Adding clinic_id to it would fork the catalogue per tenant and break
--- every lookup that resolves a service by code, so per-clinic choices live in
--- a join table instead. The default_* columns on service_types become the
--- fallback when a clinic does not override them.
+-- clinic_services ALREADY EXISTED, empty and read by nothing, with a narrower
+-- shape: clinic_price/home_price, booking windows, no notion of where a service
+-- is offered or whether it needs a doctor. CREATE TABLE IF NOT EXISTS silently
+-- skipped it and the inserts then failed against the older columns, so this
+-- extends the table in place instead.
 --
--- This layers UNDER the existing clinics.enable_* flags, which were already in
--- the schema and read by nothing. Those stay as coarse master switches
--- (does this clinic do consultations at all) and this table decides which
--- individual services are offered within whatever the switches allow.
+-- service_types stays a GLOBAL catalogue keyed by code. Adding clinic_id there
+-- would fork it per tenant and break every lookup that resolves by code.
+--
+-- This layers UNDER the existing clinics.enable_* flags, which were also in the
+-- schema and read by nothing. Those stay as coarse master switches (does this
+-- clinic do consultations at all) and this table decides which individual
+-- services run within whatever the switches allow.
 
-CREATE TABLE IF NOT EXISTS clinic_services (
-    clinic_id         UUID NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
-    service_type_id   UUID NOT NULL REFERENCES service_types(id) ON DELETE CASCADE,
+ALTER TABLE clinic_services
+    ADD COLUMN IF NOT EXISTS offered_at_clinic   BOOLEAN NOT NULL DEFAULT TRUE,
+    ADD COLUMN IF NOT EXISTS offered_at_home     BOOLEAN NOT NULL DEFAULT FALSE,
+    ADD COLUMN IF NOT EXISTS duration_minutes    INTEGER,
+    ADD COLUMN IF NOT EXISTS requires_doctor     BOOLEAN NOT NULL DEFAULT TRUE,
+    -- How many patients can hold the same slot. A doctor sees one at a time,
+    -- but a diagnostic centre can run several draws at once, and without this
+    -- every doctor-free service would silently be capacity one.
+    ADD COLUMN IF NOT EXISTS concurrent_capacity INTEGER NOT NULL DEFAULT 1;
 
-    is_enabled        BOOLEAN NOT NULL DEFAULT TRUE,
+-- The primary key is a surrogate id, so nothing stopped a clinic having the
+-- same service twice. ON CONFLICT below needs this to exist.
+DO $$
+BEGIN
+    ALTER TABLE clinic_services
+        ADD CONSTRAINT clinic_services_clinic_service_unique
+        UNIQUE (clinic_id, service_type_id);
+EXCEPTION
+    WHEN duplicate_table THEN NULL;
+    WHEN duplicate_object THEN NULL;
+END;
+$$;
 
-    -- A service can be offered in the clinic, at home, or both. Imaging, for
-    -- example, cannot travel.
-    offered_at_clinic BOOLEAN NOT NULL DEFAULT TRUE,
-    offered_at_home   BOOLEAN NOT NULL DEFAULT FALSE,
+DO $$
+BEGIN
+    ALTER TABLE clinic_services
+        ADD CONSTRAINT clinic_services_somewhere
+        CHECK (offered_at_clinic OR offered_at_home);
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END;
+$$;
 
-    -- NULL means inherit the catalogue default rather than "free".
-    price             NUMERIC(10, 2),
-    home_price        NUMERIC(10, 2),
-    duration_minutes  INTEGER,
+DO $$
+BEGIN
+    ALTER TABLE clinic_services
+        ADD CONSTRAINT clinic_services_capacity_sane
+        CHECK (concurrent_capacity >= 1);
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END;
+$$;
 
-    -- Diagnostics usually do not need a doctor chosen, which changes the
-    -- booking flow, not just the menu.
-    requires_doctor   BOOLEAN NOT NULL DEFAULT TRUE,
-
-    -- How many patients can hold the same slot. A doctor sees one patient at a
-    -- time, but a diagnostic centre can run several draws at once, and without
-    -- this every doctor-free service would silently be capacity one.
-    concurrent_capacity INTEGER NOT NULL DEFAULT 1,
-
-    display_order     INTEGER NOT NULL DEFAULT 0,
-
-    created_at        TIMESTAMP NOT NULL DEFAULT NOW(),
-    updated_at        TIMESTAMP NOT NULL DEFAULT NOW(),
-
-    PRIMARY KEY (clinic_id, service_type_id),
-
-    CONSTRAINT clinic_services_somewhere CHECK (offered_at_clinic OR offered_at_home),
-    CONSTRAINT clinic_services_price_sane CHECK (price IS NULL OR price >= 0),
-    CONSTRAINT clinic_services_home_price_sane CHECK (home_price IS NULL OR home_price >= 0),
-    CONSTRAINT clinic_services_duration_sane CHECK (duration_minutes IS NULL OR duration_minutes > 0),
-    CONSTRAINT clinic_services_capacity_sane CHECK (concurrent_capacity >= 1)
-);
+DO $$
+BEGIN
+    ALTER TABLE clinic_services
+        ADD CONSTRAINT clinic_services_duration_sane
+        CHECK (duration_minutes IS NULL OR duration_minutes > 0);
+EXCEPTION
+    WHEN duplicate_object THEN NULL;
+END;
+$$;
 
 -- The patient menu reads this on every greeting.
 CREATE INDEX IF NOT EXISTS idx_clinic_services_enabled
@@ -99,3 +116,10 @@ FROM clinics c
 CROSS JOIN service_types s
 WHERE s.code NOT IN ('CONSULTATION', 'SAMPLE_COLLECTION')
 ON CONFLICT (clinic_id, service_type_id) DO NOTHING;
+
+-- Check it landed:
+--   SELECT s.code, cs.is_enabled, cs.offered_at_home, cs.requires_doctor,
+--          cs.concurrent_capacity, cs.clinic_price
+--   FROM clinic_services cs
+--   JOIN service_types s ON s.id = cs.service_type_id
+--   ORDER BY cs.display_order;

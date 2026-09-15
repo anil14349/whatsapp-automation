@@ -73,7 +73,7 @@ function toService(row: Record<string, any>): ClinicService | null {
         offeredAtClinic: row.offered_at_clinic !== false,
         offeredAtHome: row.offered_at_home === true,
         // A null override inherits the catalogue price; it does not mean free.
-        clinicPrice: row.price ?? type.default_clinic_price ?? null,
+        clinicPrice: row.clinic_price ?? type.default_clinic_price ?? null,
         homePrice: row.home_price ?? type.default_home_price ?? null,
         durationMinutes: row.duration_minutes ?? type.default_duration_minutes ?? 30,
         concurrentCapacity: row.concurrent_capacity ?? 1,
@@ -134,7 +134,7 @@ export async function getEnabledServices(
             supabase
                 .from("clinic_services")
                 .select(
-                    "service_type_id, requires_doctor, offered_at_clinic, offered_at_home, price, home_price, duration_minutes, concurrent_capacity, display_order, " +
+                    "service_type_id, requires_doctor, offered_at_clinic, offered_at_home, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, " +
                     "service_type:service_types(code, name, category, default_clinic_price, default_home_price, default_duration_minutes, is_active)"
                 )
                 .eq("clinic_id", clinicId)

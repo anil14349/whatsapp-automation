@@ -529,6 +529,7 @@ export class PatientFlowHandler {
 
         // Store selected doctor and move to date selection
         await this.updateSession(phone, "BOOK_DATE", {
+            ...session.data,
             language,
             selectedDoctorId: doctor.id,
             selectedDoctorName: doctor.name
@@ -631,6 +632,7 @@ export class PatientFlowHandler {
 
             // Move to time selection
             await this.updateSession(phone, "BOOK_TIME", {
+                ...session.data,
                 language,
                 selectedDoctorId: doctorId,
                 selectedDoctorName: session.data?.selectedDoctorName,
@@ -672,6 +674,7 @@ export class PatientFlowHandler {
             }
 
             await this.updateSession(phone, "BOOK_TIME", {
+                ...session.data,
                 language,
                 selectedDoctorId: doctorId,
                 selectedDoctorName: session.data?.selectedDoctorName,
@@ -763,6 +766,7 @@ export class PatientFlowHandler {
 
         // Move to time selection
         await this.updateSession(phone, "BOOK_TIME", {
+            ...session.data,
             language,
             selectedDoctorId: doctorId,
             selectedDoctorName: session.data?.selectedDoctorName,
@@ -830,6 +834,7 @@ export class PatientFlowHandler {
 
         // Move to name confirmation
         await this.updateSession(phone, "BOOK_NAME", {
+            ...session.data,
             language,
             selectedDoctorId: doctorId,
             selectedDoctorName: session.data?.selectedDoctorName,
@@ -874,6 +879,7 @@ export class PatientFlowHandler {
 
         // Move to confirmation
         await this.updateSession(phone, "BOOK_CONFIRM", {
+            ...session.data,
             language,
             selectedDoctorId: session.data?.selectedDoctorId,
             selectedDoctorName: session.data?.selectedDoctorName,
