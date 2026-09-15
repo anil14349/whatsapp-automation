@@ -9,26 +9,11 @@ import { redirect } from "next/navigation";
 import { callAsUser, readSession } from "@/lib/portal";
 import { PortalNav } from "@/app/nav";
 import { WalkInForm, type DoctorOption } from "./walk-in-form";
-
-interface Row {
-    id: string;
-    time: string;
-    patientName: string;
-    patientPhone: string;
-    doctorName: string | null;
-    status: string;
-}
+import { AppointmentTable, type AppointmentRow } from "./appointment-table";
 
 function today(): string {
     return new Date().toISOString().split("T")[0];
 }
-
-const STATUS_STYLES: Record<string, string> = {
-    CONFIRMED: "bg-blue-50 text-blue-700",
-    COMPLETED: "bg-emerald-50 text-emerald-700",
-    NO_SHOW: "bg-amber-50 text-amber-700",
-    CANCELLED: "bg-slate-100 text-slate-500"
-};
 
 export default async function AppointmentsPage({
     searchParams
@@ -58,12 +43,13 @@ export default async function AppointmentsPage({
         ? (await callAsUser("receptionists-appointments?resource=doctors")).data?.doctors ?? []
         : [];
 
-    const rows: Row[] = result.ok
+    const rows: AppointmentRow[] = result.ok
         ? (result.data.appointments ?? []).map((a: any) => ({
             id: a.id,
             time: a.time ?? a.appointment_time,
             patientName: a.patient?.name ?? a.patient_name ?? "Unknown",
             patientPhone: a.patient?.phone ?? a.patient_phone ?? "",
+            doctorId: a.doctor?.id ?? a.doctor_id ?? null,
             doctorName: a.doctor?.name ?? null,
             status: a.status
         }))
@@ -117,41 +103,12 @@ export default async function AppointmentsPage({
             )}
 
             {rows.length > 0 && (
-                <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
-                    <table className="w-full text-left text-sm">
-                        <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-                            <tr>
-                                <th className="px-4 py-3">Time</th>
-                                <th className="px-4 py-3">Patient</th>
-                                {!isDoctor && <th className="px-4 py-3">Doctor</th>}
-                                <th className="px-4 py-3">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                            {rows.map((row) => (
-                                <tr key={row.id}>
-                                    <td className="px-4 py-3 font-medium">{row.time}</td>
-                                    <td className="px-4 py-3">
-                                        <div>{row.patientName}</div>
-                                        <div className="text-xs text-slate-400">{row.patientPhone}</div>
-                                    </td>
-                                    {!isDoctor && (
-                                        <td className="px-4 py-3 text-slate-600">{row.doctorName ?? "—"}</td>
-                                    )}
-                                    <td className="px-4 py-3">
-                                        <span
-                                            className={`rounded-full px-2 py-1 text-xs font-medium ${
-                                                STATUS_STYLES[row.status] ?? "bg-slate-100 text-slate-600"
-                                            }`}
-                                        >
-                                            {row.status}
-                                        </span>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                <AppointmentTable
+                    rows={rows}
+                    date={date}
+                    showDoctor={!isDoctor}
+                    canEdit={canBook}
+                />
             )}
         </main>
     );

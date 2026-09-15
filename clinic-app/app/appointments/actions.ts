@@ -69,3 +69,42 @@ export async function bookWalkIn(
 
     return { success: `Booked ${patientName} at ${appointmentTime}.` };
 }
+
+export type AppointmentAction = "status" | "cancel" | "reschedule";
+
+/**
+ * Mark an appointment complete or no-show, cancel it, or move it.
+ */
+export async function updateAppointment(
+    id: string,
+    action: AppointmentAction,
+    options: { status?: string; reason?: string; date?: string; time?: string } = {}
+): Promise<BookingState> {
+    const result = await callAsUser("receptionists-appointments", {
+        method: "PATCH",
+        body: {
+            id,
+            action,
+            status: options.status,
+            reason: options.reason,
+            appointmentDate: options.date,
+            appointmentTime: options.time
+        }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not update the appointment." };
+    }
+
+    revalidatePath("/appointments");
+
+    if (action === "cancel") {
+        return { success: "Appointment cancelled." };
+    }
+
+    if (action === "reschedule") {
+        return { success: `Moved to ${options.date} at ${options.time}.` };
+    }
+
+    return { success: `Marked ${String(options.status).toLowerCase().replace("_", " ")}.` };
+}

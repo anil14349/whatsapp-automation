@@ -946,11 +946,13 @@ export class PatientFlowHandler {
                 .from("appointments")
                 .select("doctor_id, appointment_date, appointment_time")
                 .eq("id", appointmentId)
+                .eq("clinic_id", clinicId)
                 .maybeSingle();
 
             const result = await cancelAppointment(
                 this.supabase,
                 appointmentId,
+                clinicId,
                 "Patient initiated cancellation"
             );
 
@@ -1236,6 +1238,7 @@ export class PatientFlowHandler {
             const result = await rescheduleAppointment(
                 this.supabase,
                 session.data?.selectedAppointmentId,
+                session.clinic_id,
                 session.data?.newDate,
                 session.data?.newTime
             );

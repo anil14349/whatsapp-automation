@@ -28,13 +28,18 @@ export interface AppointmentResponse {
 export async function cancelAppointment(
     supabase: SupabaseClient,
     appointmentId: string,
-    reason?: string
+    clinicId: string,
+    reason?: string,
+    actor: string = "patient"
 ): Promise<AppointmentResponse> {
     try {
+        // Scoped by clinic: an appointment id alone must never be enough to
+        // cancel another clinic's booking.
         const { data: existing, error: fetchError } = await supabase
             .from("appointments")
             .select("id, status")
             .eq("id", appointmentId)
+            .eq("clinic_id", clinicId)
             .maybeSingle();
 
         if (fetchError) throw fetchError;
@@ -62,7 +67,8 @@ export async function cancelAppointment(
                 cancellation_reason: reason || null,
                 updated_at: new Date().toISOString()
             })
-            .eq("id", appointmentId);
+            .eq("id", appointmentId)
+            .eq("clinic_id", clinicId);
 
         if (updateError) throw updateError;
 
@@ -70,7 +76,7 @@ export async function cancelAppointment(
         await recordAuditEvent(
             supabase,
             "appointment_cancelled",
-            "patient",
+            actor,
             "appointment",
             appointmentId,
             { status: existing.status },
@@ -103,8 +109,10 @@ export async function cancelAppointment(
 export async function rescheduleAppointment(
     supabase: SupabaseClient,
     appointmentId: string,
+    clinicId: string,
     newDate: string,
-    newTime: string
+    newTime: string,
+    actor: string = "patient"
 ): Promise<AppointmentResponse> {
     const client = new MultiClinicSupabaseClient(
         Deno.env.get("SUPABASE_URL") || "",
@@ -125,6 +133,7 @@ export async function rescheduleAppointment(
             .from("appointments")
             .select("id, status, clinic_id, doctor_id, patient_phone, appointment_date, appointment_time")
             .eq("id", appointmentId)
+            .eq("clinic_id", clinicId)
             .maybeSingle();
 
         if (fetchError) throw fetchError;
@@ -168,7 +177,8 @@ export async function rescheduleAppointment(
                 appointment_time: newTime,
                 updated_at: new Date().toISOString()
             })
-            .eq("id", appointmentId);
+            .eq("id", appointmentId)
+            .eq("clinic_id", clinicId);
 
         if (updateError) throw updateError;
 
@@ -176,7 +186,7 @@ export async function rescheduleAppointment(
         await recordAuditEvent(
             supabase,
             "appointment_rescheduled",
-            existing.patient_phone,
+            actor === "patient" ? existing.patient_phone : actor,
             "appointment",
             appointmentId,
             { date: existing.appointment_date, time: existing.appointment_time },

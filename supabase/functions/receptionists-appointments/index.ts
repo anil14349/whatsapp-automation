@@ -42,7 +42,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withAuth, successResponse, errorResponse, badRequestResponse } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
-import { debug } from "../shared/logger.ts";
+import { debug, recordAuditEvent } from "../shared/logger.ts";
+import { cancelAppointment, rescheduleAppointment } from "../shared/appointments.ts";
 import MultiClinicSupabaseClient from "../shared/multi-clinic-supabase-client.ts";
 import { withCors } from "../shared/cors.ts";
 import { createAppointmentReminders } from "../shared/appointment-reminders.ts";
@@ -307,13 +308,145 @@ async function createAppointment(
 }
 
 /**
+ * The clinic this request may touch.
+ *
+ * Receptionists and owners are pinned to their own clinic whatever they send.
+ * A platform ADMIN has no clinic of their own, so they must name one.
+ */
+function resolveClinicId(user: TokenPayload, requested?: string | null): string | null {
+  if (user.role === "ADMIN") {
+    return requested || null;
+  }
+
+  return user.clinicId ?? null;
+}
+
+/**
+ * Change the status of one appointment, or cancel or reschedule it.
+ */
+async function updateAppointment(
+  supabase: SupabaseClient,
+  clinicId: string,
+  actor: string,
+  body: {
+    id?: string;
+    action?: string;
+    status?: string;
+    reason?: string;
+    appointmentDate?: string;
+    appointmentTime?: string;
+  }
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  if (!body.id) {
+    return { status: 400, payload: { error: "id is required" } };
+  }
+
+  const action = body.action ?? "status";
+
+  if (action === "cancel") {
+    const result = await cancelAppointment(
+      supabase,
+      body.id,
+      clinicId,
+      body.reason || "Cancelled by clinic staff",
+      actor
+    );
+
+    return result.success
+      ? { status: 200, payload: { id: body.id, status: "CANCELLED" } }
+      : { status: 400, payload: { error: result.message } };
+  }
+
+  if (action === "reschedule") {
+    if (!body.appointmentDate || !body.appointmentTime) {
+      return { status: 400, payload: { error: "appointmentDate and appointmentTime are required" } };
+    }
+
+    const result = await rescheduleAppointment(
+      supabase,
+      body.id,
+      clinicId,
+      body.appointmentDate,
+      body.appointmentTime,
+      actor
+    );
+
+    return result.success
+      ? {
+        status: 200,
+        payload: { id: body.id, date: body.appointmentDate, time: body.appointmentTime }
+      }
+      : { status: 400, payload: { error: result.message } };
+  }
+
+  if (action !== "status") {
+    return { status: 400, payload: { error: "action must be status, cancel or reschedule" } };
+  }
+
+  const status = body.status;
+
+  if (status !== "COMPLETED" && status !== "NO_SHOW" && status !== "CONFIRMED") {
+    return { status: 400, payload: { error: "status must be COMPLETED, NO_SHOW or CONFIRMED" } };
+  }
+
+  const { data: existing } = await supabase
+    .from("appointments")
+    .select("id, status")
+    .eq("id", body.id)
+    .eq("clinic_id", clinicId)
+    .maybeSingle();
+
+  if (!existing) {
+    return { status: 404, payload: { error: "Appointment not found at this clinic" } };
+  }
+
+  if (existing.status === "CANCELLED") {
+    return { status: 400, payload: { error: "Cannot change a cancelled appointment" } };
+  }
+
+  const now = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("appointments")
+    .update({
+      status,
+      // Clearing this on reopen keeps the feedback sweep from treating a
+      // reopened appointment as finished.
+      completed_at: status === "COMPLETED" ? now : null,
+      updated_at: now
+    })
+    .eq("id", body.id)
+    .eq("clinic_id", clinicId);
+
+  if (error) {
+    return { status: 500, payload: { error: `Failed to update appointment: ${error.message}` } };
+  }
+
+  await recordAuditEvent(
+    supabase,
+    "appointment_status_changed",
+    actor,
+    "appointment",
+    body.id,
+    { status: existing.status },
+    { status }
+  );
+
+  return { status: 200, payload: { id: body.id, status } };
+}
+
+/**
  * Main handler
  */
 async function handleRequest(user: TokenPayload, req: Request): Promise<Response> {
   try {
-    // A clinic owner runs the front desk too; a platform ADMIN has no clinic
-    // of their own so has nothing to scope this to.
-    if (user.role !== "RECEPTIONIST" && user.role !== "CLINIC_OWNER") {
+    // A clinic owner runs the front desk too. A platform ADMIN is allowed but
+    // must name the clinic, since they have none of their own.
+    if (
+      user.role !== "RECEPTIONIST" &&
+      user.role !== "CLINIC_OWNER" &&
+      user.role !== "ADMIN"
+    ) {
       return new Response(
         JSON.stringify({ error: "Only clinic staff can access this endpoint" }),
         { status: 403, headers: { "Content-Type": "application/json" } }
@@ -329,10 +462,18 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+    const url = new URL(req.url);
+
+    const clinicId = resolveClinicId(user, url.searchParams.get("clinicId"));
+
+    if (!clinicId) {
+      return badRequestResponse("clinicId is required");
+    }
+
+    const actor = `${user.role.toLowerCase()}:${user.email}`;
 
     // Handle GET (list appointments)
     if (req.method === "GET") {
-      const url = new URL(req.url);
       const dateParam = url.searchParams.get("date");
       const statusParam = url.searchParams.get("status");
       const resource = url.searchParams.get("resource");
@@ -343,7 +484,7 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
         const { data, error } = await supabase
           .from("doctors")
           .select("id, name, specialization, availability_status")
-          .eq("clinic_id", user.clinicId!)
+          .eq("clinic_id", clinicId)
           .eq("is_active", true)
           .order("name", { ascending: true });
 
@@ -362,14 +503,14 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
           return badRequestResponse("doctorId and date are required");
         }
 
-        const slots = await listAvailableSlots(supabase, user.clinicId!, doctorId, dateParam);
+        const slots = await listAvailableSlots(supabase, clinicId, doctorId, dateParam);
 
         return successResponse({ doctorId, date: dateParam, slots });
       }
 
       const appointments = await listAppointments(
         supabase,
-        user.clinicId!,
+        clinicId,
         dateParam || undefined,
         statusParam || undefined
       );
@@ -379,7 +520,7 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
       }
 
       debug("receptionistAppointments", "Appointments listed", {
-        clinicId: user.clinicId,
+        clinicId,
         count: appointments.length,
         date: dateParam
       });
@@ -388,6 +529,22 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
         appointments,
         total: appointments.length,
         date: dateParam
+      });
+    }
+
+    // Handle PATCH (complete, no-show, cancel, reschedule)
+    if (req.method === "PATCH") {
+      const body = await req.json().catch(() => null);
+
+      if (!body) {
+        return badRequestResponse("Invalid JSON body");
+      }
+
+      const result = await updateAppointment(supabase, clinicId, actor, body);
+
+      return new Response(JSON.stringify(result.payload), {
+        status: result.status,
+        headers: { "Content-Type": "application/json" }
       });
     }
 
@@ -405,7 +562,7 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
         return badRequestResponse(validation.error);
       }
 
-      const result = await createAppointment(supabase, user.clinicId!, validation.data!);
+      const result = await createAppointment(supabase, clinicId, validation.data!);
 
       if (!result.success) {
         return badRequestResponse(result.error);
@@ -434,12 +591,12 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
 
 // Export for Deno serve
 Deno.serve(withCors(async (req: Request) => {
-  if (!["GET", "POST"].includes(req.method)) {
+  if (!["GET", "POST", "PATCH"].includes(req.method)) {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
       { status: 405, headers: { "Content-Type": "application/json" } }
     );
   }
 
-  return withAuth(req, ["RECEPTIONIST", "CLINIC_OWNER"], (user) => handleRequest(user, req));
+  return withAuth(req, ["RECEPTIONIST", "CLINIC_OWNER", "ADMIN"], (user) => handleRequest(user, req));
 }));
