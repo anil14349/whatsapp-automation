@@ -67,7 +67,8 @@ function toService(row: Record<string, any>): ClinicService | null {
     return {
         serviceTypeId: row.service_type_id,
         code: type.code,
-        name: type.name,
+        // What this clinic calls it, falling back to the catalogue name.
+        name: row.display_name || type.name,
         category: type.category,
         requiresDoctor: row.requires_doctor !== false,
         offeredAtClinic: row.offered_at_clinic !== false,
@@ -134,7 +135,7 @@ export async function getEnabledServices(
             supabase
                 .from("clinic_services")
                 .select(
-                    "service_type_id, requires_doctor, offered_at_clinic, offered_at_home, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, " +
+                    "service_type_id, requires_doctor, offered_at_clinic, offered_at_home, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, display_name, " +
                     "service_type:service_types(code, name, category, default_clinic_price, default_home_price, default_duration_minutes, is_active)"
                 )
                 .eq("clinic_id", clinicId)

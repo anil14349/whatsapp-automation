@@ -13,6 +13,7 @@ import { seed, CLINIC_A, CLINIC_B, DOCTOR_PHONE } from "./helpers/fixtures.ts";
 Deno.env.set("DEFAULT_CLINIC_ID", CLINIC_A);
 Deno.env.set("WHATSAPP_ACCESS_TOKEN", "ENV_TOKEN");
 Deno.env.set("WHATSAPP_PHONE_NUMBER_ID", "ENV_PHONE");
+// Set deliberately: these used to grant staff access and must no longer.
 Deno.env.set("DOCTOR_PHONES", "919000000077");
 Deno.env.set("SAMPLE_COLLECTOR_PHONES", "919000000088");
 
@@ -98,18 +99,23 @@ Deno.test("an inactive doctor loses staff access", async () => {
     assertEquals(await getRoleByPhoneForClinic(supabase, DOCTOR_PHONE, CLINIC_A), "PATIENT");
 });
 
-Deno.test("env staff lists apply only to the default clinic", async () => {
+Deno.test("a phone listed in the environment is not staff anywhere", async () => {
     const supabase = db();
 
-    // 919000000077 is in DOCTOR_PHONES; CLINIC_A is DEFAULT_CLINIC_ID.
-    assertEquals(await getRoleByPhoneForClinic(supabase, "919000000077", CLINIC_A), "DOCTOR");
+    // Staff is decided by the database alone. An env list is a second way in
+    // that nobody maintains, so it must grant nothing, including at the
+    // default clinic it used to apply to.
+    assertEquals(await getRoleByPhoneForClinic(supabase, "919000000077", CLINIC_A), "PATIENT");
     assertEquals(await getRoleByPhoneForClinic(supabase, "919000000077", CLINIC_B), "PATIENT");
-
-    assertEquals(
-        await getRoleByPhoneForClinic(supabase, "919000000088", CLINIC_A),
-        "HOME_COLLECTION_PERSON"
-    );
+    assertEquals(await getRoleByPhoneForClinic(supabase, "919000000088", CLINIC_A), "PATIENT");
     assertEquals(await getRoleByPhoneForClinic(supabase, "919000000088", CLINIC_B), "PATIENT");
+});
+
+Deno.test("a clinic with no collectors in the database has none", async () => {
+    const supabase = fakeSupabase(seed());
+    supabase.store.sample_collectors = [];
+
+    assertEquals((await getCollectorsForClinic(supabase, CLINIC_A)).length, 0);
 });
 
 Deno.test("an unknown number is always a patient", async () => {

@@ -85,19 +85,18 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
 
                             {open && (
                                 <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
-                                    {s.isOwn && (
-                                        <div className="sm:col-span-2">
-                                            <NameField
-                                                value={s.name}
-                                                disabled={busy}
-                                                onSave={(next) =>
-                                                    start(async () =>
-                                                        setNotice(await renameService(s.serviceTypeId, next))
-                                                    )
-                                                }
-                                            />
-                                        </div>
-                                    )}
+                                    <div className="sm:col-span-2">
+                                        <NameField
+                                            value={s.name}
+                                            catalogueName={s.isOwn ? null : s.catalogueName}
+                                            disabled={busy}
+                                            onSave={(next) =>
+                                                start(async () =>
+                                                    setNotice(await renameService(s.serviceTypeId, next))
+                                                )
+                                            }
+                                        />
+                                    </div>
                                     <Toggle
                                         label="At the clinic"
                                         value={s.offeredAtClinic}
@@ -181,14 +180,17 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
 
 function NameField({
     value,
+    catalogueName,
     disabled,
     onSave
 }: {
     value: string;
+    catalogueName: string | null;
     disabled: boolean;
     onSave: (value: string) => void;
 }) {
     const [draft, setDraft] = useState(value);
+    const renamed = catalogueName !== null && catalogueName !== value;
 
     return (
         <label className="space-y-1 text-sm">
@@ -206,7 +208,9 @@ function NameField({
                 className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm disabled:bg-slate-50"
             />
             <span className="block text-xs text-slate-400">
-                This is what patients see on their phone
+                {renamed
+                    ? `This is what patients see. Normally called "${catalogueName}".`
+                    : "This is what patients see on their phone"}
             </span>
         </label>
     );

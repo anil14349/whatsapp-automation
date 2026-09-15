@@ -1,14 +1,13 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getDoctorPhones, getSampleCollectorPhones } from "./config.ts";
 import { debug } from "./logger.ts";
 
 /**
  * Staff identity, scoped to a clinic.
  *
  * Doctors live in `doctors` and collectors in `sample_collectors`, both keyed
- * by clinic. The DOCTOR_PHONES / SAMPLE_COLLECTOR_PHONES env lists remain as a
- * fallback for the original single-clinic deployment, but they apply only to
- * DEFAULT_CLINIC_ID so one clinic's staff can never gain access to another's.
+ * by clinic. There is no environment fallback: a phone number granted staff
+ * access by a list nobody maintains is a second way to become staff, and the
+ * lists were never used.
  */
 
 export type StaffRole = "DOCTOR" | "HOME_COLLECTION_PERSON" | "PATIENT";
@@ -17,11 +16,6 @@ export interface Collector {
     phone: string;
     name: string;
     maxPerDay: number;
-}
-
-function isDefaultClinic(clinicId: string): boolean {
-    const defaultId = Deno.env.get("DEFAULT_CLINIC_ID");
-    return Boolean(defaultId) && clinicId === defaultId;
 }
 
 export async function getRoleByPhoneForClinic(
@@ -56,28 +50,18 @@ export async function getRoleByPhoneForClinic(
             return "HOME_COLLECTION_PERSON";
         }
     } catch (error) {
-        debug("staffDirectory", "Role lookup failed, falling back to env lists", {
+        // Losing staff access on a database error is the safe direction: the
+        // alternative is granting it to someone we could not verify.
+        debug("staffDirectory", "Role lookup failed, treating as patient", {
             error: error instanceof Error ? error.message : String(error)
         });
-    }
-
-    // Env lists are only meaningful for the original single-clinic install.
-    if (isDefaultClinic(clinicId)) {
-        if (getDoctorPhones().includes(normalized)) {
-            return "DOCTOR";
-        }
-
-        if (getSampleCollectorPhones().includes(normalized)) {
-            return "HOME_COLLECTION_PERSON";
-        }
     }
 
     return "PATIENT";
 }
 
 /**
- * Active collectors for a clinic, falling back to the env list for the
- * default clinic so existing dispatch keeps working.
+ * Active collectors for a clinic.
  */
 export async function getCollectorsForClinic(
     supabase: SupabaseClient,
@@ -103,13 +87,5 @@ export async function getCollectorsForClinic(
         });
     }
 
-    if (!isDefaultClinic(clinicId)) {
-        return [];
-    }
-
-    return getSampleCollectorPhones().map((phone) => ({
-        phone,
-        name: "Collector",
-        maxPerDay: 8
-    }));
+    return [];
 }

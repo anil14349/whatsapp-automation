@@ -14,36 +14,74 @@ import type { ClinicService } from "./clinic-services.ts";
 
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-interface ClinicHours {
-    openTime: string;
-    closeTime: string;
-    workingDays: string[];
-    timezone: string;
-}
-
-async function getClinicHours(
+/**
+ * Hours for one day.
+ *
+ * `clinic_operating_hours` holds a row per weekday and is what the doctor slot
+ * path already uses; the open_time/close_time columns on `clinics` are a
+ * single pair for the whole week. Reading only the latter offered Saturday
+ * slots until 18:00 at a clinic that shuts at 14:00.
+ */
+async function getClinicHoursForDay(
     supabase: SupabaseClient,
-    clinicId: string
-): Promise<ClinicHours | null> {
-    const { data, error } = await supabase
+    clinicId: string,
+    date: string
+): Promise<{ openTime: string; closeTime: string; timezone: string } | null> {
+    const { data: clinic } = await supabase
         .from("clinics")
         .select("open_time, close_time, working_days, timezone")
         .eq("id", clinicId)
         .maybeSingle();
 
-    if (error || !data) {
-        debug("clinicSlots", "Clinic hours lookup failed", { clinicId });
+    if (!clinic) {
+        debug("clinicSlots", "Clinic not found", { clinicId });
+        return null;
+    }
+
+    const timezone = clinic.timezone || "UTC";
+
+    // Monday is 1 and Sunday is 7, matching the doctor hours lookup.
+    const jsDay = new Date(date + "T00:00:00").getDay();
+    const dayOfWeek = jsDay === 0 ? 7 : jsDay;
+
+    const { data: perDay } = await supabase
+        .from("clinic_operating_hours")
+        .select("opening_time, closing_time, is_active")
+        .eq("clinic_id", clinicId)
+        .eq("day_of_week", dayOfWeek)
+        .maybeSingle();
+
+    if (perDay) {
+        if (perDay.is_active === false) {
+            return null;
+        }
+
+        const open = String(perDay.opening_time).slice(0, 5);
+        const close = String(perDay.closing_time).slice(0, 5);
+
+        // A clinic marks a closed day as 00:00-00:00 rather than deleting it.
+        if (open === close) {
+            return null;
+        }
+
+        return { openTime: open, closeTime: close, timezone };
+    }
+
+    // No row for this day: fall back to the week-wide hours.
+    const dayName = DAY_NAMES[jsDay];
+    const workingDays = String(clinic.working_days || "Mon,Tue,Wed,Thu,Fri,Sat")
+        .split(",")
+        .map((d: string) => d.trim())
+        .filter(Boolean);
+
+    if (!workingDays.includes(dayName)) {
         return null;
     }
 
     return {
-        openTime: data.open_time || "09:00",
-        closeTime: data.close_time || "18:00",
-        workingDays: String(data.working_days || "Mon,Tue,Wed,Thu,Fri,Sat")
-            .split(",")
-            .map((d: string) => d.trim())
-            .filter(Boolean),
-        timezone: data.timezone || "UTC"
+        openTime: clinic.open_time || "09:00",
+        closeTime: clinic.close_time || "18:00",
+        timezone
     };
 }
 
@@ -86,15 +124,9 @@ export async function getClinicServiceSlots(
     service: ClinicService,
     date: string
 ): Promise<string[]> {
-    const hours = await getClinicHours(supabase, clinicId);
+    const hours = await getClinicHoursForDay(supabase, clinicId, date);
 
     if (!hours) {
-        return [];
-    }
-
-    const dayName = DAY_NAMES[new Date(date + "T00:00:00").getDay()];
-
-    if (!hours.workingDays.includes(dayName)) {
         return [];
     }
 

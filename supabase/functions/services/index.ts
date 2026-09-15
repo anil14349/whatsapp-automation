@@ -65,7 +65,7 @@ async function listServices(
     supabase
       .from("clinic_services")
       .select(
-        "service_type_id, is_enabled, offered_at_clinic, offered_at_home, requires_doctor, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order"
+        "service_type_id, is_enabled, offered_at_clinic, offered_at_home, requires_doctor, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, display_name"
       )
       .eq("clinic_id", clinicId)
   ]);
@@ -87,7 +87,9 @@ async function listServices(
     return {
       serviceTypeId: type.id,
       code: type.code,
-      name: type.name,
+      name: row?.display_name || type.name,
+      // Shown so a clinic can tell it has renamed something, and get back.
+      catalogueName: type.name,
       category: type.category,
       // Shared services cannot be renamed or removed by one clinic.
       isOwn: type.clinic_id !== null,
@@ -146,7 +148,7 @@ async function updateService(
 
   const { data: type } = await supabase
     .from("service_types")
-    .select("id, code, category, default_home_price, clinic_id")
+    .select("id, code, name, category, default_home_price, clinic_id")
     .eq("id", body.serviceTypeId)
     .or(`clinic_id.is.null,clinic_id.eq.${clinicId}`)
     .maybeSingle();
@@ -155,17 +157,14 @@ async function updateService(
     return { status: 404, payload: { error: "Unknown service" } };
   }
 
-  // Renaming is only for a clinic's own service. The shared catalogue is used
-  // by every clinic, so one of them must not rename Consultation for all.
+  // Set when a shared service is being renamed for this clinic only.
+  let patchDisplayName: string | null | undefined;
+
+  // A clinic's own service is renamed outright. A shared one gets a per-clinic
+  // display name instead, so calling it "OP Consultation" here does not rename
+  // it for every other clinic.
   if (typeof body.name === "string") {
     const name = body.name.trim();
-
-    if (type.clinic_id !== clinicId) {
-      return {
-        status: 403,
-        payload: { error: "This is a shared service and cannot be renamed" }
-      };
-    }
 
     if (!name) {
       return { status: 400, payload: { error: "name cannot be empty" } };
@@ -178,15 +177,21 @@ async function updateService(
       };
     }
 
-    const { error: renameError } = await supabase
-      .from("service_types")
-      .update({ name, updated_at: new Date().toISOString() })
-      .eq("id", body.serviceTypeId)
-      .eq("clinic_id", clinicId);
+    if (type.clinic_id === clinicId) {
+      const { error: renameError } = await supabase
+        .from("service_types")
+        .update({ name, updated_at: new Date().toISOString() })
+        .eq("id", body.serviceTypeId)
+        .eq("clinic_id", clinicId);
 
-    if (renameError) {
-      debug("services", "Rename failed", { error: renameError.message });
-      return { status: 500, payload: { error: "Failed to rename the service" } };
+      if (renameError) {
+        debug("services", "Rename failed", { error: renameError.message });
+        return { status: 500, payload: { error: "Failed to rename the service" } };
+      }
+    } else {
+      // Reverting to the catalogue name is clearing the override, not setting
+      // it, so the clinic is not pinned to a name that later changes.
+      patchDisplayName = name === type.name ? null : name;
     }
 
     clearClinicServiceCache();
@@ -221,6 +226,7 @@ async function updateService(
   if (homePrice !== undefined) patch.home_price = homePrice;
   if (duration !== undefined) patch.duration_minutes = duration;
   if (order !== undefined) patch.display_order = order;
+  if (patchDisplayName !== undefined) patch.display_name = patchDisplayName;
 
   if (capacity !== undefined) {
     if (capacity === null || capacity < 1) {
@@ -263,6 +269,7 @@ async function updateService(
       clinic_price: clinicPrice ?? null,
       home_price: homePrice ?? null,
       duration_minutes: duration ?? null,
+      display_name: patchDisplayName ?? null,
       concurrent_capacity: capacity ?? 1,
       display_order: order ?? 10
     }));

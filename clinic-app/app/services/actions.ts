@@ -12,6 +12,7 @@ export interface ServiceRow {
     serviceTypeId: string;
     code: string;
     name: string;
+    catalogueName: string;
     category: string;
     isOwn: boolean;
     configured: boolean;
