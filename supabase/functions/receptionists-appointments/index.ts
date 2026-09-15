@@ -43,6 +43,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withAuth, successResponse, errorResponse, badRequestResponse } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
 import { debug } from "../shared/logger.ts";
+import MultiClinicSupabaseClient from "../shared/multi-clinic-supabase-client.ts";
 import { withCors } from "../shared/cors.ts";
 import { createAppointmentReminders } from "../shared/appointment-reminders.ts";
 
@@ -76,9 +77,11 @@ async function listAppointments(
   status?: string
 ) {
   try {
+    // The doctor is embedded because appointments has no doctor_name column;
+    // reading one gave every row an empty doctor in the portal.
     let query = supabase
       .from("appointments")
-      .select("*")
+      .select("*, doctor:doctors(id, name)")
       .eq("clinic_id", clinicId);
 
     if (date) {
@@ -161,6 +164,31 @@ function validateCreateRequest(body: unknown): { valid: boolean; error?: string;
       preferredLanguage: req.preferredLanguage === "HI" ? "HI" : "EN"
     }
   };
+}
+
+/**
+ * Free slots for a doctor, using the same rules as the WhatsApp flow so the
+ * two channels cannot offer different availability.
+ */
+async function listAvailableSlots(
+  _supabase: SupabaseClient,
+  clinicId: string,
+  doctorId: string,
+  date: string
+): Promise<string[]> {
+  try {
+    const client = new MultiClinicSupabaseClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    );
+
+    return await client.getAvailableSlots(clinicId, doctorId, date);
+  } catch (error) {
+    debug("receptionistAppointments", "Slot lookup failed", {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return [];
+  }
 }
 
 /**
@@ -306,6 +334,37 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
       const url = new URL(req.url);
       const dateParam = url.searchParams.get("date");
       const statusParam = url.searchParams.get("status");
+      const resource = url.searchParams.get("resource");
+
+      // Booking a walk-in needs the clinic's doctors and their free slots,
+      // neither of which a receptionist can reach through the staff endpoint.
+      if (resource === "doctors") {
+        const { data, error } = await supabase
+          .from("doctors")
+          .select("id, name, specialization, availability_status")
+          .eq("clinic_id", user.clinicId!)
+          .eq("is_active", true)
+          .order("name", { ascending: true });
+
+        if (error) {
+          debug("receptionistAppointments", "Doctor list failed", { error: error.message });
+          return errorResponse("Failed to list doctors", 500);
+        }
+
+        return successResponse({ doctors: data ?? [] });
+      }
+
+      if (resource === "slots") {
+        const doctorId = url.searchParams.get("doctorId");
+
+        if (!doctorId || !dateParam) {
+          return badRequestResponse("doctorId and date are required");
+        }
+
+        const slots = await listAvailableSlots(supabase, user.clinicId!, doctorId, dateParam);
+
+        return successResponse({ doctorId, date: dateParam, slots });
+      }
 
       const appointments = await listAppointments(
         supabase,

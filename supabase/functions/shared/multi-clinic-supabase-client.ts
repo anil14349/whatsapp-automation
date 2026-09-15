@@ -509,6 +509,24 @@ export class MultiClinicSupabaseClient {
     // Get existing appointments
     const appointments = await this.getDoctorAppointments(clinicId, doctorId, date);
 
+    // A slot earlier today is not bookable. Compared in the clinic's own
+    // timezone, since the runtime is UTC.
+    const clinic = await this.getClinic(clinicId);
+    const nowLocal = new Intl.DateTimeFormat("en-GB", {
+      timeZone: clinic?.timezone || "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false
+    }).formatToParts(new Date());
+
+    const part = (type: string) => nowLocal.find((p) => p.type === type)?.value ?? "";
+    const todayLocal = `${part("year")}-${part("month")}-${part("day")}`;
+    const isToday = date === todayLocal;
+    const minutesNow = Number(part("hour")) * 60 + Number(part("minute"));
+
     // Generate time slots (30-minute intervals)
     const slots: string[] = [];
     const [startHour, startMin] = doctorHours.opening_time.split(":").map(Number);
@@ -518,6 +536,8 @@ export class MultiClinicSupabaseClient {
     const endTime = endHour * 60 + endMin;
 
     for (let time = startTime; time < endTime; time += 30) {
+      if (isToday && time <= minutesNow) continue;
+
       const hour = Math.floor(time / 60);
       const min = time % 60;
       const timeStr = `${hour.toString().padStart(2, "0")}:${min.toString().padStart(2, "0")}`;
