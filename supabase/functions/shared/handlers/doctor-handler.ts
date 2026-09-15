@@ -8,7 +8,9 @@ import {
     isAccountLocked,
     getRemainingAttempts,
     formatAuthErrorMessage,
-    getPinEntryPrompt
+    getPinEntryPrompt,
+    sendPinPrompt,
+    selfServicePinResetEnabled
 } from "../doctor-auth.ts";
 import { hashPassword, validatePinStrength } from "../bcrypt-password.ts";
 
@@ -970,33 +972,11 @@ export class DoctorFlowHandler {
         clinicId: string,
         language: string
     ): Promise<void> {
-        const prompt = await getPinEntryPrompt(this.supabase, phone, clinicId, language);
-
-        if (!this.selfServiceResetEnabled()) {
-            await this.whatsappClient.sendTextMessage(phone, prompt, this.supabase);
-            return;
-        }
-
-        await this.whatsappClient.sendInteractiveButtonMessage(
-            phone,
-            prompt,
-            [
-                {
-                    id: BUTTON_IDS.DOCTOR_LOGIN_HELP.FORGOT_PIN,
-                    title: language === "EN" ? "Forgot PIN" : "PIN भूल गए"
-                }
-            ],
-            this.supabase
-        );
+        await sendPinPrompt(this.supabase, this.whatsappClient, phone, clinicId, language);
     }
 
-    /**
-     * Self-service reset trades a factor for convenience: anyone holding the
-     * doctor's unlocked phone can set a new PIN. Clinics that would rather
-     * route resets through an admin can turn it off.
-     */
     private selfServiceResetEnabled(): boolean {
-        return Deno.env.get("ALLOW_SELF_SERVICE_PIN_RESET") !== "false";
+        return selfServicePinResetEnabled();
     }
 
     /**

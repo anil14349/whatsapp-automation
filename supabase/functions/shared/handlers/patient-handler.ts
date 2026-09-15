@@ -3,10 +3,8 @@ import { WhatsAppMessage, WhatsAppSession, ExtractedMessage } from "../types.ts"
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 import { BUTTON_IDS, isValidPatientMenuButton, isValidConfirmationButton, isValidDateSelectButton } from "../button-ids.ts";
 import {
-    bookAppointment,
     cancelAppointment,
-    rescheduleAppointment,
-    getAvailableSlots
+    rescheduleAppointment
 } from "../appointments.ts";
 import { createAppointmentReminders, markReminderAsSkipped } from "../appointment-reminders.ts";
 import { debug, info, recordAuditEvent } from "../logger.ts";
@@ -240,7 +238,7 @@ export class PatientFlowHandler {
 
             case BUTTON_IDS.PATIENT_MENU.APPOINTMENTS:
                 await this.updateSession(phone, "MY_APPOINTMENTS");
-                await this.showMyAppointments(phone, language, clinicId);
+                await this.showUpcomingAppointments(phone, language, clinicId);
                 break;
 
             case BUTTON_IDS.PATIENT_MENU.CANCEL:
@@ -787,8 +785,13 @@ export class PatientFlowHandler {
                         : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${session.data?.locationType === "home" ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}\n\n⏰ आपको अपॉइंटमेंट से पहले रिमाइंडर मिलेंगे।`
                 );
 
-                // Notify doctor
-                await this.notifyDoctorNewBooking(session.data?.selectedDoctorId, clinicId, session.data, language);
+                // Best effort: a booking must never fail because the doctor
+                // could not be reached.
+                await this.notifyDoctorNewBooking(
+                    session.data?.selectedDoctorId,
+                    clinicId,
+                    session.data
+                );
             } catch (error) {
                 // Someone claimed the slot between selection and insert.
                 if (error instanceof Error && error.message === "SLOT_TAKEN") {
@@ -1499,63 +1502,45 @@ export class PatientFlowHandler {
     }
 
     /**
-     * Helper: Show available times for doctor on selected date
+     * Tell the doctor a slot has just been taken.
+     *
+     * Never throws: the patient's booking is already committed, and Meta
+     * rejects messages outside the 24 hour window.
      */
-    private async showAvailableTimes(
-        phone: string,
-        doctorId: string,
-        date: string,
-        language: string
+    private async notifyDoctorNewBooking(
+        doctorId: string | undefined,
+        clinicId: string,
+        data: Record<string, any> | undefined
     ): Promise<void> {
+        if (!doctorId) {
+            return;
+        }
+
         try {
-            const slots = await getAvailableSlots(doctorId, date);
+            const { data: doctor } = await this.supabase
+                .from("doctors")
+                .select("phone, name")
+                .eq("id", doctorId)
+                .eq("clinic_id", clinicId)
+                .eq("is_active", true)
+                .maybeSingle();
 
-            if (!slots || slots.length === 0) {
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    language === "EN"
-                        ? `No slots available on ${date}. Please select another date.`
-                        : `${date} पर कोई स्लॉट उपलब्ध नहीं है। कृपया दूसरी तारीख चुनें।`
-                );
-
-                await this.updateSession(phone, "BOOK_DATE", {
-                    language,
-                    selectedDoctorId: doctorId
-                });
-
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    language === "EN"
-                        ? "Please provide a new date (YYYY-MM-DD):"
-                        : "कृपया नई तारीख दें (YYYY-MM-DD):"
-                );
+            if (!doctor?.phone) {
                 return;
             }
 
-            let message = language === "EN" ? `Available times on ${date}:\n\n` : `${date} पर उपलब्ध समय:\n\n`;
-
-            slots.slice(0, 8).forEach((slot, idx) => {
-                message += `${idx + 1}. ${slot}\n`;
-            });
-
-            message += language === "EN" ? "\nReply with your preferred time (HH:MM)" : "\nअपना पसंदीदा समय (HH:MM) के साथ उत्तर दें";
-
-            await this.whatsappClient.sendTextMessage(phone, message);
+            await this.whatsappClient.sendTextMessage(
+                doctor.phone,
+                `📅 New booking\n\n${data?.patientName || "A patient"} — ${data?.selectedDate} at ${data?.selectedTime}`,
+                this.supabase
+            );
         } catch (error) {
-            debug("patientFlow", "Error loading available times", {
+            debug("patientFlow", "Could not notify doctor of new booking", {
+                doctorId,
                 error: error instanceof Error ? error.message : String(error)
             });
-
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                language === "EN"
-                    ? "Error loading available times. Please try again."
-                    : "उपलब्ध समय लोड करने में त्रुटि। कृपया दोबारा कोशिश करें।"
-            );
         }
     }
-
-
 
     /**
      * Helper: Show patient's appointments
@@ -1573,15 +1558,17 @@ export class PatientFlowHandler {
                     [
                         { id: "menu_book", title: "📅 Book Appointment" },
                         { id: "nav_menu", title: "🏠 Main Menu" }
-                    ]
+                    ],
+                    this.supabase
                 );
             } else {
                 let message = language === "EN" 
                     ? "📋 Your Upcoming Appointments:\n\n" 
                     : "📋 आपकी आने वाली नियुक्तियाँ:\n\n";
 
+                // The query embeds the doctor, so the name is nested.
                 appointments.forEach((apt: any, idx: number) => {
-                    message += `${idx + 1}. 🩺 Dr. ${apt.doctor_name || "Unknown"}\n   📅 ${this.formatDate(apt.appointment_date)}\n   🕐 ${apt.appointment_time}\n   Status: ${apt.status}\n\n`;
+                    message += `${idx + 1}. 🩺 Dr. ${apt.doctor?.name || "Unknown"}\n   📅 ${this.formatDate(apt.appointment_date)}\n   🕐 ${apt.appointment_time}\n   Status: ${apt.status}\n\n`;
                 });
 
                 // Show with history and menu buttons
@@ -1591,7 +1578,8 @@ export class PatientFlowHandler {
                     [
                         { id: "appt_history", title: "📜 View History" },
                         { id: "nav_menu", title: "🏠 Main Menu" }
-                    ]
+                    ],
+                    this.supabase
                 );
             }
         } catch (error) {

@@ -9,7 +9,7 @@ import { HomeCollectionHandler } from "./handlers/home-collection-handler.ts";
 import { getRoleByPhoneForClinic } from "./staff-directory.ts";
 import { getClinicConfig, isClinicOpen, getAfterHoursMessage } from "./clinic-config.ts";
 import { sendLanguagePrompt } from "./languages.ts";
-import { getPinEntryPrompt } from "./doctor-auth.ts";
+import { sendPinPrompt } from "./doctor-auth.ts";
 import { BUTTON_IDS } from "./button-ids.ts";
 
 // These states belong to the home-collection flow whoever is in them.
@@ -302,8 +302,7 @@ async function handleGreeting(
         const language = session.data?.language || "EN";
 
         // Don't reset session for doctors, keep DOCTOR_LOGIN state
-        const pinPrompt = getPinEntryPrompt(phone, clinicId, language);
-        await whatsappClient.sendTextMessage(phone, pinPrompt, supabase);
+        await sendPinPrompt(supabase, whatsappClient, phone, clinicId, language);
     } else if (session.role === "HOME_COLLECTION_PERSON") {
         // For sample collectors, reset to location selection
         await updateSession(supabase, phone, session.clinic_id, {

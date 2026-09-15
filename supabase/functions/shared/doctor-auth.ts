@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { validatePin, PIN_CONFIG } from "./config.ts";
 import { verifyPassword } from "./bcrypt-password.ts";
+import { BUTTON_IDS } from "./button-ids.ts";
 import { debug } from "./logger.ts";
 
 /**
@@ -451,4 +452,54 @@ export async function getPinEntryPrompt(
             : `🔐 अपना 4-6 अंकीय PIN दर्ज करें:\n\n(${remainingAttempts} प्रयास शेष)`;
 
     return prompt;
+}
+
+/**
+ * Self-service reset trades a factor for convenience: anyone holding the
+ * doctor's unlocked phone can set a new PIN. Clinics that would rather route
+ * resets through an admin can turn it off.
+ */
+export function selfServicePinResetEnabled(): boolean {
+    return Deno.env.get("ALLOW_SELF_SERVICE_PIN_RESET") !== "false";
+}
+
+/**
+ * Ask for the PIN, offering a way out for doctors who have forgotten it.
+ *
+ * Shared so the greeting and the login handler present the same thing; a
+ * text-only greeting left doctors with no visible way to recover.
+ */
+export async function sendPinPrompt(
+    supabase: SupabaseClient,
+    whatsappClient: {
+        sendTextMessage: (to: string, body: string, supabase?: SupabaseClient) => Promise<string>;
+        sendInteractiveButtonMessage: (
+            to: string,
+            body: string,
+            buttons: Array<{ id: string; title: string }>,
+            supabase?: SupabaseClient
+        ) => Promise<string>;
+    },
+    phone: string,
+    clinicId: string,
+    language: string = "EN"
+): Promise<void> {
+    const prompt = await getPinEntryPrompt(supabase, phone, clinicId, language);
+
+    if (!selfServicePinResetEnabled()) {
+        await whatsappClient.sendTextMessage(phone, prompt, supabase);
+        return;
+    }
+
+    await whatsappClient.sendInteractiveButtonMessage(
+        phone,
+        prompt,
+        [
+            {
+                id: BUTTON_IDS.DOCTOR_LOGIN_HELP.FORGOT_PIN,
+                title: language === "EN" ? "Forgot PIN" : "PIN भूल गए"
+            }
+        ],
+        supabase
+    );
 }
