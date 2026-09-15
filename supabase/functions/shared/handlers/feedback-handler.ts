@@ -37,6 +37,27 @@ export class FeedbackHandler {
         doctorName: string
     ): Promise<boolean> {
         try {
+            const { data: session } = await this.supabase
+                .from("whatsapp_sessions")
+                .select("state, data")
+                .eq("phone", patientPhone)
+                .eq("clinic_id", clinicId)
+                .maybeSingle();
+
+            // Never interrupt someone mid-flow; their booking context would be
+            // lost. Leaving no feedback row means the scheduler retries later.
+            const idleStates = ["LANGUAGE_SELECT", "MAIN_MENU", ""];
+            const isIdle = !session || idleStates.includes(session.state || "");
+
+            if (!isIdle) {
+                debug("feedback", "Patient is mid-flow, survey deferred", {
+                    appointmentId,
+                    state: session.state
+                });
+
+                return false;
+            }
+
             const { error } = await this.supabase.from("feedback").insert({
                 clinic_id: clinicId,
                 appointment_id: appointmentId,
@@ -49,31 +70,6 @@ export class FeedbackHandler {
             // Unique appointment_id means the survey already went out.
             if (error) {
                 debug("feedback", "Survey not queued", { appointmentId, error: error.message });
-                return false;
-            }
-
-            const { data: session } = await this.supabase
-                .from("whatsapp_sessions")
-                .select("state, data")
-                .eq("phone", patientPhone)
-                .eq("clinic_id", clinicId)
-                .maybeSingle();
-
-            // Never interrupt someone mid-flow; their booking context would be lost.
-            const idleStates = ["LANGUAGE_SELECT", "MAIN_MENU", ""];
-            const isIdle = !session || idleStates.includes(session.state || "");
-
-            if (!isIdle) {
-                debug("feedback", "Patient is mid-flow, survey not sent", {
-                    appointmentId,
-                    state: session.state
-                });
-
-                await this.supabase
-                    .from("feedback")
-                    .delete()
-                    .eq("appointment_id", appointmentId);
-
                 return false;
             }
 

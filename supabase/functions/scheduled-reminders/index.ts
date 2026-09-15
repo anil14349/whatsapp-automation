@@ -128,29 +128,62 @@ Deno.serve(async (req: Request) => {
             });
         }
 
-        // Ask for feedback once an appointment has been completed.
+        // Ask for feedback once an appointment has been completed. A patient who
+        // was mid-conversation last run is retried here until the window closes.
+        const RETRY_WINDOW_DAYS = 7;
+        const cutoff = new Date(Date.now() - RETRY_WINDOW_DAYS * 24 * 60 * 60 * 1000)
+            .toISOString()
+            .split("T")[0];
+
+        const { data: recentlyCompleted } = await supabase
+            .from("appointments")
+            .select("id, clinic_id, patient_phone, patient_name, doctor_id")
+            .in("clinic_id", clinicIds)
+            .eq("status", "COMPLETED")
+            .gte("appointment_date", cutoff)
+            .limit(200);
+
+        const { data: alreadyAsked } = await supabase
+            .from("feedback")
+            .select("appointment_id")
+            .in("clinic_id", clinicIds);
+
+        const askedIds = new Set((alreadyAsked || []).map((row) => row.appointment_id));
+
+        const pendingSurveys = (recentlyCompleted || []).filter(
+            (appointment) => !askedIds.has(appointment.id)
+        );
+
         let surveysSent = 0;
+        let surveysDeferred = 0;
 
-        if (completed && completed.length > 0) {
+        if (pendingSurveys.length > 0) {
             const feedback = new FeedbackHandler(supabase, whatsappClient);
+            const doctorNames = new Map<string, string>();
 
-            for (const appointment of completed) {
-                const { data: doctor } = await supabase
-                    .from("doctors")
-                    .select("name")
-                    .eq("id", appointment.doctor_id)
-                    .maybeSingle();
+            for (const appointment of pendingSurveys) {
+                if (!doctorNames.has(appointment.doctor_id)) {
+                    const { data: doctor } = await supabase
+                        .from("doctors")
+                        .select("name")
+                        .eq("id", appointment.doctor_id)
+                        .maybeSingle();
+
+                    doctorNames.set(appointment.doctor_id, doctor?.name || "your doctor");
+                }
 
                 const sent = await feedback.sendFeedbackSurvey(
                     appointment.clinic_id,
                     appointment.id,
                     appointment.patient_phone,
                     appointment.patient_name,
-                    doctor?.name || "your doctor"
+                    doctorNames.get(appointment.doctor_id) as string
                 );
 
                 if (sent) {
                     surveysSent++;
+                } else {
+                    surveysDeferred++;
                 }
             }
         }
@@ -162,6 +195,7 @@ Deno.serve(async (req: Request) => {
             home_collection_reminders: homeCollectionResult,
             appointments_auto_completed: completed?.length || 0,
             feedback_surveys_sent: surveysSent,
+            feedback_surveys_deferred: surveysDeferred,
             total_reminders_sent: appointmentResult.reminders_sent + homeCollectionResult.reminders_sent,
             total_reminders_failed: appointmentResult.reminders_failed + homeCollectionResult.reminders_failed,
             total_errors: (appointmentResult.errors?.length || 0) + (homeCollectionResult.errors?.length || 0)
