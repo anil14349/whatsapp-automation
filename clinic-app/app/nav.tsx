@@ -23,6 +23,14 @@ export function PortalNav({ session }: { session: PortalSession }) {
                         Staff
                     </Link>
                 )}
+                {canManageStaff && (
+                    <Link
+                        href="/services"
+                        className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-white hover:text-slate-900"
+                    >
+                        Services
+                    </Link>
+                )}
             </nav>
 
             <div className="flex items-center gap-3">
