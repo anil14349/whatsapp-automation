@@ -76,6 +76,7 @@ export const BUTTON_IDS = {
     PAGINATION: {
         MORE_DOCTORS: "doctors_more",
         MORE_SLOTS: "slots_more",
+        MORE_SERVICES: "services_more",
     },
 
     // Location type (Clinic vs Home)

@@ -322,22 +322,20 @@ export class PatientFlowHandler {
             return;
         }
 
-        await this.updateSession(phone, "SERVICE_SELECT", { language });
-        await this.showServiceList(phone, language, services);
+        await this.updateSession(phone, "SERVICE_SELECT", { language, servicePage: 0 });
+        await this.showServiceList(phone, language, services, 0);
     }
 
     private async showServiceList(
         phone: string,
         language: string,
-        services: ClinicService[]
+        services: ClinicService[],
+        page = 0
     ): Promise<void> {
         const isEn = language === "EN";
         const header = isEn ? "🩺 What do you need?" : "🩺 आपको क्या चाहिए?";
 
-        // WhatsApp allows at most 10 rows, and at most 3 reply buttons.
-        const shown = services.slice(0, 10);
-
-        const options = shown.map((s) => {
+        const toOption = (s: ClinicService) => {
             const price = formatPrice(s.clinicPrice, language);
 
             return {
@@ -345,25 +343,48 @@ export class PatientFlowHandler {
                 title: s.name.slice(0, 24),
                 description: price ? `${price} · ${s.durationMinutes} min` : `${s.durationMinutes} min`
             };
-        });
+        };
 
-        if (options.length <= 3) {
+        // Three buttons is the limit, and only worth it when everything fits.
+        if (services.length <= 3) {
             await this.whatsappClient.sendInteractiveButtonMessage(
                 phone,
                 header,
                 // Sliced as well as guarded: the client throws above three, and
                 // that must not depend on the condition above staying correct.
-                options.slice(0, 3).map((o) => ({ id: o.id, title: o.title })),
+                services.slice(0, 3).map((s) => ({
+                    id: serviceButtonId(s.serviceTypeId),
+                    title: s.name.slice(0, 24)
+                })),
                 this.supabase
             );
             return;
+        }
+
+        // 10 rows max per list, so the last row is reserved for paging.
+        // Slicing alone would drop the rest without telling anyone.
+        const pageSize = 9;
+        const start = page * pageSize;
+        const pageServices = services.slice(start, start + pageSize);
+        const hasMore = services.length > start + pageSize;
+
+        const rows = pageServices.map(toOption);
+
+        if (hasMore) {
+            rows.push({
+                id: BUTTON_IDS.PAGINATION.MORE_SERVICES,
+                title: isEn ? "➡️ More services" : "➡️ और सेवाएं",
+                description: isEn
+                    ? `${services.length - start - pageSize} more`
+                    : `${services.length - start - pageSize} और`
+            });
         }
 
         await this.whatsappClient.sendInteractiveListMessage(
             phone,
             header,
             isEn ? "Choose a service" : "सेवा चुनें",
-            [{ title: isEn ? "Services" : "सेवाएं", rows: options }],
+            [{ title: isEn ? "Services" : "सेवाएं", rows }],
             this.supabase
         );
     }
@@ -432,6 +453,18 @@ export class PatientFlowHandler {
         }
 
         const services = await getEnabledServices(this.supabase, session.clinic_id, "clinic");
+
+        if (reply === BUTTON_IDS.PAGINATION.MORE_SERVICES) {
+            const nextPage = (session.data?.servicePage || 0) + 1;
+
+            await this.updateSession(phone, "SERVICE_SELECT", {
+                ...session.data,
+                servicePage: nextPage
+            });
+            await this.showServiceList(phone, language, services, nextPage);
+            return;
+        }
+
         const index = Number(reply);
 
         if (Number.isInteger(index) && index >= 1 && index <= services.length) {
@@ -444,7 +477,7 @@ export class PatientFlowHandler {
             return;
         }
 
-        await this.showServiceList(phone, language, services);
+        await this.showServiceList(phone, language, services, session.data?.servicePage || 0);
     }
 
     /**
