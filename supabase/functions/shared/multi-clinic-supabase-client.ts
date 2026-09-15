@@ -73,11 +73,13 @@ export class MultiClinicSupabaseClient {
     return data;
   }
 
+  /** Resolves a code from the shared catalogue, not a clinic's own services. */
   async getServiceTypeIdByCode(code: string): Promise<string | null> {
     const { data, error } = await this.supabase
       .from("service_types")
       .select("id")
       .eq("code", code)
+      .is("clinic_id", null)
       .maybeSingle();
 
     if (error) throw new types.ClinicError(`Failed to fetch service type: ${error.message}`);

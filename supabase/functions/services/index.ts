@@ -54,9 +54,12 @@ async function listServices(
     supabase
       .from("service_types")
       .select(
-        "id, code, name, category, default_duration_minutes, default_clinic_price, default_home_price, is_active"
+        "id, code, name, category, default_duration_minutes, default_clinic_price, default_home_price, is_active, clinic_id"
       )
       .eq("is_active", true)
+      // Shared services plus this clinic's own. Without the scope one clinic
+      // would see another's private services.
+      .or(`clinic_id.is.null,clinic_id.eq.${clinicId}`)
       .order("name", { ascending: true }),
     supabase
       .from("clinic_services")
@@ -85,6 +88,8 @@ async function listServices(
       code: type.code,
       name: type.name,
       category: type.category,
+      // Shared services cannot be renamed or removed by one clinic.
+      isOwn: type.clinic_id !== null,
       // Never configured is not the same as switched off, so the portal can
       // show a service the clinic has simply not considered yet.
       configured: Boolean(row),
@@ -140,8 +145,9 @@ async function updateService(
 
   const { data: type } = await supabase
     .from("service_types")
-    .select("id, code, category, default_home_price")
+    .select("id, code, category, default_home_price, clinic_id")
     .eq("id", body.serviceTypeId)
+    .or(`clinic_id.is.null,clinic_id.eq.${clinicId}`)
     .maybeSingle();
 
   if (!type) {
@@ -245,6 +251,93 @@ async function updateService(
   return { status: 200, payload: { serviceTypeId: body.serviceTypeId, code: type.code } };
 }
 
+const CATEGORIES = ["CONSULTATION", "DIAGNOSTIC", "IMAGING", "VACCINE", "OTHER"];
+
+/**
+ * Add a service this clinic offers that the shared catalogue does not have.
+ *
+ * The row is private to the clinic, so two clinics can both have a DENTAL
+ * without agreeing on what it means or what it costs.
+ */
+async function createServiceType(
+  supabase: SupabaseClient,
+  clinicId: string,
+  actor: string,
+  body: Record<string, unknown>
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+
+  if (!name) {
+    return { status: 400, payload: { error: "name is required" } };
+  }
+
+  // The name reaches patients in a WhatsApp list row, which truncates at 24.
+  if (name.length > 24) {
+    return {
+      status: 400,
+      payload: { error: "name must be 24 characters or fewer so it fits a WhatsApp list" }
+    };
+  }
+
+  const category = typeof body.category === "string" ? body.category.toUpperCase() : "OTHER";
+
+  if (!CATEGORIES.includes(category)) {
+    return { status: 400, payload: { error: `category must be one of ${CATEGORIES.join(", ")}` } };
+  }
+
+  const duration = asNumberOrNull(body.durationMinutes) ?? 30;
+
+  if (duration === null || duration <= 0) {
+    return { status: 400, payload: { error: "durationMinutes must be greater than zero" } };
+  }
+
+  const clinicPrice = asNumberOrNull(body.clinicPrice) ?? null;
+  const homePrice = asNumberOrNull(body.homePrice) ?? null;
+
+  // Derived rather than asked for: a code is an implementation detail and a
+  // clinic should not have to invent one.
+  const base = name.toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_|_$/g, "").slice(0, 30);
+  const code = base || `SERVICE_${Date.now()}`;
+
+  const { data, error } = await supabase
+    .from("service_types")
+    .insert({
+      clinic_id: clinicId,
+      code,
+      name,
+      category,
+      default_duration_minutes: duration,
+      default_clinic_price: clinicPrice,
+      default_home_price: homePrice,
+      is_active: true
+    })
+    .select("id, code, name")
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      return { status: 409, payload: { error: "This clinic already has a service with that name" } };
+    }
+
+    debug("services", "Create failed", { error: error.message });
+    return { status: 500, payload: { error: "Failed to add the service" } };
+  }
+
+  await recordAuditEvent(
+    supabase,
+    "service_type_created",
+    actor,
+    "service_type",
+    data.id,
+    undefined,
+    { clinicId, code, name, category }
+  );
+
+  clearClinicServiceCache();
+
+  return { status: 201, payload: { serviceTypeId: data.id, code: data.code, name: data.name } };
+}
+
 async function handleRequest(user: TokenPayload, req: Request): Promise<Response> {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -256,7 +349,10 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
 
     const supabase = createClient(supabaseUrl, supabaseKey);
     const url = new URL(req.url);
-    const body = req.method === "PATCH" ? await req.json().catch(() => null) : null;
+    const body =
+      req.method === "PATCH" || req.method === "POST"
+        ? await req.json().catch(() => null)
+        : null;
 
     const clinicId = resolveClinicId(
       user,
@@ -269,12 +365,17 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
 
     const actor = `${user.role.toLowerCase()}:${user.email}`;
 
-    const result =
-      req.method === "GET"
-        ? await listServices(supabase, clinicId)
-        : body
-          ? await updateService(supabase, clinicId, actor, body)
-          : { status: 400, payload: { error: "Invalid JSON body" } };
+    let result;
+
+    if (req.method === "GET") {
+      result = await listServices(supabase, clinicId);
+    } else if (!body) {
+      result = { status: 400, payload: { error: "Invalid JSON body" } };
+    } else if (req.method === "POST") {
+      result = await createServiceType(supabase, clinicId, actor, body);
+    } else {
+      result = await updateService(supabase, clinicId, actor, body);
+    }
 
     return new Response(JSON.stringify(result.payload), {
       status: result.status,
@@ -289,7 +390,7 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
 }
 
 Deno.serve(withCors(async (req: Request) => {
-  if (!["GET", "PATCH"].includes(req.method)) {
+  if (!["GET", "POST", "PATCH"].includes(req.method)) {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
       { status: 405, headers: { "Content-Type": "application/json" } }

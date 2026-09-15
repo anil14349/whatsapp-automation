@@ -222,11 +222,13 @@ async function createAppointment(
     const random = crypto.randomUUID().replace(/-/g, "").substring(0, 6);
     const appointmentId = `APT_${dateStr}_${random}`;
 
-    // service_types is a global catalogue, not per-clinic.
+    // CONSULTATION is part of the shared catalogue; a clinic's own services can
+    // reuse a code, so this must not match one of those.
     const { data: serviceType } = await supabase
       .from("service_types")
       .select("id")
       .eq("code", "CONSULTATION")
+      .is("clinic_id", null)
       .maybeSingle();
 
     if (!serviceType) {

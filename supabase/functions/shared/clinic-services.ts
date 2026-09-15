@@ -221,6 +221,7 @@ export async function getFallbackServiceTypeId(
         .from("service_types")
         .select("id")
         .eq("code", "CONSULTATION")
+        .is("clinic_id", null)
         .maybeSingle();
 
     return data?.id ?? null;

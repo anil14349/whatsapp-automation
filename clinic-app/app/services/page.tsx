@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import { callAsUser, readSession } from "@/lib/portal";
 import { PortalNav } from "@/app/nav";
 import { ServiceManager } from "./service-manager";
+import { AddServiceForm } from "./add-service-form";
 import type { ServiceRow } from "./actions";
 
 export default async function ServicesPage() {
@@ -53,6 +54,10 @@ export default async function ServicesPage() {
                     No services are switched on, so patients cannot book anything.
                 </p>
             )}
+
+            <div className="mb-4">
+                <AddServiceForm />
+            </div>
 
             <ServiceManager services={services} />
         </main>

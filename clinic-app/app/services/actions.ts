@@ -13,6 +13,7 @@ export interface ServiceRow {
     code: string;
     name: string;
     category: string;
+    isOwn: boolean;
     configured: boolean;
     isEnabled: boolean;
     offeredAtClinic: boolean;
@@ -28,6 +29,38 @@ export interface ServiceRow {
         homePrice: number | null;
         durationMinutes: number | null;
     };
+}
+
+export async function createService(
+    _previous: ServiceState,
+    formData: FormData
+): Promise<ServiceState> {
+    const name = String(formData.get("name") ?? "").trim();
+    const category = String(formData.get("category") ?? "OTHER");
+    const durationMinutes = Number(formData.get("durationMinutes") ?? 30);
+    const rawPrice = String(formData.get("clinicPrice") ?? "").trim();
+
+    if (!name) {
+        return { error: "Give the service a name." };
+    }
+
+    const result = await callAsUser("services", {
+        method: "POST",
+        body: {
+            name,
+            category,
+            durationMinutes,
+            clinicPrice: rawPrice === "" ? null : Number(rawPrice)
+        }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not add the service." };
+    }
+
+    revalidatePath("/services");
+
+    return { success: `Added ${name}. Switch it on when you are ready to offer it.` };
 }
 
 export async function updateService(

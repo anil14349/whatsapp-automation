@@ -43,6 +43,11 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
                                             {s.category}
                                         </span>
+                                        {s.isOwn && (
+                                            <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700">
+                                                yours
+                                            </span>
+                                        )}
                                         {!s.isEnabled && (
                                             <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
                                                 off
