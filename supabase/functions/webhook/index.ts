@@ -6,7 +6,7 @@ import { WhatsAppClient } from "../shared/whatsapp-client.ts";
 import {
     getClinicByPhoneNumberId,
     isValidVerifyToken,
-    isValidWebhookToken
+    getClinicIdByWebhookToken
 } from "../shared/clinic-routing.ts";
 
 // Initialize Supabase client
@@ -94,7 +94,9 @@ async function handleInboundMessage(req: Request) {
     const webhookToken = url.searchParams.get("token");
 
     // Verify webhook token
-    if (!(await isValidWebhookToken(supabase, webhookToken))) {
+    const tokenClinicId = await getClinicIdByWebhookToken(supabase, webhookToken);
+
+    if (!tokenClinicId) {
         console.error("Invalid webhook token");
         return new Response("Unauthorized", { status: 401 });
     }
@@ -141,6 +143,16 @@ async function handleInboundMessage(req: Request) {
         console.error("No clinic owns this WhatsApp number", { phoneNumberId });
         // 200 so Meta does not retry a message we can never route.
         return new Response("EVENT_RECEIVED", { status: 200 });
+    }
+
+    // A clinic's token must not be usable to write into another clinic's tenant.
+    if (clinic.clinicId !== tokenClinicId) {
+        console.error("Webhook token does not match the clinic for this number", {
+            phoneNumberId,
+            tokenClinicId,
+            routedClinicId: clinic.clinicId
+        });
+        return new Response("Unauthorized", { status: 401 });
     }
 
     // Replies must come from the clinic's own number, using its own token.

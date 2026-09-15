@@ -183,20 +183,25 @@ export async function isValidVerifyToken(
 }
 
 /**
- * True when the ?token= authorises an inbound POST for any clinic.
+ * Resolve which clinic a ?token= authorises.
+ *
+ * The token must be bound to its clinic: validating it globally would let any
+ * clinic post messages into another clinic's tenant by supplying that clinic's
+ * phone_number_id. Returns null when the token is not recognised.
  */
-export async function isValidWebhookToken(
+export async function getClinicIdByWebhookToken(
     supabase: SupabaseClient,
     token: string | null
-): Promise<boolean> {
+): Promise<string | null> {
     if (!token) {
-        return false;
+        return null;
     }
 
     const envToken = Deno.env.get("WHATSAPP_WEBHOOK_POST_TOKEN");
 
+    // The legacy shared token only ever authorises the default clinic.
     if (envToken && token === envToken) {
-        return true;
+        return Deno.env.get("DEFAULT_CLINIC_ID") || null;
     }
 
     const { data, error } = await supabase
@@ -206,9 +211,9 @@ export async function isValidWebhookToken(
         .eq("is_active", true)
         .maybeSingle();
 
-    if (error) {
-        return false;
+    if (error || !data) {
+        return null;
     }
 
-    return Boolean(data);
+    return data.id;
 }
