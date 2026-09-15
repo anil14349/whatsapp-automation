@@ -668,10 +668,12 @@ export class HomeCollectionHandler {
         }
 
         // The status filter makes the claim atomic: only one collector can win.
+        // The clinic filter stops a collector claiming another clinic's job.
         const { data: pending } = await this.supabase
             .from("home_collection_requests")
             .select("id, requested_date, status")
             .eq("id", requestId)
+            .eq("clinic_id", this.clinicId)
             .maybeSingle();
 
         if (!pending) {
@@ -683,6 +685,7 @@ export class HomeCollectionHandler {
         const { count: assignedToday } = await this.supabase
             .from("home_collection_requests")
             .select("id", { count: "exact", head: true })
+            .eq("clinic_id", this.clinicId)
             .eq("assigned_technician_name", phone)
             .eq("requested_date", pending.requested_date)
             .neq("status", "CANCELLED");
@@ -703,6 +706,7 @@ export class HomeCollectionHandler {
                 updated_at: new Date().toISOString()
             })
             .eq("id", requestId)
+            .eq("clinic_id", this.clinicId)
             .eq("status", "PENDING")
             .select("id, service_address, requested_date")
             .maybeSingle();
