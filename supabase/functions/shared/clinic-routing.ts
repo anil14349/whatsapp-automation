@@ -153,6 +153,35 @@ async function getDefaultClinic(supabase: SupabaseClient): Promise<ClinicRoute |
 }
 
 /**
+ * Sending credentials for one clinic.
+ *
+ * Used where the clinic is already known from an authenticated request rather
+ * than resolved from an inbound message.
+ */
+export async function getClinicRouteById(
+    supabase: SupabaseClient,
+    clinicId: string
+): Promise<ClinicRoute | null> {
+    const key = `id:${clinicId}`;
+    const hit = cached(key);
+
+    if (hit !== undefined) {
+        return hit;
+    }
+
+    const { data, error } = await supabase
+        .from("clinics")
+        .select("id, name, whatsapp_phone_number_id, whatsapp_access_token")
+        .eq("id", clinicId)
+        .maybeSingle();
+
+    const route = error ? envRoute() : toRoute(data);
+
+    remember(key, route);
+    return route;
+}
+
+/**
  * Every active clinic with usable sending credentials.
  *
  * Used by the scheduler, which has no inbound message to route from and must

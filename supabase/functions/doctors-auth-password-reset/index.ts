@@ -13,6 +13,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { badRequestResponse, errorResponse, successResponse, withAuth } from "../shared/auth-middleware.ts";
 import { debug } from "../shared/logger.ts";
 import { sendPasswordResetEmail } from "../shared/email.ts";
+import { sendCredentialOverWhatsApp } from "../shared/credential-delivery.ts";
 import { withCors } from "../shared/cors.ts";
 import { hashPassword, validatePinStrength } from "../shared/bcrypt-password.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
@@ -65,7 +66,7 @@ export async function handleDoctorPasswordResetRequest(req: Request): Promise<Re
     // Find doctor by email and clinic
     const { data: doctor, error: docError } = await supabase
       .from("doctors")
-      .select("id, name, email")
+      .select("id, name, email, phone")
       .eq("email", body.email)
       .eq("clinic_id", body.clinicId)
       .single();
@@ -105,18 +106,31 @@ export async function handleDoctorPasswordResetRequest(req: Request): Promise<Re
       .eq("id", body.clinicId)
       .maybeSingle();
 
-    const delivery = await sendPasswordResetEmail(
-      doctor.email,
+    // Doctors live on WhatsApp, so try there first and keep email as backup.
+    // Neither outcome is revealed: the response is identical either way.
+    const viaWhatsApp = await sendCredentialOverWhatsApp(
+      supabase,
+      body.clinicId,
+      doctor.phone,
       doctor.name,
       resetToken,
-      "doctor",
-      clinic?.name || "your clinic"
+      "PIN"
     );
+
+    const viaEmail = viaWhatsApp.delivered
+      ? { sent: false, error: "not_needed" }
+      : await sendPasswordResetEmail(
+        doctor.email,
+        doctor.name,
+        resetToken,
+        "doctor",
+        clinic?.name || "your clinic"
+      );
 
     debug("doctorPasswordReset", "Reset token generated", {
       doctorId: doctor.id,
-      emailSent: delivery.sent,
-      emailError: delivery.error
+      whatsapp: viaWhatsApp.delivered ? "sent" : viaWhatsApp.reason,
+      email: viaEmail.sent ? "sent" : viaEmail.error
     });
 
     return successResponse({ message: "If email exists, reset link will be sent" });

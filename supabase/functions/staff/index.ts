@@ -22,6 +22,7 @@ import {
 import { debug } from "../shared/logger.ts";
 import { hashPassword, validatePinStrength, validatePasswordStrength } from "../shared/bcrypt-password.ts";
 import { sendStaffInviteEmail } from "../shared/email.ts";
+import { sendCredentialOverWhatsApp } from "../shared/credential-delivery.ts";
 import { withCors } from "../shared/cors.ts";
 
 type StaffType = "doctor" | "receptionist" | "collector";
@@ -115,6 +116,56 @@ function generatePassword(): string {
   return [...required, ...rest].join("");
 }
 
+interface DeliveryOutcome {
+  sent: boolean;
+  channel?: "whatsapp" | "email";
+  reason?: string;
+}
+
+/**
+ * Try WhatsApp, then email. Returning the credential to the admin is the last
+ * resort, handled by the caller.
+ */
+async function deliverCredential(
+  supabase: SupabaseClient,
+  clinicId: string,
+  staff: { name: string; phone?: string | null; email?: string | null },
+  credential: string,
+  kind: "PIN" | "password",
+  clinicName: string
+): Promise<DeliveryOutcome> {
+  const viaWhatsApp = await sendCredentialOverWhatsApp(
+    supabase,
+    clinicId,
+    staff.phone,
+    staff.name,
+    credential,
+    kind
+  );
+
+  if (viaWhatsApp.delivered) {
+    return { sent: true, channel: "whatsapp" };
+  }
+
+  if (staff.email) {
+    const viaEmail = await sendStaffInviteEmail(
+      staff.email,
+      staff.name,
+      kind === "PIN" ? "doctor" : "receptionist",
+      credential,
+      clinicName
+    );
+
+    if (viaEmail.sent) {
+      return { sent: true, channel: "email" };
+    }
+
+    return { sent: false, reason: `whatsapp:${viaWhatsApp.reason}, email:${viaEmail.error}` };
+  }
+
+  return { sent: false, reason: `whatsapp:${viaWhatsApp.reason}, email:no_email` };
+}
+
 async function listStaff(
   supabase: SupabaseClient,
   clinicId: string,
@@ -198,17 +249,26 @@ async function createStaff(
       };
     }
 
-    const delivery = email
-      ? await sendStaffInviteEmail(email, name, "doctor", pin, clinic.name)
-      : { sent: false, error: "no_email" };
+    // WhatsApp first: it is the channel the doctor already uses, and needs no
+    // mail infrastructure. Email is the fallback when the 24 hour window is
+    // closed or no number reached them.
+    const delivered = await deliverCredential(
+      supabase,
+      clinicId,
+      { name, phone, email },
+      pin,
+      "PIN",
+      clinic.name
+    );
 
     return {
       status: 201,
       payload: {
         staff: data,
-        // Returned only when it could not be emailed, so the admin can pass it on.
-        temporaryPin: delivery.sent ? undefined : pin,
-        inviteEmailed: delivery.sent
+        // Returned only when it could not be delivered, so the admin can pass it on.
+        temporaryPin: delivered.sent ? undefined : pin,
+        deliveredBy: delivered.channel,
+        deliveryError: delivered.reason
       }
     };
   }
@@ -248,14 +308,22 @@ async function createStaff(
       };
     }
 
-    const delivery = await sendStaffInviteEmail(email, name, "receptionist", password, clinic.name);
+    const delivered = await deliverCredential(
+      supabase,
+      clinicId,
+      { name, phone, email },
+      password,
+      "password",
+      clinic.name
+    );
 
     return {
       status: 201,
       payload: {
         staff: data,
-        temporaryPassword: delivery.sent ? undefined : password,
-        inviteEmailed: delivery.sent
+        temporaryPassword: delivered.sent ? undefined : password,
+        deliveredBy: delivered.channel,
+        deliveryError: delivered.reason
       }
     };
   }
@@ -325,7 +393,7 @@ async function resetStaffCredential(
       .update({ pin_hash: await hashPassword(pin), updated_at: new Date().toISOString() })
       .eq("id", body.id)
       .eq("clinic_id", clinicId)
-      .select("id, name, email")
+      .select("id, name, email, phone")
       .maybeSingle();
 
     if (error) {
@@ -336,16 +404,22 @@ async function resetStaffCredential(
       return { status: 404, payload: { error: "Staff member not found at this clinic" } };
     }
 
-    const delivery = data.email
-      ? await sendStaffInviteEmail(data.email, data.name, "doctor", pin, clinic?.name)
-      : { sent: false, error: "no_email" };
+    const delivered = await deliverCredential(
+      supabase,
+      clinicId,
+      { name: data.name, phone: data.phone, email: data.email },
+      pin,
+      "PIN",
+      clinic?.name ?? "your clinic"
+    );
 
     return {
       status: 200,
       payload: {
         id: data.id,
-        temporaryPin: delivery.sent ? undefined : pin,
-        emailed: delivery.sent
+        temporaryPin: delivered.sent ? undefined : pin,
+        deliveredBy: delivered.channel,
+        deliveryError: delivered.reason
       }
     };
   }
@@ -362,7 +436,7 @@ async function resetStaffCredential(
     .update({ password_hash: await hashPassword(password), updated_at: new Date().toISOString() })
     .eq("id", body.id)
     .eq("clinic_id", clinicId)
-    .select("id, name, email")
+    .select("id, name, email, phone")
     .maybeSingle();
 
   if (error) {
@@ -373,20 +447,22 @@ async function resetStaffCredential(
     return { status: 404, payload: { error: "Staff member not found at this clinic" } };
   }
 
-  const delivery = await sendStaffInviteEmail(
-    data.email,
-    data.name,
-    "receptionist",
+  const delivered = await deliverCredential(
+    supabase,
+    clinicId,
+    { name: data.name, phone: data.phone, email: data.email },
     password,
-    clinic?.name
+    "password",
+    clinic?.name ?? "your clinic"
   );
 
   return {
     status: 200,
     payload: {
       id: data.id,
-      temporaryPassword: delivery.sent ? undefined : password,
-      emailed: delivery.sent
+      temporaryPassword: delivered.sent ? undefined : password,
+      deliveredBy: delivered.channel,
+      deliveryError: delivered.reason
     }
   };
 }
