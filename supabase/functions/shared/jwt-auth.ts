@@ -101,7 +101,7 @@ export async function createJwtToken(
 export async function verifyJwtToken(token: string): Promise<TokenPayload | null> {
   try {
     // djwt v3 derives the algorithm from the key, so no alg argument is passed.
-    const payload = await verify(token, await getSigningKey()) as TokenPayload;
+    const payload = await verify(token, await getSigningKey()) as unknown as TokenPayload;
 
     // Check expiration
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {

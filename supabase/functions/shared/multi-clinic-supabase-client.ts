@@ -736,8 +736,10 @@ export class MultiClinicSupabaseClient {
     const results: types.AvailableDoctorSlot[] = [];
 
     for (const service of doctorServices || []) {
-      const doctor = service.doctor;
-      if (!doctor.is_active) continue;
+      // PostgREST returns a single object for a to-one embed even though the
+      // generated types describe it as an array.
+      const doctor = service.doctor as unknown as types.Doctor;
+      if (!doctor?.is_active) continue;
 
       // Get available slots
       const slots = await this.getAvailableSlots(clinicId, doctor.id, date, locationType);

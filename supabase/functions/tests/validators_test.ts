@@ -1,0 +1,108 @@
+/**
+ * Input validation.
+ *
+ * The monolith accepted booking dates decades into the future; the 7-day
+ * window is the fix and needs to stay enforced.
+ */
+
+import { assertEquals } from "std/testing/asserts.ts";
+import {
+    isValidBookingDate,
+    isValidISODate,
+    isValidTimeString,
+    isValidPatientName,
+    normalizePhoneNumber,
+    phonesMatch,
+    isValidPhoneNumber,
+    normalizeAppointmentStatus,
+    canCancelAppointmentStatus,
+    isTerminalAppointmentStatus
+} from "../shared/validators.ts";
+
+function offsetDate(days: number): string {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    return d.toISOString().split("T")[0];
+}
+
+Deno.test("today and the next seven days are bookable", () => {
+    for (let i = 0; i <= 7; i++) {
+        assertEquals(
+            isValidBookingDate(offsetDate(i)).valid,
+            true,
+            `day +${i} should be bookable`
+        );
+    }
+});
+
+Deno.test("yesterday is not bookable", () => {
+    const result = isValidBookingDate(offsetDate(-1));
+
+    assertEquals(result.valid, false);
+    assertEquals(result.error, "past");
+});
+
+Deno.test("beyond a week is not bookable", () => {
+    const result = isValidBookingDate(offsetDate(8));
+
+    assertEquals(result.valid, false);
+    assertEquals(result.error, "too_far");
+});
+
+Deno.test("a far future date is rejected rather than accepted", () => {
+    assertEquals(isValidBookingDate("2099-01-01").valid, false);
+});
+
+Deno.test("malformed dates are rejected", () => {
+    for (const bad of ["", "not-a-date", "15-09-2026", "2026/09/15", "2026-13-01"]) {
+        assertEquals(isValidBookingDate(bad).valid, false, `${bad} should be invalid`);
+    }
+});
+
+Deno.test("ISO date validation", () => {
+    assertEquals(isValidISODate("2026-09-15"), true);
+    assertEquals(isValidISODate("2026-9-5"), false);
+    assertEquals(isValidISODate("garbage"), false);
+});
+
+Deno.test("time strings accept H:MM and HH:MM but reject impossible times", () => {
+    assertEquals(isValidTimeString("09:00"), true);
+    assertEquals(isValidTimeString("9:00"), true);
+    assertEquals(isValidTimeString("23:59"), true);
+    assertEquals(isValidTimeString("24:00"), false);
+    assertEquals(isValidTimeString("12:60"), false);
+    assertEquals(isValidTimeString("noon"), false);
+});
+
+Deno.test("patient names reject empty and junk input", () => {
+    assertEquals(isValidPatientName("Ravi Sharma"), true);
+    assertEquals(isValidPatientName(""), false);
+    assertEquals(isValidPatientName("   "), false);
+});
+
+Deno.test("phone numbers normalise consistently", () => {
+    const normalized = normalizePhoneNumber("+91 90000 00001");
+
+    assertEquals(normalized.includes(" "), false);
+    assertEquals(normalized.includes("+"), false);
+    assertEquals(phonesMatch("+919000000001", "919000000001"), true);
+});
+
+Deno.test("phone validation rejects obvious rubbish", () => {
+    assertEquals(isValidPhoneNumber("919000000001"), true);
+    assertEquals(isValidPhoneNumber("123"), false);
+    assertEquals(isValidPhoneNumber("abcdefghij"), false);
+});
+
+Deno.test("appointment status transitions are guarded", () => {
+    // Normalisation is lower-case; the database stores upper-case, so the
+    // helpers must cope with both.
+    assertEquals(normalizeAppointmentStatus("CONFIRMED"), "confirmed");
+    assertEquals(normalizeAppointmentStatus("booked"), "confirmed");
+    assertEquals(normalizeAppointmentStatus("noshow"), "no-show");
+    assertEquals(canCancelAppointmentStatus("CONFIRMED"), true);
+    assertEquals(canCancelAppointmentStatus("COMPLETED"), false);
+    assertEquals(canCancelAppointmentStatus("CANCELLED"), false);
+    assertEquals(isTerminalAppointmentStatus("COMPLETED"), true);
+    assertEquals(isTerminalAppointmentStatus("CONFIRMED"), false);
+});

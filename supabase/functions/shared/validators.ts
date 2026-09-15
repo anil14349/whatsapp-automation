@@ -112,22 +112,21 @@ export function isValidBookingDate(dateString: string): { valid: boolean; error?
         return { valid: false, error: "invalid_format" };
     }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0); // Normalize to start of day
+    // Compare calendar days only. Mixing a local midnight with a UTC-parsed
+    // date shortened the window to 6 days anywhere east of UTC.
+    const now = new Date();
+    const todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
 
-    const bookingDate = new Date(dateString + "T00:00:00Z");
-    bookingDate.setUTCHours(0, 0, 0, 0); // Normalize to UTC start of day
+    const [year, month, day] = dateString.split("-").map(Number);
+    const bookingUtc = Date.UTC(year, month - 1, day);
 
-    // Check if date is in the past
-    if (bookingDate < today) {
+    if (bookingUtc < todayUtc) {
         return { valid: false, error: "past" };
     }
 
-    // Check if date is more than 7 days in the future
-    const maxDate = new Date(today);
-    maxDate.setDate(maxDate.getDate() + 7);
+    const maxUtc = todayUtc + 7 * 24 * 60 * 60 * 1000;
 
-    if (bookingDate > maxDate) {
+    if (bookingUtc > maxUtc) {
         return { valid: false, error: "too_far" };
     }
 

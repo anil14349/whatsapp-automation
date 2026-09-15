@@ -1,4 +1,11 @@
 {
+  "scripts": {
+    "test": "deno test --allow-all --config supabase/functions/deno.json supabase/functions/tests/",
+    "test:watch": "deno test --allow-all --watch --config supabase/functions/deno.json supabase/functions/tests/",
+    "verify:menus": "node scripts/verify-menu-flows.mjs",
+    "verify:coverage": "node scripts/verify-flow-coverage.mjs",
+    "verify": "npm run test && npm run verify:menus && npm run verify:coverage"
+  },
   "devDependencies": {
     "supabase": "^2.117.0"
   }

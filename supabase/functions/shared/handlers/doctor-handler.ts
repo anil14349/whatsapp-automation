@@ -215,7 +215,7 @@ export class DoctorFlowHandler {
 
             // Authentication successful - update session
             await this.updateSession(phone, "DOCTOR_MENU", {
-                doctorId: doctor.doctor_id || doctor.id,
+                doctorId: doctor.id,
                 doctorName: doctor.name,
                 language: language,
                 authenticated: true
@@ -223,7 +223,7 @@ export class DoctorFlowHandler {
 
             debug("doctorFlow", "Doctor authenticated successfully", {
                 phone,
-                doctorId: doctor.doctor_id
+                doctorId: doctor.id
             });
 
             await this.whatsappClient.sendTextMessage(
@@ -328,7 +328,7 @@ export class DoctorFlowHandler {
                 break;
 
             case BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS:
-                await this.showAppointments(phone, session);
+                await this.showTodayAppointments(phone, session.data?.doctorId);
                 break;
 
             case BUTTON_IDS.DOCTOR_MENU.MARK_STATUS:
@@ -816,7 +816,7 @@ export class DoctorFlowHandler {
                 status
             );
 
-            const blocksBooking = status !== "AVAILABLE" && status !== "IN_CONSULTATION";
+            const blocksBooking = status !== "AVAILABLE";
 
             await this.whatsappClient.sendTextMessage(
                 phone,
@@ -1055,14 +1055,9 @@ export class DoctorFlowHandler {
      */
     private async showTodayAppointments(phone: string, doctorId: string): Promise<void> {
         try {
-            // Get clinic ID from session
-            const { data: session } = await this.supabase
-                .from("whatsapp_sessions")
-                .select("data")
-                .eq("phone", phone)
-                .single();
+            const clinicId = this.clinicId;
 
-            if (!session?.data?.clinicId) {
+            if (!clinicId) {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     "Error: Clinic information not found."
@@ -1070,7 +1065,6 @@ export class DoctorFlowHandler {
                 return;
             }
 
-            const clinicId = session.data.clinicId;
             const today = new Date().toISOString().split("T")[0];
 
             const appointments = await this.supabaseClient.getDoctorAppointments(clinicId, doctorId, today);
@@ -1078,19 +1072,20 @@ export class DoctorFlowHandler {
             if (appointments.length === 0) {
                 await this.whatsappClient.sendTextMessage(
                     phone,
-                    `📋 No appointments scheduled for today.\n\nYou're all set! 😊`
+                    `📋 No appointments scheduled for today.\n\nYou're all set! 😊`,
+                    this.supabase
                 );
             } else {
                 let appointmentList = "📋 Today's Appointments:\n\n";
                 appointments.forEach((apt, index) => {
-                    const patientName = apt.patient?.full_name || "Unknown";
+                    const patientName = apt.patient_name || "Unknown";
                     const status = apt.status || "CONFIRMED";
                     const icon = status === "COMPLETED" ? "✅" : status === "NO_SHOW" ? "❌" : "📌";
                     appointmentList += `${index + 1}. ${apt.appointment_time} - ${patientName} ${icon}\n`;
                 });
                 appointmentList += `\nTotal: ${appointments.length} appointment(s)`;
 
-                await this.whatsappClient.sendTextMessage(phone, appointmentList);
+                await this.whatsappClient.sendTextMessage(phone, appointmentList, this.supabase);
             }
         } catch (error) {
             debug("doctorFlow", "Error loading appointments", {
@@ -1123,7 +1118,7 @@ export class DoctorFlowHandler {
             } else {
                 let appointmentList = "📌 Select appointment to mark status:\n\n";
                 confirmedAppointments.forEach((apt, index) => {
-                    const patientName = apt.patient?.full_name || "Unknown";
+                    const patientName = apt.patient_name || "Unknown";
                     appointmentList += `${index + 1}. ${apt.appointment_time} - ${patientName}\n`;
                 });
                 appointmentList += `\nReply with number (e.g., 1):`;
@@ -1144,8 +1139,8 @@ export class DoctorFlowHandler {
                     appointments: confirmedAppointments.map(apt => ({
                         id: apt.id,
                         time: apt.appointment_time,
-                        patientName: apt.patient?.full_name || "Unknown",
-                        patientId: apt.patient_id
+                        patientName: apt.patient_name || "Unknown",
+                        patientPhone: apt.patient_phone
                     }))
                 });
             }
