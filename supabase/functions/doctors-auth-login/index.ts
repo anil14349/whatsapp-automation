@@ -29,6 +29,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createJwtToken } from "../shared/jwt-auth.ts";
 import { badRequestResponse, errorResponse, successResponse } from "../shared/auth-middleware.ts";
 import { debug } from "../shared/logger.ts";
+import { withCors } from "../shared/cors.ts";
 import { verifyPassword } from "../shared/bcrypt-password.ts";
 import { isRateLimited, recordFailedAttempt, clearFailedAttempts, getRemainingLockoutTime } from "../shared/rate-limiting.ts";
 
@@ -188,7 +189,7 @@ export async function handleDoctorLogin(req: Request): Promise<Response> {
 }
 
 // Export for Deno serve
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
   if (req.method !== "POST") {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
@@ -197,4 +198,4 @@ Deno.serve(async (req: Request) => {
   }
 
   return handleDoctorLogin(req);
-});
+}));

@@ -21,6 +21,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withAuth, successResponse, errorResponse } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
 import { debug } from "../shared/logger.ts";
+import { withCors } from "../shared/cors.ts";
 
 /**
  * Fetch doctor profile from database
@@ -89,7 +90,7 @@ async function handleGetProfile(user: TokenPayload): Promise<Response> {
 }
 
 // Export for Deno serve
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
   if (req.method !== "GET") {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
@@ -99,4 +100,4 @@ Deno.serve(async (req: Request) => {
 
   // Use withAuth middleware to validate token and get user
   return withAuth(req, "DOCTOR", handleGetProfile);
-});
+}));

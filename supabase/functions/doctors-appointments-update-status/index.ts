@@ -25,6 +25,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withAuth, successResponse, errorResponse, badRequestResponse } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
 import { debug } from "../shared/logger.ts";
+import { withCors } from "../shared/cors.ts";
 
 interface StatusUpdateRequest {
   status: "COMPLETED" | "NO_SHOW";
@@ -241,7 +242,7 @@ async function handler(user: TokenPayload, req: Request): Promise<Response> {
 }
 
 // Export for Deno serve
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
   if (req.method !== "PUT") {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
@@ -250,4 +251,4 @@ Deno.serve(async (req: Request) => {
   }
 
   return withAuth(req, "DOCTOR", (user) => handler(user, req));
-});
+}));

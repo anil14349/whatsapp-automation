@@ -43,6 +43,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withAuth, successResponse, errorResponse, badRequestResponse } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
 import { debug } from "../shared/logger.ts";
+import { withCors } from "../shared/cors.ts";
 import { createAppointmentReminders } from "../shared/appointment-reminders.ts";
 
 interface CreateAppointmentRequest {
@@ -192,17 +193,17 @@ async function createAppointment(
     const random = crypto.randomUUID().replace(/-/g, "").substring(0, 6);
     const appointmentId = `APT_${dateStr}_${random}`;
 
+    // service_types is a global catalogue, not per-clinic.
     const { data: serviceType } = await supabase
       .from("service_types")
       .select("id")
-      .eq("clinic_id", clinicId)
       .eq("code", "CONSULTATION")
       .maybeSingle();
 
     if (!serviceType) {
       return {
         success: false,
-        error: "Clinic has no CONSULTATION service type configured"
+        error: "No CONSULTATION service type is configured"
       };
     }
 
@@ -372,7 +373,7 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
 }
 
 // Export for Deno serve
-Deno.serve(async (req: Request) => {
+Deno.serve(withCors(async (req: Request) => {
   if (!["GET", "POST"].includes(req.method)) {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
@@ -381,4 +382,4 @@ Deno.serve(async (req: Request) => {
   }
 
   return withAuth(req, "RECEPTIONIST", (user) => handleRequest(user, req));
-});
+}));

@@ -153,6 +153,42 @@ async function getDefaultClinic(supabase: SupabaseClient): Promise<ClinicRoute |
 }
 
 /**
+ * Every active clinic with usable sending credentials.
+ *
+ * Used by the scheduler, which has no inbound message to route from and must
+ * send each clinic's reminders from that clinic's own number.
+ */
+export async function getActiveClinicRoutes(
+    supabase: SupabaseClient
+): Promise<ClinicRoute[]> {
+    const { data, error } = await supabase
+        .from("clinics")
+        .select("id, name, whatsapp_phone_number_id, whatsapp_access_token")
+        .eq("is_active", true);
+
+    if (error) {
+        debug("clinicRouting", "Active clinic lookup failed, using env credentials", {
+            error: error.message
+        });
+
+        const fallback = envRoute();
+        return fallback ? [fallback] : [];
+    }
+
+    const routes: ClinicRoute[] = [];
+
+    for (const row of data || []) {
+        const route = toRoute(row);
+
+        if (route) {
+            routes.push(route);
+        }
+    }
+
+    return routes;
+}
+
+/**
  * True when the token matches any clinic's verify token, or the env fallback.
  * Used only for the Meta subscription handshake.
  */

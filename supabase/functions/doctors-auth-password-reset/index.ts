@@ -12,6 +12,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { badRequestResponse, errorResponse, successResponse, withAuth } from "../shared/auth-middleware.ts";
 import { debug } from "../shared/logger.ts";
+import { withCors } from "../shared/cors.ts";
 import { hashPassword, validatePinStrength } from "../shared/bcrypt-password.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
 
@@ -283,7 +284,7 @@ export async function handleDoctorPasswordChange(req: Request): Promise<Response
   });
 }
 
-Deno.serve((req) => {
+Deno.serve(withCors((req) => {
     // Sub-action is the last path segment: /request, /confirm or /change.
     const action = new URL(req.url).pathname.split("/").filter(Boolean).pop();
 
@@ -296,4 +297,4 @@ Deno.serve((req) => {
     }
 
     return handleDoctorPasswordResetRequest(req);
-});
+}));

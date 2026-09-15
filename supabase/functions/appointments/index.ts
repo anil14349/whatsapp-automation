@@ -9,6 +9,7 @@ import {
     AppointmentResponse
 } from "../shared/appointments.ts";
 import { logWhatsAppMessage, logError } from "../shared/logger.ts";
+import { withCors } from "../shared/cors.ts";
 
 /**
  * Appointment API Handler
@@ -325,4 +326,4 @@ async function handleGetAvailableSlots(req: Request): Promise<Response> {
     }
 }
 
-Deno.serve((req) => handleAppointmentRequest(req));
+Deno.serve(withCors((req) => handleAppointmentRequest(req)));
