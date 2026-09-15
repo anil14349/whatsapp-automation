@@ -275,6 +275,7 @@ export class WaitlistHandler {
                 .from("patients")
                 .select("preferred_language")
                 .eq("phone", data.phone)
+                .eq("clinic_id", clinicId)
                 .maybeSingle();
 
             const isEn = (patient?.preferred_language || "EN") === "EN";
@@ -374,7 +375,8 @@ export class WaitlistHandler {
                 data: data || {},
                 updated_at: new Date().toISOString()
             })
-            .eq("phone", phone);
+            .eq("phone", phone)
+            .eq("clinic_id", clinicId);
 
         if (error) {
             debug("waitlistHandler", "Error updating session", { error: error.message });

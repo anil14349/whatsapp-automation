@@ -147,7 +147,8 @@ export class FeedbackHandler {
         await this.supabase
             .from("feedback")
             .update({ rating, status: "RATED", submitted_at: new Date().toISOString() })
-            .eq("appointment_id", appointmentId);
+            .eq("appointment_id", appointmentId)
+            .eq("clinic_id", session.clinic_id);
 
         await this.updateSession(phone, "FEEDBACK_COMMENTS", {
             ...session.data,
@@ -184,7 +185,8 @@ export class FeedbackHandler {
                     status: "COMPLETE",
                     submitted_at: new Date().toISOString()
                 })
-                .eq("appointment_id", appointmentId);
+                .eq("appointment_id", appointmentId)
+                .eq("clinic_id", session.clinic_id);
         }
 
         await this.updateSession(phone, "MAIN_MENU", {
