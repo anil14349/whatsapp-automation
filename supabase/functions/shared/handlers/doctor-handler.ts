@@ -10,6 +10,7 @@ import {
     formatAuthErrorMessage,
     getPinEntryPrompt
 } from "../doctor-auth.ts";
+import { hashPassword } from "../bcrypt-password.ts";
 
 /**
  * Doctor Flow Handler - Manages doctor portal interactions
@@ -79,6 +80,10 @@ export class DoctorFlowHandler {
 
                 case "DOCTOR_MY_LEAVES":
                     await this.handleMyLeaves(phone, message, session);
+                    break;
+
+                case "DOCTOR_CHANGE_PIN":
+                    await this.handleChangePin(phone, message, session);
                     break;
 
                 case "DOCTOR_AVAILABILITY_CONFIRM":
@@ -295,6 +300,19 @@ export class DoctorFlowHandler {
                     authenticated: true
                 });
                 await this.showUpcomingLeaves(phone, session);
+                break;
+
+            case BUTTON_IDS.DOCTOR_MENU.CHANGE_PIN:
+                await this.updateSession(phone, "DOCTOR_CHANGE_PIN", {
+                    doctorId: session.data?.doctorId,
+                    doctorName: session.data?.doctorName,
+                    authenticated: true
+                });
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "🔑 Enter a new 4-6 digit PIN.\n\nThis becomes your own private PIN, replacing the shared clinic PIN.",
+                    this.supabase
+                );
                 break;
 
             case BUTTON_IDS.DOCTOR_MENU.LEAVE:
@@ -677,6 +695,7 @@ export class DoctorFlowHandler {
             { id: BUTTON_IDS.DOCTOR_MENU.AVAILABILITY, title: "📅 Consulting Hours", description: "Set your hours for a day" },
             { id: BUTTON_IDS.DOCTOR_MENU.LEAVE, title: "🗓️ Apply for Leave", description: "Block a date range" },
             { id: BUTTON_IDS.DOCTOR_MENU.MY_LEAVES, title: "📖 My Leaves", description: "View or cancel upcoming leave" },
+            { id: BUTTON_IDS.DOCTOR_MENU.CHANGE_PIN, title: "🔑 Change PIN", description: "Set your own private login PIN" },
             { id: BUTTON_IDS.DOCTOR_MENU.LOGOUT, title: "🚪 Logout", description: "End this portal session" }
         ];
 
@@ -934,6 +953,69 @@ export class DoctorFlowHandler {
             [{ title: "Upcoming leave", rows }],
             this.supabase
         );
+    }
+
+    /**
+     * DOCTOR_CHANGE_PIN - replace the shared clinic PIN with a private one
+     */
+    private async handleChangePin(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        const pin = message.text?.trim() || "";
+
+        if (!/^\d{4,6}$/.test(pin)) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "PIN must be 4 to 6 digits. Please try again:",
+                this.supabase
+            );
+            return;
+        }
+
+        // Obvious sequences and repeats are the first thing an attacker tries.
+        if (/^(\d)\1+$/.test(pin) || "0123456789".includes(pin) || "9876543210".includes(pin)) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "That PIN is too easy to guess. Please choose another:",
+                this.supabase
+            );
+            return;
+        }
+
+        try {
+            const hash = await hashPassword(pin);
+
+            const { error } = await this.supabase
+                .from("doctors")
+                .update({ pin_hash: hash, updated_at: new Date().toISOString() })
+                .eq("id", session.data?.doctorId)
+                .eq("clinic_id", session.clinic_id);
+
+            if (error) {
+                throw new Error(error.message);
+            }
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "✅ PIN updated. Use your new PIN next time you log in.",
+                this.supabase
+            );
+        } catch (error) {
+            debug("doctorFlow", "Failed to update doctor PIN", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "Could not update your PIN. Please try again.",
+                this.supabase
+            );
+        }
+
+        await this.updateSession(phone, "DOCTOR_MENU", session.data);
+        await this.showMenu(phone);
     }
 
     /**

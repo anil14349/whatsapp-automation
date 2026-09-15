@@ -41,6 +41,7 @@ export const BUTTON_IDS = {
         APPOINTMENTS: "doctor_appointments",
         MARK_STATUS: "doctor_mark_status",
         SET_STATUS: "doctor_set_status",
+        CHANGE_PIN: "doctor_change_pin",
         LOGOUT: "doctor_logout",
     },
 

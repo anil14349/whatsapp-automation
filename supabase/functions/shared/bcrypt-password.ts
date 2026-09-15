@@ -24,8 +24,9 @@ export async function hashPassword(plainPassword: string): Promise<string> {
       throw new Error("Password cannot be empty");
     }
 
-    // Use 10 salt rounds for bcrypt (default is 10)
-    const hash = await bcrypt.hash(plainPassword);
+    // hashSync/compareSync are required here: the async variants spawn a Web
+    // Worker, which the Supabase Edge runtime does not support, so they throw.
+    const hash = bcrypt.hashSync(plainPassword);
     debug("bcryptPassword", "Password hashed successfully", {});
     return hash;
   } catch (error) {
@@ -57,7 +58,8 @@ export async function verifyPassword(plainPassword: string, hash: string): Promi
       return false;
     }
 
-    const isValid = await bcrypt.compare(plainPassword, hash);
+    // Sync variant: see hashPassword above for why the async API is unusable.
+    const isValid = bcrypt.compareSync(plainPassword, hash);
     
     if (isValid) {
       debug("bcryptPassword", "Password verified successfully", {});

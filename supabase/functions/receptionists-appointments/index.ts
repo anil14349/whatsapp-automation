@@ -186,22 +186,42 @@ async function createAppointment(
       };
     }
 
+    // Appointments need an explicit id and service type, mirroring the
+    // WhatsApp booking path.
+    const dateStr = new Date().toISOString().split("T")[0].replace(/-/g, "");
+    const random = crypto.randomUUID().replace(/-/g, "").substring(0, 6);
+    const appointmentId = `APT_${dateStr}_${random}`;
+
+    const { data: serviceType } = await supabase
+      .from("service_types")
+      .select("id")
+      .eq("clinic_id", clinicId)
+      .eq("code", "CONSULTATION")
+      .maybeSingle();
+
+    if (!serviceType) {
+      return {
+        success: false,
+        error: "Clinic has no CONSULTATION service type configured"
+      };
+    }
+
     // Create appointment
     const { data, error } = await supabase
       .from("appointments")
       .insert({
+        id: appointmentId,
         clinic_id: clinicId,
         patient_name: req.patientName,
         patient_phone: req.patientPhone,
-        patient_email: req.patientEmail || null,
         doctor_id: req.doctorId,
-        doctor_name: doctor.name,
+        service_type_id: serviceType.id,
+        location_type: "CLINIC",
         appointment_date: req.appointmentDate,
         appointment_time: req.appointmentTime,
         status: "CONFIRMED",
         notes: req.notes || null,
-        preferred_language: req.preferredLanguage || "EN",
-        created_at: new Date().toISOString()
+        preferred_language: req.preferredLanguage || "EN"
       })
       .select("*")
       .single();
@@ -242,7 +262,7 @@ async function createAppointment(
         status: data.status,
         patientName: data.patient_name,
         patientPhone: data.patient_phone,
-        doctorName: data.doctor_name,
+        doctorName: doctor.name,
         createdAt: data.created_at
       }
     };

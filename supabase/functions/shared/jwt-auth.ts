@@ -19,6 +19,23 @@ if (!JWT_SECRET) {
 
 const TOKEN_EXPIRY_HOURS = 24;
 
+// djwt v3 signs and verifies with a CryptoKey, not a raw string. Import it once
+// and reuse the promise so concurrent requests share a single key.
+let signingKey: Promise<CryptoKey> | null = null;
+
+function getSigningKey(): Promise<CryptoKey> {
+  if (!signingKey) {
+    signingKey = crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(JWT_SECRET),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign", "verify"]
+    );
+  }
+  return signingKey;
+}
+
 export interface TokenPayload {
   userId: string;
   email: string;
@@ -57,7 +74,7 @@ export async function createJwtToken(
         iat: now,
         exp: expiresAt
       },
-      JWT_SECRET
+      await getSigningKey()
     );
 
     debug("jwtAuth", "Token created", {
@@ -83,7 +100,8 @@ export async function createJwtToken(
  */
 export async function verifyJwtToken(token: string): Promise<TokenPayload | null> {
   try {
-    const payload = await verify(token, JWT_SECRET, "HS256") as TokenPayload;
+    // djwt v3 derives the algorithm from the key, so no alg argument is passed.
+    const payload = await verify(token, await getSigningKey()) as TokenPayload;
 
     // Check expiration
     if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) {
@@ -171,11 +189,14 @@ export async function refreshJwtToken(
  * @returns Token payload if valid, null if invalid/missing
  */
 export async function validateRequest(req: Request): Promise<TokenPayload | null> {
-  const authHeader = req.headers.get("Authorization");
-  const token = extractTokenFromHeader(authHeader);
+  // The Supabase gateway validates the Authorization header against its own
+  // project JWT, so the portal token travels in a dedicated header. Fall back
+  // to Authorization for callers that bypass the gateway.
+  const portalToken = req.headers.get("X-Portal-Token");
+  const token = portalToken?.trim() || extractTokenFromHeader(req.headers.get("Authorization"));
 
   if (!token) {
-    debug("jwtAuth", "Missing or invalid Authorization header");
+    debug("jwtAuth", "Missing portal token");
     return null;
   }
 

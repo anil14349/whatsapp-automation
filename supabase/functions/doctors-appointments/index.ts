@@ -37,9 +37,8 @@ interface AppointmentRow {
   status: string;
   patient_name: string;
   patient_phone: string;
-  patient_id: string;
   doctor_id: string;
-  doctor_name: string;
+  doctor: { name: string } | null;
   notes: string;
   completed_at: string | null;
   created_at: string;
@@ -51,6 +50,7 @@ interface AppointmentRow {
 async function fetchDoctorAppointments(
   supabase: SupabaseClient,
   doctorId: string,
+  clinicId: string,
   date?: string,
   status?: string
 ): Promise<AppointmentRow[] | null> {
@@ -64,14 +64,14 @@ async function fetchDoctorAppointments(
         status,
         patient_name,
         patient_phone,
-        patient_id,
         doctor_id,
-        doctor_name,
+        doctor:doctors(name),
         notes,
         completed_at,
         created_at
       `)
-      .eq("doctor_id", doctorId);
+      .eq("doctor_id", doctorId)
+      .eq("clinic_id", clinicId);
 
     // Filter by date if provided
     if (date) {
@@ -140,13 +140,12 @@ function formatAppointment(row: AppointmentRow) {
     time: row.appointment_time,
     status: row.status,
     patient: {
-      id: row.patient_id,
       name: row.patient_name,
       phone: row.patient_phone
     },
     doctor: {
       id: row.doctor_id,
-      name: row.doctor_name
+      name: row.doctor?.name ?? null
     },
     notes: row.notes,
     completedAt: row.completed_at,
@@ -195,6 +194,7 @@ async function handleGetAppointments(
     const appointments = await fetchDoctorAppointments(
       supabase,
       user.userId,
+      user.clinicId ?? "",
       dateValidation.date,
       statusParam || undefined
     );

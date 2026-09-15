@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { validatePin, PIN_CONFIG } from "./config.ts";
+import { verifyPassword } from "./bcrypt-password.ts";
 import { debug } from "./logger.ts";
 
 /**
@@ -136,8 +137,9 @@ export async function verifyDoctorPin(
             };
         }
 
-        // Validate PIN using constant-time comparison
-        const isValid = validatePin(providedPin, clinicId);
+        // Prefer the doctor's own bcrypt PIN; the shared env PIN is a fallback
+        // for clinics that have not set individual PINs yet.
+        const isValid = await verifyPinForDoctor(supabase, phone, clinicId, normalizedPin);
 
         if (!isValid) {
             // Record failed attempt
@@ -180,6 +182,39 @@ export async function verifyDoctorPin(
             error: "auth_error"
         };
     }
+}
+
+/**
+ * Check the PIN against this doctor's own bcrypt hash.
+ *
+ * Falls back to the clinic-wide env PIN only when the doctor has no hash set,
+ * so existing installs keep working while individual PINs are rolled out.
+ */
+async function verifyPinForDoctor(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string,
+    pin: string
+): Promise<boolean> {
+    try {
+        const { data: doctor } = await supabase
+            .from("doctors")
+            .select("pin_hash")
+            .eq("clinic_id", clinicId)
+            .eq("phone", phone)
+            .eq("is_active", true)
+            .maybeSingle();
+
+        if (doctor?.pin_hash) {
+            return await verifyPassword(pin, doctor.pin_hash);
+        }
+    } catch (error) {
+        debug("doctorAuth", "Per-doctor PIN lookup failed", {
+            error: error instanceof Error ? error.message : String(error)
+        });
+    }
+
+    return validatePin(pin, clinicId);
 }
 
 /**
