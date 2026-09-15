@@ -122,6 +122,24 @@ export function isValidPatientMenuButton(buttonId: string): boolean {
 }
 
 /**
+ * Services are per clinic, so their button ids carry the service id rather
+ * than being declared up front like the fixed menu entries.
+ */
+export const SERVICE_BUTTON_PREFIX = "svc_";
+
+export function serviceButtonId(serviceTypeId: string): string {
+    return `${SERVICE_BUTTON_PREFIX}${serviceTypeId}`;
+}
+
+export function isServiceButton(buttonId: string): boolean {
+    return buttonId.startsWith(SERVICE_BUTTON_PREFIX);
+}
+
+export function serviceIdFromButton(buttonId: string): string {
+    return buttonId.slice(SERVICE_BUTTON_PREFIX.length);
+}
+
+/**
  * Check if a button ID is one of the declared language IDs.
  *
  * Declared is not the same as supported: use isSupportedLanguageButton()

@@ -1,7 +1,14 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppMessage, WhatsAppSession, ExtractedMessage } from "../types.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
-import { BUTTON_IDS, isValidPatientMenuButton, isValidConfirmationButton, isValidDateSelectButton } from "../button-ids.ts";
+import { BUTTON_IDS, isValidPatientMenuButton, isValidConfirmationButton, isValidDateSelectButton, isServiceButton, serviceButtonId, serviceIdFromButton } from "../button-ids.ts";
+import {
+    getEnabledServices,
+    getServiceById,
+    formatPrice,
+    type ClinicService
+} from "../clinic-services.ts";
+import { getClinicServiceSlots } from "../clinic-slots.ts";
 import {
     cancelAppointment,
     rescheduleAppointment
@@ -56,7 +63,8 @@ export class PatientFlowHandler {
             if (
                 state !== "LANGUAGE_SELECT" &&
                 state !== "MAIN_MENU" &&
-                isValidPatientMenuButton(message.text?.trim() || "")
+                (isValidPatientMenuButton(message.text?.trim() || "") ||
+                    isServiceButton(message.text?.trim() || ""))
             ) {
                 await this.handleMainMenu(phone, message, { ...session, state: "MAIN_MENU" });
                 return;
@@ -84,6 +92,10 @@ export class PatientFlowHandler {
                 case "FEEDBACK_COMMENTS":
                     await new FeedbackHandler(this.supabase, this.whatsappClient)
                         .handleComments(phone, message, session);
+                    break;
+
+                case "SERVICE_SELECT":
+                    await this.handleServiceSelect(phone, message, session);
                     break;
 
                 case "BOOK_DOCTOR":
@@ -223,6 +235,12 @@ export class PatientFlowHandler {
         const buttonId = message.text.trim();
         const clinicId = session.clinic_id;
 
+        // Service ids are per clinic, so they cannot be part of the fixed list.
+        if (isServiceButton(buttonId)) {
+            await this.handleServiceChosen(phone, language, clinicId, serviceIdFromButton(buttonId));
+            return;
+        }
+
         // Validate button ID
         if (!isValidPatientMenuButton(buttonId)) {
             await this.showMainMenu(phone, language);
@@ -232,8 +250,7 @@ export class PatientFlowHandler {
         // Parse menu choice
         switch (buttonId) {
             case BUTTON_IDS.PATIENT_MENU.BOOK:
-                await this.updateSession(phone, "BOOK_DOCTOR");
-                await this.showDoctorList(phone, language, clinicId);
+                await this.startBooking(phone, language, clinicId);
                 break;
 
             case BUTTON_IDS.PATIENT_MENU.APPOINTMENTS:
@@ -280,6 +297,185 @@ export class PatientFlowHandler {
                 await this.updateSession(phone, "MAIN_MENU", { language });
                 await this.showMainMenu(phone, language);
         }
+    }
+
+    /**
+     * Start booking.
+     *
+     * The service comes first because it decides whether a doctor is even
+     * involved. A clinic offering one service should not be asked to choose.
+     */
+    private async startBooking(phone: string, language: string, clinicId: string): Promise<void> {
+        const services = await getEnabledServices(this.supabase, clinicId, "clinic");
+
+        if (services.length === 0) {
+            // A clinic that has configured nothing must not show an empty menu.
+            debug("patientFlow", "No services enabled, falling back to consultation", { clinicId });
+
+            await this.updateSession(phone, "BOOK_DOCTOR");
+            await this.showDoctorList(phone, language, clinicId);
+            return;
+        }
+
+        if (services.length === 1) {
+            await this.handleServiceChosen(phone, language, clinicId, services[0].serviceTypeId);
+            return;
+        }
+
+        await this.updateSession(phone, "SERVICE_SELECT", { language });
+        await this.showServiceList(phone, language, services);
+    }
+
+    private async showServiceList(
+        phone: string,
+        language: string,
+        services: ClinicService[]
+    ): Promise<void> {
+        const isEn = language === "EN";
+        const header = isEn ? "🩺 What do you need?" : "🩺 आपको क्या चाहिए?";
+
+        // WhatsApp allows at most 10 rows, and at most 3 reply buttons.
+        const shown = services.slice(0, 10);
+
+        const options = shown.map((s) => {
+            const price = formatPrice(s.clinicPrice, language);
+
+            return {
+                id: serviceButtonId(s.serviceTypeId),
+                title: s.name.slice(0, 24),
+                description: price ? `${price} · ${s.durationMinutes} min` : `${s.durationMinutes} min`
+            };
+        });
+
+        if (options.length <= 3) {
+            await this.whatsappClient.sendInteractiveButtonMessage(
+                phone,
+                header,
+                options.map((o) => ({ id: o.id, title: o.title })),
+                this.supabase
+            );
+            return;
+        }
+
+        await this.whatsappClient.sendInteractiveListMessage(
+            phone,
+            header,
+            isEn ? "Choose a service" : "सेवा चुनें",
+            [{ title: isEn ? "Services" : "सेवाएं", rows: options }],
+            this.supabase
+        );
+    }
+
+    /**
+     * A service was picked, so route to whatever that service needs next.
+     */
+    private async handleServiceChosen(
+        phone: string,
+        language: string,
+        clinicId: string,
+        serviceTypeId: string
+    ): Promise<void> {
+        const service = await getServiceById(this.supabase, clinicId, serviceTypeId);
+
+        // Hiding a button is not authorisation: a stale tap must not book a
+        // service the clinic has since switched off.
+        if (!service || !service.offeredAtClinic) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "Sorry, that service is not available at this clinic."
+                    : "क्षमा करें, यह सेवा इस क्लिनिक में उपलब्ध नहीं है।"
+            );
+            await this.updateSession(phone, "MAIN_MENU", { language });
+            await this.showMainMenu(phone, language);
+            return;
+        }
+
+        const data = {
+            language,
+            serviceTypeId: service.serviceTypeId,
+            serviceName: service.name,
+            requiresDoctor: service.requiresDoctor
+        };
+
+        if (service.requiresDoctor) {
+            await this.updateSession(phone, "BOOK_DOCTOR", data);
+            await this.showDoctorList(phone, language, clinicId);
+            return;
+        }
+
+        await this.updateSession(phone, "BOOK_DATE", data);
+        await this.showDateMenu(phone, language);
+    }
+
+    /**
+     * SERVICE_SELECT - the patient is choosing what they need
+     */
+    private async handleServiceSelect(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        const language = session.data?.language || "EN";
+        const reply = message.text.trim();
+
+        if (isServiceButton(reply)) {
+            await this.handleServiceChosen(
+                phone,
+                language,
+                session.clinic_id,
+                serviceIdFromButton(reply)
+            );
+            return;
+        }
+
+        const services = await getEnabledServices(this.supabase, session.clinic_id, "clinic");
+        const index = Number(reply);
+
+        if (Number.isInteger(index) && index >= 1 && index <= services.length) {
+            await this.handleServiceChosen(
+                phone,
+                language,
+                session.clinic_id,
+                services[index - 1].serviceTypeId
+            );
+            return;
+        }
+
+        await this.showServiceList(phone, language, services);
+    }
+
+    /**
+     * Times available for whatever the patient is booking.
+     *
+     * A service with no doctor has no doctor hours to draw slots from, so it
+     * falls back to the clinic's own opening hours and the service's capacity.
+     */
+    private async slotsForBooking(
+        session: WhatsAppSession,
+        clinicId: string,
+        date: string,
+        locationType: string
+    ): Promise<string[]> {
+        const doctorId = session.data?.selectedDoctorId;
+
+        if (doctorId) {
+            return await this.supabaseClient.getAvailableSlots(clinicId, doctorId, date, locationType);
+        }
+
+        const serviceTypeId = session.data?.serviceTypeId;
+
+        if (!serviceTypeId) {
+            return [];
+        }
+
+        const service = await getServiceById(this.supabase, clinicId, serviceTypeId);
+
+        if (!service) {
+            return [];
+        }
+
+        return await getClinicServiceSlots(this.supabase, clinicId, service, date);
     }
 
     /**
@@ -398,7 +594,7 @@ export class PatientFlowHandler {
             }
 
             // Check availability for selected date
-            const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, selectedDate, locationType);
+            const slots = await this.slotsForBooking(session, clinicId, selectedDate, locationType);
             if (!slots || slots.length === 0) {
                 // Check if doctor is unavailable (not AVAILABLE or IN_CONSULTATION)
                 const doctorAvailable = await this.supabaseClient.isDoctorAvailable(clinicId, doctorId);
@@ -462,7 +658,7 @@ export class PatientFlowHandler {
                 return;
             }
 
-            const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, buttonId, locationType);
+            const slots = await this.slotsForBooking(session, clinicId, buttonId, locationType);
             if (!slots || slots.length === 0) {
                 await this.offerWaitlist(
                     phone,
@@ -523,7 +719,7 @@ export class PatientFlowHandler {
         }
 
         // Check availability
-        const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, dateString, locationType);
+        const slots = await this.slotsForBooking(session, clinicId, dateString, locationType);
         if (!slots || slots.length === 0) {
             // Check if doctor is unavailable (not AVAILABLE or IN_CONSULTATION)
             const doctorAvailable = await this.supabaseClient.isDoctorAvailable(clinicId, doctorId);
@@ -597,7 +793,7 @@ export class PatientFlowHandler {
 
         if (rawTime === BUTTON_IDS.PAGINATION.MORE_SLOTS) {
             const nextPage = (session.data?.slotPage || 0) + 1;
-            const allSlots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, selectedDate, locationType);
+            const allSlots = await this.slotsForBooking(session, clinicId, selectedDate, locationType);
 
             await this.updateSession(phone, "BOOK_TIME", { ...session.data, slotPage: nextPage });
             await this.showAvailableSlots(phone, language, allSlots, nextPage);
@@ -616,7 +812,7 @@ export class PatientFlowHandler {
         }
 
         // Verify slot still available
-        const slots = await this.supabaseClient.getAvailableSlots(clinicId, doctorId, selectedDate, locationType);
+        const slots = await this.slotsForBooking(session, clinicId, selectedDate, locationType);
         const slotExists = slots?.some(
             (s: any) => (typeof s === "string" ? s : s.start_time || s.time) === selectedTime
         );
@@ -727,7 +923,11 @@ export class PatientFlowHandler {
                     return;
                 }
 
-                const serviceTypeId = await this.supabaseClient.getServiceTypeIdByCode("CONSULTATION");
+                // Falls back to consultation for sessions that began before the
+                // clinic had services configured.
+                const serviceTypeId =
+                    session.data?.serviceTypeId ||
+                    (await this.supabaseClient.getServiceTypeIdByCode("CONSULTATION"));
 
                 // Keep a patient record so history and preferences have an owner.
                 try {
@@ -1319,16 +1519,34 @@ export class PatientFlowHandler {
                 ? "📋 What would you like to do?\n\n🔖 Tap a button to choose:"
                 : "📋 आप क्या करना चाहते हैं?\n\n🔖 चुनने के लिए बटन दबाएं:";
 
+        // Offering home collection at a clinic that does not do it wastes one of
+        // only three buttons and strands the patient in a dead flow.
+        const homeServices = this.clinicId
+            ? await getEnabledServices(this.supabase, this.clinicId, "home")
+            : [];
+
+        const buttons: Array<{ id: string; title: string }> = [
+            { id: BUTTON_IDS.PATIENT_MENU.BOOK, title: language === "EN" ? "📅 Book Appointment" : "📅 नियुक्ति बुक करें" }
+        ];
+
+        if (homeServices.length > 0) {
+            buttons.push({
+                id: BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION,
+                title: language === "EN" ? "🏠 Home Collection" : "🏠 घर से सैंपल"
+            });
+        }
+
+        buttons.push({
+            id: BUTTON_IDS.PATIENT_MENU.MORE,
+            title: language === "EN" ? "➕ More Options" : "➕ अन्य विकल्प"
+        });
+
         // WhatsApp allows a maximum of 3 reply buttons, so the less common
         // actions live behind "More Options".
         await this.whatsappClient.sendInteractiveButtonMessage(
             phone,
             message,
-            [
-                { id: BUTTON_IDS.PATIENT_MENU.BOOK, title: language === "EN" ? "📅 Book Appointment" : "📅 नियुक्ति बुक करें" },
-                { id: BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION, title: language === "EN" ? "🏠 Home Collection" : "🏠 घर से सैंपल" },
-                { id: BUTTON_IDS.PATIENT_MENU.MORE, title: language === "EN" ? "➕ More Options" : "➕ अन्य विकल्प" }
-            ],
+            buttons,
             this.supabase
         );
     }

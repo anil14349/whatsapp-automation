@@ -19,10 +19,17 @@ import {
     isTerminalAppointmentStatus
 } from "../shared/validators.ts";
 
+// Local days, not UTC ones. toISOString() shifts to UTC, so between local
+// midnight and UTC midnight this drifted a day and the suite failed nightly.
 function offsetDate(days: number): string {
     const d = new Date();
     d.setDate(d.getDate() + days);
-    return d.toISOString().split("T")[0];
+
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
 }
 
 Deno.test("today and the next seven days are bookable", () => {
