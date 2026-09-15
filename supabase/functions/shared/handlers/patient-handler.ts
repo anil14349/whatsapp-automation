@@ -30,6 +30,7 @@ export class PatientFlowHandler {
     private supabase: SupabaseClient;
     private whatsappClient: any;
     private supabaseClient: MultiClinicSupabaseClient;
+    private clinicId = "";
 
     constructor(supabase: SupabaseClient, whatsappClient: any) {
         this.supabase = supabase;
@@ -47,6 +48,8 @@ export class PatientFlowHandler {
         try {
             const state = session.state || "LANGUAGE_SELECT";
             const phone = session.phone;
+            // Session writes must never touch this patient's row at another clinic.
+            this.clinicId = session.clinic_id;
 
             debug("patientFlow", `Processing state: ${state}`, { phone, messageText: message.text });
 
@@ -183,7 +186,7 @@ export class PatientFlowHandler {
 
         // Remember it so returning patients are not asked again.
         try {
-            await this.supabaseClient.setPatientLanguage(phone, selectedLanguage);
+            await this.supabaseClient.setPatientLanguage(phone, selectedLanguage, session.clinic_id);
         } catch (error) {
             debug("patientFlow", "Could not persist language preference", {
                 error: error instanceof Error ? error.message : String(error)
@@ -732,7 +735,8 @@ export class PatientFlowHandler {
                 try {
                     await this.supabaseClient.getOrCreatePatient(
                         phone,
-                        session.data?.patientName || "Patient"
+                        session.data?.patientName || "Patient",
+                        session.clinic_id
                     );
                 } catch (patientError) {
                     debug("patientFlow", "Could not upsert patient record", {
@@ -1778,7 +1782,8 @@ export class PatientFlowHandler {
         const { error } = await this.supabase
             .from("whatsapp_sessions")
             .update(patch)
-            .eq("phone", phone);
+            .eq("phone", phone)
+            .eq("clinic_id", this.clinicId);
 
         if (error) {
             debug("patientFlow", "Error updating session", { error: error.message });

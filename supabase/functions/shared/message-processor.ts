@@ -6,7 +6,7 @@ import { info, debug } from "./logger.ts";
 import { PatientFlowHandler } from "./handlers/patient-handler.ts";
 import { DoctorFlowHandler } from "./handlers/doctor-handler.ts";
 import { HomeCollectionHandler } from "./handlers/home-collection-handler.ts";
-import { getRoleByPhone } from "./config.ts";
+import { getRoleByPhoneForClinic } from "./staff-directory.ts";
 import { getClinicConfig, isClinicOpen, getAfterHoursMessage } from "./clinic-config.ts";
 import { sendLanguagePrompt } from "./languages.ts";
 import { getPinEntryPrompt } from "./doctor-auth.ts";
@@ -199,7 +199,7 @@ async function getOrCreateSession(
         }
 
         // Create new session with role determined by phone number
-        const role = getRoleByPhone(phone);
+        const role = await getRoleByPhoneForClinic(supabase, phone, clinicId);
         const initialState =
             role === "DOCTOR"
                 ? "DOCTOR_LOGIN"
@@ -225,7 +225,7 @@ async function getOrCreateSession(
         console.error("Failed to get/create session:", error);
 
         // Return default session (should not happen in production)
-        const role = getRoleByPhone(phone);
+        const role = await getRoleByPhoneForClinic(supabase, phone, clinicId);
         const initialState =
             role === "DOCTOR"
                 ? "DOCTOR_LOGIN"
@@ -254,6 +254,7 @@ async function getOrCreateSession(
 export async function updateSession(
     supabase: SupabaseClient,
     phone: string,
+    clinicId: string,
     updates: {
         state?: string;
         data?: Record<string, any>;
@@ -268,7 +269,8 @@ export async function updateSession(
                 ...updates,
                 updated_at: new Date().toISOString()
             })
-            .eq("phone", phone);
+            .eq("phone", phone)
+            .eq("clinic_id", clinicId);
     } catch (error) {
         console.error("Failed to update session:", error);
     }
@@ -304,7 +306,7 @@ async function handleGreeting(
         await whatsappClient.sendTextMessage(phone, pinPrompt, supabase);
     } else if (session.role === "HOME_COLLECTION_PERSON") {
         // For sample collectors, reset to location selection
-        await updateSession(supabase, phone, {
+        await updateSession(supabase, phone, session.clinic_id, {
             state: "LOCATION_SELECT",
             data: {}
         });
@@ -323,12 +325,13 @@ async function handleGreeting(
             .from("patients")
             .select("preferred_language")
             .eq("phone", phone)
+            .eq("clinic_id", session.clinic_id)
             .maybeSingle();
 
         const savedLanguage = knownPatient?.preferred_language;
 
         if (savedLanguage) {
-            await updateSession(supabase, phone, {
+            await updateSession(supabase, phone, session.clinic_id, {
                 state: "MAIN_MENU",
                 data: { language: savedLanguage }
             });
@@ -342,7 +345,7 @@ async function handleGreeting(
         }
 
         // For patients, reset to language selection
-        await updateSession(supabase, phone, {
+        await updateSession(supabase, phone, session.clinic_id, {
             state: "LANGUAGE_SELECT",
             data: {}
         });

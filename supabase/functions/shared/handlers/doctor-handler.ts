@@ -18,6 +18,7 @@ import {
 
 export class DoctorFlowHandler {
     private supabase: SupabaseClient;
+    private clinicId = "";
     private whatsappClient: any;
     private supabaseClient: MultiClinicSupabaseClient;
 
@@ -37,6 +38,8 @@ export class DoctorFlowHandler {
         try {
             const state = session.state || "DOCTOR_LOGIN";
             const phone = session.phone;
+            // Session writes must never touch this phone's row at another clinic.
+            this.clinicId = session.clinic_id;
 
             debug("doctorFlow", `Processing state: ${state}`, { phone, messageText: message.text });
 
@@ -1224,7 +1227,8 @@ export class DoctorFlowHandler {
                 data: data || {},
                 updated_at: new Date().toISOString()
             })
-            .eq("phone", phone);
+            .eq("phone", phone)
+            .eq("clinic_id", this.clinicId);
 
         if (error) {
             debug("doctorFlow", "Error updating session", { error: error.message });

@@ -544,13 +544,14 @@ export class MultiClinicSupabaseClient {
   // PATIENT OPERATIONS
   // ============================================================================
 
-  async getOrCreatePatient(phone: string, name: string): Promise<types.Patient> {
-    // Try to get existing patient
+  async getOrCreatePatient(phone: string, name: string, clinicId: string): Promise<types.Patient> {
+    // A phone identifies a patient only within one clinic.
     const { data: existing } = await this.supabase
       .from("patients")
       .select("*")
       .eq("phone", phone)
-      .single();
+      .eq("clinic_id", clinicId)
+      .maybeSingle();
 
     if (existing) return existing;
 
@@ -560,6 +561,7 @@ export class MultiClinicSupabaseClient {
       .insert({
         phone,
         name,
+        clinic_id: clinicId,
         total_appointments: 0,
       })
       .select()
@@ -569,29 +571,36 @@ export class MultiClinicSupabaseClient {
     return data;
   }
 
-  async getPatientLanguage(phone: string): Promise<string | null> {
+  async getPatientLanguage(phone: string, clinicId: string): Promise<string | null> {
     const { data, error } = await this.supabase
       .from("patients")
       .select("preferred_language")
       .eq("phone", phone)
+      .eq("clinic_id", clinicId)
       .maybeSingle();
 
     if (error) throw new types.ClinicError(`Failed to read patient language: ${error.message}`);
     return data?.preferred_language ?? null;
   }
 
-  async setPatientLanguage(phone: string, language: string, name?: string): Promise<void> {
+  async setPatientLanguage(
+    phone: string,
+    language: string,
+    clinicId: string,
+    name?: string
+  ): Promise<void> {
     const { data: existing } = await this.supabase
       .from("patients")
       .select("id")
       .eq("phone", phone)
+      .eq("clinic_id", clinicId)
       .maybeSingle();
 
     if (existing) {
       const { error } = await this.supabase
         .from("patients")
         .update({ preferred_language: language, updated_at: new Date().toISOString() })
-        .eq("phone", phone);
+        .eq("id", existing.id);
 
       if (error) throw new types.ClinicError(`Failed to save patient language: ${error.message}`);
       return;
@@ -599,7 +608,12 @@ export class MultiClinicSupabaseClient {
 
     const { error } = await this.supabase
       .from("patients")
-      .insert({ phone, name: name || "Patient", preferred_language: language });
+      .insert({
+        phone,
+        clinic_id: clinicId,
+        name: name || "Patient",
+        preferred_language: language
+      });
 
     if (error) throw new types.ClinicError(`Failed to save patient language: ${error.message}`);
   }

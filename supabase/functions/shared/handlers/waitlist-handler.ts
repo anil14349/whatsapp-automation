@@ -120,7 +120,7 @@ export class WaitlistHandler {
                 // Reset session to main menu
                 await this.updateSession(phone, "MAIN_MENU", {
                     language: session.data?.language || "EN"
-                });
+                }, session.clinic_id);
             } else {
                 await this.whatsappClient.sendTextMessage(
                     phone,
@@ -136,7 +136,7 @@ export class WaitlistHandler {
                 language: session.data?.language || "EN",
                 selectedDoctorId: session.data?.doctorId,
                 selectedDoctorName: session.data?.doctorName
-            });
+            }, session.clinic_id);
 
             await this.whatsappClient.sendTextMessage(
                 phone,
@@ -361,7 +361,12 @@ export class WaitlistHandler {
     /**
      * Helper: Update session state
      */
-    private async updateSession(phone: string, newState: string, data?: any): Promise<void> {
+    private async updateSession(
+        phone: string,
+        newState: string,
+        data: any,
+        clinicId: string
+    ): Promise<void> {
         const { error } = await this.supabase
             .from("whatsapp_sessions")
             .update({

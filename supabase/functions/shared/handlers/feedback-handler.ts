@@ -152,7 +152,7 @@ export class FeedbackHandler {
         await this.updateSession(phone, "FEEDBACK_COMMENTS", {
             ...session.data,
             rating
-        });
+        }, session.clinic_id);
 
         await this.whatsappClient.sendInteractiveButtonMessage(
             phone,
@@ -189,7 +189,7 @@ export class FeedbackHandler {
 
         await this.updateSession(phone, "MAIN_MENU", {
             language: session.data?.language || "EN"
-        });
+        }, session.clinic_id);
 
         await this.whatsappClient.sendTextMessage(
             phone,
@@ -204,7 +204,12 @@ export class FeedbackHandler {
         );
     }
 
-    private async updateSession(phone: string, newState: string, data?: any): Promise<void> {
+    private async updateSession(
+        phone: string,
+        newState: string,
+        data: any,
+        clinicId: string
+    ): Promise<void> {
         const update: Record<string, unknown> = {
             state: newState,
             updated_at: new Date().toISOString()
@@ -214,6 +219,10 @@ export class FeedbackHandler {
             update.data = data;
         }
 
-        await this.supabase.from("whatsapp_sessions").update(update).eq("phone", phone);
+        await this.supabase
+            .from("whatsapp_sessions")
+            .update(update)
+            .eq("phone", phone)
+            .eq("clinic_id", clinicId);
     }
 }

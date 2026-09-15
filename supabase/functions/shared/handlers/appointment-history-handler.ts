@@ -13,6 +13,7 @@ export class AppointmentHistoryHandler {
     private supabase: SupabaseClient;
     private whatsappClient: any;
     private supabaseClient: MultiClinicSupabaseClient;
+    private clinicId = "";
 
     constructor(supabase: SupabaseClient, whatsappClient: any) {
         this.supabase = supabase;
@@ -34,6 +35,8 @@ export class AppointmentHistoryHandler {
         try {
             const normalizedMessage = messageText.toLowerCase().trim();
             const page = session.data?.historyPage || 0;
+            // Session writes must never touch this phone's row at another clinic.
+            this.clinicId = session.clinic_id;
 
             // Check for navigation
             if (normalizedMessage === "nav_more" || messageText.includes(BUTTON_IDS.NAVIGATION.MORE)) {
@@ -197,7 +200,8 @@ export class AppointmentHistoryHandler {
                 data: data || {},
                 updated_at: new Date().toISOString()
             })
-            .eq("phone", phone);
+            .eq("phone", phone)
+            .eq("clinic_id", this.clinicId);
 
         if (error) {
             debug("appointmentHistory", "Error updating session", { error: error.message });

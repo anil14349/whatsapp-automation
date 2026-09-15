@@ -4,7 +4,8 @@ import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 import { BUTTON_IDS, isValidConfirmationButton } from "../button-ids.ts";
 import { debug } from "../logger.ts";
 import { isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
-import { getSampleCollectorPhones, getHomeCollectionMinLeadHours, getMaxCollectionsPerCollectorPerDay } from "../config.ts";
+import { getHomeCollectionMinLeadHours, getMaxCollectionsPerCollectorPerDay } from "../config.ts";
+import { getCollectorsForClinic } from "../staff-directory.ts";
 import { createHomeCollectionReminder, markHomeCollectionRemindersAsSkipped } from "../home-collection-reminders.ts";
 
 /**
@@ -17,6 +18,7 @@ export class HomeCollectionHandler {
     private supabase: SupabaseClient;
     private whatsappClient: any;
     private supabaseClient: MultiClinicSupabaseClient;
+    private clinicId = "";
 
     constructor(supabase: SupabaseClient, whatsappClient: any) {
         this.supabase = supabase;
@@ -35,6 +37,8 @@ export class HomeCollectionHandler {
             const state = session.state || "LOCATION_SELECT";
             const phone = session.phone;
             const raw = message.text?.trim() || "";
+            // Session writes must never touch this phone's row at another clinic.
+            this.clinicId = session.clinic_id;
 
             // Dispatch replies carry their request id and can arrive in any state.
             if (
@@ -360,7 +364,7 @@ export class HomeCollectionHandler {
                         `✅ Your home collection request has been submitted!\n\nRequest ID: ${result.requestId}\n\n📍 Our team will contact you within 2-4 hours.\n\nYou will receive a confirmation message once the collection is scheduled.`
                     );
 
-                    await this.notifyCollectors(result.requestId!, session.data);
+                    await this.notifyCollectors(result.requestId!, session.data, session.clinic_id);
                 } else {
                     await this.whatsappClient.sendTextMessage(
                         phone,
@@ -489,7 +493,11 @@ export class HomeCollectionHandler {
      * Collections still bookable on a date across all collectors.
      */
     private async getRemainingCapacity(clinicId: string, date: string): Promise<number> {
-        const capacity = getSampleCollectorPhones().length * getMaxCollectionsPerCollectorPerDay();
+        const collectors = await getCollectorsForClinic(this.supabase, clinicId);
+        const capacity = collectors.reduce(
+            (total, collector) => total + (collector.maxPerDay || getMaxCollectionsPerCollectorPerDay()),
+            0
+        );
 
         if (capacity === 0) {
             return 0;
@@ -603,8 +611,12 @@ export class HomeCollectionHandler {
     /**
      * Offer a new request to every configured collector; first to accept wins.
      */
-    private async notifyCollectors(requestId: string, locationData: any): Promise<void> {
-        const collectors = getSampleCollectorPhones();
+    private async notifyCollectors(
+        requestId: string,
+        locationData: any,
+        clinicId: string
+    ): Promise<void> {
+        const collectors = await getCollectorsForClinic(this.supabase, clinicId);
 
         if (collectors.length === 0) {
             debug("homeCollectionFlow", "No collectors configured to notify", { requestId });
@@ -620,14 +632,14 @@ export class HomeCollectionHandler {
 
         for (const collector of collectors) {
             try {
-                await this.whatsappClient.sendInteractiveButtonMessage(collector, summary, [
+                await this.whatsappClient.sendInteractiveButtonMessage(collector.phone, summary, [
                     { id: `${BUTTON_IDS.HOME_COLLECTION_MENU.CONFIRM}:${requestId}`, title: "Accept" },
                     { id: `${BUTTON_IDS.HOME_COLLECTION_MENU.REJECT}:${requestId}`, title: "Reject" }
                 ]);
             } catch (error) {
                 // One unreachable collector must not stop the rest being offered the job.
                 debug("homeCollectionFlow", "Failed to notify collector", {
-                    collector,
+                    collector: collector.phone,
                     error: error instanceof Error ? error.message : String(error)
                 });
             }
@@ -892,7 +904,8 @@ export class HomeCollectionHandler {
                 data: data || {},
                 updated_at: new Date().toISOString()
             })
-            .eq("phone", phone);
+            .eq("phone", phone)
+            .eq("clinic_id", this.clinicId);
 
         if (error) {
             debug("homeCollectionFlow", "Error updating session", { error: error.message });
