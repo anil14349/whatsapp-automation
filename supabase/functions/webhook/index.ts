@@ -48,8 +48,8 @@ Deno.serve(async (req) => {
             await supabase.from("whatsapp_log").insert({
                 direction: "WEBHOOK",
                 status: "ERROR",
-                message: error.message,
-                metadata: { stack: error.stack }
+                message: error instanceof Error ? error.message : String(error),
+                metadata: { stack: error instanceof Error ? error.stack : undefined }
             });
         } catch (logError) {
             console.error("Could not log error:", logError);
@@ -247,12 +247,14 @@ async function handleInboundMessage(req: Request) {
     } catch (error) {
         console.error("Message processing error:", error);
 
+        const reason = error instanceof Error ? error.message : String(error);
+
         // Log error
         await logWhatsAppMessage(supabase, {
             direction: "WEBHOOK",
             phone: senderPhone,
             status: "ERROR",
-            message: error.message
+            message: reason
         });
 
         // Mark as failed
@@ -261,7 +263,7 @@ async function handleInboundMessage(req: Request) {
                 .from("message_dedup")
                 .update({
                     status: "failed",
-                    result: { error: error.message }
+                    result: { error: reason }
                 })
                 .eq("message_id", messageId);
         }

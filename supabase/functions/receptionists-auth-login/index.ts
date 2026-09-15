@@ -94,7 +94,15 @@ async function getReceptionistDetails(
     return null;
   }
 
-  return data;
+  // PostgREST returns an object for a to-one embed, not the array the
+  // generated types describe.
+  return data as unknown as {
+    id: string;
+    name: string;
+    email: string;
+    status: string;
+    clinic: { id: string; name: string };
+  };
 }
 
 /**

@@ -104,30 +104,29 @@ async function sendReminder(
             language: (details.preferredLanguage || "EN") as "EN" | "HI"
         });
 
-        // Send via WhatsApp
-        const sendResult = await whatsappClient.sendTextMessage(
-            details.patientPhone,
-            message
-        );
+        // sendTextMessage resolves to the message id and throws on failure.
+        // Treating it as a result object made every delivered reminder look
+        // failed, so each one was retried and patients received duplicates.
+        let messageId: string;
 
-        if (!sendResult.success) {
+        try {
+            messageId = await whatsappClient.sendTextMessage(details.patientPhone, message);
+        } catch (sendError) {
+            const reason = sendError instanceof Error ? sendError.message : String(sendError);
+
             debug("reminderScheduler", "Failed to send reminder", {
                 reminderId: reminder.id,
                 phone: details.patientPhone,
-                error: sendResult.error
+                error: reason
             });
 
-            await markReminderAsFailed(
-                supabase,
-                reminder.id,
-                sendResult.error || "Unknown error"
-            );
+            await markReminderAsFailed(supabase, reminder.id, reason);
 
             return {
                 reminderId: reminder.id,
                 appointmentId: reminder.appointment_id,
                 status: "failed",
-                error: sendResult.error,
+                error: reason,
                 retryable: true
             };
         }
@@ -136,13 +135,13 @@ async function sendReminder(
         await markReminderAsSent(
             supabase,
             reminder.id,
-            sendResult.message_id || ""
+            messageId
         );
 
         debug("reminderScheduler", "Reminder sent successfully", {
             reminderId: reminder.id,
             appointmentId: reminder.appointment_id,
-            messageId: sendResult.message_id,
+            messageId,
             phone: details.patientPhone,
             reminderType: reminder.reminder_type
         });
@@ -155,14 +154,14 @@ async function sendReminder(
             "appointment_reminders",
             reminder.id,
             { reminder_type: reminder.reminder_type },
-            { status: "SENT", message_id: sendResult.message_id }
+            { status: "SENT", message_id: messageId }
         );
 
         return {
             reminderId: reminder.id,
             appointmentId: reminder.appointment_id,
             status: "sent",
-            messageId: sendResult.message_id,
+            messageId,
             retryable: false
         };
     } catch (error) {

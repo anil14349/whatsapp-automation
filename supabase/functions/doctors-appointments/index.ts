@@ -97,7 +97,7 @@ async function fetchDoctorAppointments(
       return null;
     }
 
-    return data as AppointmentRow[];
+    return data as unknown as AppointmentRow[];
   } catch (error) {
     debug("doctorAppointments", "Error fetching appointments", {
       error: error instanceof Error ? error.message : String(error)

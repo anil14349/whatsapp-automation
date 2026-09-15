@@ -31,7 +31,7 @@ import { badRequestResponse, errorResponse, successResponse } from "../shared/au
 import { debug } from "../shared/logger.ts";
 import { withCors } from "../shared/cors.ts";
 import { verifyPassword } from "../shared/bcrypt-password.ts";
-import { isRateLimited, recordFailedAttempt, clearFailedAttempts, getRemainingLockoutTime } from "../shared/rate-limiting.ts";
+import { isRateLimited, recordFailedAttempt, clearFailedAttempts, getRemainingLockoutTime, DEFAULT_RATE_LIMIT } from "../shared/rate-limiting.ts";
 
 interface LoginRequest {
   email: string;
@@ -84,7 +84,14 @@ async function getDoctorDetails(supabase: SupabaseClient, email: string, clinicI
     return null;
   }
 
-  return data;
+  // PostgREST returns an object for a to-one embed, not the array the
+  // generated types describe.
+  return data as unknown as {
+    id: string;
+    name: string;
+    email: string;
+    clinic: { id: string; name: string };
+  };
 }
 
 /**

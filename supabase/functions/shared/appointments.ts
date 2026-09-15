@@ -82,10 +82,12 @@ export async function cancelAppointment(
             message: "Appointment cancelled successfully"
         };
     } catch (error) {
-        await logError(supabase, error instanceof Error ? error : new Error(String(error)), {
-            context: "cancelAppointment",
-            appointmentId
-        });
+        await logError(
+            supabase,
+            "cancelAppointment",
+            error instanceof Error ? error : new Error(String(error)),
+            { appointmentId }
+        );
 
         return {
             success: false,
@@ -186,10 +188,12 @@ export async function rescheduleAppointment(
             message: `Appointment rescheduled to ${newDate} at ${newTime}`
         };
     } catch (error) {
-        await logError(supabase, error instanceof Error ? error : new Error(String(error)), {
-            context: "rescheduleAppointment",
-            appointmentId
-        });
+        await logError(
+            supabase,
+            "rescheduleAppointment",
+            error instanceof Error ? error : new Error(String(error)),
+            { appointmentId }
+        );
 
         return {
             success: false,

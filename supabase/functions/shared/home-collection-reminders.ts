@@ -181,11 +181,19 @@ export async function getHomeCollectionDetailsForReminder(
       return null;
     }
 
+    // PostgREST returns an object for a to-one embed.
+    const row = data as unknown as {
+      request_id: string;
+      phone: string;
+      appointment_date: string | null;
+      clinic: { name: string } | null;
+    };
+
     return {
-      requestId: data.request_id,
-      patientPhone: data.phone,
-      collectionDate: data.appointment_date || new Date().toISOString().split("T")[0],
-      clinicName: data.clinic?.name || "Clinic",
+      requestId: row.request_id,
+      patientPhone: row.phone,
+      collectionDate: row.appointment_date || new Date().toISOString().split("T")[0],
+      clinicName: row.clinic?.name || "Clinic",
       preferredLanguage: "EN" // Default to EN, can be extended to fetch from patient record
     };
   } catch (error) {

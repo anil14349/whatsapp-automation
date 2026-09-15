@@ -109,6 +109,24 @@ export interface AppointmentRecord {
     notes?: string;
 }
 
+/** A row of home_collection_reminders. */
+export interface HomeCollectionReminder {
+    id: string;
+    clinic_id: string;
+    request_id: string;
+    patient_phone: string;
+    scheduled_time: string;
+    status: "PENDING" | "SENT" | "FAILED" | "SKIPPED";
+    message_id?: string | null;
+    error_message?: string | null;
+    preferred_language?: string | null;
+    attempts: number;
+    max_attempts: number;
+    sent_at?: string | null;
+    created_at?: string;
+    updated_at?: string;
+}
+
 export interface DoctorRecord {
     id: string;
     name: string;

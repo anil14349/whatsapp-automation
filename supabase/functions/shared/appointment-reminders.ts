@@ -72,7 +72,7 @@ export async function createAppointmentReminders(
     // Get patient phone from appointment
     const { data: appointment, error: fetchError } = await supabase
       .from("appointments")
-      .select("phone, patient_name")
+      .select("patient_phone, patient_name")
       .eq("id", appointmentId)
       .single();
 
@@ -83,16 +83,13 @@ export async function createAppointmentReminders(
     // Add patient phone to reminders
     const remindersWithPhone = reminders.map(r => ({
       ...r,
-      patient_phone: appointment.phone
+      patient_phone: appointment.patient_phone
     }));
 
     // Insert reminders (idempotency: UNIQUE constraint prevents duplicates)
     const { error: insertError } = await supabase
       .from("appointment_reminders")
-      .insert(remindersWithPhone)
-      .on("*", payload => {
-        debug("reminders", "Reminder inserted", { payload });
-      });
+      .insert(remindersWithPhone);
 
     if (insertError) {
       // UNIQUE violation is expected if reminders already exist
@@ -152,13 +149,21 @@ export async function markReminderAsSent(
   messageId: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Read-then-write: assigning a query builder to `attempts` produced an
+    // unserialisable payload, so the row never moved off PENDING.
+    const { data: current } = await supabase
+      .from("appointment_reminders")
+      .select("attempts")
+      .eq("id", reminderId)
+      .maybeSingle();
+
     const { error } = await supabase
       .from("appointment_reminders")
       .update({
         status: "SENT",
         sent_at: new Date().toISOString(),
         message_id: messageId,
-        attempts: supabase.rpc("increment_attempts", { reminder_id: reminderId })
+        attempts: (current?.attempts ?? 0) + 1
       })
       .eq("id", reminderId);
 
@@ -291,13 +296,23 @@ export async function getAppointmentDetailsForReminder(
       return { error: error.message };
     }
 
+    // PostgREST returns an object for a to-one embed.
+    const row = data as unknown as {
+      patient_name: string;
+      patient_phone: string;
+      appointment_date: string;
+      appointment_time: string;
+      preferred_language: string | null;
+      doctor: { name: string } | null;
+    };
+
     return {
-      patientName: data.patient_name,
-      patientPhone: data.patient_phone,
-      doctorName: data.doctor?.name || "Dr.",
-      appointmentDate: data.appointment_date,
-      appointmentTime: data.appointment_time,
-      preferredLanguage: data.preferred_language || "EN"
+      patientName: row.patient_name,
+      patientPhone: row.patient_phone,
+      doctorName: row.doctor?.name || "Dr.",
+      appointmentDate: row.appointment_date,
+      appointmentTime: row.appointment_time,
+      preferredLanguage: row.preferred_language || "EN"
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
