@@ -37,3 +37,6 @@ supabase/.temp/*
 supabase/supabase/.temp/*
 test-webhook-result.txt
 webhook-test.txt
+
+# Deno lockfile is generated per-machine by the test runner
+deno.lock
