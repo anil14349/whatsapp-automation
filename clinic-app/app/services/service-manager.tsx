@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { updateService, type ServiceRow, type ServiceState } from "./actions";
+import { updateService, renameService, removeService, type ServiceRow, type ServiceState } from "./actions";
 
 export function ServiceManager({ services }: { services: ServiceRow[] }) {
     const [notice, setNotice] = useState<ServiceState>({});
@@ -85,6 +85,19 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
 
                             {open && (
                                 <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+                                    {s.isOwn && (
+                                        <div className="sm:col-span-2">
+                                            <NameField
+                                                value={s.name}
+                                                disabled={busy}
+                                                onSave={(next) =>
+                                                    start(async () =>
+                                                        setNotice(await renameService(s.serviceTypeId, next))
+                                                    )
+                                                }
+                                            />
+                                        </div>
+                                    )}
                                     <Toggle
                                         label="At the clinic"
                                         value={s.offeredAtClinic}
@@ -137,6 +150,25 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                         hint="Decides how slots are spaced"
                                         onSave={(v) => save(s.serviceTypeId, { durationMinutes: v })}
                                     />
+
+                                    {s.isOwn && (
+                                        <div className="sm:col-span-2 border-t border-slate-100 pt-3">
+                                            <button
+                                                disabled={busy}
+                                                onClick={() =>
+                                                    start(async () =>
+                                                        setNotice(await removeService(s.serviceTypeId))
+                                                    )
+                                                }
+                                                className="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:border-red-300 disabled:opacity-50"
+                                            >
+                                                Remove this service
+                                            </button>
+                                            <span className="ml-3 text-xs text-slate-400">
+                                                Refused while patients are still booked for it
+                                            </span>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>
@@ -144,6 +176,39 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                 })}
             </div>
         </div>
+    );
+}
+
+function NameField({
+    value,
+    disabled,
+    onSave
+}: {
+    value: string;
+    disabled: boolean;
+    onSave: (value: string) => void;
+}) {
+    const [draft, setDraft] = useState(value);
+
+    return (
+        <label className="space-y-1 text-sm">
+            <span className="block text-xs font-medium text-slate-600">Name</span>
+            <input
+                value={draft}
+                maxLength={24}
+                disabled={disabled}
+                onChange={(e) => setDraft(e.target.value)}
+                // Saved on blur, so a half-typed name is never sent.
+                onBlur={() => {
+                    const next = draft.trim();
+                    if (next && next !== value) onSave(next);
+                }}
+                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm disabled:bg-slate-50"
+            />
+            <span className="block text-xs text-slate-400">
+                This is what patients see on their phone
+            </span>
+        </label>
     );
 }
 

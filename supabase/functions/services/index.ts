@@ -23,6 +23,7 @@ import { withCors } from "../shared/cors.ts";
 interface UpdateRequest {
   serviceTypeId?: string;
   clinicId?: string;
+  name?: string;
   isEnabled?: unknown;
   offeredAtClinic?: unknown;
   offeredAtHome?: unknown;
@@ -152,6 +153,43 @@ async function updateService(
 
   if (!type) {
     return { status: 404, payload: { error: "Unknown service" } };
+  }
+
+  // Renaming is only for a clinic's own service. The shared catalogue is used
+  // by every clinic, so one of them must not rename Consultation for all.
+  if (typeof body.name === "string") {
+    const name = body.name.trim();
+
+    if (type.clinic_id !== clinicId) {
+      return {
+        status: 403,
+        payload: { error: "This is a shared service and cannot be renamed" }
+      };
+    }
+
+    if (!name) {
+      return { status: 400, payload: { error: "name cannot be empty" } };
+    }
+
+    if (name.length > 24) {
+      return {
+        status: 400,
+        payload: { error: "name must be 24 characters or fewer so it fits a WhatsApp list" }
+      };
+    }
+
+    const { error: renameError } = await supabase
+      .from("service_types")
+      .update({ name, updated_at: new Date().toISOString() })
+      .eq("id", body.serviceTypeId)
+      .eq("clinic_id", clinicId);
+
+    if (renameError) {
+      debug("services", "Rename failed", { error: renameError.message });
+      return { status: 500, payload: { error: "Failed to rename the service" } };
+    }
+
+    clearClinicServiceCache();
   }
 
   const { data: existing } = await supabase
@@ -338,6 +376,104 @@ async function createServiceType(
   return { status: 201, payload: { serviceTypeId: data.id, code: data.code, name: data.name } };
 }
 
+/**
+ * Remove a service the clinic added.
+ *
+ * Deactivated rather than deleted: appointments.service_type_id is NOT NULL, so
+ * removing the row would either fail or, with a cascade, take the appointment
+ * history with it. A clinic tidying its service list must not erase records.
+ */
+async function deleteServiceType(
+  supabase: SupabaseClient,
+  clinicId: string,
+  actor: string,
+  serviceTypeId: string | null
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  if (!serviceTypeId) {
+    return { status: 400, payload: { error: "serviceTypeId is required" } };
+  }
+
+  const { data: type } = await supabase
+    .from("service_types")
+    .select("id, name, clinic_id")
+    .eq("id", serviceTypeId)
+    .maybeSingle();
+
+  if (!type) {
+    return { status: 404, payload: { error: "Unknown service" } };
+  }
+
+  // Switching a shared service off is what is_enabled is for; removing it would
+  // affect every other clinic.
+  if (type.clinic_id !== clinicId) {
+    return {
+      status: 403,
+      payload: { error: "This is a shared service. Switch it off instead of removing it." }
+    };
+  }
+
+  const today = new Date().toISOString().split("T")[0];
+
+  const { data: booked, error: bookedError } = await supabase
+    .from("appointments")
+    .select("id, appointment_date, appointment_time")
+    .eq("clinic_id", clinicId)
+    .eq("service_type_id", serviceTypeId)
+    .gte("appointment_date", today)
+    .neq("status", "CANCELLED");
+
+  if (bookedError) {
+    debug("services", "Booking check failed", { error: bookedError.message });
+    return { status: 500, payload: { error: "Could not check existing appointments" } };
+  }
+
+  // Leaving these standing would have patients arrive for something the clinic
+  // believes it no longer offers.
+  if (booked && booked.length > 0) {
+    return {
+      status: 409,
+      payload: {
+        error: `${booked.length} appointment${booked.length === 1 ? " is" : "s are"} still booked for ${type.name}. Cancel or move ${booked.length === 1 ? "it" : "them"} first.`,
+        appointments: booked.length,
+        nextOn: booked
+          .map((a: Record<string, any>) => `${a.appointment_date} ${a.appointment_time}`)
+          .sort()[0]
+      }
+    };
+  }
+
+  const { error } = await supabase
+    .from("service_types")
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq("id", serviceTypeId)
+    .eq("clinic_id", clinicId);
+
+  if (error) {
+    debug("services", "Delete failed", { error: error.message });
+    return { status: 500, payload: { error: "Failed to remove the service" } };
+  }
+
+  await supabase
+    .from("clinic_services")
+    .update({ is_enabled: false, updated_at: new Date().toISOString() })
+    .eq("clinic_id", clinicId)
+    .eq("service_type_id", serviceTypeId);
+
+  clearClinicServiceCache();
+
+  await recordAuditEvent(
+    supabase,
+    "service_type_removed",
+    actor,
+    "service_type",
+    serviceTypeId,
+    { name: type.name, is_active: true },
+    { is_active: false }
+  );
+
+  return { status: 200, payload: { serviceTypeId, name: type.name, removed: true } };
+}
+
 async function handleRequest(user: TokenPayload, req: Request): Promise<Response> {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -350,7 +486,7 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
     const supabase = createClient(supabaseUrl, supabaseKey);
     const url = new URL(req.url);
     const body =
-      req.method === "PATCH" || req.method === "POST"
+      req.method === "PATCH" || req.method === "POST" || req.method === "DELETE"
         ? await req.json().catch(() => null)
         : null;
 
@@ -369,6 +505,14 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
 
     if (req.method === "GET") {
       result = await listServices(supabase, clinicId);
+    } else if (req.method === "DELETE") {
+      // The id may come from the query string, so a body is not required.
+      result = await deleteServiceType(
+        supabase,
+        clinicId,
+        actor,
+        url.searchParams.get("serviceTypeId") ?? body?.serviceTypeId ?? null
+      );
     } else if (!body) {
       result = { status: 400, payload: { error: "Invalid JSON body" } };
     } else if (req.method === "POST") {
@@ -390,7 +534,7 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
 }
 
 Deno.serve(withCors(async (req: Request) => {
-  if (!["GET", "POST", "PATCH"].includes(req.method)) {
+  if (!["GET", "POST", "PATCH", "DELETE"].includes(req.method)) {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
       { status: 405, headers: { "Content-Type": "application/json" } }
