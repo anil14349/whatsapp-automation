@@ -2,7 +2,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppSession, ExtractedMessage } from "../types.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 import { BUTTON_IDS, isValidDoctorMenuButton, isValidConfirmationButton } from "../button-ids.ts";
-import { debug } from "../logger.ts";
+import { debug, recordAuditEvent } from "../logger.ts";
 import {
     verifyDoctorPin,
     isAccountLocked,
@@ -86,6 +86,10 @@ export class DoctorFlowHandler {
                     await this.handleChangePin(phone, message, session);
                     break;
 
+                case "DOCTOR_RESET_PIN":
+                    await this.handleResetPin(phone, message, session);
+                    break;
+
                 case "DOCTOR_AVAILABILITY_CONFIRM":
                     await this.handleAvailabilityConfirm(phone, message, session);
                     break;
@@ -154,17 +158,21 @@ export class DoctorFlowHandler {
         const language = session.data?.language || "EN";
 
         // Check if account is locked
-        if (isAccountLocked(phone, clinicId)) {
+        if (await isAccountLocked(this.supabase, phone, clinicId)) {
             const errorMsg = formatAuthErrorMessage(`account_locked_15`, language);
             await this.whatsappClient.sendTextMessage(phone, errorMsg);
+            return;
+        }
+
+        if (providedPin === BUTTON_IDS.DOCTOR_LOGIN_HELP.FORGOT_PIN) {
+            await this.startPinReset(phone, session, language);
             return;
         }
 
         // If message looks like empty or very short random text (not a PIN attempt),
         // send PIN prompt (handles edge case of first message not being greeting)
         if (providedPin.length === 0) {
-            const pinPrompt = getPinEntryPrompt(phone, clinicId, language);
-            await this.whatsappClient.sendTextMessage(phone, pinPrompt);
+            await this.sendPinPrompt(phone, clinicId, language);
             return;
         }
 
@@ -174,7 +182,7 @@ export class DoctorFlowHandler {
         if (!authResult.success) {
             // Authentication failed
             const errorMsg = formatAuthErrorMessage(authResult.error || "invalid_pin", language);
-            const remainingAttempts = getRemainingAttempts(phone, clinicId);
+            const remainingAttempts = await getRemainingAttempts(this.supabase, phone, clinicId);
 
             let fullMessage = errorMsg;
             if (remainingAttempts > 0) {
@@ -193,8 +201,7 @@ export class DoctorFlowHandler {
             }
 
             // Otherwise, prompt for retry
-            const retryPrompt = getPinEntryPrompt(phone, clinicId, language);
-            await this.whatsappClient.sendTextMessage(phone, retryPrompt);
+            await this.sendPinPrompt(phone, clinicId, language);
             return;
         }
 
@@ -953,6 +960,186 @@ export class DoctorFlowHandler {
             [{ title: "Upcoming leave", rows }],
             this.supabase
         );
+    }
+
+    /**
+     * Ask for the PIN, offering a way out for doctors who have forgotten it.
+     */
+    private async sendPinPrompt(
+        phone: string,
+        clinicId: string,
+        language: string
+    ): Promise<void> {
+        const prompt = await getPinEntryPrompt(this.supabase, phone, clinicId, language);
+
+        if (!this.selfServiceResetEnabled()) {
+            await this.whatsappClient.sendTextMessage(phone, prompt, this.supabase);
+            return;
+        }
+
+        await this.whatsappClient.sendInteractiveButtonMessage(
+            phone,
+            prompt,
+            [
+                {
+                    id: BUTTON_IDS.DOCTOR_LOGIN_HELP.FORGOT_PIN,
+                    title: language === "EN" ? "Forgot PIN" : "PIN भूल गए"
+                }
+            ],
+            this.supabase
+        );
+    }
+
+    /**
+     * Self-service reset trades a factor for convenience: anyone holding the
+     * doctor's unlocked phone can set a new PIN. Clinics that would rather
+     * route resets through an admin can turn it off.
+     */
+    private selfServiceResetEnabled(): boolean {
+        return Deno.env.get("ALLOW_SELF_SERVICE_PIN_RESET") !== "false";
+    }
+
+    /**
+     * DOCTOR_LOGIN -> "Forgot PIN"
+     */
+    private async startPinReset(
+        phone: string,
+        session: WhatsAppSession,
+        language: string
+    ): Promise<void> {
+        const clinicId = session.clinic_id;
+
+        if (!this.selfServiceResetEnabled()) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "Please ask your clinic administrator to issue a new PIN."
+                    : "कृपया अपने क्लिनिक प्रशासक से नया PIN जारी करने के लिए कहें।",
+                this.supabase
+            );
+            return;
+        }
+
+        // Never let this become a way around the 3-attempt lockout.
+        if (await isAccountLocked(this.supabase, phone, clinicId)) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                formatAuthErrorMessage("account_locked_15", language),
+                this.supabase
+            );
+            return;
+        }
+
+        const { data: doctor } = await this.supabase
+            .from("doctors")
+            .select("id, name")
+            .eq("clinic_id", clinicId)
+            .eq("phone", phone)
+            .eq("is_active", true)
+            .maybeSingle();
+
+        if (!doctor) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "This number is not registered as a doctor at this clinic."
+                    : "यह नंबर इस क्लिनिक में डॉक्टर के रूप में पंजीकृत नहीं है।",
+                this.supabase
+            );
+            return;
+        }
+
+        await this.updateSession(phone, "DOCTOR_RESET_PIN", {
+            ...session.data,
+            resetDoctorId: doctor.id,
+            language
+        });
+
+        await this.whatsappClient.sendTextMessage(
+            phone,
+            language === "EN"
+                ? `🔑 Set a new PIN for your portal, ${doctor.name}.\n\nEnter a new 4-6 digit PIN:`
+                : `🔑 अपने पोर्टल के लिए नया PIN सेट करें, ${doctor.name}।\n\n4-6 अंकों का नया PIN दर्ज करें:`,
+            this.supabase
+        );
+    }
+
+    /**
+     * DOCTOR_RESET_PIN - store the new PIN, then make them sign in with it.
+     */
+    private async handleResetPin(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        const language = session.data?.language || "EN";
+        const clinicId = session.clinic_id;
+        const doctorId = session.data?.resetDoctorId;
+        const pin = message.text?.trim() || "";
+
+        if (!doctorId) {
+            await this.updateSession(phone, "DOCTOR_LOGIN", { language });
+            await this.sendPinPrompt(phone, clinicId, language);
+            return;
+        }
+
+        const strength = validatePinStrength(pin);
+
+        if (!strength.valid) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                `${strength.errors[0]}. ${language === "EN" ? "Please try again:" : "कृपया पुनः प्रयास करें:"}`,
+                this.supabase
+            );
+            return;
+        }
+
+        try {
+            const { error } = await this.supabase
+                .from("doctors")
+                .update({ pin_hash: await hashPassword(pin), updated_at: new Date().toISOString() })
+                .eq("id", doctorId)
+                .eq("clinic_id", clinicId);
+
+            if (error) {
+                throw new Error(error.message);
+            }
+
+            await recordAuditEvent(
+                this.supabase,
+                "DOCTOR_PIN_SELF_RESET",
+                phone,
+                "doctor",
+                doctorId,
+                undefined,
+                { clinic_id: clinicId, channel: "whatsapp" }
+            );
+        } catch (error) {
+            debug("doctorFlow", "Self-service PIN reset failed", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "Could not update your PIN. Please try again."
+                    : "आपका PIN अपडेट नहीं हो सका। कृपया पुनः प्रयास करें।",
+                this.supabase
+            );
+            return;
+        }
+
+        await this.updateSession(phone, "DOCTOR_LOGIN", { language });
+
+        await this.whatsappClient.sendTextMessage(
+            phone,
+            language === "EN"
+                ? "✅ PIN updated. If you did not do this, contact your clinic administrator immediately."
+                : "✅ PIN अपडेट हो गया। यदि यह आपने नहीं किया, तो तुरंत अपने क्लिनिक प्रशासक से संपर्क करें।",
+            this.supabase
+        );
+
+        await this.sendPinPrompt(phone, clinicId, language);
     }
 
     /**

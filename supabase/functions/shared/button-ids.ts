@@ -45,6 +45,12 @@ export const BUTTON_IDS = {
         LOGOUT: "doctor_logout",
     },
 
+    // Pre-authentication only, so deliberately not part of DOCTOR_MENU: the
+    // menu intercept treats those ids as actions of a logged-in doctor.
+    DOCTOR_LOGIN_HELP: {
+        FORGOT_PIN: "doctor_forgot_pin",
+    },
+
     // Doctor presence, gates whether patients see any slots
     DOCTOR_STATUS: {
         AVAILABLE: "status_available",

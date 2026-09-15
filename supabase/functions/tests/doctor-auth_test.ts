@@ -85,13 +85,13 @@ Deno.test("repeated failures lock the account", async () => {
     const phone = uniquePhone();
     supabase.store.doctors[0].phone = phone;
 
-    assertEquals(isAccountLocked(phone, CLINIC_A), false);
+    assertEquals(await isAccountLocked(supabase, phone, CLINIC_A), false);
 
     for (let i = 0; i < 3; i++) {
         await verifyDoctorPin(supabase, phone, CLINIC_A, "999999");
     }
 
-    assertEquals(isAccountLocked(phone, CLINIC_A), true);
+    assertEquals(await isAccountLocked(supabase, phone, CLINIC_A), true);
 });
 
 Deno.test("remaining attempts count down and reset on success", async () => {
@@ -99,17 +99,17 @@ Deno.test("remaining attempts count down and reset on success", async () => {
     const phone = uniquePhone();
     supabase.store.doctors[0].phone = phone;
 
-    const before = getRemainingAttempts(phone, CLINIC_A);
+    const before = await getRemainingAttempts(supabase, phone, CLINIC_A);
 
     await verifyDoctorPin(supabase, phone, CLINIC_A, "999999");
 
-    assertEquals(getRemainingAttempts(phone, CLINIC_A), before - 1);
+    assertEquals(await getRemainingAttempts(supabase, phone, CLINIC_A), before - 1);
 
     // A correct PIN must wipe the counter, otherwise a doctor stays one
     // mistake away from lockout forever.
     await verifyDoctorPin(supabase, phone, CLINIC_A, "123456");
 
-    assertEquals(getRemainingAttempts(phone, CLINIC_A), before);
+    assertEquals(await getRemainingAttempts(supabase, phone, CLINIC_A), before);
 });
 
 Deno.test("a lockout at one clinic does not lock the other", async () => {
@@ -121,8 +121,8 @@ Deno.test("a lockout at one clinic does not lock the other", async () => {
         await verifyDoctorPin(supabase, phone, CLINIC_A, "999999");
     }
 
-    assertEquals(isAccountLocked(phone, CLINIC_A), true);
-    assertEquals(isAccountLocked(phone, CLINIC_B), false);
+    assertEquals(await isAccountLocked(supabase, phone, CLINIC_A), true);
+    assertEquals(await isAccountLocked(supabase, phone, CLINIC_B), false);
 
     clearAuthCache();
 });
@@ -169,5 +169,45 @@ Deno.test("anything other than the literal string true keeps it disabled", async
     }
 
     Deno.env.set("ALLOW_SHARED_DOCTOR_PIN", "true");
+    clearAuthCache();
+});
+
+Deno.test("failed attempts survive the in-memory cache being lost", async () => {
+    const supabase = fakeSupabase(seed());
+    const phone = uniquePhone();
+    supabase.store.doctors[0].phone = phone;
+
+    // Each inbound WhatsApp message may land on a fresh edge isolate, so the
+    // counter has to come from the database, not process memory.
+    for (let i = 0; i < 3; i++) {
+        await verifyDoctorPin(supabase, phone, CLINIC_A, "999999");
+        clearAuthCache();
+    }
+
+    assertEquals(await isAccountLocked(supabase, phone, CLINIC_A), true);
+
+    clearAuthCache();
+    assertEquals(
+        await isAccountLocked(supabase, phone, CLINIC_A),
+        true,
+        "lockout must still hold after the cache is dropped"
+    );
+
+    clearAuthCache();
+});
+
+Deno.test("the attempt count is written to login_rate_limits", async () => {
+    const supabase = fakeSupabase(seed());
+    const phone = uniquePhone();
+    supabase.store.doctors[0].phone = phone;
+
+    await verifyDoctorPin(supabase, phone, CLINIC_A, "999999");
+
+    const rows = supabase.rows("login_rate_limits");
+
+    assertEquals(rows.length, 1);
+    assertEquals(rows[0].failed_attempts, 1);
+    assertEquals(rows[0].user_type, "doctor");
+
     clearAuthCache();
 });

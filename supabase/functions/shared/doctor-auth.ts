@@ -18,8 +18,11 @@ interface AuthAttempt {
 }
 
 /**
- * Execution-scoped cache for auth attempts
- * Prevents repeated database queries for failed attempts
+ * Per-request cache only.
+ *
+ * Attempts live in login_rate_limits because edge isolates are recycled
+ * between messages; an in-memory counter reset itself and the lockout never
+ * actually triggered.
  */
 let __authAttemptsCache: { [key: string]: AuthAttempt } = {};
 
@@ -30,24 +33,97 @@ function getAuthCacheKey(phone: string, clinicId: string): string {
     return `auth_${phone}_${clinicId}`;
 }
 
+async function findDoctorId(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string
+): Promise<string | null> {
+    const { data } = await supabase
+        .from("doctors")
+        .select("id")
+        .eq("clinic_id", clinicId)
+        .eq("phone", phone)
+        .maybeSingle();
+
+    return data?.id ?? null;
+}
+
+/**
+ * Read the stored attempt state, caching it for the rest of this request.
+ */
+async function loadAttempt(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string
+): Promise<AuthAttempt> {
+    const cacheKey = getAuthCacheKey(phone, clinicId);
+    const cached = __authAttemptsCache[cacheKey];
+
+    if (cached) {
+        return cached;
+    }
+
+    const blank: AuthAttempt = {
+        phone,
+        clinic_id: clinicId,
+        attempt_count: 0,
+        last_attempt_at: new Date(),
+        is_locked: false
+    };
+
+    try {
+        const doctorId = await findDoctorId(supabase, phone, clinicId);
+
+        if (doctorId) {
+            const { data } = await supabase
+                .from("login_rate_limits")
+                .select("failed_attempts, locked_until")
+                .eq("user_id", doctorId)
+                .eq("user_type", "doctor")
+                .maybeSingle();
+
+            if (data) {
+                blank.attempt_count = data.failed_attempts ?? 0;
+
+                if (data.locked_until) {
+                    const until = new Date(data.locked_until);
+
+                    if (until > new Date()) {
+                        blank.locked_until = until;
+                        blank.is_locked = true;
+                    } else {
+                        // Lockout expired; the counter starts again.
+                        blank.attempt_count = 0;
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        debug("doctorAuth", "Could not read attempt state", {
+            error: error instanceof Error ? error.message : String(error)
+        });
+    }
+
+    __authAttemptsCache[cacheKey] = blank;
+    return blank;
+}
+
 /**
  * Check if doctor account is currently locked due to failed attempts
  */
-export function isAccountLocked(phone: string, clinicId: string): boolean {
-    const cacheKey = getAuthCacheKey(phone, clinicId);
-    const cachedAttempt = __authAttemptsCache[cacheKey];
+export async function isAccountLocked(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string
+): Promise<boolean> {
+    const attempt = await loadAttempt(supabase, phone, clinicId);
 
-    if (cachedAttempt && cachedAttempt.locked_until) {
-        const now = new Date();
-        if (now < cachedAttempt.locked_until) {
-            return true; // Still locked
-        }
-        // Lockout expired, clear it
-        cachedAttempt.is_locked = false;
-        cachedAttempt.locked_until = undefined;
-        cachedAttempt.attempt_count = 0;
+    if (attempt.locked_until && attempt.locked_until > new Date()) {
+        return true;
     }
 
+    attempt.is_locked = false;
+    attempt.locked_until = undefined;
     return false;
 }
 
@@ -55,38 +131,33 @@ export function isAccountLocked(phone: string, clinicId: string): boolean {
  * Get remaining attempts before lockout
  * Returns -1 if account is locked
  */
-export function getRemainingAttempts(phone: string, clinicId: string): number {
-    if (isAccountLocked(phone, clinicId)) {
-        return -1; // Locked
+export async function getRemainingAttempts(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string
+): Promise<number> {
+    if (await isAccountLocked(supabase, phone, clinicId)) {
+        return -1;
     }
 
-    const cacheKey = getAuthCacheKey(phone, clinicId);
-    const cachedAttempt = __authAttemptsCache[cacheKey];
-    const attempts = cachedAttempt?.attempt_count || 0;
+    const attempt = await loadAttempt(supabase, phone, clinicId);
 
-    return Math.max(0, PIN_CONFIG.MAX_ATTEMPTS - attempts);
+    return Math.max(0, PIN_CONFIG.MAX_ATTEMPTS - attempt.attempt_count);
 }
 
-/**
- * Get lockout minutes remaining
- * Returns 0 if not locked
- */
-export function getLockoutMinutesRemaining(phone: string, clinicId: string): number {
-    const cacheKey = getAuthCacheKey(phone, clinicId);
-    const cachedAttempt = __authAttemptsCache[cacheKey];
+export async function getLockoutMinutesRemaining(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string
+): Promise<number> {
+    const attempt = await loadAttempt(supabase, phone, clinicId);
 
-    if (!cachedAttempt?.locked_until) {
+    if (!attempt.locked_until) {
         return 0;
     }
 
-    const now = new Date();
-    const diffMs = cachedAttempt.locked_until.getTime() - now.getTime();
-
-    if (diffMs <= 0) {
-        return 0;
-    }
-
-    return Math.ceil(diffMs / (1000 * 60));
+    const msRemaining = attempt.locked_until.getTime() - Date.now();
+    return Math.max(0, Math.ceil(msRemaining / 60000));
 }
 
 /**
@@ -109,8 +180,8 @@ export async function verifyDoctorPin(
 ): Promise<{ success: boolean; error?: string }> {
     try {
         // Check if account is locked
-        if (isAccountLocked(phone, clinicId)) {
-            const minutesRemaining = getLockoutMinutesRemaining(phone, clinicId);
+        if (await isAccountLocked(supabase, phone, clinicId)) {
+            const minutesRemaining = await getLockoutMinutesRemaining(supabase, phone, clinicId);
             debug("doctorAuth", "Account locked due to failed attempts", {
                 phone,
                 minutesRemaining
@@ -130,7 +201,7 @@ export async function verifyDoctorPin(
             !/^\d+$/.test(normalizedPin)
         ) {
             // Record failed attempt
-            await recordFailedAttempt(phone, clinicId);
+            await recordFailedAttempt(supabase, phone, clinicId);
             return {
                 success: false,
                 error: "invalid_pin"
@@ -143,9 +214,9 @@ export async function verifyDoctorPin(
 
         if (!isValid) {
             // Record failed attempt
-            await recordFailedAttempt(phone, clinicId);
+            await recordFailedAttempt(supabase, phone, clinicId);
 
-            const remainingAttempts = getRemainingAttempts(phone, clinicId);
+            const remainingAttempts = await getRemainingAttempts(supabase, phone, clinicId);
 
             if (remainingAttempts === 0) {
                 debug("doctorAuth", "Account locked - max attempts reached", {
@@ -165,7 +236,7 @@ export async function verifyDoctorPin(
         }
 
         // PIN is valid - clear any previous failed attempts
-        await clearFailedAttempts(phone, clinicId);
+        await clearFailedAttempts(supabase, phone, clinicId);
 
         debug("doctorAuth", "Doctor authentication successful", {
             phone
@@ -228,29 +299,19 @@ async function verifyPinForDoctor(
  * Record a failed authentication attempt
  * Increments attempt counter and locks account if max attempts reached
  */
-async function recordFailedAttempt(phone: string, clinicId: string): Promise<void> {
-    const cacheKey = getAuthCacheKey(phone, clinicId);
-    let attempt = __authAttemptsCache[cacheKey];
-
-    if (!attempt) {
-        attempt = {
-            phone,
-            clinic_id: clinicId,
-            attempt_count: 0,
-            last_attempt_at: new Date(),
-            is_locked: false
-        };
-    }
+async function recordFailedAttempt(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string
+): Promise<void> {
+    const attempt = await loadAttempt(supabase, phone, clinicId);
 
     attempt.attempt_count += 1;
     attempt.last_attempt_at = new Date();
 
-    // Lock account if max attempts reached
     if (attempt.attempt_count >= PIN_CONFIG.MAX_ATTEMPTS) {
         attempt.is_locked = true;
-        attempt.locked_until = new Date(
-            Date.now() + PIN_CONFIG.LOCKOUT_MINUTES * 60 * 1000
-        );
+        attempt.locked_until = new Date(Date.now() + PIN_CONFIG.LOCKOUT_MINUTES * 60 * 1000);
 
         debug("doctorAuth", "Account locked due to failed attempts", {
             phone,
@@ -258,15 +319,77 @@ async function recordFailedAttempt(phone: string, clinicId: string): Promise<voi
         });
     }
 
-    __authAttemptsCache[cacheKey] = attempt;
+    try {
+        const doctorId = await findDoctorId(supabase, phone, clinicId);
+
+        if (!doctorId) {
+            return;
+        }
+
+        const row = {
+            failed_attempts: attempt.attempt_count,
+            last_failed_at: attempt.last_attempt_at.toISOString(),
+            locked_until: attempt.locked_until?.toISOString() ?? null
+        };
+
+        // login_rate_limits has no unique index on (user_id, user_type), so an
+        // upsert with onConflict would be rejected by Postgres.
+        const { data: existing } = await supabase
+            .from("login_rate_limits")
+            .select("id")
+            .eq("user_id", doctorId)
+            .eq("user_type", "doctor")
+            .maybeSingle();
+
+        if (existing) {
+            await supabase
+                .from("login_rate_limits")
+                .update(row)
+                .eq("user_id", doctorId)
+                .eq("user_type", "doctor");
+        } else {
+            await supabase
+                .from("login_rate_limits")
+                .insert({ user_id: doctorId, user_type: "doctor", clinic_id: clinicId, ...row });
+        }
+    } catch (error) {
+        debug("doctorAuth", "Could not persist failed attempt", {
+            error: error instanceof Error ? error.message : String(error)
+        });
+    }
 }
 
 /**
  * Clear failed authentication attempts (after successful login)
  */
-async function clearFailedAttempts(phone: string, clinicId: string): Promise<void> {
-    const cacheKey = getAuthCacheKey(phone, clinicId);
-    delete __authAttemptsCache[cacheKey];
+async function clearFailedAttempts(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string
+): Promise<void> {
+    delete __authAttemptsCache[getAuthCacheKey(phone, clinicId)];
+
+    try {
+        const doctorId = await findDoctorId(supabase, phone, clinicId);
+
+        if (!doctorId) {
+            return;
+        }
+
+        await supabase
+            .from("login_rate_limits")
+            .update({
+                failed_attempts: 0,
+                locked_until: null,
+                updated_at: new Date().toISOString()
+            })
+            .eq("user_id", doctorId)
+            .eq("user_type", "doctor");
+    } catch (error) {
+        debug("doctorAuth", "Could not clear failed attempts", {
+            error: error instanceof Error ? error.message : String(error)
+        });
+    }
 }
 
 /**
@@ -307,11 +430,16 @@ export function formatAuthErrorMessage(error: string, language: string = "EN"): 
 /**
  * Get PIN entry prompt with attempt counter
  */
-export function getPinEntryPrompt(phone: string, clinicId: string, language: string = "EN"): string {
-    const remainingAttempts = getRemainingAttempts(phone, clinicId);
+export async function getPinEntryPrompt(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string,
+    language: string = "EN"
+): Promise<string> {
+    const remainingAttempts = await getRemainingAttempts(supabase, phone, clinicId);
 
     if (remainingAttempts === -1) {
-        const minutesRemaining = getLockoutMinutesRemaining(phone, clinicId);
+        const minutesRemaining = await getLockoutMinutesRemaining(supabase, phone, clinicId);
         return language === "EN"
             ? `⏳ Account locked. Please try again in ${minutesRemaining} minutes.`
             : `⏳ खाता लॉक है। ${minutesRemaining} मिनट में दोबारा कोशिश करें।`;
