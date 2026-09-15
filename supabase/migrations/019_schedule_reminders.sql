@@ -4,27 +4,49 @@
 -- something POSTs to the scheduled-reminders function. Nothing did, so none of
 -- them ever fired outside manual testing.
 --
--- Before running this, set the two settings below. Keep them out of version
--- control: they are read from the database, not from this file.
+-- The token and URL live in Vault, NOT in database settings: Supabase's hosted
+-- Postgres refuses `ALTER DATABASE ... SET app.*` with 42501, because the
+-- postgres role is not superuser. Vault also keeps this migration portable
+-- across projects, which a hardcoded project ref would not be.
 --
---   ALTER DATABASE postgres SET app.scheduler_token = '<SCHEDULER_AUTH_TOKEN>';
---   ALTER DATABASE postgres SET app.functions_url  = 'https://<ref>.supabase.co/functions/v1';
+-- Create both before running this, and keep them out of version control:
 --
--- Then reconnect so the settings take effect, and run this migration.
+--   SELECT vault.create_secret('<SCHEDULER_AUTH_TOKEN>', 'scheduler_token');
+--   SELECT vault.create_secret('https://<ref>.supabase.co/functions/v1', 'functions_url');
+--
+-- To rotate the token later:
+--   SELECT vault.update_secret(
+--       (SELECT id FROM vault.secrets WHERE name = 'scheduler_token'),
+--       '<NEW TOKEN>');
 
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
+CREATE EXTENSION IF NOT EXISTS supabase_vault;
 
--- Without this the job still schedules, then fails every minute inside cron
+-- Without these the job still schedules, then fails every minute inside cron
 -- where nobody looks. Refuse to create it rather than look healthy.
 DO $$
 DECLARE
-    v_url   text := current_setting('app.functions_url', true);
-    v_token text := current_setting('app.scheduler_token', true);
+    v_missing text[] := ARRAY[]::text[];
 BEGIN
-    IF v_url IS NULL OR v_url = '' OR v_token IS NULL OR v_token = '' THEN
+    IF NOT EXISTS (
+        SELECT 1 FROM vault.decrypted_secrets
+        WHERE name = 'scheduler_token' AND coalesce(decrypted_secret, '') <> ''
+    ) THEN
+        v_missing := v_missing || 'scheduler_token';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM vault.decrypted_secrets
+        WHERE name = 'functions_url' AND coalesce(decrypted_secret, '') <> ''
+    ) THEN
+        v_missing := v_missing || 'functions_url';
+    END IF;
+
+    IF array_length(v_missing, 1) > 0 THEN
         RAISE EXCEPTION
-            'app.functions_url and app.scheduler_token must be set before scheduling. Run the two ALTER DATABASE statements at the top of this file, then RECONNECT (they do not apply to the current session) and re-run.';
+            'Missing Vault secret(s): %. Create them with vault.create_secret(''<value>'', ''<name>'') before scheduling.',
+            array_to_string(v_missing, ', ');
     END IF;
 END;
 $$;
@@ -43,10 +65,12 @@ SELECT cron.schedule(
     '* * * * *',
     $$
     SELECT net.http_post(
-        url := current_setting('app.functions_url') || '/scheduled-reminders',
+        url := (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'functions_url')
+               || '/scheduled-reminders',
         headers := jsonb_build_object(
             'Content-Type', 'application/json',
-            'Authorization', 'Bearer ' || current_setting('app.scheduler_token')
+            'Authorization', 'Bearer ' ||
+                (SELECT decrypted_secret FROM vault.decrypted_secrets WHERE name = 'scheduler_token')
         ),
         body := '{}'::jsonb,
         timeout_milliseconds := 55000
