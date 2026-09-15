@@ -27,7 +27,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createJwtToken } from "../shared/jwt-auth.ts";
-import { badRequestResponse, errorResponse, successResponse } from "../shared/auth-middleware.ts";
+import { badRequestResponse, errorResponse, forbiddenResponse, successResponse } from "../shared/auth-middleware.ts";
+import { isClinicActive } from "../shared/clinic-status.ts";
 import { debug } from "../shared/logger.ts";
 import { withCors } from "../shared/cors.ts";
 import { verifyPassword } from "../shared/bcrypt-password.ts";
@@ -162,6 +163,11 @@ export async function handleDoctorLogin(req: Request): Promise<Response> {
 
     // Clear failed attempts on successful login
     await clearFailedAttempts(supabase, doctor.id, "doctor");
+
+    if (!(await isClinicActive(body.clinicId))) {
+      debug("doctorLogin", "Login rejected, clinic inactive", { clinicId: body.clinicId });
+      return forbiddenResponse("This clinic is not active");
+    }
 
     // Create JWT token
     const token = await createJwtToken(

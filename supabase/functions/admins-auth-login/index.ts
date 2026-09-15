@@ -9,7 +9,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { createJwtToken } from "../shared/jwt-auth.ts";
-import { badRequestResponse, errorResponse, successResponse } from "../shared/auth-middleware.ts";
+import { badRequestResponse, errorResponse, forbiddenResponse, successResponse } from "../shared/auth-middleware.ts";
+import { isClinicActive } from "../shared/clinic-status.ts";
 import { debug } from "../shared/logger.ts";
 import { verifyPassword } from "../shared/bcrypt-password.ts";
 import { withCors } from "../shared/cors.ts";
@@ -70,6 +71,13 @@ export async function handleAdminLogin(req: Request): Promise<Response> {
     if (!admin || !passwordValid) {
       debug("adminLogin", "Login rejected", { email: body.email });
       return badRequestResponse("Invalid credentials");
+    }
+
+    // A platform ADMIN has no clinic and stays reachable so a deactivated
+    // clinic can still be turned back on.
+    if (admin.clinic_id && !(await isClinicActive(admin.clinic_id))) {
+      debug("adminLogin", "Login rejected, clinic inactive", { clinicId: admin.clinic_id });
+      return forbiddenResponse("This clinic is not active");
     }
 
     const token = await createJwtToken(

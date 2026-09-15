@@ -40,6 +40,13 @@ function remember(key: string, route: ClinicRoute | null): void {
     routeCache[key] = { route, expiresAt: Date.now() + ROUTE_TTL_MS };
 }
 
+/** Drop cached routes so a change to a clinic takes effect immediately. */
+export function clearRouteCache(): void {
+    for (const key of Object.keys(routeCache)) {
+        delete routeCache[key];
+    }
+}
+
 function toRoute(row: Record<string, any> | null): ClinicRoute | null {
     if (!row) {
         return null;
@@ -100,9 +107,8 @@ export async function getClinicByPhoneNumberId(
     if (phoneNumberId) {
         const { data, error } = await supabase
             .from("clinics")
-            .select("id, name, whatsapp_phone_number_id, whatsapp_access_token")
+            .select("id, name, whatsapp_phone_number_id, whatsapp_access_token, is_active")
             .eq("whatsapp_phone_number_id", phoneNumberId)
-            .eq("is_active", true)
             .maybeSingle();
 
         if (error) {
@@ -115,6 +121,18 @@ export async function getClinicByPhoneNumberId(
             const fallback = envRoute();
             remember(key, fallback);
             return fallback;
+        }
+
+        // A known but deactivated clinic must go silent, not fall through to the
+        // default clinic, which would serve its patients under another tenant.
+        if (data && data.is_active === false) {
+            debug("clinicRouting", "Clinic is deactivated, refusing to route", {
+                phoneNumberId,
+                clinicId: data.id
+            });
+
+            remember(key, null);
+            return null;
         }
 
         route = toRoute(data);
@@ -141,12 +159,16 @@ async function getDefaultClinic(supabase: SupabaseClient): Promise<ClinicRoute |
 
     const { data, error } = await supabase
         .from("clinics")
-        .select("id, name, whatsapp_phone_number_id, whatsapp_access_token")
+        .select("id, name, whatsapp_phone_number_id, whatsapp_access_token, is_active")
         .eq("id", defaultId)
         .maybeSingle();
 
     if (error) {
         return envRoute();
+    }
+
+    if (data && data.is_active === false) {
+        return null;
     }
 
     return toRoute(data) || envRoute();

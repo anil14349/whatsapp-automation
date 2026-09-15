@@ -6,6 +6,7 @@
  */
 
 import { validateRequest, hasRole, TokenPayload } from "./jwt-auth.ts";
+import { isClinicActive } from "./clinic-status.ts";
 import { debug } from "./logger.ts";
 
 export interface AuthContext {
@@ -150,6 +151,16 @@ export async function withAuth(
         ? requiredRoles.join(", ")
         : requiredRoles;
       return forbiddenResponse(`This endpoint requires role: ${roles}`);
+    }
+
+    // Checked per request, not just at login, so deactivating a clinic does not
+    // wait for its staff's tokens to expire. A platform ADMIN has no clinic.
+    if (user.clinicId && !(await isClinicActive(user.clinicId))) {
+      debug("authMiddleware", "Request from a deactivated clinic", {
+        clinicId: user.clinicId,
+        role: user.role
+      });
+      return forbiddenResponse("This clinic is not active");
     }
 
     // Call handler with authenticated user
