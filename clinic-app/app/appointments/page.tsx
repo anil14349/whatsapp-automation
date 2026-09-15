@@ -51,6 +51,8 @@ export default async function AppointmentsPage({
             patientPhone: a.patient?.phone ?? a.patient_phone ?? "",
             doctorId: a.doctor?.id ?? a.doctor_id ?? null,
             doctorName: a.doctor?.name ?? null,
+            serviceName: a.service_type?.name ?? null,
+            bookingSource: a.booking_source ?? null,
             status: a.status
         }))
         : [];

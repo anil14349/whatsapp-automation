@@ -67,6 +67,8 @@ async function fetchDoctorAppointments(
         patient_phone,
         doctor_id,
         doctor:doctors(name),
+        service_type:service_types(code, name),
+        booking_source,
         notes,
         completed_at,
         created_at

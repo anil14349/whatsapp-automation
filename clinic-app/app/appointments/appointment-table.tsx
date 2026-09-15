@@ -10,6 +10,8 @@ export interface AppointmentRow {
     patientPhone: string;
     doctorId: string | null;
     doctorName: string | null;
+    serviceName: string | null;
+    bookingSource: string | null;
     status: string;
 }
 
@@ -146,6 +148,7 @@ export function AppointmentTable({
                         <tr>
                             <th className="px-4 py-3">Time</th>
                             <th className="px-4 py-3">Patient</th>
+                            <th className="px-4 py-3">For</th>
                             {showDoctor && <th className="px-4 py-3">Doctor</th>}
                             <th className="px-4 py-3">Status</th>
                             {(canEdit || isDoctor) && <th className="px-4 py-3 text-right">Actions</th>}
@@ -162,8 +165,20 @@ export function AppointmentTable({
                                         <div>{row.patientName}</div>
                                         <div className="text-xs text-slate-400">{row.patientPhone}</div>
                                     </td>
+                                    <td className="px-4 py-3">
+                                        <div className="text-slate-700">{row.serviceName ?? "—"}</div>
+                                        {/* A walk-in has had no confirmation message, unlike a
+                                            patient who booked themselves. */}
+                                        {row.bookingSource === "WALK_IN" && (
+                                            <div className="text-xs text-slate-400">walk-in</div>
+                                        )}
+                                    </td>
                                     {showDoctor && (
-                                        <td className="px-4 py-3 text-slate-600">{row.doctorName ?? "—"}</td>
+                                        <td className="px-4 py-3 text-slate-600">
+                                            {row.doctorName ?? (
+                                                <span className="text-slate-400">no doctor needed</span>
+                                            )}
+                                        </td>
                                     )}
                                     <td className="px-4 py-3">
                                         <span

@@ -82,7 +82,7 @@ async function listAppointments(
     // reading one gave every row an empty doctor in the portal.
     let query = supabase
       .from("appointments")
-      .select("*, doctor:doctors(id, name)")
+      .select("*, doctor:doctors(id, name), service_type:service_types(code, name)")
       .eq("clinic_id", clinicId);
 
     if (date) {
@@ -253,6 +253,8 @@ async function createAppointment(
         appointment_time: req.appointmentTime,
         status: "CONFIRMED",
         notes: req.notes || null,
+        // Entered by the front desk, so nobody has messaged this patient yet.
+        booking_source: "WALK_IN",
         preferred_language: req.preferredLanguage || "EN"
       })
       .select("*")
