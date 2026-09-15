@@ -351,7 +351,9 @@ export class PatientFlowHandler {
             await this.whatsappClient.sendInteractiveButtonMessage(
                 phone,
                 header,
-                options.map((o) => ({ id: o.id, title: o.title })),
+                // Sliced as well as guarded: the client throws above three, and
+                // that must not depend on the condition above staying correct.
+                options.slice(0, 3).map((o) => ({ id: o.id, title: o.title })),
                 this.supabase
             );
             return;

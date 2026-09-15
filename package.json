@@ -5,8 +5,9 @@
     "typecheck": "node scripts/typecheck-functions.mjs",
     "verify:menus": "node scripts/verify-menu-flows.mjs",
     "verify:coverage": "node scripts/verify-flow-coverage.mjs",
+    "verify:supabase-menus": "node scripts/verify-supabase-menus.mjs",
     "verify:schema": "node scripts/verify-schema.mjs",
-    "verify": "npm run typecheck && npm run test && npm run verify:menus && npm run verify:coverage"
+    "verify": "npm run typecheck && npm run test && npm run verify:menus && npm run verify:coverage && npm run verify:supabase-menus"
   },
   "devDependencies": {
     "supabase": "^2.117.0"
