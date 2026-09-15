@@ -821,20 +821,22 @@ export class MultiClinicSupabaseClient {
   async updateClinicConfig(
     clinicId: string,
     config: {
-      clinic_name?: string;
-      clinic_phone?: string;
-      clinic_email?: string;
+      name?: string;
+      phone?: string;
+      email?: string;
       open_time?: string;
       close_time?: string;
-      working_days?: string;
+      working_days?: number[];
       address?: string;
-      website?: string;
+      timezone?: string;
+      after_hours_message?: string;
+      enable_after_hours_reply?: boolean;
     }
   ): Promise<void> {
     const { error } = await this.supabase
       .from("clinics")
-      .update(config)
-      .eq("clinic_id", clinicId);
+      .update({ ...config, updated_at: new Date().toISOString() })
+      .eq("id", clinicId);
 
     if (error) throw new types.ClinicError(`Failed to update clinic config: ${error.message}`);
   }

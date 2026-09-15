@@ -5,6 +5,7 @@
     "typecheck": "node scripts/typecheck-functions.mjs",
     "verify:menus": "node scripts/verify-menu-flows.mjs",
     "verify:coverage": "node scripts/verify-flow-coverage.mjs",
+    "verify:schema": "node scripts/verify-schema.mjs",
     "verify": "npm run typecheck && npm run test && npm run verify:menus && npm run verify:coverage"
   },
   "devDependencies": {
