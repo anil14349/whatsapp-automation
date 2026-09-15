@@ -70,6 +70,28 @@ export async function bookWalkIn(
     return { success: `Booked ${patientName} at ${appointmentTime}.` };
 }
 
+/**
+ * A doctor closing out their own appointment. Doctors have their own endpoint
+ * because they may only touch appointments assigned to them.
+ */
+export async function updateOwnAppointmentStatus(
+    id: string,
+    status: "COMPLETED" | "NO_SHOW"
+): Promise<BookingState> {
+    const result = await callAsUser("doctors-appointments-update-status", {
+        method: "PATCH",
+        body: { appointmentId: id, status }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not update the appointment." };
+    }
+
+    revalidatePath("/appointments");
+
+    return { success: `Marked ${status.toLowerCase().replace("_", " ")}.` };
+}
+
 export type AppointmentAction = "status" | "cancel" | "reschedule";
 
 /**

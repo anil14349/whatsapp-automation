@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { loadSlots, updateAppointment, type BookingState } from "./actions";
+import { loadSlots, updateAppointment, updateOwnAppointmentStatus, type BookingState } from "./actions";
 
 export interface AppointmentRow {
     id: string;
@@ -24,12 +24,14 @@ export function AppointmentTable({
     rows,
     date,
     showDoctor,
-    canEdit
+    canEdit,
+    isDoctor = false
 }: {
     rows: AppointmentRow[];
     date: string;
     showDoctor: boolean;
     canEdit: boolean;
+    isDoctor?: boolean;
 }) {
     const [notice, setNotice] = useState<BookingState>({});
     const [busy, start] = useTransition();
@@ -146,7 +148,7 @@ export function AppointmentTable({
                             <th className="px-4 py-3">Patient</th>
                             {showDoctor && <th className="px-4 py-3">Doctor</th>}
                             <th className="px-4 py-3">Status</th>
-                            {canEdit && <th className="px-4 py-3 text-right">Actions</th>}
+                            {(canEdit || isDoctor) && <th className="px-4 py-3 text-right">Actions</th>}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -175,8 +177,7 @@ export function AppointmentTable({
                                     {canEdit && (
                                         <td className="px-4 py-3">
                                             <div className="flex flex-wrap justify-end gap-1.5">
-                                                {open && (
-                                                    <>
+                                                {open && (                                                    <>
                                                         <button
                                                             disabled={busy}
                                                             onClick={() =>
@@ -235,6 +236,38 @@ export function AppointmentTable({
                                                     >
                                                         Reopen
                                                     </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    )}
+                                    {isDoctor && (
+                                        <td className="px-4 py-3">
+                                            <div className="flex flex-wrap justify-end gap-1.5">
+                                                {open && (
+                                                    <>
+                                                        <button
+                                                            disabled={busy}
+                                                            onClick={() =>
+                                                                run(() =>
+                                                                    updateOwnAppointmentStatus(row.id, "COMPLETED")
+                                                                )
+                                                            }
+                                                            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
+                                                        >
+                                                            Seen
+                                                        </button>
+                                                        <button
+                                                            disabled={busy}
+                                                            onClick={() =>
+                                                                run(() =>
+                                                                    updateOwnAppointmentStatus(row.id, "NO_SHOW")
+                                                                )
+                                                            }
+                                                            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
+                                                        >
+                                                            No-show
+                                                        </button>
+                                                    </>
                                                 )}
                                             </div>
                                         </td>

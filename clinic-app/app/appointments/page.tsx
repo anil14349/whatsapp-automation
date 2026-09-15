@@ -108,6 +108,7 @@ export default async function AppointmentsPage({
                     date={date}
                     showDoctor={!isDoctor}
                     canEdit={canBook}
+                    isDoctor={isDoctor}
                 />
             )}
         </main>

@@ -28,6 +28,7 @@ import { debug } from "../shared/logger.ts";
 import { withCors } from "../shared/cors.ts";
 
 interface StatusUpdateRequest {
+  appointmentId: string;
   status: "COMPLETED" | "NO_SHOW";
   notes?: string;
 }
@@ -41,6 +42,11 @@ function validateStatusUpdate(body: unknown): { valid: boolean; error?: string; 
   }
 
   const req = body as Record<string, unknown>;
+  const appointmentId = req.appointmentId ?? req.id;
+
+  if (typeof appointmentId !== "string" || !appointmentId) {
+    return { valid: false, error: "appointmentId field required" };
+  }
 
   if (!req.status || typeof req.status !== "string") {
     return { valid: false, error: "status field required (COMPLETED or NO_SHOW)" };
@@ -53,6 +59,7 @@ function validateStatusUpdate(body: unknown): { valid: boolean; error?: string; 
   return {
     valid: true,
     data: {
+      appointmentId,
       status: req.status as "COMPLETED" | "NO_SHOW",
       notes: typeof req.notes === "string" ? req.notes : undefined
     }
@@ -64,13 +71,15 @@ function validateStatusUpdate(body: unknown): { valid: boolean; error?: string; 
  */
 async function getAppointment(
   supabase: SupabaseClient,
-  appointmentId: string
+  appointmentId: string,
+  clinicId: string
 ): Promise<{ id: string; doctor_id: string; status: string } | null> {
   const { data, error } = await supabase
     .from("appointments")
     .select("id, doctor_id, status")
     .eq("id", appointmentId)
-    .single();
+    .eq("clinic_id", clinicId)
+    .maybeSingle();
 
   if (error || !data) {
     return null;
@@ -130,7 +139,6 @@ async function updateAppointmentStatus(
  */
 async function handleUpdateStatus(
   user: TokenPayload,
-  appointmentId: string,
   req: Request
 ): Promise<Response> {
   try {
@@ -156,6 +164,11 @@ async function handleUpdateStatus(
     }
 
     const updateReq = validation.data!;
+    const appointmentId = updateReq.appointmentId;
+
+    if (!user.clinicId) {
+      return badRequestResponse("Token is missing a clinic");
+    }
 
     // Initialize Supabase
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -168,7 +181,7 @@ async function handleUpdateStatus(
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // Fetch appointment to verify ownership
-    const appointment = await getAppointment(supabase, appointmentId);
+    const appointment = await getAppointment(supabase, appointmentId, user.clinicId);
 
     if (!appointment) {
       return errorResponse("Appointment not found", 404);
@@ -224,31 +237,14 @@ async function handleUpdateStatus(
   }
 }
 
-/**
- * Wrapper to extract URL parameters
- */
-async function handler(user: TokenPayload, req: Request): Promise<Response> {
-  // Extract appointmentId from URL path
-  // URL format: /api/doctors/appointments/:appointmentId/status
-  const url = new URL(req.url);
-  const pathParts = url.pathname.split("/");
-  const appointmentId = pathParts[4]; // Index 4 is the appointmentId
-
-  if (!appointmentId) {
-    return badRequestResponse("Appointment ID required in URL");
-  }
-
-  return handleUpdateStatus(user, appointmentId, req);
-}
-
 // Export for Deno serve
 Deno.serve(withCors(async (req: Request) => {
-  if (req.method !== "PUT") {
+  if (!["PUT", "PATCH"].includes(req.method)) {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
       { status: 405, headers: { "Content-Type": "application/json" } }
     );
   }
 
-  return withAuth(req, "DOCTOR", (user) => handler(user, req));
+  return withAuth(req, "DOCTOR", (user) => handleUpdateStatus(user, req));
 }));
