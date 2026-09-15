@@ -187,8 +187,10 @@ export async function verifyDoctorPin(
 /**
  * Check the PIN against this doctor's own bcrypt hash.
  *
- * Falls back to the clinic-wide env PIN only when the doctor has no hash set,
- * so existing installs keep working while individual PINs are rolled out.
+ * The shared env PIN is only consulted for a doctor with no hash, and only
+ * when ALLOW_SHARED_DOCTOR_PIN is set. Left on, one leaked PIN opens every
+ * account that has not set its own; admins issue PINs via the staff endpoint
+ * instead.
  */
 async function verifyPinForDoctor(
     supabase: SupabaseClient,
@@ -212,6 +214,11 @@ async function verifyPinForDoctor(
         debug("doctorAuth", "Per-doctor PIN lookup failed", {
             error: error instanceof Error ? error.message : String(error)
         });
+    }
+
+    if (Deno.env.get("ALLOW_SHARED_DOCTOR_PIN") !== "true") {
+        debug("doctorAuth", "No personal PIN set and shared PIN disabled", { phone });
+        return false;
     }
 
     return validatePin(pin, clinicId);

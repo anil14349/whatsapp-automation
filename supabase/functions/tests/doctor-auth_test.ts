@@ -1,9 +1,9 @@
 /**
  * Doctor portal PIN authentication.
  *
- * A doctor's own bcrypt pin_hash takes precedence; the shared env PIN is only
- * a fallback while a doctor has none. Getting that precedence backwards would
- * let one leaked shared PIN open every account.
+ * A doctor's own bcrypt pin_hash is the only credential unless the shared env
+ * PIN is explicitly enabled. Getting that precedence backwards would let one
+ * leaked shared PIN open every account.
  */
 
 import { assertEquals } from "std/testing/asserts.ts";
@@ -13,6 +13,7 @@ import { hashPassword } from "../shared/bcrypt-password.ts";
 
 Deno.env.set("DOCTOR_PORTAL_PIN", "123456");
 Deno.env.set("DEFAULT_CLINIC_ID", CLINIC_A);
+Deno.env.set("ALLOW_SHARED_DOCTOR_PIN", "true");
 
 const { verifyDoctorPin, isAccountLocked, getRemainingAttempts, clearAuthCache } =
     await import("../shared/doctor-auth.ts");
@@ -24,7 +25,7 @@ function uniquePhone(): string {
     return `9198765${String(counter).padStart(5, "0")}`;
 }
 
-Deno.test("a doctor without a hash can log in with the shared PIN", async () => {
+Deno.test("a doctor without a hash can log in with the shared PIN when it is enabled", async () => {
     const supabase = fakeSupabase(seed());
     const phone = uniquePhone();
     supabase.store.doctors[0].phone = phone;
@@ -123,5 +124,50 @@ Deno.test("a lockout at one clinic does not lock the other", async () => {
     assertEquals(isAccountLocked(phone, CLINIC_A), true);
     assertEquals(isAccountLocked(phone, CLINIC_B), false);
 
+    clearAuthCache();
+});
+
+Deno.test("the shared PIN is refused unless explicitly enabled", async () => {
+    Deno.env.delete("ALLOW_SHARED_DOCTOR_PIN");
+
+    const supabase = fakeSupabase(seed());
+    const phone = uniquePhone();
+    supabase.store.doctors[0].phone = phone;
+
+    assertEquals((await verifyDoctorPin(supabase, phone, CLINIC_A, "123456")).success, false);
+
+    Deno.env.set("ALLOW_SHARED_DOCTOR_PIN", "true");
+});
+
+Deno.test("a personal PIN still works with the shared PIN disabled", async () => {
+    Deno.env.delete("ALLOW_SHARED_DOCTOR_PIN");
+
+    const supabase = fakeSupabase(seed());
+    const phone = uniquePhone();
+    supabase.store.doctors[0].phone = phone;
+    supabase.store.doctors[0].pin_hash = await hashPassword("419628");
+
+    assertEquals((await verifyDoctorPin(supabase, phone, CLINIC_A, "419628")).success, true);
+
+    Deno.env.set("ALLOW_SHARED_DOCTOR_PIN", "true");
+});
+
+Deno.test("anything other than the literal string true keeps it disabled", async () => {
+    const supabase = fakeSupabase(seed());
+    const phone = uniquePhone();
+    supabase.store.doctors[0].phone = phone;
+
+    for (const value of ["1", "yes", "TRUE", ""]) {
+        Deno.env.set("ALLOW_SHARED_DOCTOR_PIN", value);
+        clearAuthCache();
+
+        assertEquals(
+            (await verifyDoctorPin(supabase, phone, CLINIC_A, "123456")).success,
+            false,
+            `ALLOW_SHARED_DOCTOR_PIN="${value}" should not enable the shared PIN`
+        );
+    }
+
+    Deno.env.set("ALLOW_SHARED_DOCTOR_PIN", "true");
     clearAuthCache();
 });

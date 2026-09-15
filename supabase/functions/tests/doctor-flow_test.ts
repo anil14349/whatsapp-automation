@@ -16,6 +16,9 @@ Deno.env.set("SUPABASE_URL", "http://localhost:54321");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-key");
 Deno.env.set("DOCTOR_PORTAL_PIN", "123456");
 Deno.env.set("DEFAULT_CLINIC_ID", CLINIC_A);
+// Test files share one process, so every env dependency must be set here
+// rather than inherited from whichever file happened to run first.
+Deno.env.set("ALLOW_SHARED_DOCTOR_PIN", "true");
 
 const { DoctorFlowHandler } = await import("../shared/handlers/doctor-handler.ts");
 const { clearAuthCache } = await import("../shared/doctor-auth.ts");

@@ -43,7 +43,10 @@ interface UpdateStaffRequest {
   type: StaffType;
   id: string;
   clinicId?: string;
-  isActive: boolean;
+  isActive?: boolean;
+  action?: "resetCredential";
+  pin?: string;
+  password?: string;
 }
 
 const TABLES: Record<StaffType, string> = {
@@ -284,6 +287,110 @@ async function createStaff(
   return { status: 201, payload: { staff: data } };
 }
 
+/**
+ * Issue a fresh credential for an existing staff member.
+ *
+ * Doctors created before per-doctor PINs have no hash at all, and with the
+ * shared PIN disabled this is the only way back in.
+ */
+async function resetStaffCredential(
+  supabase: SupabaseClient,
+  clinicId: string,
+  body: UpdateStaffRequest
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  if (!body.id) {
+    return { status: 400, payload: { error: "id is required" } };
+  }
+
+  if (body.type === "collector") {
+    return { status: 400, payload: { error: "Collectors do not have portal credentials" } };
+  }
+
+  const { data: clinic } = await supabase
+    .from("clinics")
+    .select("name")
+    .eq("id", clinicId)
+    .maybeSingle();
+
+  if (body.type === "doctor") {
+    const pin = body.pin?.trim() || generatePin();
+    const strength = validatePinStrength(pin);
+
+    if (!strength.valid) {
+      return { status: 400, payload: { error: `Invalid PIN: ${strength.errors.join(", ")}` } };
+    }
+
+    const { data, error } = await supabase
+      .from("doctors")
+      .update({ pin_hash: await hashPassword(pin), updated_at: new Date().toISOString() })
+      .eq("id", body.id)
+      .eq("clinic_id", clinicId)
+      .select("id, name, email")
+      .maybeSingle();
+
+    if (error) {
+      return { status: 500, payload: { error: `Failed to reset PIN: ${error.message}` } };
+    }
+
+    if (!data) {
+      return { status: 404, payload: { error: "Staff member not found at this clinic" } };
+    }
+
+    const delivery = data.email
+      ? await sendStaffInviteEmail(data.email, data.name, "doctor", pin, clinic?.name)
+      : { sent: false, error: "no_email" };
+
+    return {
+      status: 200,
+      payload: {
+        id: data.id,
+        temporaryPin: delivery.sent ? undefined : pin,
+        emailed: delivery.sent
+      }
+    };
+  }
+
+  const password = body.password?.trim() || generatePassword();
+  const strength = validatePasswordStrength(password);
+
+  if (!strength.valid) {
+    return { status: 400, payload: { error: `Invalid password: ${strength.errors.join(", ")}` } };
+  }
+
+  const { data, error } = await supabase
+    .from("receptionists")
+    .update({ password_hash: await hashPassword(password), updated_at: new Date().toISOString() })
+    .eq("id", body.id)
+    .eq("clinic_id", clinicId)
+    .select("id, name, email")
+    .maybeSingle();
+
+  if (error) {
+    return { status: 500, payload: { error: `Failed to reset password: ${error.message}` } };
+  }
+
+  if (!data) {
+    return { status: 404, payload: { error: "Staff member not found at this clinic" } };
+  }
+
+  const delivery = await sendStaffInviteEmail(
+    data.email,
+    data.name,
+    "receptionist",
+    password,
+    clinic?.name
+  );
+
+  return {
+    status: 200,
+    payload: {
+      id: data.id,
+      temporaryPassword: delivery.sent ? undefined : password,
+      emailed: delivery.sent
+    }
+  };
+}
+
 async function setStaffActive(
   supabase: SupabaseClient,
   clinicId: string,
@@ -291,6 +398,11 @@ async function setStaffActive(
 ): Promise<{ status: number; payload: Record<string, unknown> }> {
   if (!body.id) {
     return { status: 400, payload: { error: "id is required" } };
+  }
+
+  // Never infer this: a missing flag would silently deactivate the person.
+  if (typeof body.isActive !== "boolean") {
+    return { status: 400, payload: { error: "isActive must be true or false" } };
   }
 
   const patch = body.type === "receptionist"
@@ -367,7 +479,9 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
 
   const result = req.method === "POST"
     ? await createStaff(supabase, clinicId, body as CreateStaffRequest)
-    : await setStaffActive(supabase, clinicId, body as UpdateStaffRequest);
+    : (body as UpdateStaffRequest).action === "resetCredential"
+      ? await resetStaffCredential(supabase, clinicId, body as UpdateStaffRequest)
+      : await setStaffActive(supabase, clinicId, body as UpdateStaffRequest);
 
   debug("staff", `${req.method} ${body.type}`, {
     clinicId,
