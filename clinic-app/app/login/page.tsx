@@ -8,7 +8,8 @@ type Role = "doctor" | "receptionist" | "owner";
 const ROLES: Array<{ value: Role; label: string; secretLabel: string }> = [
     { value: "receptionist", label: "Receptionist", secretLabel: "Password" },
     { value: "doctor", label: "Doctor", secretLabel: "PIN" },
-    { value: "owner", label: "Clinic owner", secretLabel: "Password" }
+    // The value stays "owner": it selects the endpoint, not the wording.
+    { value: "owner", label: "Admin", secretLabel: "Password" }
 ];
 
 export default function LoginPage() {

@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import {
-    announceDelay,
     editAppointment,
     loadSlots,
     updateAppointment,
@@ -186,8 +185,6 @@ export function AppointmentTable({
                 />
             )}
 
-            {canEdit && doctors.length > 0 && <DelayNotice doctors={doctors} busy={busy} onSend={run} />}
-
             <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
                 <table className="w-full text-left text-sm">
                     <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
@@ -368,95 +365,6 @@ export function AppointmentTable({
                         })}
                     </tbody>
                 </table>
-            </div>
-        </div>
-    );
-}
-
-/**
- * Telling everyone still waiting that a doctor is running late.
- *
- * Only the waiting are messaged, and only for that doctor: someone already seen
- * does not care, and another doctor's patients are not affected.
- */
-function DelayNotice({
-    doctors,
-    busy,
-    onSend
-}: {
-    doctors: Array<{ id: string; name: string }>;
-    busy: boolean;
-    onSend: (fn: () => Promise<BookingState>) => void;
-}) {
-    const [open, setOpen] = useState(false);
-    const [doctorId, setDoctorId] = useState(doctors[0]?.id ?? "");
-    const [minutes, setMinutes] = useState(15);
-
-    if (!open) {
-        return (
-            <button
-                onClick={() => setOpen(true)}
-                className="self-start rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-900 hover:border-amber-300"
-            >
-                Running late
-            </button>
-        );
-    }
-
-    return (
-        <div className="rounded-xl bg-white p-4 ring-1 ring-amber-200">
-            <div className="mb-1 flex items-center justify-between">
-                <h3 className="text-sm font-semibold">Running late</h3>
-                <button
-                    onClick={() => setOpen(false)}
-                    className="text-sm text-slate-500 hover:text-slate-700"
-                >
-                    Close
-                </button>
-            </div>
-            <p className="mb-3 text-xs text-slate-500">
-                Messages everyone still waiting for this doctor today. Booked times do not change.
-            </p>
-
-            <div className="flex flex-wrap items-end gap-3">
-                <label className="space-y-1">
-                    <span className="block text-xs font-medium text-slate-600">Doctor</span>
-                    <select
-                        value={doctorId}
-                        onChange={(e) => setDoctorId(e.target.value)}
-                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
-                    >
-                        {doctors.map((d) => (
-                            <option key={d.id} value={d.id}>
-                                {d.name}
-                            </option>
-                        ))}
-                    </select>
-                </label>
-
-                <label className="space-y-1">
-                    <span className="block text-xs font-medium text-slate-600">Minutes late</span>
-                    <input
-                        type="number"
-                        min={5}
-                        max={300}
-                        step={5}
-                        value={minutes}
-                        onChange={(e) => setMinutes(Number(e.target.value))}
-                        className="w-24 rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
-                    />
-                </label>
-
-                <button
-                    disabled={busy || !doctorId}
-                    onClick={() => {
-                        onSend(() => announceDelay(doctorId, minutes));
-                        setOpen(false);
-                    }}
-                    className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-60"
-                >
-                    Tell waiting patients
-                </button>
             </div>
         </div>
     );

@@ -8,7 +8,8 @@
 import { redirect } from "next/navigation";
 import { callAsUser, readSession } from "@/lib/portal";
 import { PortalShell, loadBranding } from "@/app/shell";
-import { WalkInForm, type DoctorOption } from "./walk-in-form";
+import { DayHeader } from "./day-header";
+import type { DoctorOption } from "./walk-in-form";
 import { AppointmentTable, type AppointmentRow } from "./appointment-table";
 import type { ServiceOption } from "./actions";
 
@@ -74,34 +75,16 @@ export default async function AppointmentsPage({
 
     return (
         <PortalShell session={session} branding={branding}>
-            <h1 className="mb-4 text-xl font-semibold">Appointments</h1>
-
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <form className="flex items-center gap-2">
-                    <input
-                        type="date"
-                        name="date"
-                        defaultValue={date}
-                        className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
-                    />
-                    <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-slate-300">
-                        Show
-                    </button>
-                </form>
-
-                {canBook && (
-                    <div className="text-sm text-slate-500">
-                        {rows.length} booked ·{" "}
-                        {rows.filter((r) => r.status === "CONFIRMED").length} still to be seen
-                    </div>
-                )}
-            </div>
-
-            {canBook && (
-                <div className="mb-6">
-                    <WalkInForm doctors={doctors} date={date} />
-                </div>
-            )}
+            <DayHeader
+                date={date}
+                doctors={doctors}
+                canBook={canBook}
+                summary={
+                    canBook
+                        ? `${rows.length} booked · ${rows.filter((r) => r.status === "CONFIRMED").length} still to be seen`
+                        : undefined
+                }
+            />
 
             {!result.ok && (
                 <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">

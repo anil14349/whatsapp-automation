@@ -13,8 +13,15 @@ export interface DoctorOption {
 
 const INITIAL: BookingState = {};
 
-export function WalkInForm({ doctors, date }: { doctors: DoctorOption[]; date: string }) {
-    const [open, setOpen] = useState(false);
+export function WalkInForm({
+    doctors,
+    date,
+    onClose
+}: {
+    doctors: DoctorOption[];
+    date: string;
+    onClose: () => void;
+}) {
     const [state, action, pending] = useActionState(bookWalkIn, INITIAL);
 
     const [doctorId, setDoctorId] = useState(doctors[0]?.id ?? "");
@@ -24,39 +31,20 @@ export function WalkInForm({ doctors, date }: { doctors: DoctorOption[]; date: s
     // Availability depends on the doctor's hours, leave and existing bookings,
     // so it is fetched rather than generated in the browser.
     useEffect(() => {
-        if (!open || !doctorId) {
+        if (!doctorId) {
             return;
         }
 
         startLoading(async () => {
             setSlots(await loadSlots(doctorId, date));
         });
-    }, [open, doctorId, date]);
+    }, [doctorId, date]);
 
     useEffect(() => {
         if (state.success) {
             setSlots((current) => current.filter((s) => s !== state.success?.match(/at (\d{2}:\d{2})/)?.[1]));
         }
     }, [state.success]);
-
-    if (doctors.length === 0) {
-        return (
-            <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                No active doctors at this clinic yet, so walk-ins cannot be booked.
-            </p>
-        );
-    }
-
-    if (!open) {
-        return (
-            <button
-                onClick={() => setOpen(true)}
-                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-            >
-                Book walk-in
-            </button>
-        );
-    }
 
     return (
         <form
@@ -67,7 +55,7 @@ export function WalkInForm({ doctors, date }: { doctors: DoctorOption[]; date: s
                 <h2 className="text-sm font-semibold">Book a walk-in</h2>
                 <button
                     type="button"
-                    onClick={() => setOpen(false)}
+                    onClick={onClose}
                     className="text-sm text-slate-500 hover:text-slate-700"
                 >
                     Close
