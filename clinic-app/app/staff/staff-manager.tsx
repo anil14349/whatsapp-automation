@@ -99,6 +99,7 @@ export function StaffManager({
     const [removing, setRemoving] = useState<StaffMember | null>(null);
     const [scheduling, setScheduling] = useState<StaffMember | null>(null);
     const [adding, setAdding] = useState(false);
+    const [copied, setCopied] = useState<string | null>(null);
     const [busy, startAction] = useTransition();
 
     const members = staff[tab] ?? [];
@@ -115,7 +116,11 @@ export function StaffManager({
     const formNotice: StaffState =
         state.error || state.credential || showAdded ? state : {};
 
-    const notice = rowState.error || rowState.success ? rowState : formNotice;
+    const latest = rowState.error || rowState.success ? rowState : formNotice;
+
+    // A credential has no timer, so without this it stays until the next
+    // submit -- which for someone who only added one person is forever.
+    const notice: StaffState = latest.credential?.value === copied ? {} : latest;
 
     // The credential is shown in the notice above, so leaving the form open
     // would hide the one thing that has to be read.
@@ -176,15 +181,25 @@ export function StaffManager({
                 <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">
                     <p>{notice.success}</p>
                     {notice.credential && (
-                        <p className="mt-1">
-                            {notice.credential.label}:{" "}
-                            <code className="rounded bg-white px-1.5 py-0.5 font-mono">
-                                {notice.credential.value}
-                            </code>{" "}
-                            <span className="text-emerald-700">
-                                — share it in person; it is not stored and cannot be shown again.
-                            </span>
-                        </p>
+                        <>
+                            <p className="mt-1">
+                                {notice.credential.label}:{" "}
+                                <code className="rounded bg-white px-1.5 py-0.5 font-mono">
+                                    {notice.credential.value}
+                                </code>{" "}
+                                <span className="text-emerald-700">
+                                    — share it in person; it is not stored and cannot be shown
+                                    again.
+                                </span>
+                            </p>
+                            <button
+                                type="button"
+                                onClick={() => setCopied(notice.credential!.value)}
+                                className="mt-2 rounded-lg border border-emerald-300 px-3 py-1 text-xs font-medium text-emerald-800 hover:bg-emerald-100"
+                            >
+                                I have saved it — hide
+                            </button>
+                        </>
                     )}
                 </div>
             )}
