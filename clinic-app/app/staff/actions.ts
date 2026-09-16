@@ -16,6 +16,19 @@ export interface StaffState {
     success?: string;
     /** Shown only when the credential could not be delivered to the person. */
     credential?: { label: string; value: string };
+    /**
+     * What was typed. React resets an uncontrolled form once the action
+     * returns, including when it returns a refusal, so without these a
+     * rejected submission empties every field and the person starts again.
+     */
+    values?: {
+        name?: string;
+        email?: string;
+        phone?: string;
+        specialization?: string;
+        qualifications?: string;
+        photoUrl?: string;
+    };
 }
 
 async function requireManager(): Promise<string | null> {
@@ -44,16 +57,23 @@ export async function createStaff(_previous: StaffState, formData: FormData): Pr
     const qualifications = String(formData.get("qualifications") ?? "").trim();
     const photoUrl = String(formData.get("photoUrl") ?? "").trim();
 
+    const values = { name, email, phone, specialization, qualifications, photoUrl };
+
     if (!name) {
-        return { error: "Name is required." };
+        return { error: "Name is required.", values };
     }
 
     if ((type === "doctor" || type === "collector") && phone.length < 10) {
-        return { error: "A WhatsApp number with country code is required." };
+        return { error: "A WhatsApp number with country code is required.", values };
     }
 
-    if (type === "receptionist" && !email) {
-        return { error: "Email is required for a receptionist." };
+    // A receptionist signs in with either, so either will do. This used to
+    // demand an email while the form beside it said email was optional.
+    if (type === "receptionist" && !email && phone.length < 10) {
+        return {
+            error: "A receptionist needs a WhatsApp number or an email to sign in with.",
+            values
+        };
     }
 
     const result = await callAsUser("staff", {
@@ -71,10 +91,10 @@ export async function createStaff(_previous: StaffState, formData: FormData): Pr
 
     if (!result.ok) {
         if (result.status === 409) {
-            return { error: "Someone with that number or email already exists here." };
+            return { error: "Someone with that number or email already exists here.", values };
         }
 
-        return { error: result.data?.error ?? "Could not create the staff member." };
+        return { error: result.data?.error ?? "Could not create the staff member.", values };
     }
 
     revalidatePath("/staff");

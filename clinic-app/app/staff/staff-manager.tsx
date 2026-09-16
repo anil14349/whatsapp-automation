@@ -258,6 +258,7 @@ export function StaffManager({
                         <input
                             name="name"
                             required
+                            defaultValue={state.values?.name ?? ""}
                             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                         />
                     </label>
@@ -267,6 +268,7 @@ export function StaffManager({
                             <PhoneField
                                 name="phone"
                                 key={tab}
+                                defaultValue={state.values?.phone ?? ""}
                                 hint="They can sign in with this"
                             />
                             <label className="space-y-1">
@@ -276,6 +278,7 @@ export function StaffManager({
                                 <input
                                     name="email"
                                     type="email"
+                                    defaultValue={state.values?.email ?? ""}
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                                 />
                                 <span className="block text-xs text-slate-400">
@@ -284,7 +287,12 @@ export function StaffManager({
                             </label>
                         </>
                     ) : (
-                        <PhoneField name="phone" required key={tab} />
+                        <PhoneField
+                            name="phone"
+                            required
+                            key={tab}
+                            defaultValue={state.values?.phone ?? ""}
+                        />
                     )}
 
                     {tab === "doctor" && (
@@ -296,6 +304,7 @@ export function StaffManager({
                                 <input
                                     name="email"
                                     type="email"
+                                    defaultValue={state.values?.email ?? ""}
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                                 />
                             </label>
@@ -306,6 +315,7 @@ export function StaffManager({
                                 <input
                                     name="specialization"
                                     placeholder="General Physician"
+                                    defaultValue={state.values?.specialization ?? ""}
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                                 />
                             </label>
@@ -317,6 +327,7 @@ export function StaffManager({
                                     name="qualifications"
                                     maxLength={160}
                                     placeholder="MBBS, MD (General Medicine)"
+                                    defaultValue={state.values?.qualifications ?? ""}
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                                 />
                                 <span className="block text-xs text-slate-400">
@@ -330,6 +341,7 @@ export function StaffManager({
                                 <input
                                     name="photoUrl"
                                     placeholder="https://example.com/dr-kumar.jpg"
+                                    defaultValue={state.values?.photoUrl ?? ""}
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                                 />
                                 <span className="block text-xs text-slate-400">
