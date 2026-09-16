@@ -16,10 +16,11 @@ deployed before their migrations report missing columns, and the portal without
 
 First deployment runs 1 → 2 → 3 → 4 → 5. Routine changes usually touch one.
 
-Two walkthroughs sit alongside the modules:
+Three walkthroughs sit alongside the modules:
 
 - [Registering the WhatsApp message templates](WHATSAPP_TEMPLATES.md) — the eight templates, field by field
 - [Creating a clinic](MODULE_1_DATABASE.md#creating-a-clinic) — and everything it needs before it works
+- [Portal accounts and sign-in](PORTAL_ACCOUNTS.md) — who can sign in, how to create and reset them
 
 ## Before anything
 

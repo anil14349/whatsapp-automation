@@ -22,6 +22,7 @@ page.
 
 - [**Registering the WhatsApp message templates**](./DEPLOYMENT/WHATSAPP_TEMPLATES.md) — where to create them, and the exact wording and parameter order for all eight
 - [**Creating a clinic**](./DEPLOYMENT/MODULE_1_DATABASE.md#creating-a-clinic) — where the clinic id comes from, and the seven things it needs before it works
+- [**Portal accounts and sign-in**](./DEPLOYMENT/PORTAL_ACCOUNTS.md) — the four kinds of login, how to create, reset and remove them
 
 ### Earlier deployment notes
 

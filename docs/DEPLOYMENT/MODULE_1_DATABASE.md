@@ -144,8 +144,11 @@ deno run --allow-env --allow-read --allow-net scripts/create-admin.ts `
     --email owner@clinic.example --name "Clinic Owner" --clinic <clinic-uuid>
 ```
 
-Omit `--clinic` for a platform-wide admin with no clinic of their own. Omit
-`--password` and one is generated and printed.
+Omit `--clinic` to create a platform-wide ADMIN with no clinic of their own.
+Omit `--password` and one is generated and printed.
+
+Everything about the other account types — doctors, receptionists, resets,
+lockout — is in [Portal accounts and sign-in](PORTAL_ACCOUNTS.md).
 
 ## Things that have bitten before
 
