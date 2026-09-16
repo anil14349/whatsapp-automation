@@ -1,7 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { loadSlots, updateAppointment, updateOwnAppointmentStatus, type BookingState } from "./actions";
+import {
+    editAppointment,
+    loadSlots,
+    updateAppointment,
+    updateOwnAppointmentStatus,
+    type BookingState,
+    type ServiceOption
+} from "./actions";
 
 export interface AppointmentRow {
     id: string;
@@ -10,7 +17,9 @@ export interface AppointmentRow {
     patientPhone: string;
     doctorId: string | null;
     doctorName: string | null;
+    serviceTypeId: string | null;
     serviceName: string | null;
+    notes: string;
     bookingSource: string | null;
     status: string;
 }
@@ -27,17 +36,22 @@ export function AppointmentTable({
     date,
     showDoctor,
     canEdit,
-    isDoctor = false
+    isDoctor = false,
+    doctors = [],
+    services = []
 }: {
     rows: AppointmentRow[];
     date: string;
     showDoctor: boolean;
     canEdit: boolean;
     isDoctor?: boolean;
+    doctors?: Array<{ id: string; name: string }>;
+    services?: ServiceOption[];
 }) {
     const [notice, setNotice] = useState<BookingState>({});
     const [busy, start] = useTransition();
     const [moving, setMoving] = useState<AppointmentRow | null>(null);
+    const [editing, setEditing] = useState<AppointmentRow | null>(null);
     const [slots, setSlots] = useState<string[]>([]);
     const [newDate, setNewDate] = useState(date);
 
@@ -47,12 +61,19 @@ export function AppointmentTable({
 
     function beginMove(row: AppointmentRow) {
         setMoving(row);
+        setEditing(null);
         setNotice({});
         setNewDate(date);
 
         if (row.doctorId) {
             start(async () => setSlots(await loadSlots(row.doctorId!, date)));
         }
+    }
+
+    function beginEdit(row: AppointmentRow) {
+        setEditing(row);
+        setMoving(null);
+        setNotice({});
     }
 
     function changeMoveDate(value: string) {
@@ -142,6 +163,24 @@ export function AppointmentTable({
                 </div>
             )}
 
+            {editing && (
+                <EditPanel
+                    key={editing.id}
+                    row={editing}
+                    doctors={doctors}
+                    services={services}
+                    busy={busy}
+                    onClose={() => setEditing(null)}
+                    onSave={(fields) =>
+                        run(async () => {
+                            const result = await editAppointment(editing.id, fields);
+                            if (!result.error) setEditing(null);
+                            return result;
+                        })
+                    }
+                />
+            )}
+
             <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
                 <table className="w-full text-left text-sm">
                     <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
@@ -192,6 +231,17 @@ export function AppointmentTable({
                                     {canEdit && (
                                         <td className="px-4 py-3">
                                             <div className="flex flex-wrap justify-end gap-1.5">
+                                                {/* A name can be spelt wrong whether or not the
+                                                    patient has already been seen. */}
+                                                {row.status !== "CANCELLED" && (
+                                                    <button
+                                                        disabled={busy}
+                                                        onClick={() => beginEdit(row)}
+                                                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                )}
                                                 {open && (                                                    <>
                                                         <button
                                                             disabled={busy}
@@ -204,7 +254,7 @@ export function AppointmentTable({
                                                             }
                                                             className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
                                                         >
-                                                            Seen
+                                                            Visited
                                                         </button>
                                                         <button
                                                             disabled={busy}
@@ -269,7 +319,7 @@ export function AppointmentTable({
                                                             }
                                                             className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
                                                         >
-                                                            Seen
+                                                            Visited
                                                         </button>
                                                         <button
                                                             disabled={busy}
@@ -293,6 +343,144 @@ export function AppointmentTable({
                     </tbody>
                 </table>
             </div>
+        </div>
+    );
+}
+
+/**
+ * Correcting what the front desk wrote down. Date and time are the Move action,
+ * because changing those has to be checked against free slots.
+ */
+function EditPanel({
+    row,
+    doctors,
+    services,
+    busy,
+    onClose,
+    onSave
+}: {
+    row: AppointmentRow;
+    doctors: Array<{ id: string; name: string }>;
+    services: ServiceOption[];
+    busy: boolean;
+    onClose: () => void;
+    onSave: (fields: {
+        patientName: string;
+        patientPhone: string;
+        notes: string;
+        doctorId: string | null;
+        serviceTypeId: string;
+    }) => void;
+}) {
+    const [patientName, setPatientName] = useState(row.patientName);
+    const [patientPhone, setPatientPhone] = useState(row.patientPhone);
+    const [notes, setNotes] = useState(row.notes);
+    const [doctorId, setDoctorId] = useState(row.doctorId ?? "");
+    const [serviceTypeId, setServiceTypeId] = useState(row.serviceTypeId ?? "");
+
+    const service = services.find((s) => s.serviceTypeId === serviceTypeId);
+    const needsDoctor = service ? service.requiresDoctor : true;
+    const phoneChanged = patientPhone.replace(/\D/g, "") !== row.patientPhone;
+
+    return (
+        <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
+            <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-sm font-semibold">
+                    Edit {row.patientName} ({row.time})
+                </h3>
+                <button onClick={onClose} className="text-sm text-slate-500 hover:text-slate-700">
+                    Close
+                </button>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1">
+                    <span className="block text-xs font-medium text-slate-600">Patient name</span>
+                    <input
+                        value={patientName}
+                        onChange={(e) => setPatientName(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    />
+                </label>
+
+                <label className="space-y-1">
+                    <span className="block text-xs font-medium text-slate-600">WhatsApp number</span>
+                    <input
+                        value={patientPhone}
+                        onChange={(e) => setPatientPhone(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    />
+                    {phoneChanged && (
+                        <span className="block text-xs text-amber-700">
+                            Reminders for this appointment will go to the new number.
+                        </span>
+                    )}
+                </label>
+
+                <label className="space-y-1">
+                    <span className="block text-xs font-medium text-slate-600">For</span>
+                    <select
+                        value={serviceTypeId}
+                        onChange={(e) => setServiceTypeId(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    >
+                        {services.length === 0 && <option value={serviceTypeId}>{row.serviceName}</option>}
+                        {services.map((s) => (
+                            <option key={s.serviceTypeId} value={s.serviceTypeId}>
+                                {s.name}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+
+                <label className="space-y-1">
+                    <span className="block text-xs font-medium text-slate-600">Doctor</span>
+                    <select
+                        value={doctorId}
+                        onChange={(e) => setDoctorId(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    >
+                        <option value="">{needsDoctor ? "Choose a doctor" : "No doctor needed"}</option>
+                        {doctors.map((d) => (
+                            <option key={d.id} value={d.id}>
+                                {d.name}
+                            </option>
+                        ))}
+                    </select>
+                    {doctorId !== (row.doctorId ?? "") && doctorId && (
+                        <span className="block text-xs text-slate-500">
+                            Checked against that doctor&apos;s free slots at {row.time}.
+                        </span>
+                    )}
+                </label>
+
+                <div className="sm:col-span-2">
+                    <label className="space-y-1">
+                        <span className="block text-xs font-medium text-slate-600">Notes</span>
+                        <input
+                            value={notes}
+                            onChange={(e) => setNotes(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        />
+                    </label>
+                </div>
+            </div>
+
+            <button
+                disabled={busy}
+                onClick={() =>
+                    onSave({
+                        patientName,
+                        patientPhone,
+                        notes,
+                        doctorId: doctorId || null,
+                        serviceTypeId
+                    })
+                }
+                className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
+            >
+                {busy ? "Saving…" : "Save changes"}
+            </button>
         </div>
     );
 }

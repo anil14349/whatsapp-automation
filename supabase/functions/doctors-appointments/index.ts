@@ -30,6 +30,7 @@ import { withAuth, successResponse, errorResponse, badRequestResponse } from "..
 import { TokenPayload } from "../shared/jwt-auth.ts";
 import { debug } from "../shared/logger.ts";
 import { withCors } from "../shared/cors.ts";
+import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
 
 interface AppointmentRow {
   id: string;
@@ -111,14 +112,14 @@ async function fetchDoctorAppointments(
 /**
  * Parse date query parameter
  */
-function parseDate(dateStr?: string): { isValid: boolean; date?: string; error?: string } {
+function parseDate(
+  dateStr: string | undefined,
+  clinicToday: string
+): { isValid: boolean; date?: string; error?: string } {
   if (!dateStr) {
-    // Default to today
-    const today = new Date();
-    return {
-      isValid: true,
-      date: today.toISOString().split("T")[0]
-    };
+    // Today at the clinic. The server's own date is a day behind anywhere east
+    // of UTC for part of every evening.
+    return { isValid: true, date: clinicToday };
   }
 
   // Validate format YYYY-MM-DD
@@ -178,12 +179,6 @@ async function handleGetAppointments(
     const statusParam = url.searchParams.get("status");
 
     // Validate date parameter
-    const dateValidation = parseDate(dateParam || undefined);
-    if (!dateValidation.isValid) {
-      return badRequestResponse(dateValidation.error);
-    }
-
-    // Initialize Supabase
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 
@@ -192,6 +187,15 @@ async function handleGetAppointments(
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const clinicToday = todayInTimezone(
+      await getClinicTimezone(supabase, user.clinicId ?? "")
+    );
+
+    const dateValidation = parseDate(dateParam || undefined, clinicToday);
+    if (!dateValidation.isValid) {
+      return badRequestResponse(dateValidation.error);
+    }
 
     // Fetch appointments
     const appointments = await fetchDoctorAppointments(

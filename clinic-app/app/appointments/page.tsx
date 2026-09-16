@@ -10,10 +10,7 @@ import { callAsUser, readSession } from "@/lib/portal";
 import { PortalNav } from "@/app/nav";
 import { WalkInForm, type DoctorOption } from "./walk-in-form";
 import { AppointmentTable, type AppointmentRow } from "./appointment-table";
-
-function today(): string {
-    return new Date().toISOString().split("T")[0];
-}
+import type { ServiceOption } from "./actions";
 
 export default async function AppointmentsPage({
     searchParams
@@ -26,21 +23,31 @@ export default async function AppointmentsPage({
         redirect("/login");
     }
 
-    const date = (await searchParams).date ?? today();
+    // No date means today at the clinic, which only the server knows: this
+    // portal may be running in a different timezone entirely.
+    const chosenDate = (await searchParams).date;
     const isDoctor = session.role === "DOCTOR";
 
+    const query = chosenDate ? `?date=${chosenDate}` : "";
+
     const result = isDoctor
-        ? await callAsUser(`doctors-appointments?date=${date}`)
-        : await callAsUser(`receptionists-appointments?date=${date}`);
+        ? await callAsUser(`doctors-appointments${query}`)
+        : await callAsUser(`receptionists-appointments${query}`);
 
     if (result.status === 401) {
         redirect("/login");
     }
 
+    const date = chosenDate ?? result.data?.date ?? "";
+
     const canBook = session.role === "RECEPTIONIST" || session.role === "CLINIC_OWNER";
 
     const doctors: DoctorOption[] = canBook
         ? (await callAsUser("receptionists-appointments?resource=doctors")).data?.doctors ?? []
+        : [];
+
+    const services: ServiceOption[] = canBook
+        ? (await callAsUser("receptionists-appointments?resource=services")).data?.services ?? []
         : [];
 
     const rows: AppointmentRow[] = result.ok
@@ -51,7 +58,9 @@ export default async function AppointmentsPage({
             patientPhone: a.patient?.phone ?? a.patient_phone ?? "",
             doctorId: a.doctor?.id ?? a.doctor_id ?? null,
             doctorName: a.doctor?.name ?? null,
+            serviceTypeId: a.service_type_id ?? null,
             serviceName: a.service_type?.name ?? null,
+            notes: a.notes ?? "",
             bookingSource: a.booking_source ?? null,
             status: a.status
         }))
@@ -111,6 +120,8 @@ export default async function AppointmentsPage({
                     showDoctor={!isDoctor}
                     canEdit={canBook}
                     isDoctor={isDoctor}
+                    doctors={doctors}
+                    services={services}
                 />
             )}
         </main>

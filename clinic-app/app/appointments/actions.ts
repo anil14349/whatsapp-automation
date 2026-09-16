@@ -130,3 +130,61 @@ export async function updateAppointment(
 
     return { success: `Marked ${String(options.status).toLowerCase().replace("_", " ")}.` };
 }
+
+export interface ServiceOption {
+    serviceTypeId: string;
+    name: string;
+    requiresDoctor: boolean;
+}
+
+export async function loadServices(): Promise<ServiceOption[]> {
+    const result = await callAsUser("receptionists-appointments?resource=services");
+
+    return result.ok ? (result.data.services ?? []) : [];
+}
+
+/**
+ * Correct the details of a booking. Moving it in time is the Move action.
+ */
+export async function editAppointment(
+    id: string,
+    fields: {
+        patientName: string;
+        patientPhone: string;
+        notes: string;
+        doctorId: string | null;
+        serviceTypeId: string;
+    }
+): Promise<BookingState> {
+    const patientName = fields.patientName.trim();
+    const patientPhone = fields.patientPhone.replace(/\D/g, "");
+
+    if (!patientName) {
+        return { error: "Patient name cannot be empty." };
+    }
+
+    if (patientPhone.length < 10 || patientPhone.length > 15) {
+        return { error: "Enter the patient's WhatsApp number including country code." };
+    }
+
+    const result = await callAsUser("receptionists-appointments", {
+        method: "PATCH",
+        body: {
+            id,
+            action: "edit",
+            patientName,
+            patientPhone,
+            notes: fields.notes,
+            doctorId: fields.doctorId,
+            serviceTypeId: fields.serviceTypeId
+        }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not save the changes." };
+    }
+
+    revalidatePath("/appointments");
+
+    return { success: "Appointment updated." };
+}

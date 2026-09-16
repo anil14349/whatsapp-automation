@@ -47,6 +47,8 @@ import { cancelAppointment, rescheduleAppointment } from "../shared/appointments
 import MultiClinicSupabaseClient from "../shared/multi-clinic-supabase-client.ts";
 import { withCors } from "../shared/cors.ts";
 import { createAppointmentReminders } from "../shared/appointment-reminders.ts";
+import { getEnabledServices, getServiceById } from "../shared/clinic-services.ts";
+import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
 
 interface CreateAppointmentRequest {
   patientName: string;
@@ -326,7 +328,7 @@ function resolveClinicId(user: TokenPayload, requested?: string | null): string 
 }
 
 /**
- * Change the status of one appointment, or cancel or reschedule it.
+ * Change the status of one appointment, or cancel, reschedule or edit it.
  */
 async function updateAppointment(
   supabase: SupabaseClient,
@@ -339,6 +341,11 @@ async function updateAppointment(
     reason?: string;
     appointmentDate?: string;
     appointmentTime?: string;
+    patientName?: string;
+    patientPhone?: string;
+    notes?: string;
+    doctorId?: string | null;
+    serviceTypeId?: string;
   }
 ): Promise<{ status: number; payload: Record<string, unknown> }> {
   if (!body.id) {
@@ -383,8 +390,12 @@ async function updateAppointment(
       : { status: 400, payload: { error: result.message } };
   }
 
+  if (action === "edit") {
+    return await editAppointment(supabase, clinicId, actor, body);
+  }
+
   if (action !== "status") {
-    return { status: 400, payload: { error: "action must be status, cancel or reschedule" } };
+    return { status: 400, payload: { error: "action must be status, cancel, reschedule or edit" } };
   }
 
   const status = body.status;
@@ -437,6 +448,188 @@ async function updateAppointment(
   );
 
   return { status: 200, payload: { id: body.id, status } };
+}
+
+/**
+ * Correct the details of an appointment the front desk already took.
+ *
+ * Moving it in time is the reschedule action; this is for the things that were
+ * simply written down wrong.
+ */
+async function editAppointment(
+  supabase: SupabaseClient,
+  clinicId: string,
+  actor: string,
+  body: {
+    id?: string;
+    patientName?: string;
+    patientPhone?: string;
+    notes?: string;
+    doctorId?: string | null;
+    serviceTypeId?: string;
+  }
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  const { data: existing } = await supabase
+    .from("appointments")
+    .select(
+      "id, status, patient_name, patient_phone, notes, doctor_id, service_type_id, appointment_date, appointment_time"
+    )
+    .eq("id", body.id)
+    .eq("clinic_id", clinicId)
+    .maybeSingle();
+
+  if (!existing) {
+    return { status: 404, payload: { error: "Appointment not found at this clinic" } };
+  }
+
+  if (existing.status === "CANCELLED") {
+    return { status: 400, payload: { error: "Cannot edit a cancelled appointment" } };
+  }
+
+  const patch: Record<string, unknown> = {};
+  const before: Record<string, unknown> = {};
+
+  if (body.patientName !== undefined) {
+    const name = body.patientName.trim();
+
+    if (!name) {
+      return { status: 400, payload: { error: "Patient name cannot be empty" } };
+    }
+
+    if (name.length > 120) {
+      return { status: 400, payload: { error: "Patient name is too long" } };
+    }
+
+    if (name !== existing.patient_name) {
+      before.patient_name = existing.patient_name;
+      patch.patient_name = name;
+    }
+  }
+
+  if (body.patientPhone !== undefined) {
+    // The bot finds a patient by this number, so a malformed one silently
+    // detaches the appointment from its reminders.
+    const phone = body.patientPhone.replace(/\D/g, "");
+
+    if (phone.length < 10 || phone.length > 15) {
+      return {
+        status: 400,
+        payload: { error: "Enter the patient's WhatsApp number including country code" }
+      };
+    }
+
+    if (phone !== existing.patient_phone) {
+      before.patient_phone = existing.patient_phone;
+      patch.patient_phone = phone;
+    }
+  }
+
+  if (body.notes !== undefined) {
+    const notes = body.notes.trim();
+
+    if (notes.length > 500) {
+      return { status: 400, payload: { error: "Notes are too long" } };
+    }
+
+    if ((notes || null) !== existing.notes) {
+      before.notes = existing.notes;
+      patch.notes = notes || null;
+    }
+  }
+
+  // The service decides whether a doctor is needed at all, so resolve it before
+  // deciding what to do about the doctor.
+  let service = null;
+
+  if (body.serviceTypeId !== undefined && body.serviceTypeId !== existing.service_type_id) {
+    service = await getServiceById(supabase, clinicId, body.serviceTypeId);
+
+    if (!service) {
+      return { status: 400, payload: { error: "That service is not offered at this clinic" } };
+    }
+
+    before.service_type_id = existing.service_type_id;
+    patch.service_type_id = service.serviceTypeId;
+    patch.duration_minutes = service.durationMinutes;
+  } else {
+    service = await getServiceById(supabase, clinicId, existing.service_type_id);
+  }
+
+  const needsDoctor = service ? service.requiresDoctor : true;
+  const doctorId = body.doctorId === undefined ? existing.doctor_id : body.doctorId || null;
+
+  if (needsDoctor && !doctorId) {
+    return { status: 400, payload: { error: "This service needs a doctor" } };
+  }
+
+  if (doctorId !== existing.doctor_id) {
+    if (doctorId) {
+      const { data: doctor } = await supabase
+        .from("doctors")
+        .select("id, is_active")
+        .eq("id", doctorId)
+        .eq("clinic_id", clinicId)
+        .maybeSingle();
+
+      if (!doctor) {
+        return { status: 400, payload: { error: "Doctor not found at this clinic" } };
+      }
+
+      if (doctor.is_active === false) {
+        return { status: 400, payload: { error: "That doctor is no longer active" } };
+      }
+
+      // Hours, leave and existing bookings all matter, so ask for the same free
+      // slots the booking flow would offer rather than only checking for a clash.
+      const free = await listAvailableSlots(
+        supabase,
+        clinicId,
+        doctorId,
+        existing.appointment_date
+      );
+      const wanted = String(existing.appointment_time).slice(0, 5);
+
+      if (!free.some((slot) => String(slot).slice(0, 5) === wanted)) {
+        return {
+          status: 409,
+          payload: {
+            error: `That doctor is not free at ${wanted} on ${existing.appointment_date}. Move the appointment first.`
+          }
+        };
+      }
+    }
+
+    before.doctor_id = existing.doctor_id;
+    patch.doctor_id = doctorId;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { status: 400, payload: { error: "Nothing to change" } };
+  }
+
+  patch.updated_at = new Date().toISOString();
+
+  const { error } = await supabase
+    .from("appointments")
+    .update(patch)
+    .eq("id", body.id)
+    .eq("clinic_id", clinicId);
+
+  if (error) {
+    return { status: 500, payload: { error: `Failed to update appointment: ${error.message}` } };
+  }
+
+  await recordAuditEvent(
+    supabase,
+    "appointment_edited",
+    actor,
+    "appointment",
+    String(body.id),
+    before,
+    patch
+  );
+
+  return { status: 200, payload: { id: body.id, changed: Object.keys(before) } };
 }
 
 /**
@@ -500,6 +693,20 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
         return successResponse({ doctors: data ?? [] });
       }
 
+      // Correcting a booking may mean changing what it is for, and the services
+      // endpoint is owner-only.
+      if (resource === "services") {
+        const services = await getEnabledServices(supabase, clinicId);
+
+        return successResponse({
+          services: services.map((s) => ({
+            serviceTypeId: s.serviceTypeId,
+            name: s.name,
+            requiresDoctor: s.requiresDoctor
+          }))
+        });
+      }
+
       if (resource === "slots") {
         const doctorId = url.searchParams.get("doctorId");
 
@@ -512,10 +719,15 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
         return successResponse({ doctorId, date: dateParam, slots });
       }
 
+      // Falling back to the server's date shows a clinic ahead of UTC the wrong
+      // day's list every evening.
+      const listDate =
+        dateParam || todayInTimezone(await getClinicTimezone(supabase, clinicId));
+
       const appointments = await listAppointments(
         supabase,
         clinicId,
-        dateParam || undefined,
+        listDate,
         statusParam || undefined
       );
 
@@ -526,13 +738,13 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
       debug("receptionistAppointments", "Appointments listed", {
         clinicId,
         count: appointments.length,
-        date: dateParam
+        date: listDate
       });
 
       return successResponse({
         appointments,
         total: appointments.length,
-        date: dateParam
+        date: listDate
       });
     }
 
