@@ -51,3 +51,12 @@ Supabase occasionally reports `Deployed` while still serving the previous
 bundle from a warm isolate. The symptom is unmistakable: a new guard never
 fires while an older guard *in the same function* still does. Deploy again
 before debugging the code.
+
+## The flag that is easy to lose
+
+`webhook` and `scheduled-reminders` must be deployed with `--no-verify-jwt`.
+It is set per deployment, not stored anywhere, so redeploying either without it
+turns gateway verification back on and the caller is rejected before the
+function runs. Both failures are silent. See
+[Module 2](MODULE_2_EDGE_FUNCTIONS.md#telling-the-two-401s-apart) for the
+one-line check.

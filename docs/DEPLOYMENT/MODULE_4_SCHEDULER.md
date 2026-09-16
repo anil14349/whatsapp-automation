@@ -35,7 +35,30 @@ otherwise.
 
 1. Create the Vault secrets above.
 2. Run `019_schedule_reminders.sql`.
-3. Deploy `scheduled-reminders` ([Module 2](MODULE_2_EDGE_FUNCTIONS.md)).
+3. Deploy `scheduled-reminders` **with the flag**:
+
+```powershell
+npx supabase functions deploy scheduled-reminders --project-ref <ref> --use-api --no-verify-jwt
+```
+
+The cron job authenticates with `Authorization: Bearer <scheduler_token>`, and
+that token is a random string rather than a Supabase JWT. With gateway
+verification on, the request is rejected with
+`UNAUTHORIZED_INVALID_JWT_FORMAT` before the function runs. The function checks
+the token itself, so nothing is lost by turning the gateway check off.
+
+**This has already happened once.** The function was redeployed without the
+flag during unrelated work and reminders stopped, with nothing to show for it:
+cron still reported success, the function logged nothing because it never ran,
+and the rows stayed `PENDING`. Check after every deployment of this function:
+
+```powershell
+curl.exe -s -X POST -H "Authorization: Bearer not-a-jwt" `
+    "https://<ref>.supabase.co/functions/v1/scheduled-reminders"
+```
+
+`{"error":"Unauthorized"}` is correct — that is the function talking. A
+response with a `code` field is the gateway, and means the flag is missing.
 
 ## Verifying
 

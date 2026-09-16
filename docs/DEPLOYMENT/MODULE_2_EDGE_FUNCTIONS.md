@@ -5,10 +5,10 @@ bot, the staff API, and the reminder runner.
 
 ## What is deployed
 
-| Function | Purpose | JWT |
+| Function | Purpose | Gateway JWT |
 |---|---|---|
 | `webhook` | Every inbound WhatsApp message | **off** |
-| `scheduled-reminders` | Called by pg_cron, sends due reminders | on |
+| `scheduled-reminders` | Called by pg_cron, sends due reminders | **off** |
 | `admins-auth-login` | Owner and platform admin sign-in | on |
 | `doctors-auth-login` | Doctor sign-in, by number or email | on |
 | `doctors-auth-me` | Current doctor | on |
@@ -68,16 +68,41 @@ From the **repo root**, not from `supabase/functions`:
 npx supabase functions deploy <name> --project-ref <ref> --use-api
 ```
 
-The webhook is the exception and must keep its flag:
+**Two functions must keep `--no-verify-jwt` on every deployment:**
 
 ```powershell
 npx supabase functions deploy webhook --project-ref <ref> --use-api --no-verify-jwt
+npx supabase functions deploy scheduled-reminders --project-ref <ref> --use-api --no-verify-jwt
 ```
 
 - `--use-api` avoids Docker. Without it the CLI needs a Linux container engine.
-- `--no-verify-jwt` is **required** for the webhook. Without it Meta's post is
-  rejected with `UNAUTHORIZED_NO_AUTH_HEADER` before the function runs. Every
-  other function must keep verification on.
+- `--no-verify-jwt` is **required** for both. Neither caller sends a Supabase
+  JWT: Meta cannot, and the cron job sends `SCHEDULER_AUTH_TOKEN`, a random
+  string. With verification on, the gateway rejects them before the function
+  runs and both authenticate themselves perfectly well inside it — the webhook
+  by its query token, the scheduler by comparing the bearer to its secret.
+
+The flag is **per deployment, not per project**. Redeploying either of these
+without it silently turns verification back on. There is no configuration file
+holding this: `supabase/config.toml` does not exist in this repo, so the flag
+on the command line is the only thing that sets it.
+
+### Telling the two 401s apart
+
+This is how to check the flag survived a deployment, and it needs no secrets:
+
+```powershell
+curl.exe -s -X POST -H "Authorization: Bearer not-a-jwt" `
+    "https://<ref>.supabase.co/functions/v1/scheduled-reminders"
+```
+
+| Response | Meaning |
+|---|---|
+| `{"code":"UNAUTHORIZED_INVALID_JWT_FORMAT"}` | **Gateway** rejected it. The flag is missing and the scheduler is dead. |
+| `{"error":"Unauthorized"}` | The **function** rejected it. The flag is right; only the token was wrong. |
+
+A gateway code means the function never ran. Nothing logs this, cron still
+reports success, and reminders simply stop.
 
 Shared code under `supabase/functions/shared/` is bundled into each function
 that imports it, so **changing a shared file means redeploying every function
