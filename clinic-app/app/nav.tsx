@@ -31,6 +31,14 @@ export function PortalNav({ session }: { session: PortalSession }) {
                         Services
                     </Link>
                 )}
+                {canManageStaff && (
+                    <Link
+                        href="/settings"
+                        className="rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-white hover:text-slate-900"
+                    >
+                        Settings
+                    </Link>
+                )}
             </nav>
 
             <div className="flex items-center gap-3">

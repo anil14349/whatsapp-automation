@@ -66,6 +66,23 @@ Deno.test("malformed dates are rejected", () => {
     }
 });
 
+// The server runs on UTC. A clinic in Asia/Kolkata is already on the next day
+// from 18:30 UTC, so measuring the window against the server's date let a
+// patient book a day the clinic had finished, and cost them the seventh day.
+Deno.test("the booking window follows the clinic's day, not the server's", () => {
+    const clinicToday = "2026-09-16";
+
+    assertEquals(isValidBookingDate("2026-09-15", clinicToday).error, "past");
+    assertEquals(isValidBookingDate("2026-09-16", clinicToday).valid, true);
+    assertEquals(isValidBookingDate("2026-09-23", clinicToday).valid, true);
+    assertEquals(isValidBookingDate("2026-09-24", clinicToday).error, "too_far");
+});
+
+Deno.test("a clinic day that is not a real date is ignored", () => {
+    // Falls back to the server's day rather than accepting anything.
+    assertEquals(isValidBookingDate("2099-01-01", "not-a-date").valid, false);
+});
+
 Deno.test("ISO date validation", () => {
     assertEquals(isValidISODate("2026-09-15"), true);
     assertEquals(isValidISODate("2026-9-5"), false);

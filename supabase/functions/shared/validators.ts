@@ -105,8 +105,15 @@ export function isValidISODate(dateString: string): boolean {
  * Error messages:
  * - "past" if date is in the past
  * - "too_far" if date is more than 7 days in the future
+ *
+ * `today` is the clinic's own date. Without it the window is measured against
+ * the server's UTC day, so a patient in Asia/Kolkata messaging after midnight
+ * could book a date their clinic had already finished.
  */
-export function isValidBookingDate(dateString: string): { valid: boolean; error?: string } {
+export function isValidBookingDate(
+    dateString: string,
+    today?: string
+): { valid: boolean; error?: string } {
     // Validate ISO format first
     if (!isValidISODate(dateString)) {
         return { valid: false, error: "invalid_format" };
@@ -114,8 +121,15 @@ export function isValidBookingDate(dateString: string): { valid: boolean; error?
 
     // Compare calendar days only. Mixing a local midnight with a UTC-parsed
     // date shortened the window to 6 days anywhere east of UTC.
-    const now = new Date();
-    const todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    let todayUtc: number;
+
+    if (today && isValidISODate(today)) {
+        const [ty, tm, td] = today.split("-").map(Number);
+        todayUtc = Date.UTC(ty, tm - 1, td);
+    } else {
+        const now = new Date();
+        todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    }
 
     const [year, month, day] = dateString.split("-").map(Number);
     const bookingUtc = Date.UTC(year, month - 1, day);

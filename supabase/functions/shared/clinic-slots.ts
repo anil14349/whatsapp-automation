@@ -15,6 +15,49 @@ import type { ClinicService } from "./clinic-services.ts";
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /**
+ * Today's date as the clinic sees it.
+ *
+ * Edge functions run on UTC, so `new Date()` is five and a half hours behind a
+ * clinic in Asia/Kolkata. Every evening after 18:30 local the server's "today"
+ * is still yesterday, which made the Today and Tomorrow buttons offer a date
+ * that had already passed.
+ */
+export function todayInTimezone(timezone: string): string {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    }).formatToParts(new Date());
+
+    const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+
+    return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+export function addDays(date: string, days: number): string {
+    const d = new Date(date + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+}
+
+/**
+ * The clinic's own timezone, falling back to UTC when it has none set.
+ */
+export async function getClinicTimezone(
+    supabase: SupabaseClient,
+    clinicId: string
+): Promise<string> {
+    const { data } = await supabase
+        .from("clinics")
+        .select("timezone")
+        .eq("id", clinicId)
+        .maybeSingle();
+
+    return data?.timezone || "UTC";
+}
+
+/**
  * Hours for one day.
  *
  * `clinic_operating_hours` holds a row per weekday and is what the doctor slot
@@ -113,6 +156,36 @@ function toTimeString(minutes: number): string {
     const h = Math.floor(minutes / 60);
     const m = minutes % 60;
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/**
+ * Why a date has no slots, when the reason is the clinic rather than demand.
+ *
+ * "Fully booked" and "we are shut that day" need different replies. Offering a
+ * waitlist for a day the clinic is closed leaves the patient waiting for a slot
+ * that is never going to appear.
+ */
+export type ClinicClosure = { reason: "holiday"; name: string } | { reason: "closed" };
+
+export async function getClinicClosure(
+    supabase: SupabaseClient,
+    clinicId: string,
+    date: string
+): Promise<ClinicClosure | null> {
+    const { data: holiday } = await supabase
+        .from("clinic_holidays")
+        .select("holiday_name")
+        .eq("clinic_id", clinicId)
+        .eq("holiday_date", date)
+        .maybeSingle();
+
+    if (holiday) {
+        return { reason: "holiday", name: String(holiday.holiday_name ?? "").trim() };
+    }
+
+    const hours = await getClinicHoursForDay(supabase, clinicId, date);
+
+    return hours ? null : { reason: "closed" };
 }
 
 /**

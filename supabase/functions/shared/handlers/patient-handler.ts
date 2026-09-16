@@ -8,7 +8,13 @@ import {
     formatPrice,
     type ClinicService
 } from "../clinic-services.ts";
-import { getClinicServiceSlots } from "../clinic-slots.ts";
+import {
+    addDays,
+    getClinicClosure,
+    getClinicServiceSlots,
+    getClinicTimezone,
+    todayInTimezone
+} from "../clinic-slots.ts";
 import {
     cancelAppointment,
     rescheduleAppointment
@@ -514,6 +520,53 @@ export class PatientFlowHandler {
     }
 
     /**
+     * Tell the patient the clinic is shut, if that is why there are no slots.
+     *
+     * Returns true when it has answered, so the caller stops. Without this a
+     * closed day falls through to "the doctor is unavailable" or a waitlist for
+     * a day that will never open.
+     */
+    private async replyIfClinicClosed(
+        phone: string,
+        language: string,
+        clinicId: string,
+        date: string,
+        followUp: "menu" | "retryDate"
+    ): Promise<boolean> {
+        const closure = await getClinicClosure(this.supabase, clinicId, date);
+
+        if (!closure) {
+            return false;
+        }
+
+        const reason = closure.reason === "holiday" && closure.name ? ` (${closure.name})` : "";
+
+        await this.whatsappClient.sendTextMessage(
+            phone,
+            language === "EN"
+                ? `The clinic is closed on ${date}${reason}. Please pick another date.`
+                : `${date}${reason} को क्लिनिक बंद है। कृपया दूसरी तारीख चुनें।`,
+            this.supabase
+        );
+
+        // The custom-date state only understands a typed date, so sending it the
+        // date buttons would strand the patient.
+        if (followUp === "menu") {
+            await this.showDateMenu(phone, language);
+        } else {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "📅 Please enter another date (YYYY-MM-DD):"
+                    : "📅 कृपया कोई अन्य तारीख दर्ज करें (YYYY-MM-DD):",
+                this.supabase
+            );
+        }
+
+        return true;
+    }
+
+    /**
      * BOOK_DOCTOR - Display available doctors
      */
     private async handleBookDoctor(
@@ -598,17 +651,17 @@ export class PatientFlowHandler {
 
         // If button ID, parse date option
         if (isValidDateSelectButton(buttonId)) {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
+            // Today has to mean today where the patient is standing, not where
+            // the server happens to run.
+            const timezone = await getClinicTimezone(this.supabase, clinicId);
+            const today = todayInTimezone(timezone);
 
             let selectedDate: string;
 
             if (buttonId === BUTTON_IDS.DATE_SELECT.TODAY) {
-                selectedDate = this.toISODate(today);
+                selectedDate = today;
             } else if (buttonId === BUTTON_IDS.DATE_SELECT.TOMORROW) {
-                const tomorrow = new Date(today);
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                selectedDate = this.toISODate(tomorrow);
+                selectedDate = addDays(today, 1);
             } else if (buttonId === BUTTON_IDS.DATE_SELECT.OTHER) {
                 // Ask for custom date
                 await this.whatsappClient.sendTextMessage(
@@ -617,7 +670,11 @@ export class PatientFlowHandler {
                         ? "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
                         : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप 7 दिन पहले तक बुक कर सकते हैं)"
                 );
+                // Carry the rest of the payload over. Rebuilding it here dropped
+                // serviceTypeId, so a doctor-free service reached the custom date
+                // step with no service and could never find a slot.
                 await this.updateSession(phone, "BOOK_DATE_CUSTOM", {
+                    ...session.data,
                     language,
                     selectedDoctorId: doctorId,
                     selectedDoctorName: session.data?.selectedDoctorName,
@@ -632,6 +689,10 @@ export class PatientFlowHandler {
             // Check availability for selected date
             const slots = await this.slotsForBooking(session, clinicId, selectedDate, locationType);
             if (!slots || slots.length === 0) {
+                if (await this.replyIfClinicClosed(phone, language, clinicId, selectedDate, "menu")) {
+                    return;
+                }
+
                 // Check if doctor is unavailable (not AVAILABLE or IN_CONSULTATION)
                 const doctorAvailable = await this.supabaseClient.isDoctorAvailable(clinicId, doctorId);
                 
@@ -679,7 +740,8 @@ export class PatientFlowHandler {
             await this.showAvailableSlots(phone, language, slots, 0);
         } else if (/^\d{4}-\d{2}-\d{2}$/.test(buttonId)) {
             // Custom date input - validate format and range
-            const dateValidation = isValidBookingDate(buttonId);
+            const clinicToday = todayInTimezone(await getClinicTimezone(this.supabase, clinicId));
+            const dateValidation = isValidBookingDate(buttonId, clinicToday);
 
             if (!dateValidation.valid) {
                 const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", language);
@@ -697,6 +759,10 @@ export class PatientFlowHandler {
 
             const slots = await this.slotsForBooking(session, clinicId, buttonId, locationType);
             if (!slots || slots.length === 0) {
+                if (await this.replyIfClinicClosed(phone, language, clinicId, buttonId, "menu")) {
+                    return;
+                }
+
                 await this.offerWaitlist(
                     phone,
                     language,
@@ -740,7 +806,8 @@ export class PatientFlowHandler {
         const clinicId = session.clinic_id;
 
         // Validate date format and range
-        const dateValidation = isValidBookingDate(dateString);
+        const clinicToday = todayInTimezone(await getClinicTimezone(this.supabase, clinicId));
+        const dateValidation = isValidBookingDate(dateString, clinicToday);
 
         if (!dateValidation.valid) {
             const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", language);
@@ -759,6 +826,10 @@ export class PatientFlowHandler {
         // Check availability
         const slots = await this.slotsForBooking(session, clinicId, dateString, locationType);
         if (!slots || slots.length === 0) {
+            if (await this.replyIfClinicClosed(phone, language, clinicId, dateString, "retryDate")) {
+                return;
+            }
+
             // Check if doctor is unavailable (not AVAILABLE or IN_CONSULTATION)
             const doctorAvailable = await this.supabaseClient.isDoctorAvailable(clinicId, doctorId);
             
@@ -1282,6 +1353,7 @@ export class PatientFlowHandler {
         }
 
         await this.updateSession(phone, "RESCHEDULE_DATE", {
+            ...session.data,
             language,
             selectedAppointmentId: appointmentId
         });
@@ -1310,7 +1382,10 @@ export class PatientFlowHandler {
         const newDate = message.text.trim();
 
         // Reschedule must honour the same 0-7 day window as a new booking.
-        const rescheduleWindow = isValidBookingDate(newDate);
+        const rescheduleToday = todayInTimezone(
+            await getClinicTimezone(this.supabase, session.clinic_id)
+        );
+        const rescheduleWindow = isValidBookingDate(newDate, rescheduleToday);
         if (!rescheduleWindow.valid) {
             await this.whatsappClient.sendTextMessage(
                 phone,
@@ -1357,6 +1432,7 @@ export class PatientFlowHandler {
         }
 
         await this.updateSession(phone, "RESCHEDULE_TIME", {
+            ...session.data,
             language,
             selectedAppointmentId: session.data?.selectedAppointmentId,
             rescheduleDoctorId: appointment?.doctor_id,
@@ -1437,6 +1513,7 @@ export class PatientFlowHandler {
         }
 
         await this.updateSession(phone, "RESCHEDULE_CONFIRM", {
+            ...session.data,
             language,
             selectedAppointmentId: session.data?.selectedAppointmentId,
             rescheduleDoctorId: doctorId,

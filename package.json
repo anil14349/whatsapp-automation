@@ -7,8 +7,9 @@
     "verify:coverage": "node scripts/verify-flow-coverage.mjs",
     "verify:supabase-menus": "node scripts/verify-supabase-menus.mjs",
     "verify:clinic-scope": "node scripts/verify-clinic-scope.mjs",
+    "verify:session-payload": "node scripts/verify-session-payload.mjs",
     "verify:schema": "node scripts/verify-schema.mjs",
-    "verify": "npm run typecheck && npm run test && npm run verify:menus && npm run verify:coverage && npm run verify:supabase-menus && npm run verify:clinic-scope"
+    "verify": "npm run typecheck && npm run test && npm run verify:menus && npm run verify:coverage && npm run verify:supabase-menus && npm run verify:clinic-scope && npm run verify:session-payload"
   },
   "devDependencies": {
     "supabase": "^2.117.0"

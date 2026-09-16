@@ -4,6 +4,7 @@ import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 import { BUTTON_IDS, isValidConfirmationButton } from "../button-ids.ts";
 import { debug } from "../logger.ts";
 import { isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
+import { addDays, getClinicTimezone, todayInTimezone } from "../clinic-slots.ts";
 import { getHomeCollectionMinLeadHours, getMaxCollectionsPerCollectorPerDay } from "../config.ts";
 import { getCollectorsForClinic } from "../staff-directory.ts";
 import { createHomeCollectionReminder, markHomeCollectionRemindersAsSkipped } from "../home-collection-reminders.ts";
@@ -240,19 +241,19 @@ export class HomeCollectionHandler {
         }
 
         const buttonId = message.text?.trim() || "";
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // Today has to mean today at the clinic, not on the UTC server.
+        const clinicToday = todayInTimezone(
+            await getClinicTimezone(this.supabase, session.clinic_id)
+        );
 
         let selectedDate: string;
 
         if (buttonId === BUTTON_IDS.DATE_SELECT.TODAY || buttonId === "1" || buttonId === "today") {
             // Today
-            selectedDate = this.formatDate(today);
+            selectedDate = clinicToday;
         } else if (buttonId === BUTTON_IDS.DATE_SELECT.TOMORROW || buttonId === "2" || buttonId === "tomorrow") {
             // Tomorrow
-            const tomorrow = new Date(today);
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            selectedDate = this.formatDate(tomorrow);
+            selectedDate = addDays(clinicToday, 1);
         } else if (buttonId === BUTTON_IDS.DATE_SELECT.OTHER || buttonId === "3" || buttonId === "other") {
             // Ask for custom date
             await this.whatsappClient.sendTextMessage(
@@ -268,7 +269,7 @@ export class HomeCollectionHandler {
             return;
         } else if (/^\d{4}-\d{2}-\d{2}$/.test(buttonId)) {
             // Custom date input - validate format and range
-            const dateValidation = isValidBookingDate(buttonId);
+            const dateValidation = isValidBookingDate(buttonId, clinicToday);
 
             if (!dateValidation.valid) {
                 const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", "EN");
@@ -307,7 +308,10 @@ export class HomeCollectionHandler {
         const dateString = message.text?.trim() || "";
 
         // Validate date format and range
-        const dateValidation = isValidBookingDate(dateString);
+        const clinicToday = todayInTimezone(
+            await getClinicTimezone(this.supabase, session.clinic_id)
+        );
+        const dateValidation = isValidBookingDate(dateString, clinicToday);
 
         if (!dateValidation.valid) {
             const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", "EN");
