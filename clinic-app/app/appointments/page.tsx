@@ -16,7 +16,7 @@ import type { ServiceOption } from "./actions";
 export default async function AppointmentsPage({
     searchParams
 }: {
-    searchParams: Promise<{ date?: string }>;
+    searchParams: Promise<{ date?: string; q?: string }>;
 }) {
     const session = await readSession();
 
@@ -26,13 +26,23 @@ export default async function AppointmentsPage({
 
     // No date means today at the clinic, which only the server knows: this
     // portal may be running in a different timezone entirely.
-    const chosenDate = (await searchParams).date;
+    const params = await searchParams;
+    const chosenDate = params.date;
+    const term = params.q?.trim() ?? "";
     const isDoctor = session.role === "DOCTOR";
 
-    const query = chosenDate ? `?date=${chosenDate}` : "";
+    // Searching spans every date, so it replaces the day filter rather than
+    // narrowing it.
+    const searching = term.length > 0 && !isDoctor;
+
+    const query = searching
+        ? `?q=${encodeURIComponent(term)}`
+        : chosenDate
+            ? `?date=${chosenDate}`
+            : "";
 
     const result = isDoctor
-        ? await callAsUser(`doctors-appointments${query}`)
+        ? await callAsUser(`doctors-appointments${chosenDate ? `?date=${chosenDate}` : ""}`)
         : await callAsUser(`receptionists-appointments${query}`);
 
     if (result.status === 401) {
@@ -56,6 +66,7 @@ export default async function AppointmentsPage({
     const rows: AppointmentRow[] = result.ok
         ? (result.data.appointments ?? []).map((a: any) => ({
             id: a.id,
+            date: a.appointment_date ?? a.date ?? date,
             time: a.time ?? a.appointment_time,
             patientName: a.patient?.name ?? a.patient_name ?? "Unknown",
             patientPhone: a.patient?.phone ?? a.patient_phone ?? "",
@@ -71,7 +82,11 @@ export default async function AppointmentsPage({
         }))
         : [];
 
-    rows.sort((a, b) => a.time.localeCompare(b.time));
+    // A day's list reads by time. Search results read newest first, which the
+    // endpoint has already ordered, so they are left alone.
+    if (!searching) {
+        rows.sort((a, b) => a.time.localeCompare(b.time));
+    }
 
     return (
         <PortalShell session={session} branding={branding}>
@@ -79,10 +94,15 @@ export default async function AppointmentsPage({
                 date={date}
                 doctors={doctors}
                 canBook={canBook}
+                canSearch={!isDoctor}
+                term={term}
+                searching={searching}
                 summary={
-                    canBook
-                        ? `${rows.length} booked · ${rows.filter((r) => r.status === "CONFIRMED").length} still to be seen`
-                        : undefined
+                    searching
+                        ? `${rows.length} found${rows.length === 50 ? " (showing the 50 most recent)" : ""}`
+                        : canBook
+                            ? `${rows.length} booked · ${rows.filter((r) => r.status === "CONFIRMED").length} still to be seen`
+                            : undefined
                 }
             />
 
@@ -94,7 +114,9 @@ export default async function AppointmentsPage({
 
             {result.ok && rows.length === 0 && (
                 <p className="rounded-xl bg-white px-4 py-10 text-center text-sm text-slate-500 ring-1 ring-slate-200">
-                    No appointments on {date}.
+                    {searching
+                        ? `Nobody matching “${term}”.`
+                        : `No appointments on ${date}.`}
                 </p>
             )}
 
@@ -107,6 +129,7 @@ export default async function AppointmentsPage({
                     isDoctor={isDoctor}
                     doctors={doctors}
                     services={services}
+                    showDate={searching}
                 />
             )}
         </PortalShell>

@@ -49,6 +49,7 @@ import { withCors } from "../shared/cors.ts";
 import { createAppointmentReminders } from "../shared/appointment-reminders.ts";
 import { getEnabledServices, getServiceById } from "../shared/clinic-services.ts";
 import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
+import { MIN_SEARCH_LENGTH, searchAppointments } from "../shared/appointment-search.ts";
 import { checkRevisit } from "../shared/revisit.ts";
 import { notifyDelay } from "../shared/delay-notice.ts";
 
@@ -728,6 +729,34 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
         const slots = await listAvailableSlots(supabase, clinicId, doctorId, dateParam);
 
         return successResponse({ doctorId, date: dateParam, slots });
+      }
+
+      // A search spans every date, so it deliberately ignores the day filter.
+      const searchTerm = url.searchParams.get("q");
+
+      if (searchTerm !== null) {
+        const found = await searchAppointments(supabase, clinicId, searchTerm);
+
+        if (found === null) {
+          return errorResponse("Failed to search appointments", 500);
+        }
+
+        if (found.tooShort) {
+          return badRequestResponse(
+            `Type at least ${MIN_SEARCH_LENGTH} characters to search`
+          );
+        }
+
+        debug("receptionistAppointments", "Appointments searched", {
+          clinicId,
+          count: found.appointments.length
+        });
+
+        return successResponse({
+          appointments: found.appointments,
+          total: found.appointments.length,
+          query: searchTerm.trim()
+        });
       }
 
       // Falling back to the server's date shows a clinic ahead of UTC the wrong

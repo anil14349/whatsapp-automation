@@ -17,12 +17,18 @@ export function DayHeader({
     date,
     summary,
     doctors,
-    canBook
+    canBook,
+    canSearch = false,
+    term = "",
+    searching = false
 }: {
     date: string;
     summary?: string;
     doctors: DoctorOption[];
     canBook: boolean;
+    canSearch?: boolean;
+    term?: string;
+    searching?: boolean;
 }) {
     const [walkIn, setWalkIn] = useState(false);
     const [delay, setDelay] = useState(false);
@@ -33,14 +39,20 @@ export function DayHeader({
         <>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-xl font-semibold">Appointments</h1>
+                    <h1 className="text-xl font-semibold">
+                        {searching ? "Search" : "Appointments"}
+                    </h1>
                     {summary && <p className="text-sm text-slate-500">{summary}</p>}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    <DateNav date={date} />
+                    {canSearch && <SearchBox term={term} />}
 
-                    {canBook && doctors.length > 0 && (
+                    {!searching && <DateNav date={date} />}
+
+                    {/* Both act on a single day, and a search has none: the
+                        walk-in form would post an empty date. */}
+                    {!searching && canBook && doctors.length > 0 && (
                         <>
                             <button
                                 onClick={() => {
@@ -103,6 +115,57 @@ export function DayHeader({
                 </div>
             )}
         </>
+    );
+}
+
+/**
+ * Finding a booking without knowing its date.
+ *
+ * "When is Mrs Sharma coming?" is what the desk is asked when the phone rings,
+ * and the only answer the portal had was to step back through days one at a
+ * time. A number and a name both work; which column is searched is decided
+ * from the shape of what was typed.
+ */
+function SearchBox({ term }: { term: string }) {
+    const router = useRouter();
+    const [value, setValue] = useState(term);
+
+    function submit(event: React.FormEvent) {
+        event.preventDefault();
+
+        const trimmed = value.trim();
+
+        router.push(trimmed ? `/appointments?q=${encodeURIComponent(trimmed)}` : "/appointments");
+    }
+
+    return (
+        <form onSubmit={submit} className="flex items-center gap-1">
+            <input
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder="Name or number"
+                aria-label="Search appointments by patient name or number"
+                className="w-44 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500"
+            />
+            <button
+                type="submit"
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:border-slate-300"
+            >
+                Search
+            </button>
+            {term && (
+                <button
+                    type="button"
+                    onClick={() => {
+                        setValue("");
+                        router.push("/appointments");
+                    }}
+                    className="rounded-lg px-2 py-2 text-sm text-slate-500 hover:text-slate-700"
+                >
+                    Clear
+                </button>
+            )}
+        </form>
     );
 }
 

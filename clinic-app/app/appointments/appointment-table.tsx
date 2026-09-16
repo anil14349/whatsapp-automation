@@ -15,6 +15,7 @@ import { useNotice } from "@/lib/use-notice";
 
 export interface AppointmentRow {
     id: string;
+    date: string;
     time: string;
     patientName: string;
     patientPhone: string;
@@ -43,7 +44,8 @@ export function AppointmentTable({
     canEdit,
     isDoctor = false,
     doctors = [],
-    services = []
+    services = [],
+    showDate = false
 }: {
     rows: AppointmentRow[];
     date: string;
@@ -52,6 +54,8 @@ export function AppointmentTable({
     isDoctor?: boolean;
     doctors?: Array<{ id: string; name: string }>;
     services?: ServiceOption[];
+    /** Search results span every date, so the day stops being implied. */
+    showDate?: boolean;
 }) {
     const [notice, setNotice] = useNotice<BookingState>({});
     const [busy, start] = useTransition();
@@ -68,10 +72,14 @@ export function AppointmentTable({
         setMoving(row);
         setEditing(null);
         setNotice({});
-        setNewDate(date);
+
+        // In a search the page has no single day, so the row carries its own.
+        const from = row.date || date;
+
+        setNewDate(from);
 
         if (row.doctorId) {
-            start(async () => setSlots(await loadSlots(row.doctorId!, date)));
+            start(async () => setSlots(await loadSlots(row.doctorId!, from)));
         }
     }
 
@@ -191,6 +199,7 @@ export function AppointmentTable({
                     <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
                         <tr>
                             <th className="px-4 py-3">Token</th>
+                            {showDate && <th className="px-4 py-3">Date</th>}
                             <th className="px-4 py-3">Time</th>
                             <th className="px-4 py-3">Patient</th>
                             <th className="px-4 py-3">For</th>
@@ -214,6 +223,11 @@ export function AppointmentTable({
                                             <span className="text-slate-300">—</span>
                                         )}
                                     </td>
+                                    {showDate && (
+                                        <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                                            {row.date}
+                                        </td>
+                                    )}
                                     <td className="px-4 py-3 font-medium">{row.time}</td>
                                     <td className="px-4 py-3">
                                         <div>{row.patientName}</div>

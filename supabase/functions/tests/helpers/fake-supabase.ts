@@ -10,7 +10,7 @@ type Row = Record<string, any>;
 
 interface Filter {
     column: string;
-    op: "eq" | "neq" | "in" | "lt" | "lte" | "gt" | "gte" | "is" | "like";
+    op: "eq" | "neq" | "in" | "lt" | "lte" | "gt" | "gte" | "is" | "like" | "ilike";
     value: any;
 }
 
@@ -40,6 +40,10 @@ function matches(row: Row, filter: Filter): boolean {
             return actual === filter.value;
         case "like":
             return String(actual).includes(String(filter.value).replace(/[%*]/g, ""));
+        case "ilike":
+            return String(actual)
+                .toLowerCase()
+                .includes(String(filter.value).replace(/[%*]/g, "").toLowerCase());
         default:
             return false;
     }
@@ -51,7 +55,7 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
     private payload: Row | Row[] | null = null;
     private singleMode = false;
     private maybeSingleMode = false;
-    private orderBy: { column: string; ascending: boolean } | null = null;
+    private orderBy: Array<{ column: string; ascending: boolean }> = [];
     private limitCount: number | null = null;
     private selectAfterWrite = false;
 
@@ -146,8 +150,15 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
         return this;
     }
 
+    ilike(column: string, value: any) {
+        this.filters.push({ column, op: "ilike", value });
+        return this;
+    }
+
+    // PostgREST applies each order in turn, so a second call is a tie-break,
+    // not a replacement.
     order(column: string, opts?: { ascending?: boolean }) {
-        this.orderBy = { column, ascending: opts?.ascending !== false };
+        this.orderBy.push({ column, ascending: opts?.ascending !== false });
         return this;
     }
 
@@ -230,12 +241,14 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
 
         let result = this.matching();
 
-        if (this.orderBy) {
-            const { column, ascending } = this.orderBy;
+        if (this.orderBy.length > 0) {
             result = [...result].sort((a, b) => {
-                if (a[column] === b[column]) return 0;
-                const less = a[column] < b[column];
-                return (less ? -1 : 1) * (ascending ? 1 : -1);
+                for (const { column, ascending } of this.orderBy) {
+                    if (a[column] === b[column]) continue;
+                    return (a[column] < b[column] ? -1 : 1) * (ascending ? 1 : -1);
+                }
+
+                return 0;
             });
         }
 
