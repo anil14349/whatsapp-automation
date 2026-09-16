@@ -3,6 +3,30 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { logWhatsAppMessage } from "./logger.ts";
 
 /**
+ * A rejection from Meta, with the code kept.
+ *
+ * Callers need to tell "outside the 24 hour window" apart from "that template
+ * does not exist" and from a genuine failure, and the numeric code is the only
+ * reliable way: the prose varies and is localised.
+ */
+export class WhatsAppApiError extends Error {
+    constructor(
+        message: string,
+        readonly code: number | null,
+        readonly details?: string
+    ) {
+        super(message);
+        this.name = "WhatsAppApiError";
+    }
+}
+
+/** Meta's code for "outside the 24 hour customer service window". */
+export const OUTSIDE_WINDOW_CODE = 131047;
+
+/** Meta's code for a template that is missing, unapproved or misnamed. */
+export const TEMPLATE_UNAVAILABLE_CODES = [132000, 132001, 132005, 132007, 132012, 132015];
+
+/**
  * WhatsApp Cloud API Client
  * Handles sending messages via Meta's WhatsApp Business API
  */
@@ -237,8 +261,10 @@ export class WhatsAppClient {
             const data = await response.json() as any;
 
             if (!response.ok) {
-                throw new Error(
-                    `WhatsApp API error: ${data.error?.message || response.statusText}`
+                throw new WhatsAppApiError(
+                    `WhatsApp API error: ${data.error?.message || response.statusText}`,
+                    typeof data.error?.code === "number" ? data.error.code : null,
+                    data.error?.error_data?.details
                 );
             }
 

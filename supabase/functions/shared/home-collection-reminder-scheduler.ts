@@ -20,6 +20,7 @@ import {
     markHomeCollectionReminderAsSent,
     markHomeCollectionReminderAsFailed
 } from "./home-collection-reminders.ts";
+import { sendProactive } from "./proactive.ts";
 
 export interface HomeCollectionSchedulerConfig {
     clinicIds: string[];
@@ -75,37 +76,56 @@ async function sendHomeCollectionReminder(
 
         const message = formatHomeCollectionReminderMessage(messageContent);
 
-        // Send via WhatsApp
-        const result = await whatsappClient.sendTextMessage(details.patientPhone, message);
+        // sendTextMessage resolves to the message id and throws on failure; the
+        // old `result.success` was always undefined, so every delivered
+        // reminder was marked failed and retried. Same fault the appointment
+        // scheduler already had fixed.
+        const outcome = await sendProactive(
+            whatsappClient,
+            details.patientPhone,
+            message,
+            {
+                key: "home_collection_reminder",
+                language: details.preferredLanguage,
+                parameters: [
+                    details.patientName,
+                    details.collectionDate,
+                    details.timeWindow
+                ]
+            }
+        );
 
-        if (result.success) {
-            // Mark as SENT
-            await markHomeCollectionReminderAsSent(supabase, reminder.id, result.message_id || "");
+        if (outcome.delivered) {
+            await markHomeCollectionReminderAsSent(supabase, reminder.id, outcome.messageId || "");
 
             debug("homeCollectionScheduler", "Reminder sent successfully", {
                 reminderId: reminder.id,
-                messageId: result.message_id,
+                messageId: outcome.messageId,
+                via: outcome.via,
                 requestId: details.requestId
             });
 
             return { success: true };
         } else {
-            // Mark as FAILED (will retry)
+            const reason = outcome.error ?? outcome.reason ?? "Unknown error";
+
             const { shouldRetry } = await markHomeCollectionReminderAsFailed(
                 supabase,
                 reminder.id,
-                result.error || "Unknown error"
+                reason,
+                !outcome.retryable
             );
 
             debug("homeCollectionScheduler", "Failed to send reminder", {
                 reminderId: reminder.id,
-                error: result.error,
+                reason: outcome.reason,
+                error: reason,
                 shouldRetry
             });
 
-            return { 
-                success: false, 
-                error: `${result.error} (will retry: ${shouldRetry})` 
+            return {
+                success: false,
+                error: `${reason} (will retry: ${shouldRetry})`
             };
         }
     } catch (error) {

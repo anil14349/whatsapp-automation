@@ -7,11 +7,11 @@
  * would.
  */
 
-import { WhatsAppClient } from "../../shared/whatsapp-client.ts";
+import { WhatsAppApiError, WhatsAppClient } from "../../shared/whatsapp-client.ts";
 
 export interface SentMessage {
     to: string;
-    type: "text" | "buttons" | "list";
+    type: "text" | "buttons" | "list" | "template";
     body: string;
     buttons?: Array<{ id: string; title: string }>;
     sections?: Array<{
@@ -19,16 +19,28 @@ export interface SentMessage {
         rows: Array<{ id: string; title: string; description?: string }>;
     }>;
     buttonTitle?: string;
+    templateLanguage?: string;
+    parameters?: string[];
 }
 
 export class FakeWhatsAppClient extends WhatsAppClient {
     readonly sent: SentMessage[] = [];
+
+    /** Set to make the next free-form send fail the way Meta would. */
+    textError: WhatsAppApiError | null = null;
+
+    /** Set to make a template send fail, e.g. one that is not registered. */
+    templateError: WhatsAppApiError | null = null;
 
     constructor(phoneNumberId = "TEST_PHONE_ID") {
         super("TEST_ACCESS_TOKEN", phoneNumberId);
     }
 
     override async sendTextMessage(to: string, body: string): Promise<string> {
+        if (this.textError) {
+            throw this.textError;
+        }
+
         this.sent.push({ to, type: "text", body });
         return `fake_text_${this.sent.length}`;
     }
@@ -93,6 +105,27 @@ export class FakeWhatsAppClient extends WhatsAppClient {
 
         this.sent.push({ to, type: "list", body, buttonTitle, sections });
         return `fake_list_${this.sent.length}`;
+    }
+
+    override async sendTemplateMessage(
+        to: string,
+        templateName: string,
+        templateLanguage = "en",
+        parameters?: string[]
+    ): Promise<string> {
+        if (this.templateError) {
+            throw this.templateError;
+        }
+
+        this.sent.push({
+            to,
+            type: "template",
+            body: templateName,
+            templateLanguage,
+            parameters: parameters ?? []
+        });
+
+        return `fake_template_${this.sent.length}`;
     }
 
     /** Every row id offered across all list messages. */

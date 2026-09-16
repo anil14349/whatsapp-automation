@@ -186,7 +186,9 @@ export async function markReminderAsSent(
 export async function markReminderAsFailed(
   supabase: SupabaseClient,
   reminderId: string,
-  errorMessage: string
+  errorMessage: string,
+  /** Set when sending it again unchanged cannot work, such as a closed window. */
+  permanent = false
 ): Promise<{ success: boolean; shouldRetry: boolean }> {
   try {
     // Fetch current attempts
@@ -201,7 +203,7 @@ export async function markReminderAsFailed(
     }
 
     const nextAttempt = reminder.attempts + 1;
-    const shouldRetry = nextAttempt < reminder.max_attempts;
+    const shouldRetry = !permanent && nextAttempt < reminder.max_attempts;
     const newStatus = shouldRetry ? "PENDING" : "FAILED";
 
     const { error: updateError } = await supabase

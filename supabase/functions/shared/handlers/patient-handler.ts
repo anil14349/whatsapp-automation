@@ -20,6 +20,7 @@ import {
     rescheduleAppointment
 } from "../appointments.ts";
 import { createAppointmentReminders, markReminderAsSkipped } from "../appointment-reminders.ts";
+import { sendProactive } from "../proactive.ts";
 import { debug, info, recordAuditEvent } from "../logger.ts";
 import { isValidPatientName, normalizePhoneNumber, isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
 import { AppointmentHistoryHandler } from "./appointment-history-handler.ts";
@@ -1886,10 +1887,18 @@ export class PatientFlowHandler {
                 return;
             }
 
-            await this.whatsappClient.sendTextMessage(
+            await sendProactive(
+                this.whatsappClient,
                 doctor.phone,
                 `📅 New booking\n\n${data?.patientName || "A patient"} — ${data?.selectedDate} at ${data?.selectedTime}`,
-                this.supabase
+                {
+                    key: "staff_new_booking",
+                    parameters: [
+                        String(data?.patientName || "A patient"),
+                        String(data?.selectedDate ?? ""),
+                        String(data?.selectedTime ?? "")
+                    ]
+                }
             );
         } catch (error) {
             debug("patientFlow", "Could not notify doctor of new booking", {

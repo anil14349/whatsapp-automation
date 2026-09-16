@@ -11,10 +11,8 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppClient } from "./whatsapp-client.ts";
 import { getClinicRouteById } from "./clinic-routing.ts";
+import { sendProactive } from "./proactive.ts";
 import { debug } from "./logger.ts";
-
-/** Meta's code for "outside the 24 hour customer service window". */
-const OUTSIDE_WINDOW = "131047";
 
 export interface DeliveryResult {
     delivered: boolean;
@@ -58,22 +56,24 @@ export async function sendCredentialOverWhatsApp(
 
     const client = new WhatsAppClient(route.accessToken, route.phoneNumberId, supabase, clinicId);
 
-    try {
-        await client.sendTextMessage(
-            phone,
-            credentialMessage(name, credential, kind, route.clinicName)
-        );
-
-        return { delivered: true };
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-
-        if (message.includes(OUTSIDE_WINDOW) || message.includes("24 hours")) {
-            debug("credentialDelivery", "Outside the 24 hour window", { phone });
-            return { delivered: false, reason: "outside_window" };
+    const outcome = await sendProactive(
+        client,
+        phone,
+        credentialMessage(name, credential, kind, route.clinicName),
+        {
+            key: "staff_credential",
+            parameters: [name, route.clinicName, credential]
         }
+    );
 
-        debug("credentialDelivery", "Send failed", { phone, error: message });
-        return { delivered: false, reason: "send_failed" };
+    if (outcome.delivered) {
+        return { delivered: true };
     }
+
+    debug("credentialDelivery", "Could not deliver", { phone, reason: outcome.reason });
+
+    return {
+        delivered: false,
+        reason: outcome.reason === "send_failed" ? "send_failed" : "outside_window"
+    };
 }

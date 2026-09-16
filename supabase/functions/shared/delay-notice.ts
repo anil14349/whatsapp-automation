@@ -14,6 +14,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppClient } from "./whatsapp-client.ts";
 import { getClinicRouteById } from "./clinic-routing.ts";
 import { getClinicTimezone, todayInTimezone } from "./clinic-slots.ts";
+import { sendProactive } from "./proactive.ts";
 import { debug } from "./logger.ts";
 
 export interface DelayResult {
@@ -120,15 +121,29 @@ export async function notifyDelay(
             ? `⏳ ${doctorName} थोड़ा देर से चल रहे हैं (लगभग ${minutes} मिनट)।\n\nआपका ${time} का समय अब लगभग ${expected} बजे अपेक्षित है।${token}\n\nअसुविधा के लिए खेद है।`
             : `⏳ ${doctorName} is running about ${minutes} minutes late.\n\nYour ${time} appointment is now expected around ${expected}.${token}\n\nSorry for the wait.`;
 
-        try {
-            await client.sendTextMessage(String(row.patient_phone), message);
+        // A patient waiting at home has usually not messaged today, so the
+        // free-form notice alone would be refused and they would sit waiting
+        // for the original time.
+        const outcome = await sendProactive(client, String(row.patient_phone), message, {
+            key: "appointment_delay",
+            language: row.preferred_language ?? "EN",
+            parameters: [
+                String(row.patient_name ?? "there"),
+                doctorName,
+                String(minutes),
+                expected
+            ]
+        });
+
+        if (outcome.delivered) {
             notified++;
-        } catch (error) {
+        } else {
             // One unreachable patient must not stop the rest being told.
             failed++;
             debug("delay", "Could not notify patient", {
                 appointmentId: row.id,
-                error: error instanceof Error ? error.message : String(error)
+                reason: outcome.reason,
+                error: outcome.error
             });
         }
     }

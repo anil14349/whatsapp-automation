@@ -9,8 +9,9 @@
     "verify:clinic-scope": "node scripts/verify-clinic-scope.mjs",
     "verify:session-payload": "node scripts/verify-session-payload.mjs",
     "verify:outbound-logging": "node scripts/verify-outbound-logging.mjs",
+    "verify:proactive": "node scripts/verify-proactive.mjs",
     "verify:schema": "node scripts/verify-schema.mjs",
-    "verify": "npm run typecheck && npm run test && npm run verify:menus && npm run verify:coverage && npm run verify:supabase-menus && npm run verify:clinic-scope && npm run verify:session-payload && npm run verify:outbound-logging"
+    "verify": "npm run typecheck && npm run test && npm run verify:menus && npm run verify:coverage && npm run verify:supabase-menus && npm run verify:clinic-scope && npm run verify:session-payload && npm run verify:outbound-logging && npm run verify:proactive"
   },
   "devDependencies": {
     "supabase": "^2.117.0"

@@ -165,14 +165,16 @@ export async function getHomeCollectionDetailsForReminder(
 ): Promise<{
   requestId: string;
   patientPhone: string;
+  patientName: string;
   collectionDate: string;
+  timeWindow: string;
   clinicName: string;
   preferredLanguage: string;
 } | null> {
   try {
     const { data, error } = await supabase
       .from("home_collection_requests")
-      .select("id, patient_phone, requested_date, preferred_language, clinic:clinics(name)")
+      .select("id, patient_phone, patient_name, requested_date, requested_time_window, preferred_language, clinic:clinics(name)")
       .eq("id", requestId)
       .single();
 
@@ -185,7 +187,9 @@ export async function getHomeCollectionDetailsForReminder(
     const row = data as unknown as {
       id: string;
       patient_phone: string;
+      patient_name: string | null;
       requested_date: string | null;
+      requested_time_window: string | null;
       preferred_language: string | null;
       clinic: { name: string } | null;
     };
@@ -193,7 +197,9 @@ export async function getHomeCollectionDetailsForReminder(
     return {
       requestId: row.id,
       patientPhone: row.patient_phone,
+      patientName: row.patient_name || "there",
       collectionDate: row.requested_date || new Date().toISOString().split("T")[0],
+      timeWindow: row.requested_time_window || "the booked slot",
       clinicName: row.clinic?.name || "Clinic",
       preferredLanguage: row.preferred_language || "EN"
     };
@@ -243,7 +249,9 @@ export async function markHomeCollectionReminderAsSent(
 export async function markHomeCollectionReminderAsFailed(
   supabase: SupabaseClient,
   reminderId: string,
-  errorMessage: string
+  errorMessage: string,
+  /** Set when sending it again unchanged cannot work, such as a closed window. */
+  permanent = false
 ): Promise<{ shouldRetry: boolean }> {
   try {
     // Fetch current attempt count
@@ -259,7 +267,7 @@ export async function markHomeCollectionReminderAsFailed(
 
     const attempts = (reminder?.attempts || 0) + 1;
     const maxAttempts = reminder?.max_attempts || 3;
-    const shouldRetry = attempts < maxAttempts;
+    const shouldRetry = !permanent && attempts < maxAttempts;
 
     const { error: updateError } = await supabase
       .from("home_collection_reminders")

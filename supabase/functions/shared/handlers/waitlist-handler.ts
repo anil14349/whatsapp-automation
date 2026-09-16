@@ -2,6 +2,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppSession, ExtractedMessage } from "../types.ts";
 import { BUTTON_IDS, isValidConfirmationButton } from "../button-ids.ts";
 import { debug } from "../logger.ts";
+import { sendProactive } from "../proactive.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 
 /**
@@ -281,7 +282,8 @@ export class WaitlistHandler {
             const isEn = (patient?.preferred_language || "EN") === "EN";
             const timeLine = !time || time === "ANY" ? "" : `🕐 ${time}\n`;
 
-            await this.whatsappClient.sendTextMessage(
+            const freed = await sendProactive(
+                this.whatsappClient,
                 data.phone,
                 isEn
                     ? `🎉 Good news!\n\n` +
@@ -291,13 +293,26 @@ export class WaitlistHandler {
                       `\nWould you like to book this appointment?\n\n` +
                       `Send "Hi" to start booking.`
                     : `🎉 खुशखबरी!\n\n` +
-                      `जिस स्लॉट का आप इंतज़ार कर रहे थे वह खाली हो गया है।\n\n` +
+                      `जिस स्लॉट का आप इंतजार कर रहे थे वह खाली हो गया है।\n\n` +
                       `📅 तारीख: ${date}\n` +
                       timeLine +
                       `\nक्या आप यह नियुक्ति बुक करना चाहेंगे?\n\n` +
                       `बुकिंग शुरू करने के लिए "Hi" भेजें।`,
-                this.supabase
+                {
+                    key: "waitlist_slot_available",
+                    language: patient?.preferred_language ?? "EN",
+                    parameters: [date, !time || time === "ANY" ? "any time" : time]
+                }
             );
+
+            // Their place is only given up once they have actually been told.
+            if (!freed.delivered) {
+                debug("waitlistHandler", "Could not reach the waitlisted patient", {
+                    phone: data.phone,
+                    reason: freed.reason
+                });
+                return;
+            }
 
             // Mark as notified
             await this.supabase

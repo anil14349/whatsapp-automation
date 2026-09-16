@@ -17,6 +17,7 @@ import {
     getAppointmentDetailsForReminder,
     formatReminderMessage
 } from "./appointment-reminders.ts";
+import { sendProactive } from "./proactive.ts";
 import { debug, recordAuditEvent } from "./logger.ts";
 
 interface SchedulerConfig {
@@ -104,32 +105,55 @@ async function sendReminder(
             language: (details.preferredLanguage || "EN") as "EN" | "HI"
         });
 
-        // sendTextMessage resolves to the message id and throws on failure.
-        // Treating it as a result object made every delivered reminder look
-        // failed, so each one was retried and patients received duplicates.
-        let messageId: string;
+        // A reminder is by definition sent long after the patient last wrote,
+        // so free-form alone was rejected outside the 24 hour window and the
+        // patient heard nothing. The template carries it when that happens.
+        const outcome = await sendProactive(
+            whatsappClient,
+            details.patientPhone,
+            message,
+            {
+                key: reminder.reminder_type === "1_HOUR"
+                    ? "appointment_reminder_1h"
+                    : "appointment_reminder_24h",
+                language: details.preferredLanguage || "EN",
+                parameters: reminder.reminder_type === "1_HOUR"
+                    ? [
+                        details.patientName || "Patient",
+                        details.doctorName || "your doctor",
+                        details.appointmentTime || ""
+                    ]
+                    : [
+                        details.patientName || "Patient",
+                        details.doctorName || "your doctor",
+                        details.appointmentDate || "",
+                        details.appointmentTime || ""
+                    ]
+            }
+        );
 
-        try {
-            messageId = await whatsappClient.sendTextMessage(details.patientPhone, message);
-        } catch (sendError) {
-            const reason = sendError instanceof Error ? sendError.message : String(sendError);
+        if (!outcome.delivered) {
+            const reason = outcome.error ?? outcome.reason ?? "send failed";
 
             debug("reminderScheduler", "Failed to send reminder", {
                 reminderId: reminder.id,
                 phone: details.patientPhone,
+                reason: outcome.reason,
                 error: reason
             });
 
-            await markReminderAsFailed(supabase, reminder.id, reason);
+            await markReminderAsFailed(supabase, reminder.id, reason, !outcome.retryable);
 
             return {
                 reminderId: reminder.id,
                 appointmentId: reminder.appointment_id,
                 status: "failed",
                 error: reason,
-                retryable: true
+                retryable: outcome.retryable
             };
         }
+
+        const messageId = outcome.messageId ?? "";
 
         // Mark as sent
         await markReminderAsSent(
