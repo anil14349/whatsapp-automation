@@ -201,6 +201,9 @@ export interface DoctorDay {
     openTime: string | null;
     closeTime: string | null;
     working: boolean;
+    visitOpenTime: string | null;
+    visitCloseTime: string | null;
+    visiting: boolean;
 }
 
 export interface DoctorLeave {
@@ -231,14 +234,18 @@ export async function saveDoctorHours(
     dayOfWeek: number,
     openTime: string,
     closeTime: string,
-    working: boolean
+    working: boolean,
+    /** Hours spent visiting patients at home, which are kept separately. */
+    visiting = false
 ): Promise<StaffState> {
     const denied = await requireManager();
     if (denied) return { error: denied };
 
     const result = await callAsUser("doctor-schedule", {
         method: "PATCH",
-        body: { doctorId, dayOfWeek, openTime, closeTime, working }
+        body: visiting
+            ? { doctorId, dayOfWeek, openTime, closeTime, working, visiting: true }
+            : { doctorId, dayOfWeek, openTime, closeTime, working }
     });
 
     if (!result.ok) {
@@ -246,6 +253,10 @@ export async function saveDoctorHours(
     }
 
     revalidatePath("/staff");
+
+    if (visiting) {
+        return { success: "Visiting hours saved." };
+    }
 
     // The clinic's own hours win, and the endpoint says so when they clash.
     return { success: result.data?.note ?? "Hours saved." };

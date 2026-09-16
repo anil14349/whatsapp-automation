@@ -3,6 +3,8 @@ import { WhatsAppMessage, WhatsAppSession, ExtractedMessage } from "../types.ts"
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 import { BUTTON_IDS, isValidPatientMenuButton, isValidConfirmationButton, isValidDateSelectButton, isServiceButton, serviceButtonId, serviceIdFromButton, patientNameButtonId, patientNameIndex } from "../button-ids.ts";
 import { knownPatientNames, MAX_REMEMBERED_NAMES } from "../patient-names.ts";
+import { asLocationType, isHomeVisit, LOCATION_CLINIC, LOCATION_HOME } from "../location-type.ts";
+import { checkServiceArea } from "../geo.ts";
 import {
     getEnabledServices,
     getServiceById,
@@ -104,6 +106,14 @@ export class PatientFlowHandler {
 
                 case "SERVICE_SELECT":
                     await this.handleServiceSelect(phone, message, session);
+                    break;
+
+                case "BOOK_LOCATION":
+                    await this.handleBookLocation(phone, message, session);
+                    break;
+
+                case "BOOK_ADDRESS":
+                    await this.handleBookAddress(phone, message, session);
                     break;
 
                 case "BOOK_DOCTOR":
@@ -432,9 +442,162 @@ export class PatientFlowHandler {
             requiresDoctor: service.requiresDoctor
         };
 
+        // Asking where only makes sense when the clinic will actually come:
+        // the service has to be offered at home and the master switch on.
+        const atHome = await getEnabledServices(this.supabase, clinicId, "home");
+        const canVisit = atHome.some((s) => s.serviceTypeId === service.serviceTypeId);
+
+        if (canVisit) {
+            await this.updateSession(phone, "BOOK_LOCATION", data);
+            await this.askWhere(phone, language, service.name);
+            return;
+        }
+
         if (service.requiresDoctor) {
             await this.updateSession(phone, "BOOK_DOCTOR", data);
             await this.showDoctorList(phone, language, clinicId);
+            return;
+        }
+
+        await this.updateSession(phone, "BOOK_DATE", data);
+        await this.showDateMenu(phone, language);
+    }
+
+    private async askWhere(phone: string, language: string, serviceName: string): Promise<void> {
+        const en = language === "EN";
+
+        await this.whatsappClient.sendInteractiveButtonMessage(
+            phone,
+            en
+                ? `${serviceName}\n\nWhere would you like this?`
+                : `${serviceName}\n\nआप इसे कहाँ चाहेंगे?`,
+            [
+                { id: BUTTON_IDS.LOCATION_TYPE.CLINIC, title: en ? "At the clinic" : "क्लिनिक में" },
+                { id: BUTTON_IDS.LOCATION_TYPE.HOME, title: en ? "At my home" : "घर पर" }
+            ]
+        );
+    }
+
+    /**
+     * BOOK_LOCATION - clinic or a visit to the patient's home
+     */
+    private async handleBookLocation(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        if (session.state !== "BOOK_LOCATION") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
+
+        const language = session.data?.language || "EN";
+        const reply = message.text.trim();
+
+        if (reply === BUTTON_IDS.LOCATION_TYPE.HOME) {
+            await this.updateSession(phone, "BOOK_ADDRESS", {
+                ...session.data,
+                locationType: LOCATION_HOME
+            });
+
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "📍 Where should the doctor come?\n\nShare your location, or type your address."
+                    : "📍 डॉक्टर कहाँ आएँ?\n\nअपना स्थान साझा करें, या अपना पता लिखें।"
+            );
+            return;
+        }
+
+        if (reply === BUTTON_IDS.LOCATION_TYPE.CLINIC) {
+            const data = { ...session.data, locationType: LOCATION_CLINIC };
+
+            if (session.data?.requiresDoctor) {
+                await this.updateSession(phone, "BOOK_DOCTOR", data);
+                await this.showDoctorList(phone, language, session.clinic_id);
+                return;
+            }
+
+            await this.updateSession(phone, "BOOK_DATE", data);
+            await this.showDateMenu(phone, language);
+            return;
+        }
+
+        // Anything else is a stale tap or free text, so ask again.
+        await this.askWhere(phone, language, session.data?.serviceName || "");
+    }
+
+    /**
+     * BOOK_ADDRESS - where the visit should happen
+     *
+     * A pin is measured against the clinic's collection radius, the same one
+     * the sample collectors use: a doctor will not drive further than the
+     * clinic already said it travels.
+     */
+    private async handleBookAddress(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        if (session.state !== "BOOK_ADDRESS") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
+
+        const language = session.data?.language || "EN";
+        const en = language === "EN";
+
+        let address: string | null = null;
+        let latitude: number | null = null;
+        let longitude: number | null = null;
+
+        if (message.latitude && message.longitude) {
+            const area = await checkServiceArea(
+                this.supabase,
+                session.clinic_id,
+                message.latitude,
+                message.longitude
+            );
+
+            if (!area.servable) {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    en
+                        ? `📍 Sorry, that address is outside the area we visit.\n\nIt is about ${Math.round(area.distanceKm ?? 0)} km away and we travel up to ${area.radiusKm} km.\n\nYou can share a different location, or book at the clinic instead.`
+                        : `📍 क्षमा करें, वह पता हमारे क्षेत्र से बाहर है।\n\nयह लगभग ${Math.round(area.distanceKm ?? 0)} किमी दूर है और हम ${area.radiusKm} किमी तक जाते हैं।`
+                );
+                return;
+            }
+
+            latitude = message.latitude;
+            longitude = message.longitude;
+        } else {
+            const typed = (message.text || "").trim();
+
+            if (typed.length < 8) {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    en
+                        ? "Please share your location, or type the full address including a landmark."
+                        : "कृपया अपना स्थान साझा करें, या लैंडमार्क सहित पूरा पता लिखें।"
+                );
+                return;
+            }
+
+            address = typed;
+        }
+
+        const data = {
+            ...session.data,
+            locationType: LOCATION_HOME,
+            serviceAddress: address,
+            serviceLatitude: latitude,
+            serviceLongitude: longitude
+        };
+
+        if (session.data?.requiresDoctor) {
+            await this.updateSession(phone, "BOOK_DOCTOR", data);
+            await this.showDoctorList(phone, language, session.clinic_id);
             return;
         }
 
@@ -650,7 +813,7 @@ export class PatientFlowHandler {
     ): Promise<void> {
         const language = session.data?.language || "EN";
         const buttonId = message.text.trim();
-        const locationType = session.data?.locationType || "clinic";
+        const locationType = asLocationType(session.data?.locationType);
         const doctorId = session.data?.selectedDoctorId;
         const clinicId = session.clinic_id;
 
@@ -807,7 +970,7 @@ export class PatientFlowHandler {
         const language = session.data?.language || "EN";
         const dateString = message.text.trim();
         const doctorId = session.data?.selectedDoctorId;
-        const locationType = session.data?.locationType || "clinic";
+        const locationType = asLocationType(session.data?.locationType);
         const clinicId = session.clinic_id;
 
         // Validate date format and range
@@ -904,7 +1067,7 @@ export class PatientFlowHandler {
         const doctorId = session.data?.selectedDoctorId;
         const selectedDate = session.data?.selectedDate;
         const clinicId = session.clinic_id;
-        const locationType = session.data?.locationType || "clinic";
+        const locationType = asLocationType(session.data?.locationType);
 
         if (rawTime === BUTTON_IDS.PAGINATION.MORE_SLOTS) {
             const nextPage = (session.data?.slotPage || 0) + 1;
@@ -1152,7 +1315,10 @@ export class PatientFlowHandler {
                     service_type_id: serviceTypeId as string,
                     appointment_date: session.data?.selectedDate,
                     appointment_time: session.data?.selectedTime,
-                    location_type: session.data?.locationType || "clinic",
+                    location_type: asLocationType(session.data?.locationType),
+                    service_address: session.data?.serviceAddress ?? undefined,
+                    service_latitude: session.data?.serviceLatitude ?? undefined,
+                    service_longitude: session.data?.serviceLongitude ?? undefined,
                     preferred_language: language  // Store patient's language preference for reminders
                 });
 
@@ -1198,8 +1364,8 @@ export class PatientFlowHandler {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? `✅ Appointment confirmed!\n\n👨‍⚕️ Doctor: ${session.data?.selectedDoctorName}\n📅 Date: ${session.data?.selectedDate}\n🕐 Time: ${session.data?.selectedTime}\n📍 Location: ${session.data?.locationType === "home" ? "Home Visit" : "Clinic Visit"}\n\n📌 Booking ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ You'll receive reminders before your appointment.`
-                        : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${session.data?.locationType === "home" ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ आपको अपॉइंटमेंट से पहले रिमाइंडर मिलेंगे।`
+                        ? `✅ Appointment confirmed!\n\n👨‍⚕️ Doctor: ${session.data?.selectedDoctorName}\n📅 Date: ${session.data?.selectedDate}\n🕐 Time: ${session.data?.selectedTime}\n📍 Location: ${isHomeVisit(session.data?.locationType) ? "Home Visit" : "Clinic Visit"}\n\n📌 Booking ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ You'll receive reminders before your appointment.`
+                        : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${isHomeVisit(session.data?.locationType) ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ आपको अपॉइंटमेंट से पहले रिमाइंडर मिलेंगे।`
                 );
 
                 // Best effort: a booking must never fail because the doctor

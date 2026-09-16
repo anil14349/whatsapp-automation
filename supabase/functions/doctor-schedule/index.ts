@@ -6,7 +6,9 @@
  * all, and nobody could cover for one who was away.
  *
  * GET    /doctor-schedule?doctorId=...   hours for all seven days, plus upcoming leave
- * PATCH  { doctorId, dayOfWeek, openTime, closeTime, closed }
+ * PATCH  { doctorId, dayOfWeek, openTime, closeTime, working }
+ * PATCH  { doctorId, dayOfWeek, openTime, closeTime, working, visiting: true }
+ *                                        the same for hours spent visiting homes
  * POST   { doctorId, startDate, endDate, reason }   record leave
  * DELETE { doctorId, leaveId }                      cancel leave
  */
@@ -79,6 +81,20 @@ async function readSchedule(
     byDay.set(Number(row.day_of_week), row);
   }
 
+  // Home visiting hours are a separate table because they are separate hours:
+  // a doctor consults in the morning and visits in the afternoon.
+  const { data: visitRows } = await supabase
+    .from("doctor_home_visit_hours")
+    .select("day_of_week, opening_time, closing_time, is_active, max_home_visits_per_day")
+    .eq("clinic_id", clinicId)
+    .eq("doctor_id", doctorId);
+
+  const visitByDay = new Map<number, Record<string, unknown>>();
+
+  for (const row of visitRows ?? []) {
+    visitByDay.set(Number(row.day_of_week), row);
+  }
+
   const today = todayInTimezone(await getClinicTimezone(supabase, clinicId));
 
   const { data: leaves } = await supabase
@@ -96,12 +112,19 @@ async function readSchedule(
     const open = row ? String(row.opening_time).slice(0, 5) : null;
     const close = row ? String(row.closing_time).slice(0, 5) : null;
 
+    const visit = visitByDay.get(day);
+    const visitOpen = visit ? String(visit.opening_time).slice(0, 5) : null;
+    const visitClose = visit ? String(visit.closing_time).slice(0, 5) : null;
+
     return {
       dayOfWeek: day,
       label: DAY_LABELS[day],
       openTime: open,
       closeTime: close,
-      working: Boolean(row) && row?.is_active !== false && open !== close
+      working: Boolean(row) && row?.is_active !== false && open !== close,
+      visitOpenTime: visitOpen,
+      visitCloseTime: visitClose,
+      visiting: Boolean(visit) && visit?.is_active !== false && visitOpen !== visitClose
     };
   });
 
@@ -132,6 +155,44 @@ async function setHours(
     if (close <= open) {
       return { status: 400, payload: { error: "Closing time must be after opening time" } };
     }
+  }
+
+  // Visiting hours are not clinic hours: the doctor is out, so the clinic
+  // being shut does not constrain them, and they get their own row.
+  if (body.visiting === true || body.visiting === false) {
+    const { error: visitError } = await supabase
+      .from("doctor_home_visit_hours")
+      .upsert(
+        {
+          clinic_id: clinicId,
+          doctor_id: body.doctorId,
+          day_of_week: day,
+          opening_time: working ? open : "00:00",
+          closing_time: working ? close : "00:00",
+          is_active: working,
+          updated_at: new Date().toISOString()
+        },
+        { onConflict: "doctor_id,day_of_week" }
+      );
+
+    if (visitError) {
+      return {
+        status: 500,
+        payload: { error: `Failed to save visiting hours: ${visitError.message}` }
+      };
+    }
+
+    await recordAuditEvent(
+      supabase,
+      "doctor_home_visit_hours_changed",
+      actor,
+      "doctor",
+      String(body.doctorId),
+      {},
+      { day: DAY_LABELS[day], working, open, close }
+    );
+
+    return { status: 200, payload: { dayOfWeek: day, working, visiting: true } };
   }
 
   const { error } = await supabase

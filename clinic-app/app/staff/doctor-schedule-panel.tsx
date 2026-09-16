@@ -31,6 +31,7 @@ export function DoctorSchedulePanel({
     const [leaves, setLeaves] = useState<DoctorLeave[]>([]);
     const [notice, setNotice] = useNotice<StaffState>({});
     const [loading, setLoading] = useState(true);
+    const [mode, setMode] = useState<"consulting" | "visiting">("consulting");
     const [busy, start] = useTransition();
 
     const [from, setFrom] = useState("");
@@ -76,29 +77,55 @@ export function DoctorSchedulePanel({
             {loading ? (
                 <p className="text-sm text-slate-500">Loading…</p>
             ) : (
-                <div className="space-y-2">
-                    {hours.map((day) => (
-                        <DayRow
-                            key={day.dayOfWeek}
-                            day={day}
-                            disabled={busy}
-                            onSave={(open, close, working) =>
-                                start(async () => {
-                                    setNotice(
-                                        await saveDoctorHours(
-                                            doctorId,
-                                            day.dayOfWeek,
-                                            open,
-                                            close,
-                                            working
-                                        )
-                                    );
-                                    refresh();
-                                })
-                            }
-                        />
-                    ))}
-                </div>
+                <>
+                    <div className="mb-3 flex gap-2">
+                        {(["consulting", "visiting"] as const).map((option) => (
+                            <button
+                                key={option}
+                                onClick={() => setMode(option)}
+                                className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                                    mode === option
+                                        ? "border-brand-500 bg-brand-50 text-brand-700"
+                                        : "border-slate-200 text-slate-600 hover:border-slate-300"
+                                }`}
+                            >
+                                {option === "consulting" ? "At the clinic" : "Home visits"}
+                            </button>
+                        ))}
+                    </div>
+
+                    <p className="mb-3 text-xs text-slate-500">
+                        {mode === "consulting"
+                            ? "Slots at the clinic, trimmed to the clinic's own opening hours."
+                            : "Hours this doctor spends visiting patients at home. Kept separately, and not limited by the clinic's opening hours — the doctor is out."}
+                    </p>
+
+                    <div className="space-y-2">
+                        {hours.map((day) => (
+                            <DayRow
+                                key={`${mode}-${day.dayOfWeek}`}
+                                day={day}
+                                mode={mode}
+                                disabled={busy}
+                                onSave={(open, close, on) =>
+                                    start(async () => {
+                                        setNotice(
+                                            await saveDoctorHours(
+                                                doctorId,
+                                                day.dayOfWeek,
+                                                open,
+                                                close,
+                                                on,
+                                                mode === "visiting"
+                                            )
+                                        );
+                                        refresh();
+                                    })
+                                }
+                            />
+                        ))}
+                    </div>
+                </>
             )}
 
             <div className="mt-5 border-t border-slate-100 pt-4">
@@ -196,22 +223,28 @@ export function DoctorSchedulePanel({
 
 function DayRow({
     day,
+    mode,
     disabled,
     onSave
 }: {
     day: DoctorDay;
+    mode: "consulting" | "visiting";
     disabled: boolean;
-    onSave: (open: string, close: string, working: boolean) => void;
+    onSave: (open: string, close: string, on: boolean) => void;
 }) {
-    // A non-working day is stored as 00:00-00:00, which would be rejected the
-    // moment someone ticks the box, so offer a sensible default instead.
-    const [open, setOpen] = useState(day.working ? (day.openTime ?? "09:00") : "09:00");
-    const [close, setClose] = useState(day.working ? (day.closeTime ?? "17:00") : "17:00");
-    const [working, setWorking] = useState(day.working);
+    const visiting = mode === "visiting";
 
-    const changed =
-        working !== day.working ||
-        (working && (open !== day.openTime || close !== day.closeTime));
+    const savedOn = visiting ? day.visiting : day.working;
+    const savedOpen = visiting ? day.visitOpenTime : day.openTime;
+    const savedClose = visiting ? day.visitCloseTime : day.closeTime;
+
+    // A day that is off is stored as 00:00-00:00, which would be rejected the
+    // moment someone ticks the box, so offer a sensible default instead.
+    const [open, setOpen] = useState(savedOn ? (savedOpen ?? "09:00") : visiting ? "14:00" : "09:00");
+    const [close, setClose] = useState(savedOn ? (savedClose ?? "17:00") : visiting ? "18:00" : "17:00");
+    const [on, setOn] = useState(savedOn);
+
+    const changed = on !== savedOn || (on && (open !== savedOpen || close !== savedClose));
 
     return (
         <div className="flex flex-wrap items-center gap-3 rounded-lg border border-slate-100 px-3 py-2">
@@ -220,18 +253,18 @@ function DayRow({
             <label className="flex items-center gap-2 text-sm">
                 <input
                     type="checkbox"
-                    checked={working}
+                    checked={on}
                     disabled={disabled}
-                    onChange={(e) => setWorking(e.target.checked)}
+                    onChange={(e) => setOn(e.target.checked)}
                     className="h-4 w-4 rounded border-slate-300"
                 />
-                <span className="text-slate-500">Consulting</span>
+                <span className="text-slate-500">{visiting ? "Visiting" : "Consulting"}</span>
             </label>
 
             <input
                 type="time"
                 value={open}
-                disabled={disabled || !working}
+                disabled={disabled || !on}
                 onChange={(e) => setOpen(e.target.value)}
                 className="rounded-lg border border-slate-200 px-2 py-1 text-sm disabled:bg-slate-50 disabled:text-slate-400"
             />
@@ -239,7 +272,7 @@ function DayRow({
             <input
                 type="time"
                 value={close}
-                disabled={disabled || !working}
+                disabled={disabled || !on}
                 onChange={(e) => setClose(e.target.value)}
                 className="rounded-lg border border-slate-200 px-2 py-1 text-sm disabled:bg-slate-50 disabled:text-slate-400"
             />
@@ -247,7 +280,7 @@ function DayRow({
             {changed && (
                 <button
                     disabled={disabled}
-                    onClick={() => onSave(open, close, working)}
+                    onClick={() => onSave(open, close, on)}
                     className="ml-auto rounded-lg bg-brand-500 px-3 py-1 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
                 >
                     Save
