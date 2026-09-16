@@ -28,6 +28,7 @@ export async function loadBranding(): Promise<Branding> {
 
 const LINKS = [
     { href: "/appointments", label: "Appointments", managersOnly: false },
+    { href: "/summary", label: "Summary", managersOnly: true },
     { href: "/staff", label: "Staff", managersOnly: true },
     { href: "/services", label: "Services", managersOnly: true },
     { href: "/settings", label: "Settings", managersOnly: true }

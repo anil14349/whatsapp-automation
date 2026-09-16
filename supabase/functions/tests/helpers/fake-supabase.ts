@@ -12,6 +12,7 @@ interface Filter {
     column: string;
     op: "eq" | "neq" | "in" | "lt" | "lte" | "gt" | "gte" | "is" | "like" | "ilike";
     value: any;
+    negated?: boolean;
 }
 
 export interface SeedData {
@@ -19,6 +20,10 @@ export interface SeedData {
 }
 
 function matches(row: Row, filter: Filter): boolean {
+    return filter.negated ? !compare(row, filter) : compare(row, filter);
+}
+
+function compare(row: Row, filter: Filter): boolean {
     const actual = row[filter.column];
 
     switch (filter.op) {
@@ -56,6 +61,8 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
     private singleMode = false;
     private maybeSingleMode = false;
     private orderBy: Array<{ column: string; ascending: boolean }> = [];
+    private countMode = false;
+    private headOnly = false;
     private limitCount: number | null = null;
     private selectAfterWrite = false;
 
@@ -73,12 +80,25 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
         return this.store[this.table];
     }
 
-    select(_columns?: string) {
+    select(_columns?: string, options?: { count?: string; head?: boolean }) {
         if (this.mode === "select") {
             this.mode = "select";
         } else {
             this.selectAfterWrite = true;
         }
+
+        // head:true asks for the count alone, with no rows.
+        if (options?.count) {
+            this.countMode = true;
+            this.headOnly = options.head === true;
+        }
+
+        return this;
+    }
+
+    /** Negated filter, as PostgREST spells not.column.op.value. */
+    not(column: string, op: string, value: any) {
+        this.filters.push({ column, op: op as Filter["op"], value, negated: true });
         return this;
     }
 
@@ -254,6 +274,14 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
 
         if (this.limitCount !== null) {
             result = result.slice(0, this.limitCount);
+        }
+
+        if (this.countMode) {
+            return {
+                data: this.headOnly ? null : result,
+                error: null,
+                count: result.length
+            } as { data: any; error: any };
         }
 
         return this.shape(result);
