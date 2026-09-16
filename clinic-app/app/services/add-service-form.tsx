@@ -117,8 +117,11 @@ export function AddServiceForm({ title, summary }: { title: string; summary: str
                         className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
                     />
                 </label>
+            </div>
 
-                <div className="flex items-end">
+                {/* Outside the grid: inside it the button sat at the edge of a
+                    quarter-width cell rather than the edge of the card. */}
+                <div className="mt-4 flex justify-end">
                     <button
                         disabled={pending}
                         className="rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
@@ -126,7 +129,6 @@ export function AddServiceForm({ title, summary }: { title: string; summary: str
                         {pending ? "Adding…" : "Add"}
                     </button>
                 </div>
-            </div>
 
                 {state.error && (
                     <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">

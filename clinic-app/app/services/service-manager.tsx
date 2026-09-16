@@ -146,7 +146,10 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                     />
 
                                     {s.isOwn ? (
-                                        <div className="sm:col-span-2 border-t border-slate-100 pt-3">
+                                        <div className="sm:col-span-2 flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-3">
+                                            <span className="text-xs text-slate-400">
+                                                Refused while patients are still booked for it
+                                            </span>
                                             <button
                                                 disabled={busy}
                                                 onClick={() =>
@@ -158,9 +161,6 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                             >
                                                 Remove this service
                                             </button>
-                                            <span className="ml-3 text-xs text-slate-400">
-                                                Refused while patients are still booked for it
-                                            </span>
                                         </div>
                                     ) : (
                                         // The Remove button is absent here rather than present and

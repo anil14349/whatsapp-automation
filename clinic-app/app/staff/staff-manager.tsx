@@ -141,7 +141,13 @@ export function StaffManager({
                         Remove <strong>{removing.name}</strong>? This cannot be undone. Deactivating
                         keeps the record and the history.
                     </p>
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex justify-end gap-2">
+                        <button
+                            onClick={() => setRemoving(null)}
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-slate-300"
+                        >
+                            Keep
+                        </button>
                         <button
                             disabled={busy}
                             onClick={() => {
@@ -152,12 +158,6 @@ export function StaffManager({
                             className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
                         >
                             Remove for good
-                        </button>
-                        <button
-                            onClick={() => setRemoving(null)}
-                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-slate-300"
-                        >
-                            Keep
                         </button>
                     </div>
                 </div>
@@ -259,13 +259,15 @@ export function StaffManager({
                     they can be reached.
                 </p>
 
-                <button
-                    type="submit"
-                    disabled={pending}
-                    className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
-                >
-                    {pending ? "Adding…" : `Add ${STAFF_LABELS[tab].singular.toLowerCase()}`}
-                </button>
+                <div className="mt-4 flex justify-end">
+                    <button
+                        type="submit"
+                        disabled={pending}
+                        className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
+                    >
+                        {pending ? "Adding…" : `Add ${STAFF_LABELS[tab].singular.toLowerCase()}`}
+                    </button>
+                </div>
                 </form>
             )}
 
@@ -471,21 +473,23 @@ function EditStaffPanel({
                 )}
             </div>
 
-            <button
-                disabled={busy}
-                onClick={() =>
-                    onSave({
-                        name,
-                        phone,
-                        email,
-                        ...(type === "doctor" ? { specialization } : {}),
-                        ...(type === "collector" ? { maxCollectionsPerDay: maxPerDay } : {})
-                    })
-                }
-                className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
-            >
-                {busy ? "Saving…" : "Save changes"}
-            </button>
+            <div className="mt-4 flex justify-end">
+                <button
+                    disabled={busy}
+                    onClick={() =>
+                        onSave({
+                            name,
+                            phone,
+                            email,
+                            ...(type === "doctor" ? { specialization } : {}),
+                            ...(type === "collector" ? { maxCollectionsPerDay: maxPerDay } : {})
+                        })
+                    }
+                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
+                >
+                    {busy ? "Saving…" : "Save changes"}
+                </button>
+            </div>
         </div>
     );
 }

@@ -219,7 +219,7 @@ function DelayPanel({
                 <button
                     disabled={busy || !doctorId}
                     onClick={() => onSend(doctorId, minutes)}
-                    className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+                    className="ml-auto rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-60"
                 >
                     Tell waiting patients
                 </button>

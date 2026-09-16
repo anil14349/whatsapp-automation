@@ -85,12 +85,14 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
                 </p>
             )}
 
-            <button
-                disabled={pending}
-                className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
-            >
-                {pending ? "Saving…" : "Save details"}
-            </button>
+            <div className="mt-4 flex justify-end">
+                <button
+                    disabled={pending}
+                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
+                >
+                    {pending ? "Saving…" : "Save details"}
+                </button>
+            </div>
         </form>
     );
 }
@@ -122,7 +124,7 @@ export function AddClosureForm() {
 
             <button
                 disabled={pending}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-slate-300 disabled:opacity-60"
+                className="ml-auto rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-slate-300 disabled:opacity-60"
             >
                 {pending ? "Adding…" : "Close this day"}
             </button>

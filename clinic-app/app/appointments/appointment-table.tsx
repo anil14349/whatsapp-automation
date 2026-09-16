@@ -160,7 +160,7 @@ export function AppointmentTable({
                                     return result;
                                 });
                             }}
-                            className="rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
+                            className="ml-auto rounded-lg bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
                         >
                             Move appointment
                         </button>
@@ -487,21 +487,23 @@ function EditPanel({
                 </div>
             </div>
 
-            <button
-                disabled={busy}
-                onClick={() =>
-                    onSave({
-                        patientName,
-                        patientPhone,
-                        notes,
-                        doctorId: doctorId || null,
-                        serviceTypeId
-                    })
-                }
-                className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
-            >
-                {busy ? "Saving…" : "Save changes"}
-            </button>
+            <div className="mt-4 flex justify-end">
+                <button
+                    disabled={busy}
+                    onClick={() =>
+                        onSave({
+                            patientName,
+                            patientPhone,
+                            notes,
+                            doctorId: doctorId || null,
+                            serviceTypeId
+                        })
+                    }
+                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
+                >
+                    {busy ? "Saving…" : "Save changes"}
+                </button>
+            </div>
         </div>
     );
 }

@@ -89,7 +89,7 @@ function DayRow({
                 <button
                     disabled={disabled}
                     onClick={() => onSave(open, close, closed)}
-                    className="rounded-lg bg-brand-500 px-3 py-1 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
+                    className="ml-auto rounded-lg bg-brand-500 px-3 py-1 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
                 >
                     Save
                 </button>
