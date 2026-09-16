@@ -6,8 +6,10 @@ import { WhatsAppClient } from "../shared/whatsapp-client.ts";
 import {
     getClinicByPhoneNumberId,
     isValidVerifyToken,
-    getClinicIdByWebhookToken
+    getClinicIdByWebhookToken,
+    getClinicAppSecret
 } from "../shared/clinic-routing.ts";
+import { isSignatureValid, signatureHeaderName } from "../shared/webhook-signature.ts";
 
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -83,6 +85,50 @@ async function handleWebhookVerification(req: Request) {
 }
 
 /**
+ * Is this delivery actually from Meta?
+ *
+ * Enforcement follows the data rather than a flag day. A clinic that has an app
+ * secret must send a valid signature; one that has not been configured yet
+ * keeps working on the query token, because switching this on everywhere at
+ * once would silently drop real patients' messages. Set
+ * WHATSAPP_REQUIRE_SIGNATURE=true once every clinic has a secret.
+ */
+async function isRequestSigned(
+    rawBody: string,
+    req: Request,
+    clinicId: string
+): Promise<boolean> {
+    const appSecret = await getClinicAppSecret(supabase, clinicId);
+    const header = req.headers.get(signatureHeaderName());
+    const required = Deno.env.get("WHATSAPP_REQUIRE_SIGNATURE") === "true";
+
+    if (!appSecret) {
+        if (required) {
+            console.error("No app secret configured and signatures are required", {
+                clinicId
+            });
+            return false;
+        }
+
+        console.warn(
+            "Webhook accepted on the query token alone: no app secret is set for this clinic",
+            { clinicId }
+        );
+        return true;
+    }
+
+    if (await isSignatureValid(rawBody, header, appSecret)) {
+        return true;
+    }
+
+    console.error("Webhook signature did not verify", {
+        clinicId,
+        hadHeader: Boolean(header)
+    });
+    return false;
+}
+
+/**
  * Handle inbound WhatsApp messages (POST request)
  */
 async function handleInboundMessage(req: Request) {
@@ -101,7 +147,22 @@ async function handleInboundMessage(req: Request) {
         return new Response("Unauthorized", { status: 401 });
     }
 
-    const body = await req.json();
+    // The signature covers the bytes Meta sent, so the body is read as text and
+    // parsed from that same string. Re-serialising would change it.
+    const rawBody = await req.text();
+
+    if (!(await isRequestSigned(rawBody, req, tokenClinicId))) {
+        return new Response("Unauthorized", { status: 401 });
+    }
+
+    let body: any;
+
+    try {
+        body = JSON.parse(rawBody);
+    } catch {
+        console.error("Webhook body was not JSON");
+        return new Response("Bad Request", { status: 400 });
+    }
 
     // ============================================================
     // EXTRACT MESSAGE

@@ -304,3 +304,33 @@ export async function getClinicIdByWebhookToken(
 
     return data.id;
 }
+
+/**
+ * The Meta app secret for a clinic, used to verify the webhook signature.
+ *
+ * Null means this clinic has no secret configured and is still running on the
+ * query token alone. The env value is the single-tenant fallback and only
+ * applies to the default clinic, for the same reason the webhook token does.
+ */
+export async function getClinicAppSecret(
+    supabase: SupabaseClient,
+    clinicId: string
+): Promise<string | null> {
+    const { data, error } = await supabase
+        .from("clinics")
+        .select("whatsapp_app_secret")
+        .eq("id", clinicId)
+        .maybeSingle();
+
+    if (!error && data?.whatsapp_app_secret) {
+        return data.whatsapp_app_secret;
+    }
+
+    const envSecret = Deno.env.get("WHATSAPP_APP_SECRET");
+
+    if (envSecret && clinicId === Deno.env.get("DEFAULT_CLINIC_ID")) {
+        return envSecret;
+    }
+
+    return null;
+}

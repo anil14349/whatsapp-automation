@@ -15,6 +15,7 @@ single-clinic deployment:
 | `whatsapp_access_token` | `WHATSAPP_ACCESS_TOKEN` | Permanent token |
 | `whatsapp_verify_token` | `WHATSAPP_VERIFY_TOKEN` | Webhook handshake |
 | `whatsapp_webhook_token` | `WHATSAPP_WEBHOOK_POST_TOKEN` | Inbound query token |
+| `whatsapp_app_secret` | `WHATSAPP_APP_SECRET` | Proves an inbound webhook is from Meta |
 
 Per-clinic values win. Routing distinguishes "no clinic owns this number"
 (falls back to the default clinic) from "the owning clinic is switched off"
@@ -31,6 +32,41 @@ In Meta → your app → WhatsApp → Configuration:
 
 The token travels in the query string because Meta cannot send a custom header.
 It is checked before anything else runs.
+
+### Proving the request came from Meta
+
+The query token says **which clinic** is being addressed. It does not say **who
+is calling**, and because it rides in the URL it is written into proxy logs and
+anywhere else request lines are kept. On its own it means anyone who learns it
+can post a message as any phone number into that clinic.
+
+Meta signs every delivery with HMAC-SHA256 of the raw body using the **app
+secret**, sent as `X-Hub-Signature-256: sha256=<hex>`. The secret never travels
+with the request, so this is the check that actually establishes the sender.
+
+To turn it on for a clinic:
+
+1. Meta → your app → **Settings → Basic** → **App secret** → Show.
+2. Store it against the clinic:
+
+   ```sql
+   UPDATE clinics SET whatsapp_app_secret = '<app secret>' WHERE id = '<clinic-uuid>';
+   ```
+
+   Or, for a single-clinic deployment, as the secret `WHATSAPP_APP_SECRET`.
+
+**Enforcement follows the data.** A clinic with a secret set must send a valid
+signature or the request is refused; a clinic without one keeps working on the
+token alone and logs a warning on every message. That is deliberate — switching
+this on everywhere at once would silently drop real patients' messages from any
+clinic not yet configured.
+
+Once every clinic has a secret, set `WHATSAPP_REQUIRE_SIGNATURE=true` to refuse
+anything unsigned. Until you do, an unconfigured clinic is still only protected
+by the query token.
+
+Rotating the app secret in Meta invalidates the stored one immediately, so
+update the column in the same sitting or inbound messages stop.
 
 ## Message templates
 
