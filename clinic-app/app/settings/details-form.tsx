@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { saveDetails, addClosure, type ClinicDetails, type SettingsState } from "./actions";
 import { TimezoneField } from "./timezone-field";
 import { readableOn } from "@/lib/theme";
+import { parseCoordinates } from "@/lib/coords";
 import { useAutoDismiss } from "@/lib/use-notice";
 import { PhoneField } from "@/components/phone-field";
 
@@ -53,6 +54,13 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
                         revisit. Zero switches it off.
                     </span>
                 </label>
+            </div>
+
+            <div className="mt-4 border-t border-slate-100 pt-4">
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Home sample collection
+                </h3>
+                <HomeCollectionFields clinic={clinic} />
             </div>
 
             <div className="mt-4 border-t border-slate-100 pt-4">
@@ -227,6 +235,108 @@ function BrandingFields({
                     </button>
                 </div>
             </div>
+        </div>
+    );
+}
+
+/**
+ * Where the clinic is, and how far it will send someone.
+ *
+ * The coordinates are not decoration: the WhatsApp flow measures the patient's
+ * shared location against them. Until both are set, every location pin is
+ * accepted however far away it is, so the summary line spells out which of the
+ * two states the clinic is currently in.
+ */
+function HomeCollectionFields({ clinic }: { clinic: ClinicDetails }) {
+    // Loose null check on purpose: these read as undefined against a portal
+    // that has not been redeployed yet, and String(undefined) is "undefined".
+    const [lat, setLat] = useState(clinic.latitude == null ? "" : String(clinic.latitude));
+    const [lon, setLon] = useState(clinic.longitude == null ? "" : String(clinic.longitude));
+    const [radius, setRadius] = useState(
+        clinic.homeCollectionRadiusKm == null ? "" : String(clinic.homeCollectionRadiusKm)
+    );
+
+    // Accept a whole "lat, lng" or a maps link dropped into either box.
+    function spread(value: string, setSelf: (v: string) => void) {
+        const pair = parseCoordinates(value);
+
+        if (pair && /[, ]/.test(value.trim())) {
+            setLat(pair.lat);
+            setLon(pair.lon);
+            return;
+        }
+
+        setSelf(value);
+    }
+
+    const located = lat.trim() !== "" && lon.trim() !== "";
+    const limited = located && radius.trim() !== "" && Number(radius) > 0;
+
+    return (
+        <div className="space-y-3">
+            {!clinic.homeCollectionEnabled && (
+                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
+                    Home collection is switched off for this clinic, so these settings are not in
+                    use yet.
+                </p>
+            )}
+
+            <div className="grid gap-3 sm:grid-cols-3">
+                <label className="space-y-1">
+                    <span className="block text-xs font-medium text-slate-600">Latitude</span>
+                    <input
+                        name="latitude"
+                        value={lat}
+                        onChange={(e) => spread(e.target.value, setLat)}
+                        placeholder="12.9716"
+                        inputMode="decimal"
+                        className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                    />
+                </label>
+
+                <label className="space-y-1">
+                    <span className="block text-xs font-medium text-slate-600">Longitude</span>
+                    <input
+                        name="longitude"
+                        value={lon}
+                        onChange={(e) => spread(e.target.value, setLon)}
+                        placeholder="77.5946"
+                        inputMode="decimal"
+                        className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                    />
+                </label>
+
+                <label className="space-y-1">
+                    <span className="block text-xs font-medium text-slate-600">
+                        Collection radius (km)
+                    </span>
+                    <input
+                        name="homeCollectionRadiusKm"
+                        value={radius}
+                        onChange={(e) => setRadius(e.target.value)}
+                        placeholder="10"
+                        inputMode="decimal"
+                        className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                    />
+                </label>
+            </div>
+
+            <p className="text-xs text-slate-400">
+                Paste the pair straight from Google Maps into either box and they will split
+                themselves.{" "}
+                {limited ? (
+                    <span className="text-slate-500">
+                        A patient sharing a location more than {radius} km from here is told it is
+                        outside the collection area.
+                    </span>
+                ) : (
+                    <span className="text-amber-700">
+                        {located
+                            ? "Without a radius, a location any distance away is accepted."
+                            : "Until the clinic location is set, a location any distance away is accepted."}
+                    </span>
+                )}
+            </p>
         </div>
     );
 }

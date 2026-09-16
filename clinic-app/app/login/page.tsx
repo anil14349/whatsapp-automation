@@ -17,7 +17,6 @@ export default function LoginPage() {
     const [role, setRole] = useState<Role>("receptionist");
     const [email, setEmail] = useState("");
     const [secret, setSecret] = useState("");
-    const [clinicId, setClinicId] = useState(process.env.NEXT_PUBLIC_DEFAULT_CLINIC_ID ?? "");
     const [error, setError] = useState<string | null>(null);
     const [busy, setBusy] = useState(false);
 
@@ -28,10 +27,12 @@ export default function LoginPage() {
         setBusy(true);
         setError(null);
 
+        // The clinic is a property of the deployment, not of the person signing
+        // in, so the server adds it.
         const response = await fetch("/api/auth/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ role, email, secret, clinicId })
+            body: JSON.stringify({ role, email, secret })
         });
 
         const data = await response.json();
@@ -96,17 +97,6 @@ export default function LoginPage() {
                         onChange={(e) => setSecret(e.target.value)}
                         inputMode={role === "doctor" ? "numeric" : "text"}
                         className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500"
-                    />
-                </label>
-
-                <label className="block space-y-1">
-                    <span className="text-sm font-medium text-slate-700">
-                        Clinic ID {role === "owner" && <span className="text-slate-400">(optional)</span>}
-                    </span>
-                    <input
-                        value={clinicId}
-                        onChange={(e) => setClinicId(e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 font-mono text-xs outline-none focus:border-brand-500"
                     />
                 </label>
 

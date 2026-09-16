@@ -45,7 +45,7 @@ async function getSettings(
   const [clinic, hours, holidays] = await Promise.all([
     supabase
       .from("clinics")
-      .select("id, name, phone, email, address, city, country, timezone, open_time, close_time, working_days, after_hours_message, enable_after_hours_reply, revisit_window_days, logo_url, brand_colour")
+      .select("id, name, phone, email, address, city, country, timezone, open_time, close_time, working_days, after_hours_message, enable_after_hours_reply, revisit_window_days, logo_url, brand_colour, latitude, longitude, home_collection_radius_km, enable_home_collection")
       .eq("id", clinicId)
       .maybeSingle(),
     supabase
@@ -104,12 +104,60 @@ async function getSettings(
         afterHoursReply: clinic.data.enable_after_hours_reply === true,
         revisitWindowDays: Number(clinic.data.revisit_window_days ?? 0),
         logoUrl: clinic.data.logo_url,
-        brandColour: clinic.data.brand_colour
+        brandColour: clinic.data.brand_colour,
+        latitude: clinic.data.latitude === null ? null : Number(clinic.data.latitude),
+        longitude: clinic.data.longitude === null ? null : Number(clinic.data.longitude),
+        homeCollectionRadiusKm: clinic.data.home_collection_radius_km === null
+          ? null
+          : Number(clinic.data.home_collection_radius_km),
+        homeCollectionEnabled: clinic.data.enable_home_collection === true
       },
       hours: week,
       holidays: holidays.data ?? []
     }
   };
+}
+
+/**
+ * Read the clinic's map position off an update.
+ *
+ * The two halves are taken together on purpose. A latitude saved without a
+ * longitude locates nothing, and the distance check would still read the
+ * clinic as "configured" and start refusing patients.
+ */
+function readCoordinates(
+  body: Record<string, unknown>
+): { patch: Record<string, unknown> } | { error: string } {
+  const sent = body.latitude !== undefined || body.longitude !== undefined;
+
+  if (!sent) {
+    return { patch: {} };
+  }
+
+  const read = (value: unknown) => (typeof value === "string" ? value.trim() : value ?? "");
+  const lat = read(body.latitude);
+  const lon = read(body.longitude);
+
+  if (lat === "" && lon === "") {
+    return { patch: { latitude: null, longitude: null } };
+  }
+
+  if (lat === "" || lon === "") {
+    return { error: "Enter both a latitude and a longitude, or clear both" };
+  }
+
+  const latitude = Number(lat);
+  const longitude = Number(lon);
+
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+    return { error: "Latitude must be a number between -90 and 90" };
+  }
+
+  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return { error: "Longitude must be a number between -180 and 180" };
+  }
+
+  return { patch: { latitude, longitude } };
 }
 
 async function updateSettings(
@@ -236,6 +284,28 @@ async function updateSettings(
     }
 
     patch.brand_colour = brandColour || null;
+  }
+
+  const geo = readCoordinates(body);
+  if ("error" in geo) {
+    return { status: 400, payload: { error: geo.error } };
+  }
+  Object.assign(patch, geo.patch);
+
+  if (body.homeCollectionRadiusKm !== undefined) {
+    const raw = text(body.homeCollectionRadiusKm) ?? String(body.homeCollectionRadiusKm);
+
+    if (raw === "") {
+      patch.home_collection_radius_km = null;
+    } else {
+      const km = Number(raw);
+
+      if (!Number.isFinite(km) || km <= 0 || km > 200) {
+        return { status: 400, payload: { error: "The collection radius must be between 0 and 200 km" } };
+      }
+
+      patch.home_collection_radius_km = Math.round(km * 10) / 10;
+    }
   }
 
   // The timezone decides what "today" means for every slot and reminder, so a

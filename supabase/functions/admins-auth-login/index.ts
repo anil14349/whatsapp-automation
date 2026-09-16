@@ -22,6 +22,8 @@ interface LoginRequest {
   clinicId?: string;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function findAdmin(
   supabase: SupabaseClient,
   email: string,
@@ -33,16 +35,27 @@ async function findAdmin(
     .eq("email", email.toLowerCase().trim())
     .eq("status", "ACTIVE");
 
-  query = clinicId ? query.eq("clinic_id", clinicId) : query.is("clinic_id", null);
+  // The portal now always names its clinic, so a platform admin — who has no
+  // clinic — would never be found by an equality match. Accept either and
+  // prefer the clinic's own owner when both exist.
+  //
+  // The id is spliced into a PostgREST filter string, and this endpoint takes
+  // an unauthenticated body, so anything that is not a uuid is dropped rather
+  // than passed through as filter syntax.
+  query = clinicId && UUID.test(clinicId)
+    ? query.or(`clinic_id.eq.${clinicId},clinic_id.is.null`)
+    : query.is("clinic_id", null);
 
-  const { data, error } = await query.maybeSingle();
+  const { data, error } = await query
+    .order("clinic_id", { ascending: true, nullsFirst: false })
+    .limit(1);
 
   if (error) {
     debug("adminLogin", "Admin lookup failed", { error: error.message });
     return null;
   }
 
-  return data;
+  return data?.[0] ?? null;
 }
 
 export async function handleAdminLogin(req: Request): Promise<Response> {

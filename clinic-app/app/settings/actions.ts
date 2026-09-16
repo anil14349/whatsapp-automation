@@ -22,6 +22,10 @@ export interface ClinicDetails {
     revisitWindowDays: number;
     logoUrl: string | null;
     brandColour: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    homeCollectionRadiusKm: number | null;
+    homeCollectionEnabled: boolean;
 }
 
 export interface DayHours {
@@ -53,7 +57,10 @@ export async function saveDetails(
         afterHoursReply: formData.get("afterHoursReply") === "on",
         revisitWindowDays: Number(formData.get("revisitWindowDays") ?? 0),
         logoUrl: String(formData.get("logoUrl") ?? "").trim(),
-        brandColour: String(formData.get("brandColour") ?? "").trim()
+        brandColour: String(formData.get("brandColour") ?? "").trim(),
+        latitude: String(formData.get("latitude") ?? "").trim(),
+        longitude: String(formData.get("longitude") ?? "").trim(),
+        homeCollectionRadiusKm: String(formData.get("homeCollectionRadiusKm") ?? "").trim()
     };
 
     const result = await callAsUser("clinic-settings", { method: "PATCH", body });

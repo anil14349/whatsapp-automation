@@ -7,6 +7,7 @@ import { isValidBookingDate, formatBookingDateErrorMessage } from "../validators
 import { addDays, getClinicTimezone, todayInTimezone } from "../clinic-slots.ts";
 import { getHomeCollectionMinLeadHours, getMaxCollectionsPerCollectorPerDay } from "../config.ts";
 import { getCollectorsForClinic } from "../staff-directory.ts";
+import { checkServiceArea } from "../geo.ts";
 import { createHomeCollectionReminder, markHomeCollectionRemindersAsSkipped } from "../home-collection-reminders.ts";
 
 /**
@@ -118,6 +119,18 @@ export class HomeCollectionHandler {
             // Location shared via WhatsApp location pin
             const latitude = message.latitude;
             const longitude = message.longitude;
+
+            const area = await checkServiceArea(this.supabase, this.clinicId, latitude, longitude);
+
+            if (!area.servable) {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    `📍 Sorry, that address is outside our home collection area.\n\n` +
+                        `It is about ${Math.round(area.distanceKm ?? 0)} km away and we travel up to ` +
+                        `${area.radiusKm} km.\n\nYou can share a different location, or visit the clinic instead.`
+                );
+                return;
+            }
 
             await this.updateSession(phone, "LOCATION_VERIFY", {
                 latitude,
