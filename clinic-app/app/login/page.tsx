@@ -75,9 +75,11 @@ export default function LoginPage() {
                 </div>
 
                 <label className="block space-y-1">
-                    <span className="text-sm font-medium text-slate-700">Email</span>
+                    <span className="text-sm font-medium text-slate-700">
+                        {role === "owner" ? "Email" : "WhatsApp number or email"}
+                    </span>
                     <input
-                        type="email"
+                        type="text"
                         required
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}

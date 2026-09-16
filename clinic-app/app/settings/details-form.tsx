@@ -5,6 +5,7 @@ import { saveDetails, addClosure, type ClinicDetails, type SettingsState } from 
 import { TimezoneField } from "./timezone-field";
 import { readableOn } from "@/lib/theme";
 import { useAutoDismiss } from "@/lib/use-notice";
+import { PhoneField } from "@/components/phone-field";
 
 export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
     const [state, action, pending] = useActionState<SettingsState, FormData>(saveDetails, {});
@@ -16,7 +17,7 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
 
             <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Name" name="name" defaultValue={clinic.name} required />
-                <Field label="Phone" name="phone" defaultValue={clinic.phone ?? ""} />
+                <PhoneField name="phone" label="Phone" defaultValue={clinic.phone ?? ""} />
                 <Field label="Email" name="email" type="email" defaultValue={clinic.email ?? ""} />
                 <Field label="City" name="city" defaultValue={clinic.city ?? ""} />
 

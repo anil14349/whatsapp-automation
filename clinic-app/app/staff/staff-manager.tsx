@@ -29,9 +29,9 @@ export interface StaffMember {
 }
 
 const TABS: Array<{ type: StaffType; label: string; needs: string }> = [
-    { type: "doctor", label: STAFF_LABELS.doctor.plural, needs: "WhatsApp number" },
-    { type: "receptionist", label: STAFF_LABELS.receptionist.plural, needs: "Email" },
-    { type: "collector", label: STAFF_LABELS.collector.plural, needs: "WhatsApp number" }
+    { type: "doctor", label: STAFF_LABELS.doctor.plural, needs: "A WhatsApp number" },
+    { type: "receptionist", label: STAFF_LABELS.receptionist.plural, needs: "A WhatsApp number or an email" },
+    { type: "collector", label: STAFF_LABELS.collector.plural, needs: "A WhatsApp number" }
 ];
 
 const INITIAL: StaffState = {};
@@ -216,15 +216,26 @@ export function StaffManager({
                     </label>
 
                     {tab === "receptionist" ? (
-                        <label className="space-y-1">
-                            <span className="text-xs font-medium text-slate-600">Email</span>
-                            <input
-                                name="email"
-                                type="email"
-                                required
-                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        <>
+                            <PhoneField
+                                name="phone"
+                                key={tab}
+                                hint="They can sign in with this"
                             />
-                        </label>
+                            <label className="space-y-1">
+                                <span className="text-xs font-medium text-slate-600">
+                                    Email (optional)
+                                </span>
+                                <input
+                                    name="email"
+                                    type="email"
+                                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                />
+                                <span className="block text-xs text-slate-400">
+                                    Needed only if they have no WhatsApp number
+                                </span>
+                            </label>
+                        </>
                     ) : (
                         <PhoneField name="phone" required key={tab} />
                     )}
@@ -255,8 +266,8 @@ export function StaffManager({
                 </div>
 
                 <p className="mt-3 text-xs text-slate-500">
-                    A credential is generated and sent over WhatsApp. {active.needs} is required so
-                    they can be reached.
+                    A credential is generated and sent to them. {active.needs} is required so they
+                    can be reached.
                 </p>
 
                 <div className="mt-4 flex justify-end">

@@ -66,8 +66,15 @@ async function verifyDoctorPin(supabase: SupabaseClient, doctorId: string, pin: 
 
 /**
  * Fetch doctor details
+ *
+ * By number as well as by address, because a doctor's email is optional when
+ * they are added and their number is not. Requiring the address here locked
+ * every doctor added without one out of the portal entirely.
  */
-async function getDoctorDetails(supabase: SupabaseClient, email: string, clinicId: string) {
+async function getDoctorDetails(supabase: SupabaseClient, identifier: string, clinicId: string) {
+  const digits = identifier.replace(/\D/g, "");
+  const looksLikePhone = digits.length >= 10 && digits.length <= 15 && !identifier.includes("@");
+
   const { data, error } = await supabase
     .from("doctors")
     .select(`
@@ -76,12 +83,12 @@ async function getDoctorDetails(supabase: SupabaseClient, email: string, clinicI
       email,
       clinic:clinics(id, name)
     `)
-    .eq("email", email)
+    .eq(looksLikePhone ? "phone" : "email", looksLikePhone ? digits : identifier.toLowerCase())
     .eq("clinic_id", clinicId)
     .single();
 
   if (error || !data) {
-    debug("doctorLogin", "Doctor not found", { email, clinicId });
+    debug("doctorLogin", "Doctor not found", { clinicId });
     return null;
   }
 

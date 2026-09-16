@@ -71,11 +71,21 @@ async function verifyReceptionistPassword(
 /**
  * Fetch receptionist details
  */
+/**
+ * Finds a receptionist by whatever they signed in with.
+ *
+ * A doctor signs in with their number, so insisting a receptionist has an email
+ * was a difference with no reason behind it. Plenty of front desk staff have a
+ * phone and no work address.
+ */
 async function getReceptionistDetails(
   supabase: SupabaseClient,
-  email: string,
+  identifier: string,
   clinicId: string
 ) {
+  const digits = identifier.replace(/\D/g, "");
+  const looksLikePhone = digits.length >= 10 && digits.length <= 15 && !identifier.includes("@");
+
   const { data, error } = await supabase
     .from("receptionists")
     .select(`
@@ -85,13 +95,13 @@ async function getReceptionistDetails(
       status,
       clinic:clinics(id, name)
     `)
-    .eq("email", email)
+    .eq(looksLikePhone ? "phone" : "email", looksLikePhone ? digits : identifier.toLowerCase())
     .eq("clinic_id", clinicId)
     .eq("status", "ACTIVE")
     .single();
 
   if (error || !data) {
-    debug("receptionistLogin", "Receptionist not found", { email, clinicId });
+    debug("receptionistLogin", "Receptionist not found", { clinicId });
     return null;
   }
 
@@ -115,11 +125,13 @@ export async function handleReceptionistLogin(req: Request): Promise<Response> {
     const body = await req.json() as ReceptionistLoginRequest;
 
     // Validate required fields
-    if (!body.email || !body.password || !body.clinicId) {
+    const identifier = (body.email ?? "").trim();
+
+    if (!identifier || !body.password || !body.clinicId) {
       return badRequestResponse("Missing required fields: email, password, clinicId");
     }
 
-    debug("receptionistLogin", "Login attempt", { email: body.email, clinicId: body.clinicId });
+    debug("receptionistLogin", "Login attempt", { clinicId: body.clinicId });
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -131,12 +143,12 @@ export async function handleReceptionistLogin(req: Request): Promise<Response> {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get receptionist by email and clinic
-    const receptionist = await getReceptionistDetails(supabase, body.email, body.clinicId);
+    // An email address or a WhatsApp number, whichever they were given.
+    const receptionist = await getReceptionistDetails(supabase, identifier, body.clinicId);
 
     if (!receptionist) {
-      debug("receptionistLogin", "Receptionist not found or inactive", { email: body.email });
-      return badRequestResponse("Invalid email, password or clinic");
+      debug("receptionistLogin", "Receptionist not found or inactive", { clinicId: body.clinicId });
+      return badRequestResponse("Invalid sign in details");
     }
 
     // Check rate limiting (prevent brute force)

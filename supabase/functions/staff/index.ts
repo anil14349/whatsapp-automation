@@ -209,7 +209,7 @@ async function createStaff(
   }
 
   const email = body.email?.trim().toLowerCase();
-  const phone = body.phone?.trim();
+  const phone = body.phone?.trim().replace(/\D/g, "");
 
   const { data: clinic } = await supabase
     .from("clinics")
@@ -219,6 +219,16 @@ async function createStaff(
 
   if (!clinic) {
     return { status: 400, payload: { error: "Unknown clinic" } };
+  }
+
+  // Staff are recognised by their number, on WhatsApp and now at sign in, so
+  // two people cannot share one.
+  if (phone) {
+    const owner = await findPhoneOwner(supabase, clinicId, phone, body.type, "");
+
+    if (owner) {
+      return { status: 409, payload: { error: `That number already belongs to ${owner}` } };
+    }
   }
 
   if (body.type === "doctor") {
@@ -280,8 +290,13 @@ async function createStaff(
   }
 
   if (body.type === "receptionist") {
-    if (!email) {
-      return { status: 400, payload: { error: "email is required for a receptionist" } };
+    // Either will do: one of them is what they sign in with, and one of them is
+    // where the password goes.
+    if (!email && !phone) {
+      return {
+        status: 400,
+        payload: { error: "A receptionist needs an email or a WhatsApp number" }
+      };
     }
 
     const password = body.password?.trim() || generatePassword();
@@ -578,9 +593,16 @@ async function editStaff(
   if (body.email !== undefined) {
     const email = body.email.trim().toLowerCase();
 
-    // A receptionist signs in with their email, so removing it locks them out.
+    // They sign in with one or the other, so the last one cannot be removed.
     if (!email && body.type === "receptionist") {
-      return { status: 400, payload: { error: "A receptionist needs an email to sign in" } };
+      const phone = body.phone !== undefined ? body.phone.replace(/\D/g, "") : existing.phone;
+
+      if (!phone) {
+        return {
+          status: 400,
+          payload: { error: "A receptionist needs an email or a WhatsApp number to sign in" }
+        };
+      }
     }
 
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
@@ -627,7 +649,7 @@ async function findPhoneOwner(
   clinicId: string,
   phone: string,
   skipType: StaffType,
-  skipId: string
+  skipId?: string
 ): Promise<string | null> {
   const labels: Record<StaffType, string> = {
     doctor: "a doctor",
@@ -642,7 +664,8 @@ async function findPhoneOwner(
       .eq("clinic_id", clinicId)
       .eq("phone", phone);
 
-    if (type === skipType) {
+    // Only when editing: a row is allowed to keep its own number.
+    if (type === skipType && skipId) {
       query = query.neq("id", skipId);
     }
 
