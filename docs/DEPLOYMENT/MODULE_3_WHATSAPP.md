@@ -36,6 +36,11 @@ It is checked before anything else runs.
 
 **This is the part that decides whether the product works.**
 
+A step-by-step walkthrough of creating them, with the exact wording and
+parameter order for each, is in
+[**Registering the WhatsApp message templates**](WHATSAPP_TEMPLATES.md). The
+summary below is what they are and why they are needed.
+
 Meta accepts a free-form message only within **24 hours of the recipient's own
 last message**. Everything the clinic starts — every reminder, every delay
 notice, a staff credential, a report — is sent long after that window has

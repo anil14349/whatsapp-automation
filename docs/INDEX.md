@@ -18,6 +18,11 @@ page.
 - [Module 5 — Clinic portal](./DEPLOYMENT/MODULE_5_CLINIC_PORTAL.md) — the Next.js app and its Docker image
 - [Module 6 — Landing site](./DEPLOYMENT/MODULE_6_LANDING_SITE.md) — the static marketing page
 
+### Walkthroughs
+
+- [**Registering the WhatsApp message templates**](./DEPLOYMENT/WHATSAPP_TEMPLATES.md) — where to create them, and the exact wording and parameter order for all eight
+- [**Creating a clinic**](./DEPLOYMENT/MODULE_1_DATABASE.md#creating-a-clinic) — where the clinic id comes from, and the seven things it needs before it works
+
 ### Earlier deployment notes
 
 These predate the modules above and are kept for history. **Where they

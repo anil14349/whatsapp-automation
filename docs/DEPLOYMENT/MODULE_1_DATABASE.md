@@ -71,6 +71,69 @@ The size and type limits are enforced by storage itself, so a bad upload is
 refused before any of our code sees it. The edge function checks the same
 things again for a clear error message, not for safety.
 
+## Creating a clinic
+
+There is no endpoint for this. The `clinics` function only lists clinics and
+switches them on and off, so a new clinic is a direct insert — the same
+exception the first admin makes, and for the same reason.
+
+**You do not generate the id.** `clinics.id` is a UUID column defaulting to
+`gen_random_uuid()`, so Postgres produces it on insert and you read it back.
+Inventing one by hand works but gains nothing and risks a typo that only
+surfaces as an empty portal.
+
+Three columns have no usable default: `clinic_code`, `name`, `phone`.
+
+```sql
+INSERT INTO clinics (clinic_code, name, phone, timezone, city)
+VALUES ('WELLSUN_02', 'Wellsun Clinic — Rohini', '919876500000', 'Asia/Kolkata', 'Delhi')
+RETURNING id;
+```
+
+`RETURNING id` is the point of the statement: that UUID becomes
+`DEFAULT_CLINIC_ID`.
+
+`clinic_code` is yours to choose. It is never shown to a patient and exists so
+a human can identify the row; the original is `DEFAULT_CLINIC`.
+
+`timezone` decides what "today" means for every slot, reminder and summary. Get
+it wrong and the whole day shifts — it is far easier to set now than to correct
+after bookings exist.
+
+Over REST instead, if the SQL editor is inconvenient:
+
+```powershell
+$key = (Select-String -Path .env.local -Pattern '^SU_SERVICE_ROLE_KEY=(.+)$').Matches[0].Groups[1].Value
+'{"clinic_code":"WELLSUN_02","name":"Wellsun Rohini","phone":"919876500000","timezone":"Asia/Kolkata"}' |
+    Set-Content "$env:TEMP\clinic.json" -Encoding ascii
+
+curl.exe -s --ssl-revoke-best-effort `
+    -H "apikey: $key" -H "Authorization: Bearer $key" `
+    -H "Content-Type: application/json" -H "Prefer: return=representation" `
+    -X POST --data "@$env:TEMP\clinic.json" `
+    "https://<ref>.supabase.co/rest/v1/clinics"
+```
+
+`Prefer: return=representation` is what makes PostgREST hand the new row back
+rather than an empty body.
+
+### The id alone is not a working clinic
+
+A clinic with nothing else set accepts no bookings and answers no messages. In
+order:
+
+| # | What | Where | Without it |
+|---|---|---|---|
+| 1 | An admin for the clinic | `scripts/create-admin.ts --clinic <uuid>` | Nobody can sign in to do the rest |
+| 2 | `clinic_operating_hours` | Portal → Settings | **No slots are ever offered.** The commonest cause of "nothing is available". |
+| 3 | A doctor, and their hours | Portal → Staff → Hours | Same |
+| 4 | Services and the `enable_*` switches | Portal → Services | The patient is offered nothing to book |
+| 5 | WhatsApp credentials on the row | SQL, or leave unset | Falls back to the environment number, so two clinics answer on one number |
+| 6 | `DEFAULT_CLINIC_ID` | Portal env and Supabase secret | The portal serves the wrong clinic |
+| 7 | Latitude, longitude, radius | Portal → Settings | Home visits accept an address any distance away |
+
+Steps 2 to 4 and 7 are all done in the portal once step 1 gives you a login.
+
 ## The first admin
 
 Staff are created through `/staff`, which needs an admin token, which needs an
