@@ -7,6 +7,7 @@
 
 import { validateRequest, hasRole, TokenPayload } from "./jwt-auth.ts";
 import { isClinicActive } from "./clinic-status.ts";
+import { isAccountActive } from "./account-status.ts";
 import { debug } from "./logger.ts";
 
 export interface AuthContext {
@@ -161,6 +162,16 @@ export async function withAuth(
         role: user.role
       });
       return forbiddenResponse("This clinic is not active");
+    }
+
+    // Same reasoning one level down: deactivating or deleting someone used to
+    // stop them signing in again while their current token kept full access.
+    if (!(await isAccountActive(user))) {
+      debug("authMiddleware", "Request from a deactivated account", {
+        userId: user.userId,
+        role: user.role
+      });
+      return unauthorizedResponse("This account is no longer active");
     }
 
     // Call handler with authenticated user
