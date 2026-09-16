@@ -24,6 +24,19 @@
 - [**API Security Review**](./SECURITY/API_SECURITY_REVIEW.md) - Endpoint security analysis
 
 ### 🌐 Deployment & Operations
+
+**Current, per module — start here:** [**Deployment index**](./DEPLOYMENT/README.md)
+
+- [Module 1 — Database](./DEPLOYMENT/MODULE_1_DATABASE.md)
+- [Module 2 — Edge functions](./DEPLOYMENT/MODULE_2_EDGE_FUNCTIONS.md)
+- [Module 3 — WhatsApp](./DEPLOYMENT/MODULE_3_WHATSAPP.md)
+- [Module 4 — Reminder scheduler](./DEPLOYMENT/MODULE_4_SCHEDULER.md)
+- [Module 5 — Clinic portal](./DEPLOYMENT/MODULE_5_CLINIC_PORTAL.md)
+- [Module 6 — Landing site](./DEPLOYMENT/MODULE_6_LANDING_SITE.md)
+
+Older guides below predate the modules above and are kept for history. Where
+they disagree, the module documents are correct.
+
 - [**Deployment Guide**](./DEPLOYMENT/DEPLOYMENT_GUIDE.md) - Step-by-step deployment
 - [**Supabase Setup**](./DEPLOYMENT/SUPABASE_SETUP.md) - Supabase configuration
 - [**Supabase Migration**](./DEPLOYMENT/SUPABASE_MIGRATION.md) - Database migration guide

@@ -38,5 +38,10 @@ supabase/supabase/.temp/*
 test-webhook-result.txt
 webhook-test.txt
 
+# Scratch output from verification runs
+.verify-result.txt
+.verify-schema-result.txt
+.clinic-tsc-result.txt
+
 # Deno lockfile is generated per-machine by the test runner
 deno.lock

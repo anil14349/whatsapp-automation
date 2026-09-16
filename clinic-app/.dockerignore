@@ -1,0 +1,23 @@
+# Keeping these out is not only about image size.
+#
+# .env.local holds the anon key and the clinic id. Copied into a layer it stays
+# in the image history even if a later step deletes it, and anyone who can pull
+# the image can read it. Settings are passed at run time instead.
+.env
+.env.*
+!.env.example
+
+node_modules
+.next
+out
+tsconfig.tsbuildinfo
+
+.git
+.gitignore
+Dockerfile
+.dockerignore
+README.md
+
+# The portal reads the database over HTTPS; it does not run migrations or
+# deploy functions, so none of this belongs in it.
+supabase
