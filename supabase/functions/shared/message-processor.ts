@@ -87,7 +87,9 @@ export async function processMessage(
             senderName,
             messageText,
             normalizedMessage,
-            session
+            session,
+            context.latitude,
+            context.longitude
         );
         return;
     }
@@ -110,7 +112,9 @@ export async function processMessage(
             senderName,
             messageText,
             normalizedMessage,
-            session
+            session,
+            context.latitude,
+            context.longitude
         );
     } else {
         // Patient or default
@@ -412,15 +416,21 @@ async function handleHomeCollectionMessage(
     name: string,
     text: string,
     normalizedMessage: string,
-    session: WhatsAppSession
+    session: WhatsAppSession,
+    latitude?: number,
+    longitude?: number
 ): Promise<void> {
     debug("handleHomeCollectionMessage", `Collector message from ${phone}`);
 
     try {
-        // Create message object
+        // Dropping these here left the handler's GPS branch unreachable, so a
+        // shared location pin fell through to "please share your location" and
+        // asked again however many times it was sent.
         const message: ExtractedMessage = {
-            type: "text",
-            text: text
+            type: latitude !== undefined && longitude !== undefined ? "location" : "text",
+            text: text,
+            latitude,
+            longitude
         };
 
         // Route to home collection handler
