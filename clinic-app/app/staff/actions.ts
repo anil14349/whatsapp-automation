@@ -113,7 +113,9 @@ export async function createStaff(_previous: StaffState, formData: FormData): Pr
         };
     }
 
-    return { success: `${name} added. Credentials sent by ${channel ?? "message"}.` };
+    const sentBy = channel === "whatsapp" ? "WhatsApp" : channel === "email" ? "email" : "message";
+
+    return { success: `${name} added. Sign-in details sent by ${sentBy}.` };
 }
 
 export async function setStaffActive(

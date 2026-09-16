@@ -15,7 +15,7 @@ import { STAFF_LABELS } from "@/lib/labels";
 import { PhoneField } from "@/components/phone-field";
 import { displayPhone } from "@/lib/phone";
 import { DoctorSchedulePanel } from "./doctor-schedule-panel";
-import { useNotice } from "@/lib/use-notice";
+import { useAutoDismiss, useNotice } from "@/lib/use-notice";
 
 export interface StaffMember {
     id: string;
@@ -108,7 +108,14 @@ export function StaffManager({
         startAction(async () => setRowState(await fn()));
     }
 
-    const notice = rowState.error || rowState.success ? rowState : state;
+    // useActionState holds its result until the next submit, so "added" sat
+    // above the list for the rest of the session. A credential is exempt: it
+    // cannot be shown again, so it must not disappear while being copied.
+    const showAdded = useAutoDismiss(state.credential ? undefined : state.success);
+    const formNotice: StaffState =
+        state.error || state.credential || showAdded ? state : {};
+
+    const notice = rowState.error || rowState.success ? rowState : formNotice;
 
     // The credential is shown in the notice above, so leaving the form open
     // would hide the one thing that has to be read.

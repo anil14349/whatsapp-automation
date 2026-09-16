@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { bookWalkIn, loadSlots, type BookingState } from "./actions";
 import { PhoneField } from "@/components/phone-field";
+import { useAutoDismiss } from "@/lib/use-notice";
 
 export interface DoctorOption {
     id: string;
@@ -23,6 +24,9 @@ export function WalkInForm({
     onClose: () => void;
 }) {
     const [state, action, pending] = useActionState(bookWalkIn, INITIAL);
+    // The form stays open to book several in a row, so without this the last
+    // confirmation sits under the fields while the next one is typed.
+    const showBooked = useAutoDismiss(state.success);
 
     const [doctorId, setDoctorId] = useState(doctors[0]?.id ?? "");
     const [slots, setSlots] = useState<string[]>([]);
@@ -130,7 +134,7 @@ export function WalkInForm({
                 </p>
             )}
 
-            {state.success && (
+            {showBooked && state.success && (
                 <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
                     {state.success}
                 </p>

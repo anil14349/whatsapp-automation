@@ -75,7 +75,12 @@ export function splitPhone(stored: string): { code: string; national: string } {
 }
 
 export function joinPhone(code: string, national: string): string {
-    return digitsOnly(code) + digitsOnly(national);
+    // A country code on its own is not a number. The picker always has one
+    // selected, so without this an untouched field submits "91" and that gets
+    // stored as a receptionist's phone.
+    const digits = digitsOnly(national);
+
+    return digits ? digitsOnly(code) + digits : "";
 }
 
 /** What a human should read: no country code when it is the default one. */
