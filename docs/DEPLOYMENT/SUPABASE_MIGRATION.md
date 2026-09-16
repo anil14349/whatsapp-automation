@@ -245,9 +245,9 @@ const appointments = await sheets.read("Appointments");
 
 ## Next Steps
 
-1. Set up Supabase project (see [SETUP.md](./SETUP.md))
-2. Create database schema (see [SQL migrations](./migrations/))
-3. Scaffold Edge Functions (see [functions/](./functions/))
+1. Set up Supabase project (see [Module 1 — Database](./MODULE_1_DATABASE.md))
+2. Create database schema (see [SQL migrations](../../supabase/migrations/))
+3. Scaffold Edge Functions (see [functions/](../../supabase/functions/))
 4. Implement webhook handler
 5. Migrate business logic step by step
 6. Test with real WhatsApp messages

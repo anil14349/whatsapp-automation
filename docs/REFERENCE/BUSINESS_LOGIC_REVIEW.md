@@ -619,4 +619,4 @@ All core appointment booking and management features work as designed. Authoriza
 
 **Overall Assessment**: **9/10 - EXCELLENT**
 
-See [CODE_REVIEW_DEPLOYMENT.md](CODE_REVIEW_DEPLOYMENT.md) for deployment readiness details.
+See [CODE_REVIEW_DEPLOYMENT.md](../SECURITY/CODE_REVIEW_DEPLOYMENT.md) for deployment readiness details.

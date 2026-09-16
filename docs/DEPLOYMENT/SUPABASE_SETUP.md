@@ -26,7 +26,7 @@ After project creation:
 
 1. Go to **SQL Editor** in Supabase
 2. Click **New Query**
-3. Copy the SQL from [`migrations/001_create_tables.sql`](migrations/001_create_tables.sql)
+3. Copy the SQL from [`migrations/001_create_tables.sql`](../../supabase/migrations/001_create_tables.sql)
 4. Run the query
 
 ### Option B: Using Supabase CLI
@@ -265,5 +265,5 @@ SELECT * FROM message_dedup WHERE expires_at > NOW() ORDER BY created_at DESC;
 2. ✅ Set up database tables
 3. ✅ Create Google service account
 4. ✅ Configure secrets
-5. → [Deploy Edge Functions](../supabase/functions/README.md)
-6. → [Migrate business logic](../SUPABASE_MIGRATION.md)
+5. → [Deploy Edge Functions](../../supabase/functions/README.md)
+6. → [Migrate business logic](./SUPABASE_MIGRATION.md)

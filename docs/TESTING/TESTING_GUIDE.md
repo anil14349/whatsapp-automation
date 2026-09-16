@@ -679,7 +679,7 @@ deno test --allow-all --allow-net tests/
 ## Next Steps
 
 1. ✅ Review testing strategy
-2. → [Set up test environment](./SETUP.md)
-3. → [Write unit tests](./tests/validators_test.ts)
-4. → [Write integration tests](./tests/webhook_message_test.ts)
-5. → [Set up CI/CD](../.github/workflows/test.yml)
+2. → Set up test environment — see [Deployment index](../DEPLOYMENT/README.md)
+3. → [Write unit tests](../../supabase/functions/tests/validators_test.ts)
+4. → [Write integration tests](../../supabase/functions/tests/doctor-flow_test.ts)
+5. → Set up CI/CD — there is no pipeline yet; `npm run verify` is the gate

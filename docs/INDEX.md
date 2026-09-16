@@ -1,64 +1,91 @@
-# WhatsApp Automation Clinic System - Documentation Index
+# Documentation
 
-**Last Updated:** 2026-09-14  
-**Status:** Production-Ready with Security Hardening ✅
+Every document in `docs/`, grouped by what you are trying to do. Links here are
+checked against the files that exist — if one is dead, it is a bug in this
+page.
 
 ---
 
-## 📋 Quick Navigation
+## Deploying
 
-### 🚀 Getting Started
-- [**Setup Guide**](./GETTING_STARTED.md) - Initial project setup & configuration
-- [**Quick Reference**](./QUICK_REFERENCE.md) - Common commands & quick lookups
-- [**Deployment Checklist**](./DEPLOYMENT_CHECKLIST.md) - Pre-deployment verification
+**Start here.** Six modules, in the order they have to be deployed:
 
-### 🏗️ Architecture & Design
-- [**System Architecture**](./ARCHITECTURE/SYSTEM_ARCHITECTURE.md) - High-level system design
-- [**Scalability Roadmap**](./ARCHITECTURE/SCALABILITY_ROADMAP.md) - Scaling strategy & roadmap
-- [**Phase 3 Implementation**](./ARCHITECTURE/PHASE_3B_IMPLEMENTATION.md) - Advanced features design
-- [**Phase 3 Message Processor**](./ARCHITECTURE/PHASE_3_MESSAGE_PROCESSOR.md) - Message processing architecture
+- [**Deployment index**](./DEPLOYMENT/README.md) — the order, shared prerequisites, and the gate to run first
+- [Module 1 — Database](./DEPLOYMENT/MODULE_1_DATABASE.md) — migrations, storage bucket, first admin
+- [Module 2 — Edge functions](./DEPLOYMENT/MODULE_2_EDGE_FUNCTIONS.md) — all 19, their secrets, and the `--no-verify-jwt` trap
+- [Module 3 — WhatsApp](./DEPLOYMENT/MODULE_3_WHATSAPP.md) — Meta app, webhook, and the 8 message templates
+- [Module 4 — Reminder scheduler](./DEPLOYMENT/MODULE_4_SCHEDULER.md) — pg_cron and Vault
+- [Module 5 — Clinic portal](./DEPLOYMENT/MODULE_5_CLINIC_PORTAL.md) — the Next.js app and its Docker image
+- [Module 6 — Landing site](./DEPLOYMENT/MODULE_6_LANDING_SITE.md) — the static marketing page
 
-### 🔐 Security
-- [**Security Features Implementation**](./SECURITY/SECURITY_FEATURES_IMPLEMENTATION.md) - Bcrypt, rate limiting, password reset
-- [**Deployment Ready Security**](./SECURITY/DEPLOYMENT_READY_SECURITY.md) - Security checklist & verification
-- [**API Security Review**](./SECURITY/API_SECURITY_REVIEW.md) - Endpoint security analysis
+### Earlier deployment notes
 
-### 🌐 Deployment & Operations
+These predate the modules above and are kept for history. **Where they
+disagree, the module documents are correct.**
 
-**Current, per module — start here:** [**Deployment index**](./DEPLOYMENT/README.md)
+- [Deployment Guide](./DEPLOYMENT/DEPLOYMENT_GUIDE.md)
+- [Supabase Setup](./DEPLOYMENT/SUPABASE_SETUP.md)
+- [Supabase Migration](./DEPLOYMENT/SUPABASE_MIGRATION.md)
+- [Scheduler Setup](./DEPLOYMENT/SCHEDULER_SETUP.md)
+- [API Integration Guide](./DEPLOYMENT/API_INTEGRATION_GUIDE.md)
+- [Home Collection Reminders](./DEPLOYMENT/HOME_COLLECTION_REMINDERS.md)
+- [Doctor Status Marking](./DEPLOYMENT/DOCTOR_STATUS_MARKING.md)
+- [Daily Archive Setup](./DAILY_ARCHIVE_SETUP.md)
 
-- [Module 1 — Database](./DEPLOYMENT/MODULE_1_DATABASE.md)
-- [Module 2 — Edge functions](./DEPLOYMENT/MODULE_2_EDGE_FUNCTIONS.md)
-- [Module 3 — WhatsApp](./DEPLOYMENT/MODULE_3_WHATSAPP.md)
-- [Module 4 — Reminder scheduler](./DEPLOYMENT/MODULE_4_SCHEDULER.md)
-- [Module 5 — Clinic portal](./DEPLOYMENT/MODULE_5_CLINIC_PORTAL.md)
-- [Module 6 — Landing site](./DEPLOYMENT/MODULE_6_LANDING_SITE.md)
+---
 
-Older guides below predate the modules above and are kept for history. Where
-they disagree, the module documents are correct.
+## Architecture
 
-- [**Deployment Guide**](./DEPLOYMENT/DEPLOYMENT_GUIDE.md) - Step-by-step deployment
-- [**Supabase Setup**](./DEPLOYMENT/SUPABASE_SETUP.md) - Supabase configuration
-- [**Supabase Migration**](./DEPLOYMENT/SUPABASE_MIGRATION.md) - Database migration guide
-- [**Scheduler Setup**](./DEPLOYMENT/SCHEDULER_SETUP.md) - Cron job configuration
-- [**Reminders Integration**](./DEPLOYMENT/REMINDERS_INTEGRATION.md) - Appointment reminder setup
-- [**Daily Archive Setup**](./DEPLOYMENT/DAILY_ARCHIVE_SETUP.md) - Data archival configuration
+- [Multi-Clinic Architecture](./ARCHITECTURE/MULTI_CLINIC_ARCHITECTURE.md) — how tenants are separated
+- [Doctor Home Visits](./ARCHITECTURE/DOCTOR_HOME_VISITS.md) — the home visit design
+- [Message Processor](./ARCHITECTURE/PHASE_3_MESSAGE_PROCESSOR.md) — how an inbound message is routed
+- [Phase 3B Implementation](./ARCHITECTURE/PHASE_3B_IMPLEMENTATION.md)
+- [Roadmap](./ARCHITECTURE/ROADMAP.md)
+- [Scalability Roadmap](./ARCHITECTURE/SCALABILITY_ROADMAP.md)
 
-### ✅ Testing & Verification
-- [**Testing Guide**](./TESTING/TESTING_GUIDE.md) - Test strategy & execution
-- [**Verification Sign-Off**](./TESTING/VERIFICATION_SIGN_OFF.md) - Pre-launch verification
-- [**Completion Status**](./TESTING/COMPLETION_STATUS.md) - Feature completion checklist
-- [**WhatsApp Flow Review**](./TESTING/WHATSAPP_FLOW_REVIEW.md) - Message flow testing
+---
 
-### 📚 Reference & Code Review
-- [**Code Review Findings**](./REFERENCE/CODE_REVIEW_FINDINGS.md) - Code quality analysis
-- [**Code Review Deployment**](./REFERENCE/CODE_REVIEW_DEPLOYMENT.md) - Deployment readiness review
-- [**REST API Deployment Verdict**](./REFERENCE/REST_API_DEPLOYMENT_VERDICT.md) - API endpoint analysis
-- [**Dependencies**](./REFERENCE/DEPENDENCIES.md) - Project dependencies & versions
-- [**Post-Fix Review**](./REFERENCE/POST_FIX_REVIEW.md) - Post-implementation review
+## Security
 
-### 📖 Additional Resources
-- [**Marketing & Onboarding**](../marketing/) - Client materials
+- [Security Features](./SECURITY/SECURITY_FEATURES_IMPLEMENTATION.md) — bcrypt, JWT, rate limiting, password reset
+- [Deployment Security Checklist](./SECURITY/DEPLOYMENT_READY_SECURITY.md)
+- [Code Review Findings](./SECURITY/CODE_REVIEW_FINDINGS.md)
+- [Code Review: Deployment](./SECURITY/CODE_REVIEW_DEPLOYMENT.md)
+
+---
+
+## Testing
+
+- [Testing Guide](./TESTING/TESTING_GUIDE.md)
+- [WhatsApp Flow Review](./TESTING/WHATSAPP_FLOW_REVIEW.md)
+- [Verification Sign-Off](./TESTING/VERIFICATION_SIGN_OFF.md)
+- [Completion Status](./TESTING/COMPLETION_STATUS.md)
+
+The checks themselves live in the root `package.json`:
+
+```powershell
+npm run verify          # types, tests, and seven static checks. No network.
+npm run verify:schema   # every column reference against the live database
+```
+
+---
+
+## Reference
+
+- [API Documentation](./REFERENCE/API_DOCUMENTATION.md) — endpoints and payloads
+- [Business Logic Review](./REFERENCE/BUSINESS_LOGIC_REVIEW.md)
+- [Dependencies](./REFERENCE/DEPENDENCIES.md)
+- [Deployment Readiness](./REFERENCE/DEPLOYMENT_READY.md)
+- [REST API Deployment Verdict](./REFERENCE/REST_API_DEPLOYMENT_VERDICT.md)
+- [Phase 2 REST API](./REFERENCE/PHASE_2_REST_API.md)
+- [Post-Fix Review](./REFERENCE/POST_FIX_REVIEW.md)
+- [Quick Reference](./QUICK_REFERENCE.md) — common commands
+
+---
+
+## Client materials
+
+- [Marketing folder](../marketing/README.md)
   - [Client Service One-Pager](../marketing/CLIENT_SERVICE_ONE_PAGER.md)
   - [Clinic Owner Brochure](../marketing/CLINIC_OWNER_BROCHURE.md)
   - [Landing Page Copy](../marketing/LANDING_PAGE_COPY.md)
@@ -66,135 +93,52 @@ they disagree, the module documents are correct.
 
 ---
 
-## 🎯 Common Tasks
+## Environment
 
-### I want to...
+`.env.local` in the repo root, copied from [`.env.example`](../.env.example).
 
-**Deploy to Production**
-1. Read [Deployment Guide](./DEPLOYMENT/DEPLOYMENT_GUIDE.md)
-2. Check [Security Checklist](./SECURITY/DEPLOYMENT_READY_SECURITY.md)
-3. Run [Verification](./TESTING/VERIFICATION_SIGN_OFF.md)
+The Supabase values are prefixed `SU_` rather than `SUPABASE_` because the
+Supabase CLI claims the latter for its own use.
 
-**Set Up a New Clinic**
-1. Follow [Supabase Setup](./DEPLOYMENT/SUPABASE_SETUP.md)
-2. Configure [Environment Variables](.env.local)
-3. Run [Scheduler Setup](./DEPLOYMENT/SCHEDULER_SETUP.md)
+| Variable | Purpose |
+|---|---|
+| `SU_URL` | `https://<ref>.supabase.co` |
+| `SU_ANON_KEY` | Public key. No privileges on any table. |
+| `SU_SERVICE_ROLE_KEY` | **Bypasses row level security.** Never ship it to a browser. |
+| `JWT_SECRET` | Signs portal tokens |
+| `WHATSAPP_*` | Number id, access token, verify token, webhook post token |
+| `DATABASE_URL` | Direct database access. A placeholder in this checkout, which is why migrations are applied through the dashboard. |
+| `RESEND_API_KEY` | Optional. Unset means credentials are shown to the admin rather than emailed. |
 
-**Add a New Feature**
-1. Review [System Architecture](./ARCHITECTURE/SYSTEM_ARCHITECTURE.md)
-2. Check [Phase 3 Design](./ARCHITECTURE/PHASE_3B_IMPLEMENTATION.md)
-3. See [Testing Guide](./TESTING/TESTING_GUIDE.md)
+The clinic portal has its own `clinic-app/.env.local` holding three
+server-side values — see [Module 5](./DEPLOYMENT/MODULE_5_CLINIC_PORTAL.md).
 
-**Troubleshoot Issues**
-1. Check [Quick Reference](./QUICK_REFERENCE.md)
-2. Review [Code Review Findings](./REFERENCE/CODE_REVIEW_FINDINGS.md)
-3. See [Architecture Overview](./ARCHITECTURE/SYSTEM_ARCHITECTURE.md)
-
-**Understand Security**
-1. Read [Security Features](./SECURITY/SECURITY_FEATURES_IMPLEMENTATION.md)
-2. Review [API Security](./SECURITY/API_SECURITY_REVIEW.md)
-3. Check [Deployment Checklist](./SECURITY/DEPLOYMENT_READY_SECURITY.md)
+Secrets used by the edge functions are set on Supabase, not in any file — see
+[Module 2](./DEPLOYMENT/MODULE_2_EDGE_FUNCTIONS.md).
 
 ---
 
-## 📊 Project Status
+## I want to…
 
-### Phase 1: WhatsApp Integration ✅
-- Message sending & receiving
-- Doctor & patient flows
-- Appointment management
+**Deploy for the first time**
+1. [Deployment index](./DEPLOYMENT/README.md), then modules 1 → 5 in order
+2. [Security checklist](./SECURITY/DEPLOYMENT_READY_SECURITY.md)
+3. [Verification sign-off](./TESTING/VERIFICATION_SIGN_OFF.md)
 
-### Phase 2: REST API ✅
-- Authentication (Bcrypt + JWT)
-- Rate limiting (3 attempts → 15 min lockout)
-- Password reset (both doctors & receptionists)
-- Doctor & patient management
-- Appointment CRUD operations
-- Clinic management
+**Ship a change**
+1. `npm run verify` and `npm run verify:schema`
+2. Redeploy every function that imports whatever shared file changed — [Module 2](./DEPLOYMENT/MODULE_2_EDGE_FUNCTIONS.md)
+3. Confirm the two functions needing `--no-verify-jwt` still have it
 
-### Phase 3: Advanced Features (In Progress)
-- Message processor & workflows
-- Analytics & monitoring
-- Performance optimization
-- Scalability enhancements
+**Work out why reminders stopped**
+1. [Module 4](./DEPLOYMENT/MODULE_4_SCHEDULER.md) — cron reports success even when the call never lands
+2. [Module 3](./DEPLOYMENT/MODULE_3_WHATSAPP.md) — outside the 24-hour window only an approved template is delivered
 
-### Security Hardening ✅
-- ✅ Bcrypt password hashing
-- ✅ JWT authentication
-- ✅ Brute-force protection
-- ✅ Password reset mechanism
-- ✅ Rate limiting on all endpoints
-- ✅ Input validation
-- ✅ SQL injection prevention
+**Add a feature**
+1. [Multi-Clinic Architecture](./ARCHITECTURE/MULTI_CLINIC_ARCHITECTURE.md)
+2. [Message Processor](./ARCHITECTURE/PHASE_3_MESSAGE_PROCESSOR.md)
+3. [Testing Guide](./TESTING/TESTING_GUIDE.md)
 
----
-
-## 🔧 Environment Setup
-
-**File:** `.env.local` (created in project root)
-
-```bash
-SB_URL=https://your-project.supabase.co
-SB_SERVICE_ROLE_KEY=your-service-role-key
-JWT_SECRET=your-jwt-secret
-```
-
-See [Setup Guide](./GETTING_STARTED.md) for full configuration.
-
----
-
-## 📞 Support
-
-For specific questions:
-- **Architecture**: See [System Architecture](./ARCHITECTURE/SYSTEM_ARCHITECTURE.md)
-- **Security**: See [Security Features](./SECURITY/SECURITY_FEATURES_IMPLEMENTATION.md)
-- **Deployment**: See [Deployment Guide](./DEPLOYMENT/DEPLOYMENT_GUIDE.md)
-- **Testing**: See [Testing Guide](./TESTING/TESTING_GUIDE.md)
-
----
-
-## 📝 Document Organization
-
-```
-docs/
-├── INDEX.md (this file)
-├── GETTING_STARTED.md
-├── QUICK_REFERENCE.md
-├── DEPLOYMENT_CHECKLIST.md
-│
-├── ARCHITECTURE/
-│   ├── SYSTEM_ARCHITECTURE.md
-│   ├── SCALABILITY_ROADMAP.md
-│   ├── PHASE_3B_IMPLEMENTATION.md
-│   └── PHASE_3_MESSAGE_PROCESSOR.md
-│
-├── SECURITY/
-│   ├── SECURITY_FEATURES_IMPLEMENTATION.md
-│   ├── DEPLOYMENT_READY_SECURITY.md
-│   └── API_SECURITY_REVIEW.md
-│
-├── DEPLOYMENT/
-│   ├── DEPLOYMENT_GUIDE.md
-│   ├── SUPABASE_SETUP.md
-│   ├── SUPABASE_MIGRATION.md
-│   ├── SCHEDULER_SETUP.md
-│   ├── REMINDERS_INTEGRATION.md
-│   └── DAILY_ARCHIVE_SETUP.md
-│
-├── TESTING/
-│   ├── TESTING_GUIDE.md
-│   ├── VERIFICATION_SIGN_OFF.md
-│   ├── COMPLETION_STATUS.md
-│   └── WHATSAPP_FLOW_REVIEW.md
-│
-└── REFERENCE/
-    ├── CODE_REVIEW_FINDINGS.md
-    ├── CODE_REVIEW_DEPLOYMENT.md
-    ├── REST_API_DEPLOYMENT_VERDICT.md
-    ├── DEPENDENCIES.md
-    └── POST_FIX_REVIEW.md
-```
-
----
-
-**Next Step:** Start with [GETTING_STARTED.md](./GETTING_STARTED.md) or [Deployment Guide](./DEPLOYMENT/DEPLOYMENT_GUIDE.md) depending on your current phase.
+**Troubleshoot**
+1. [Quick Reference](./QUICK_REFERENCE.md)
+2. [Code Review Findings](./SECURITY/CODE_REVIEW_FINDINGS.md)
