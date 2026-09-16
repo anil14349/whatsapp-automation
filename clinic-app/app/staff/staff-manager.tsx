@@ -8,6 +8,9 @@ import {
     type StaffState,
     type StaffType
 } from "./actions";
+import { STAFF_LABELS } from "@/lib/labels";
+import { PhoneField } from "@/components/phone-field";
+import { displayPhone } from "@/lib/phone";
 
 export interface StaffMember {
     id: string;
@@ -21,9 +24,9 @@ export interface StaffMember {
 }
 
 const TABS: Array<{ type: StaffType; label: string; needs: string }> = [
-    { type: "doctor", label: "Doctors", needs: "WhatsApp number" },
-    { type: "receptionist", label: "Receptionists", needs: "Email" },
-    { type: "collector", label: "Collectors", needs: "WhatsApp number" }
+    { type: "doctor", label: STAFF_LABELS.doctor.plural, needs: "WhatsApp number" },
+    { type: "receptionist", label: STAFF_LABELS.receptionist.plural, needs: "Email" },
+    { type: "collector", label: STAFF_LABELS.collector.plural, needs: "WhatsApp number" }
 ];
 
 const INITIAL: StaffState = {};
@@ -99,7 +102,9 @@ export function StaffManager({
             )}
 
             <form action={action} className="rounded-xl bg-white p-5 ring-1 ring-slate-200">
-                <h2 className="mb-4 text-sm font-semibold">Add a {tab}</h2>
+                <h2 className="mb-4 text-sm font-semibold">
+                    Add {STAFF_LABELS[tab].singular.toLowerCase()}
+                </h2>
                 <input type="hidden" name="type" value={tab} />
 
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -123,18 +128,7 @@ export function StaffManager({
                             />
                         </label>
                     ) : (
-                        <label className="space-y-1">
-                            <span className="text-xs font-medium text-slate-600">
-                                WhatsApp number (with country code)
-                            </span>
-                            <input
-                                name="phone"
-                                required
-                                inputMode="tel"
-                                placeholder="919876543210"
-                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                            />
-                        </label>
+                        <PhoneField name="phone" required key={tab} />
                     )}
 
                     {tab === "doctor" && (
@@ -206,7 +200,7 @@ export function StaffManager({
                                             )}
                                         </td>
                                         <td className="px-4 py-3 text-slate-600">
-                                            <div>{member.phone ?? "—"}</div>
+                                            <div>{member.phone ? displayPhone(member.phone) : "—"}</div>
                                             {member.email && (
                                                 <div className="text-xs text-slate-400">{member.email}</div>
                                             )}

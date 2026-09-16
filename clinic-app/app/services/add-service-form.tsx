@@ -1,16 +1,51 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { createService, type ServiceState } from "./actions";
 
 const CATEGORIES = ["CONSULTATION", "DIAGNOSTIC", "IMAGING", "VACCINE", "OTHER"];
 
 export function AddServiceForm() {
     const [state, action, pending] = useActionState<ServiceState, FormData>(createService, {});
+    const [open, setOpen] = useState(false);
+
+    // Adding a service is occasional; the list is what the page is for.
+    useEffect(() => {
+        if (state.success) {
+            setOpen(false);
+        }
+    }, [state.success]);
+
+    if (!open) {
+        return (
+            <div className="flex items-center gap-3">
+                <button
+                    onClick={() => setOpen(true)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium hover:border-slate-300"
+                >
+                    Add a service
+                </button>
+                {state.success && (
+                    <p className="text-sm text-emerald-700" role="status">
+                        {state.success}
+                    </p>
+                )}
+            </div>
+        );
+    }
 
     return (
         <form action={action} className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-            <h2 className="mb-1 text-sm font-semibold">Add a service</h2>
+            <div className="mb-1 flex items-center justify-between">
+                <h2 className="text-sm font-semibold">Add a service</h2>
+                <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="text-sm text-slate-500 hover:text-slate-700"
+                >
+                    Close
+                </button>
+            </div>
             <p className="mb-3 text-xs text-slate-500">
                 Only this clinic will see it. It stays off until you switch it on.
             </p>

@@ -9,6 +9,8 @@ import {
     type BookingState,
     type ServiceOption
 } from "./actions";
+import { PhoneField } from "@/components/phone-field";
+import { displayPhone } from "@/lib/phone";
 
 export interface AppointmentRow {
     id: string;
@@ -202,7 +204,9 @@ export function AppointmentTable({
                                     <td className="px-4 py-3 font-medium">{row.time}</td>
                                     <td className="px-4 py-3">
                                         <div>{row.patientName}</div>
-                                        <div className="text-xs text-slate-400">{row.patientPhone}</div>
+                                        <div className="text-xs text-slate-400">
+                                            {displayPhone(row.patientPhone)}
+                                        </div>
                                     </td>
                                     <td className="px-4 py-3">
                                         <div className="text-slate-700">{row.serviceName ?? "—"}</div>
@@ -403,19 +407,16 @@ function EditPanel({
                     />
                 </label>
 
-                <label className="space-y-1">
-                    <span className="block text-xs font-medium text-slate-600">WhatsApp number</span>
-                    <input
-                        value={patientPhone}
-                        onChange={(e) => setPatientPhone(e.target.value)}
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    />
+                <PhoneField
+                    defaultValue={row.patientPhone}
+                    onChange={setPatientPhone}
+                >
                     {phoneChanged && (
                         <span className="block text-xs text-amber-700">
                             Reminders for this appointment will go to the new number.
                         </span>
                     )}
-                </label>
+                </PhoneField>
 
                 <label className="space-y-1">
                     <span className="block text-xs font-medium text-slate-600">For</span>

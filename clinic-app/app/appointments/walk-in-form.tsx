@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState, useTransition } from "react";
 import { bookWalkIn, loadSlots, type BookingState } from "./actions";
+import { PhoneField } from "@/components/phone-field";
 
 export interface DoctorOption {
     id: string;
@@ -85,18 +86,7 @@ export function WalkInForm({ doctors, date }: { doctors: DoctorOption[]; date: s
                     />
                 </label>
 
-                <label className="space-y-1">
-                    <span className="text-xs font-medium text-slate-600">
-                        WhatsApp number (with country code)
-                    </span>
-                    <input
-                        name="patientPhone"
-                        required
-                        inputMode="tel"
-                        placeholder="919876543210"
-                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                    />
-                </label>
+                <PhoneField name="patientPhone" required />
 
                 <label className="space-y-1">
                     <span className="text-xs font-medium text-slate-600">Doctor</span>

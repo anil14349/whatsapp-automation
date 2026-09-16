@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { PortalSession } from "@/lib/portal";
+import { roleLabel } from "@/lib/labels";
 import { SignOutButton } from "./appointments/sign-out";
 
 /** Staff management is only shown to those who can actually use it. */
@@ -43,7 +44,7 @@ export function PortalNav({ session }: { session: PortalSession }) {
 
             <div className="flex items-center gap-3">
                 <span className="text-sm text-slate-500">
-                    {session.name} · {session.role.toLowerCase().replace("_", " ")}
+                    {session.name} · {roleLabel(session.role)}
                 </span>
                 <SignOutButton />
             </div>
