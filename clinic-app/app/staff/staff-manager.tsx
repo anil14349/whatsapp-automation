@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import {
     createStaff,
     editStaff,
@@ -50,6 +50,7 @@ export function StaffManager({
     const [editing, setEditing] = useState<StaffMember | null>(null);
     const [removing, setRemoving] = useState<StaffMember | null>(null);
     const [scheduling, setScheduling] = useState<StaffMember | null>(null);
+    const [adding, setAdding] = useState(false);
     const [busy, startAction] = useTransition();
 
     const members = staff[tab] ?? [];
@@ -61,31 +62,53 @@ export function StaffManager({
 
     const notice = rowState.error || rowState.success ? rowState : state;
 
+    // The credential is shown in the notice above, so leaving the form open
+    // would hide the one thing that has to be read.
+    useEffect(() => {
+        if (state.success) {
+            setAdding(false);
+        }
+    }, [state.success]);
+
     return (
         <div className="space-y-6">
-            <div className="flex gap-2">
-                {TABS.map((option) => (
-                    <button
-                        key={option.type}
-                        onClick={() => {
-                            setTab(option.type);
-                            setRowState({});
-                            setEditing(null);
-                            setRemoving(null);
-                            setScheduling(null);
-                        }}
-                        className={`rounded-lg border px-3 py-1.5 text-sm transition ${
-                            tab === option.type
-                                ? "border-brand-500 bg-brand-50 text-brand-700"
-                                : "border-slate-200 text-slate-600 hover:border-slate-300"
-                        }`}
-                    >
-                        {option.label}
-                        <span className="ml-1.5 text-xs text-slate-400">
-                            {(staff[option.type] ?? []).length}
-                        </span>
-                    </button>
-                ))}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex gap-2">
+                    {TABS.map((option) => (
+                        <button
+                            key={option.type}
+                            onClick={() => {
+                                setTab(option.type);
+                                setRowState({});
+                                setEditing(null);
+                                setRemoving(null);
+                                setScheduling(null);
+                                setAdding(false);
+                            }}
+                            className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                                tab === option.type
+                                    ? "border-brand-500 bg-brand-50 text-brand-700"
+                                    : "border-slate-200 text-slate-600 hover:border-slate-300"
+                            }`}
+                        >
+                            {option.label}
+                            <span className="ml-1.5 text-xs text-slate-400">
+                                {(staff[option.type] ?? []).length}
+                            </span>
+                        </button>
+                    ))}
+                </div>
+
+                <button
+                    onClick={() => {
+                        setAdding(!adding);
+                        setEditing(null);
+                        setScheduling(null);
+                    }}
+                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+                >
+                    Add {STAFF_LABELS[tab].singular.toLowerCase()}
+                </button>
             </div>
 
             {notice?.error && (
@@ -165,10 +188,20 @@ export function StaffManager({
                 />
             )}
 
-            <form action={action} className="rounded-xl bg-white p-5 ring-1 ring-slate-200">
-                <h2 className="mb-4 text-sm font-semibold">
-                    Add {STAFF_LABELS[tab].singular.toLowerCase()}
-                </h2>
+            {adding && (
+                <form action={action} className="rounded-xl bg-white p-5 ring-1 ring-slate-200">
+                <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold">
+                        Add {STAFF_LABELS[tab].singular.toLowerCase()}
+                    </h2>
+                    <button
+                        type="button"
+                        onClick={() => setAdding(false)}
+                        className="text-sm text-slate-500 hover:text-slate-700"
+                    >
+                        Close
+                    </button>
+                </div>
                 <input type="hidden" name="type" value={tab} />
 
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -230,13 +263,14 @@ export function StaffManager({
                     disabled={pending}
                     className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
                 >
-                    {pending ? "Adding…" : `Add ${tab}`}
+                    {pending ? "Adding…" : `Add ${STAFF_LABELS[tab].singular.toLowerCase()}`}
                 </button>
-            </form>
+                </form>
+            )}
 
             {members.length === 0 ? (
                 <p className="rounded-xl bg-white px-4 py-10 text-center text-sm text-slate-500 ring-1 ring-slate-200">
-                    No {tab}s yet.
+                    No {STAFF_LABELS[tab].plural.toLowerCase()} yet.
                 </p>
             ) : (
                 <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">

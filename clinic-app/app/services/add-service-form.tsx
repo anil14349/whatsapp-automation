@@ -5,7 +5,7 @@ import { createService, type ServiceState } from "./actions";
 
 const CATEGORIES = ["CONSULTATION", "DIAGNOSTIC", "IMAGING", "VACCINE", "OTHER"];
 
-export function AddServiceForm() {
+export function AddServiceForm({ title, summary }: { title: string; summary: string }) {
     const [state, action, pending] = useActionState<ServiceState, FormData>(createService, {});
     const [open, setOpen] = useState(false);
 
@@ -16,38 +16,52 @@ export function AddServiceForm() {
         }
     }, [state.success]);
 
+    // The heading lives here so the trigger can sit on the same line as it
+    // rather than on a row of its own above the list.
+    const header = (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <h1 className="text-xl font-semibold">{title}</h1>
+                <p className="text-sm text-slate-500">{summary}</p>
+            </div>
+            <button
+                onClick={() => setOpen(!open)}
+                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+            >
+                Add a service
+            </button>
+        </div>
+    );
+
     if (!open) {
         return (
-            <div className="flex items-center gap-3">
-                <button
-                    onClick={() => setOpen(true)}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium hover:border-slate-300"
-                >
-                    Add a service
-                </button>
+            <>
+                {header}
                 {state.success && (
-                    <p className="text-sm text-emerald-700" role="status">
+                    <p className="mb-4 text-sm text-emerald-700" role="status">
                         {state.success}
                     </p>
                 )}
-            </div>
+            </>
         );
     }
 
     return (
-        <form action={action} className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-            <div className="mb-1 flex items-center justify-between">
-                <h2 className="text-sm font-semibold">Add a service</h2>
-                <button
-                    type="button"
-                    onClick={() => setOpen(false)}
-                    className="text-sm text-slate-500 hover:text-slate-700"
-                >
-                    Close
-                </button>
-            </div>
-            <p className="mb-3 text-xs text-slate-500">
-                Only this clinic will see it. It stays off until you switch it on.
+        <>
+            {header}
+            <form action={action} className="mb-4 rounded-xl bg-white p-4 ring-1 ring-slate-200">
+                <div className="mb-1 flex items-center justify-between">
+                    <h2 className="text-sm font-semibold">Add a service</h2>
+                    <button
+                        type="button"
+                        onClick={() => setOpen(false)}
+                        className="text-sm text-slate-500 hover:text-slate-700"
+                    >
+                        Close
+                    </button>
+                </div>
+                <p className="mb-3 text-xs text-slate-500">
+                    Only this clinic will see it. It stays off until you switch it on.
             </p>
 
             <div className="grid gap-3 sm:grid-cols-4">
@@ -112,16 +126,17 @@ export function AddServiceForm() {
                 </div>
             </div>
 
-            {state.error && (
-                <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
-                    {state.error}
-                </p>
-            )}
-            {state.success && (
-                <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
-                    {state.success}
-                </p>
-            )}
-        </form>
+                {state.error && (
+                    <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                        {state.error}
+                    </p>
+                )}
+                {state.success && (
+                    <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
+                        {state.success}
+                    </p>
+                )}
+            </form>
+        </>
     );
 }

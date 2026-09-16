@@ -35,12 +35,10 @@ export default async function ServicesPage() {
 
     return (
         <PortalShell session={session} branding={branding} width="max-w-4xl">
-            <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-                <h1 className="text-xl font-semibold">Services</h1>
-                <p className="text-sm text-slate-500">
-                    {offered} of {services.length} offered to patients
-                </p>
-            </div>
+            <AddServiceForm
+                title="Services"
+                summary={`${offered} of ${services.length} offered to patients`}
+            />
 
             {!result.ok && (
                 <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -53,10 +51,6 @@ export default async function ServicesPage() {
                     No services are switched on, so patients cannot book anything.
                 </p>
             )}
-
-            <div className="mb-4">
-                <AddServiceForm />
-            </div>
 
             <ServiceManager services={services} />
         </PortalShell>
