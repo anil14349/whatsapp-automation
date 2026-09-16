@@ -23,6 +23,7 @@ export interface AppointmentRow {
     serviceName: string | null;
     notes: string;
     bookingSource: string | null;
+    isRevisit: boolean;
     status: string;
 }
 
@@ -207,6 +208,13 @@ export function AppointmentTable({
                                         <div className="text-xs text-slate-400">
                                             {displayPhone(row.patientPhone)}
                                         </div>
+                                        {/* The front desk should not have to remember who is
+                                            returning within the clinic's free window. */}
+                                        {row.isRevisit && (
+                                            <span className="mt-1 inline-block rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">
+                                                revisit
+                                            </span>
+                                        )}
                                     </td>
                                     <td className="px-4 py-3">
                                         <div className="text-slate-700">{row.serviceName ?? "—"}</div>

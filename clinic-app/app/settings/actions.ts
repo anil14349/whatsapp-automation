@@ -19,6 +19,7 @@ export interface ClinicDetails {
     timezone: string;
     afterHoursMessage: string | null;
     afterHoursReply: boolean;
+    revisitWindowDays: number;
 }
 
 export interface DayHours {
@@ -47,7 +48,8 @@ export async function saveDetails(
         city: String(formData.get("city") ?? "").trim(),
         timezone: String(formData.get("timezone") ?? "").trim(),
         afterHoursMessage: String(formData.get("afterHoursMessage") ?? "").trim(),
-        afterHoursReply: formData.get("afterHoursReply") === "on"
+        afterHoursReply: formData.get("afterHoursReply") === "on",
+        revisitWindowDays: Number(formData.get("revisitWindowDays") ?? 0)
     };
 
     const result = await callAsUser("clinic-settings", { method: "PATCH", body });

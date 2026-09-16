@@ -25,6 +25,26 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
             </div>
 
             <div className="mt-4 border-t border-slate-100 pt-4">
+                <label className="space-y-1">
+                    <span className="block text-xs font-medium text-slate-600">
+                        Revisit window (days)
+                    </span>
+                    <input
+                        name="revisitWindowDays"
+                        type="number"
+                        min={0}
+                        max={365}
+                        defaultValue={clinic.revisitWindowDays}
+                        className="w-32 rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                    />
+                    <span className="block text-xs text-slate-400">
+                        A patient returning to the same doctor within this many days is marked a
+                        revisit. Zero switches it off.
+                    </span>
+                </label>
+            </div>
+
+            <div className="mt-4 border-t border-slate-100 pt-4">
                 <label className="flex items-center gap-2 text-sm">
                     <input
                         type="checkbox"

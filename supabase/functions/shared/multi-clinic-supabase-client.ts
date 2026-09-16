@@ -9,6 +9,7 @@
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as types from "./multi-clinic-types.ts";
 import { getClinicHoursForDay, todayInTimezone } from "./clinic-slots.ts";
+import { checkRevisit } from "./revisit.ts";
 
 export class MultiClinicSupabaseClient {
   private supabase: SupabaseClient;
@@ -360,6 +361,14 @@ export class MultiClinicSupabaseClient {
     const random = Math.random().toString(36).substring(2, 8);
     const appointmentId = `APT_${dateStr}_${random}`;
 
+    const revisit = await checkRevisit(
+      this.supabase,
+      req.clinic_id,
+      req.patient_phone,
+      req.doctor_id,
+      req.appointment_date
+    );
+
     const { data, error } = await this.supabase
       .from("appointments")
       .insert({
@@ -378,6 +387,7 @@ export class MultiClinicSupabaseClient {
         service_longitude: req.service_longitude,
         amount: req.amount,
         notes: req.notes,
+        is_revisit: revisit.isRevisit,
         status: "CONFIRMED",
         payment_status: "PENDING",
       })

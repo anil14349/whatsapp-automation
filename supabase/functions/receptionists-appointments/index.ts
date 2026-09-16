@@ -49,6 +49,7 @@ import { withCors } from "../shared/cors.ts";
 import { createAppointmentReminders } from "../shared/appointment-reminders.ts";
 import { getEnabledServices, getServiceById } from "../shared/clinic-services.ts";
 import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
+import { checkRevisit } from "../shared/revisit.ts";
 
 interface CreateAppointmentRequest {
   patientName: string;
@@ -240,6 +241,14 @@ async function createAppointment(
       };
     }
 
+    const revisit = await checkRevisit(
+      supabase,
+      clinicId,
+      req.patientPhone,
+      req.doctorId,
+      req.appointmentDate
+    );
+
     // Create appointment
     const { data, error } = await supabase
       .from("appointments")
@@ -255,6 +264,7 @@ async function createAppointment(
         appointment_time: req.appointmentTime,
         status: "CONFIRMED",
         notes: req.notes || null,
+        is_revisit: revisit.isRevisit,
         // Entered by the front desk, so nobody has messaged this patient yet.
         booking_source: "WALK_IN",
         preferred_language: req.preferredLanguage || "EN"

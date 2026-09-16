@@ -45,7 +45,7 @@ async function getSettings(
   const [clinic, hours, holidays] = await Promise.all([
     supabase
       .from("clinics")
-      .select("id, name, phone, email, address, city, country, timezone, open_time, close_time, working_days, after_hours_message, enable_after_hours_reply")
+      .select("id, name, phone, email, address, city, country, timezone, open_time, close_time, working_days, after_hours_message, enable_after_hours_reply, revisit_window_days")
       .eq("id", clinicId)
       .maybeSingle(),
     supabase
@@ -101,7 +101,8 @@ async function getSettings(
         country: clinic.data.country,
         timezone: clinic.data.timezone,
         afterHoursMessage: clinic.data.after_hours_message,
-        afterHoursReply: clinic.data.enable_after_hours_reply === true
+        afterHoursReply: clinic.data.enable_after_hours_reply === true,
+        revisitWindowDays: Number(clinic.data.revisit_window_days ?? 0)
       },
       hours: week,
       holidays: holidays.data ?? []
@@ -202,6 +203,17 @@ async function updateSettings(
 
   if (typeof body.afterHoursReply === "boolean") {
     patch.enable_after_hours_reply = body.afterHoursReply;
+  }
+
+  if (body.revisitWindowDays !== undefined) {
+    const days = Number(body.revisitWindowDays);
+
+    // Zero switches it off. A year is already absurd for a follow-up.
+    if (!Number.isInteger(days) || days < 0 || days > 365) {
+      return { status: 400, payload: { error: "Revisit window must be between 0 and 365 days" } };
+    }
+
+    patch.revisit_window_days = days;
   }
 
   // The timezone decides what "today" means for every slot and reminder, so a

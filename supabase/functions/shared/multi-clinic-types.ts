@@ -320,7 +320,10 @@ export interface Appointment {
   
   amount?: number;
   payment_status: string;  // PENDING, COMPLETED, FAILED
-  
+
+  /** Set when booked, so changing the clinic's window does not reclassify it. */
+  is_revisit?: boolean;
+
   notes?: string;
   
   created_at: string;
