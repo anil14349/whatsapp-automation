@@ -65,6 +65,11 @@ export const BUTTON_IDS = {
         REJECT: "collection_reject",
     },
 
+    // Choosing who a booking is for
+    PATIENT_NAME: {
+        SOMEONE_ELSE: "pat_other",
+    },
+
     // Date selection
     DATE_SELECT: {
         TODAY: "date_today",
@@ -138,6 +143,35 @@ export function isServiceButton(buttonId: string): boolean {
 
 export function serviceIdFromButton(buttonId: string): string {
     return buttonId.slice(SERVICE_BUTTON_PREFIX.length);
+}
+
+/**
+ * Names previously booked from this number, offered back by position.
+ *
+ * The position is deliberate: putting the name in the id would send the
+ * household's names out and accept them back, so a crafted reply could book
+ * under any name at all. The list lives in the session and the reply is only
+ * an index into it.
+ */
+export const PATIENT_BUTTON_PREFIX = "pat_";
+
+export function patientNameButtonId(index: number): string {
+    return `${PATIENT_BUTTON_PREFIX}${index}`;
+}
+
+export function isPatientNameButton(buttonId: string): boolean {
+    return /^pat_\d+$/.test(buttonId);
+}
+
+/** The offered position, or null when the reply is not one of ours. */
+export function patientNameIndex(buttonId: string): number | null {
+    if (!isPatientNameButton(buttonId)) {
+        return null;
+    }
+
+    const index = Number(buttonId.slice(PATIENT_BUTTON_PREFIX.length));
+
+    return Number.isInteger(index) && index >= 0 ? index : null;
 }
 
 /**

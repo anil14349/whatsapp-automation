@@ -1,7 +1,8 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppMessage, WhatsAppSession, ExtractedMessage } from "../types.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
-import { BUTTON_IDS, isValidPatientMenuButton, isValidConfirmationButton, isValidDateSelectButton, isServiceButton, serviceButtonId, serviceIdFromButton } from "../button-ids.ts";
+import { BUTTON_IDS, isValidPatientMenuButton, isValidConfirmationButton, isValidDateSelectButton, isServiceButton, serviceButtonId, serviceIdFromButton, patientNameButtonId, patientNameIndex } from "../button-ids.ts";
+import { knownPatientNames, MAX_REMEMBERED_NAMES } from "../patient-names.ts";
 import {
     getEnabledServices,
     getServiceById,
@@ -942,7 +943,11 @@ export class PatientFlowHandler {
             return;
         }
 
-        // Move to name confirmation
+        // Move to name confirmation. The household is read before the write so
+        // the whole payload is stored once, rather than a second update having
+        // to reconstruct what the first one held.
+        const known = await knownPatientNames(this.supabase, session.clinic_id, phone);
+
         await this.updateSession(phone, "BOOK_NAME", {
             ...session.data,
             language,
@@ -950,14 +955,62 @@ export class PatientFlowHandler {
             selectedDoctorName: session.data?.selectedDoctorName,
             selectedDate,
             selectedTime,
-            locationType
+            locationType,
+            // The reply is only a position, so the list it indexes into has to
+            // be the one this number was actually offered.
+            offeredNames: known
         });
 
-        await this.whatsappClient.sendTextMessage(
+        await this.askWhoFor(phone, language, known, `✅ ${selectedTime}`);
+    }
+
+    /**
+     * Ask who the booking is for.
+     *
+     * One number books for a household. The names it has used before are
+     * offered back so the whole thing does not have to be typed again on a
+     * phone, in a second language, every single time.
+     */
+    private async askWhoFor(
+        phone: string,
+        language: string,
+        known: string[],
+        prefix: string
+    ): Promise<void> {
+        if (known.length === 0) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? `${prefix}\n\n📝 Please provide your full name:`
+                    : `${prefix}\n\n📝 कृपया अपना पूरा नाम प्रदान करें:`
+            );
+            return;
+        }
+
+        const body = language === "EN"
+            ? `${prefix}\n\n📝 Who is this appointment for?`
+            : `${prefix}\n\n📝 यह अपॉइंटमेंट किसके लिए है?`;
+
+        const otherLabel = language === "EN" ? "Someone else" : "कोई और";
+
+        const rows = [
+            ...known.slice(0, MAX_REMEMBERED_NAMES).map((name, index) => ({
+                id: patientNameButtonId(index),
+                title: name.slice(0, 24)
+            })),
+            { id: BUTTON_IDS.PATIENT_NAME.SOMEONE_ELSE, title: otherLabel }
+        ];
+
+        if (rows.length <= 3) {
+            await this.whatsappClient.sendInteractiveButtonMessage(phone, body, rows);
+            return;
+        }
+
+        await this.whatsappClient.sendInteractiveListMessage(
             phone,
-            language === "EN"
-                ? `✅ Time selected: ${selectedTime}\n\n📝 Please provide your full name:`
-                : `✅ समय चुना गया: ${selectedTime}\n\n📝 कृपया अपना पूरा नाम प्रदान करें:`
+            body,
+            language === "EN" ? "Choose" : "चुनें",
+            [{ title: language === "EN" ? "Patient" : "मरीज़", rows }]
         );
     }
 
@@ -974,7 +1027,36 @@ export class PatientFlowHandler {
             return;
         }
         const language = session.data?.language || "EN";
-        const patientName = message.text.trim();
+        const reply = message.text.trim();
+
+        if (reply === BUTTON_IDS.PATIENT_NAME.SOMEONE_ELSE) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "📝 Please type the patient's full name:"
+                    : "📝 कृपया मरीज़ का पूरा नाम लिखें:"
+            );
+            return;
+        }
+
+        const offered: string[] = Array.isArray(session.data?.offeredNames)
+            ? session.data.offeredNames
+            : [];
+
+        const chosen = patientNameIndex(reply);
+
+        // A position that was never offered is a crafted reply, not a choice.
+        if (chosen !== null && !offered[chosen]) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "Please choose from the list, or type the name."
+                    : "कृपया सूची में से चुनें, या नाम लिखें।"
+            );
+            return;
+        }
+
+        const patientName = chosen !== null ? offered[chosen] : reply;
 
         // Validate name
         if (!isValidPatientName(patientName)) {
@@ -998,7 +1080,11 @@ export class PatientFlowHandler {
             patientName
         });
 
-        await this.showBookingConfirmation(phone, session.data, language);
+        await this.showBookingConfirmation(
+            phone,
+            { ...session.data, patientName },
+            language
+        );
     }
 
     /**
@@ -1932,9 +2018,13 @@ export class PatientFlowHandler {
                     ? "📋 Your Upcoming Appointments:\n\n" 
                     : "📋 आपकी आने वाली नियुक्तियाँ:\n\n";
 
-                // The query embeds the doctor, so the name is nested.
+                // The query embeds the doctor, so the name is nested. The
+                // patient's name is shown too: one number books for a
+                // household, and an unlabelled list is unreadable.
                 appointments.forEach((apt: any, idx: number) => {
-                    message += `${idx + 1}. 🩺 Dr. ${apt.doctor?.name || "Unknown"}\n   📅 ${this.formatDate(apt.appointment_date)}\n   🕐 ${apt.appointment_time}\n   Status: ${apt.status}\n\n`;
+                    const who = apt.patient_name ? `   👤 ${apt.patient_name}\n` : "";
+
+                    message += `${idx + 1}. 🩺 Dr. ${apt.doctor?.name || "Unknown"}\n${who}   📅 ${this.formatDate(apt.appointment_date)}\n   🕐 ${apt.appointment_time}\n   Status: ${apt.status}\n\n`;
                 });
 
                 // Show with history and menu buttons
@@ -2058,11 +2148,33 @@ export class PatientFlowHandler {
         data: any,
         language: string
     ): Promise<void> {
-        const message = language === "EN"
-            ? "Please confirm your appointment details."
-            : "कृपया अपनी नियुक्ति विवरण की पुष्टि करें।";
+        // This used to ask the patient to confirm details it never showed
+        // them. Tolerable while they had just typed every one of them; not
+        // once the name is picked from a list of the household.
+        const en = language === "EN";
+        const lines: string[] = [en ? "Please check these details:" : "कृपया ये विवरण जाँचें:", ""];
 
-        await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
+        if (data?.patientName) {
+            lines.push(`${en ? "👤 Patient" : "👤 मरीज़"}: ${data.patientName}`);
+        }
+
+        if (data?.serviceName) {
+            lines.push(`${en ? "🩺 For" : "🩺 सेवा"}: ${data.serviceName}`);
+        }
+
+        if (data?.selectedDoctorName) {
+            lines.push(`${en ? "👨‍⚕️ Doctor" : "👨‍⚕️ डॉक्टर"}: ${data.selectedDoctorName}`);
+        }
+
+        if (data?.selectedDate) {
+            lines.push(`${en ? "📅 Date" : "📅 तारीख"}: ${data.selectedDate}`);
+        }
+
+        if (data?.selectedTime) {
+            lines.push(`${en ? "🕐 Time" : "🕐 समय"}: ${data.selectedTime}`);
+        }
+
+        await this.whatsappClient.sendInteractiveButtonMessage(phone, lines.join("\n"), [
             { id: BUTTON_IDS.CONFIRMATION.YES, title: language === "EN" ? "Yes, Confirm" : "हाँ, पुष्टि करें" },
             { id: BUTTON_IDS.CONFIRMATION.NO, title: language === "EN" ? "No, Cancel" : "नहीं, रद्द करें" }
         ]);
