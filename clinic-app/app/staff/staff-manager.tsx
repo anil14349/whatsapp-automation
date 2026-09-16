@@ -15,6 +15,7 @@ import { STAFF_LABELS } from "@/lib/labels";
 import { PhoneField } from "@/components/phone-field";
 import { displayPhone } from "@/lib/phone";
 import { DoctorSchedulePanel } from "./doctor-schedule-panel";
+import { useNotice } from "@/lib/use-notice";
 
 export interface StaffMember {
     id: string;
@@ -46,7 +47,7 @@ export function StaffManager({
 }) {
     const [tab, setTab] = useState<StaffType>("doctor");
     const [state, action, pending] = useActionState(createStaff, INITIAL);
-    const [rowState, setRowState] = useState<StaffState>({});
+    const [rowState, setRowState] = useNotice<StaffState>({});
     const [editing, setEditing] = useState<StaffMember | null>(null);
     const [removing, setRemoving] = useState<StaffMember | null>(null);
     const [scheduling, setScheduling] = useState<StaffMember | null>(null);

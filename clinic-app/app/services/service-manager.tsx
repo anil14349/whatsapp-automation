@@ -3,9 +3,10 @@
 import { useState, useTransition } from "react";
 import { updateService, renameService, removeService, type ServiceRow, type ServiceState } from "./actions";
 import { Switch } from "@/components/switch";
+import { useNotice } from "@/lib/use-notice";
 
 export function ServiceManager({ services }: { services: ServiceRow[] }) {
-    const [notice, setNotice] = useState<ServiceState>({});
+    const [notice, setNotice] = useNotice<ServiceState>({});
     const [busy, start] = useTransition();
     const [editing, setEditing] = useState<string | null>(null);
 

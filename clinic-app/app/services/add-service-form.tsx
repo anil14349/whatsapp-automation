@@ -2,12 +2,14 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { createService, type ServiceState } from "./actions";
+import { useAutoDismiss } from "@/lib/use-notice";
 
 const CATEGORIES = ["CONSULTATION", "DIAGNOSTIC", "IMAGING", "VACCINE", "OTHER"];
 
 export function AddServiceForm({ title, summary }: { title: string; summary: string }) {
     const [state, action, pending] = useActionState<ServiceState, FormData>(createService, {});
     const [open, setOpen] = useState(false);
+    const showAdded = useAutoDismiss(state.success);
 
     // Adding a service is occasional; the list is what the page is for.
     useEffect(() => {
@@ -37,7 +39,7 @@ export function AddServiceForm({ title, summary }: { title: string; summary: str
         return (
             <>
                 {header}
-                {state.success && (
+                {state.success && showAdded && (
                     <p className="mb-4 text-sm text-emerald-700" role="status">
                         {state.success}
                     </p>

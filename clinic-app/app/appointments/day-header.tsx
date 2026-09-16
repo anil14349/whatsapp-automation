@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { announceDelay, type BookingState } from "./actions";
 import { WalkInForm, type DoctorOption } from "./walk-in-form";
+import { useNotice } from "@/lib/use-notice";
 
 /**
  * The day's controls in one line.
@@ -25,7 +26,7 @@ export function DayHeader({
 }) {
     const [walkIn, setWalkIn] = useState(false);
     const [delay, setDelay] = useState(false);
-    const [notice, setNotice] = useState<BookingState>({});
+    const [notice, setNotice] = useNotice<BookingState>({});
     const [busy, start] = useTransition();
 
     return (

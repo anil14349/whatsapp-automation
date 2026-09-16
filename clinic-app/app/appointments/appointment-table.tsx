@@ -11,6 +11,7 @@ import {
 } from "./actions";
 import { PhoneField } from "@/components/phone-field";
 import { displayPhone } from "@/lib/phone";
+import { useNotice } from "@/lib/use-notice";
 
 export interface AppointmentRow {
     id: string;
@@ -52,7 +53,7 @@ export function AppointmentTable({
     doctors?: Array<{ id: string; name: string }>;
     services?: ServiceOption[];
 }) {
-    const [notice, setNotice] = useState<BookingState>({});
+    const [notice, setNotice] = useNotice<BookingState>({});
     const [busy, start] = useTransition();
     const [moving, setMoving] = useState<AppointmentRow | null>(null);
     const [editing, setEditing] = useState<AppointmentRow | null>(null);

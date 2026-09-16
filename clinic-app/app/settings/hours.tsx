@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { saveDay, removeClosure, type DayHours, type Holiday, type SettingsState } from "./actions";
+import { useNotice } from "@/lib/use-notice";
 
 export function OpeningHours({ hours }: { hours: DayHours[] }) {
-    const [notice, setNotice] = useState<SettingsState>({});
+    const [notice, setNotice] = useNotice<SettingsState>({});
     const [busy, start] = useTransition();
 
     return (
@@ -98,7 +99,7 @@ function DayRow({
 }
 
 export function Closures({ holidays }: { holidays: Holiday[] }) {
-    const [notice, setNotice] = useState<SettingsState>({});
+    const [notice, setNotice] = useNotice<SettingsState>({});
     const [busy, start] = useTransition();
 
     if (holidays.length === 0) {

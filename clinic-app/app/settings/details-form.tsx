@@ -4,9 +4,11 @@ import { useActionState, useState } from "react";
 import { saveDetails, addClosure, type ClinicDetails, type SettingsState } from "./actions";
 import { TimezoneField } from "./timezone-field";
 import { readableOn } from "@/lib/theme";
+import { useAutoDismiss } from "@/lib/use-notice";
 
 export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
     const [state, action, pending] = useActionState<SettingsState, FormData>(saveDetails, {});
+    const showSaved = useAutoDismiss(state.success);
 
     return (
         <form action={action} className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
@@ -77,7 +79,7 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
                     {state.error}
                 </p>
             )}
-            {state.success && (
+            {state.success && showSaved && (
                 <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
                     {state.success}
                 </p>
@@ -95,6 +97,7 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
 
 export function AddClosureForm() {
     const [state, action, pending] = useActionState<SettingsState, FormData>(addClosure, {});
+    const showAdded = useAutoDismiss(state.success, 8000);
 
     return (
         <form action={action} className="mb-3 flex flex-wrap items-end gap-3">
@@ -129,7 +132,7 @@ export function AddClosureForm() {
                     {state.error}
                 </p>
             )}
-            {state.success && (
+            {state.success && showAdded && (
                 <p className="w-full rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
                     {state.success}
                 </p>

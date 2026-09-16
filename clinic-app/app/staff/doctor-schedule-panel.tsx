@@ -10,6 +10,7 @@ import {
     type DoctorLeave,
     type StaffState
 } from "./actions";
+import { useNotice } from "@/lib/use-notice";
 
 /**
  * Consulting hours and leave for one doctor.
@@ -28,7 +29,7 @@ export function DoctorSchedulePanel({
 }) {
     const [hours, setHours] = useState<DoctorDay[]>([]);
     const [leaves, setLeaves] = useState<DoctorLeave[]>([]);
-    const [notice, setNotice] = useState<StaffState>({});
+    const [notice, setNotice] = useNotice<StaffState>({});
     const [loading, setLoading] = useState(true);
     const [busy, start] = useTransition();
 
