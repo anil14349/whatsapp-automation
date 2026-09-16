@@ -65,6 +65,11 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                     <button
                                         disabled={busy}
                                         onClick={() => save(s.serviceTypeId, { isEnabled: !s.isEnabled })}
+                                        title={
+                                            s.isEnabled
+                                                ? "Patients can book this. Click to stop offering it."
+                                                : "Patients cannot see this. Click to start offering it."
+                                        }
                                         className={`rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${
                                             s.isEnabled
                                                 ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
@@ -150,7 +155,7 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                         onSave={(v) => save(s.serviceTypeId, { durationMinutes: v })}
                                     />
 
-                                    {s.isOwn && (
+                                    {s.isOwn ? (
                                         <div className="sm:col-span-2 border-t border-slate-100 pt-3">
                                             <button
                                                 disabled={busy}
@@ -167,6 +172,14 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                                 Refused while patients are still booked for it
                                             </span>
                                         </div>
+                                    ) : (
+                                        // The Remove button is absent here rather than present and
+                                        // failing, so this has to say why.
+                                        <p className="sm:col-span-2 border-t border-slate-100 pt-3 text-xs text-slate-500">
+                                            Every clinic shares this service, so deleting it would
+                                            delete it for all of them. Switching it off takes it away
+                                            from your patients, which is the same thing from here.
+                                        </p>
                                     )}
                                 </div>
                             )}
