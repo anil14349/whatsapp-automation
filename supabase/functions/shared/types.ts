@@ -64,6 +64,7 @@ export interface WhatsAppSession {
 
 export interface WhatsAppLogEntry {
     direction: "INBOUND" | "OUTBOUND" | "WEBHOOK" | "ERROR";
+    clinic_id?: string;
     phone?: string;
     name?: string;
     status?: string;

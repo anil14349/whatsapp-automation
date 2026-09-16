@@ -11,6 +11,7 @@ export async function logWhatsAppMessage(
     try {
         await supabase.from("whatsapp_log").insert({
             direction: entry.direction,
+            clinic_id: entry.clinic_id ?? null,
             phone: entry.phone,
             name: entry.name,
             status: entry.status,

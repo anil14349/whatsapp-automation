@@ -224,7 +224,12 @@ Deno.serve(async (req: Request) => {
 
         for (const route of routes) {
             const clinicIds = [route.clinicId];
-            const whatsappClient = new WhatsAppClient(route.accessToken, route.phoneNumberId);
+            const whatsappClient = new WhatsAppClient(
+                route.accessToken,
+                route.phoneNumberId,
+                supabase,
+                route.clinicId
+            );
 
             const clinicResult = await processClinic(supabase, whatsappClient, clinicIds);
 

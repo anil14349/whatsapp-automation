@@ -61,9 +61,9 @@ export async function getClinicConfig(
 
         const config: ClinicConfig = {
             clinic_id: data.id || clinicId,
-            clinic_name: data.name || "ABC Clinic",
-            clinic_phone: data.phone || "+91-9999999999",
-            clinic_email: data.email || "info@clinic.com",
+            clinic_name: data.name || "our clinic",
+            clinic_phone: data.phone || "",
+            clinic_email: data.email || "",
             open_time: data.open_time || "09:00",
             close_time: data.close_time || "18:00",
             working_days: data.working_days || "Mon,Tue,Wed,Thu,Fri,Sat",
@@ -92,13 +92,16 @@ export async function getClinicConfig(
 
 /**
  * Get default clinic configuration for fallback
+ *
+ * Naming a real clinic here would greet one clinic's patients with another's
+ * brand, and inventing a phone number sends them somewhere that does not exist.
  */
 function getDefaultClinicConfig(clinicId: string): ClinicConfig {
     return {
         clinic_id: clinicId,
-        clinic_name: "ABC Clinic",
-        clinic_phone: "+91-9999999999",
-        clinic_email: "info@clinic.com",
+        clinic_name: "our clinic",
+        clinic_phone: "",
+        clinic_email: "",
         open_time: "09:00",
         close_time: "18:00",
         working_days: "Mon,Tue,Wed,Thu,Fri,Sat",

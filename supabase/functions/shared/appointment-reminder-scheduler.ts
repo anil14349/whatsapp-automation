@@ -364,7 +364,7 @@ export async function handleScheduledReminders(req: Request): Promise<Response> 
             );
         }
 
-        const whatsappClient = new WhatsAppClient(accessToken, phoneNumberId);
+        const whatsappClient = new WhatsAppClient(accessToken, phoneNumberId, supabase);
 
         // Get clinic IDs to process
         const clinicIdsStr = Deno.env.get("CLINIC_IDS") || "";

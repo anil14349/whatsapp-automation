@@ -213,15 +213,18 @@ export class PatientFlowHandler {
         await this.updateSession(phone, "MAIN_MENU", { language: selectedLanguage });
 
         // Send welcome message
+        const config = await getClinicConfig(this.supabase, session.clinic_id);
+        const clinicName = config.clinic_name;
+
         if (selectedLanguage === "EN") {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "👋 Welcome to ABC Clinic!\n\nWhat would you like to do today?"
+                `👋 Welcome to ${clinicName}!\n\nWhat would you like to do today?`
             );
         } else {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "👋 ABC क्लीनिक में आपका स्वागत है!\n\nआज आप क्या करना चाहते हैं?"
+                `👋 ${clinicName} में आपका स्वागत है!\n\nआज आप क्या करना चाहते हैं?`
             );
         }
 

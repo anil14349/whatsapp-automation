@@ -56,13 +56,12 @@ export async function sendCredentialOverWhatsApp(
         return { delivered: false, reason: "no_credentials" };
     }
 
-    const client = new WhatsAppClient(route.accessToken, route.phoneNumberId);
+    const client = new WhatsAppClient(route.accessToken, route.phoneNumberId, supabase, clinicId);
 
     try {
         await client.sendTextMessage(
             phone,
-            credentialMessage(name, credential, kind, route.clinicName),
-            supabase
+            credentialMessage(name, credential, kind, route.clinicName)
         );
 
         return { delivered: true };

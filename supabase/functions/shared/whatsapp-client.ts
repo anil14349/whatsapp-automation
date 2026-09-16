@@ -11,10 +11,22 @@ export class WhatsAppClient {
     private readonly phoneNumberId: string;
     private readonly apiVersion = "v18.0";
     private readonly baseUrl = "https://graph.facebook.com";
+    private readonly supabase?: SupabaseClient;
+    private readonly clinicId?: string;
 
-    constructor(accessToken: string, phoneNumberId: string) {
+    // Logging used to depend on every caller remembering to pass a client, and
+    // most did not: 118 of 187 sends were never recorded. Holding it here makes
+    // the record a property of sending rather than of remembering.
+    constructor(
+        accessToken: string,
+        phoneNumberId: string,
+        supabase?: SupabaseClient,
+        clinicId?: string
+    ) {
         this.accessToken = accessToken;
         this.phoneNumberId = phoneNumberId;
+        this.supabase = supabase;
+        this.clinicId = clinicId;
     }
 
     /**
@@ -210,6 +222,7 @@ export class WhatsAppClient {
         supabase?: SupabaseClient
     ): Promise<string> {
         const url = `${this.baseUrl}/${this.apiVersion}/${this.phoneNumberId}/messages`;
+        const log = supabase ?? this.supabase;
 
         try {
             const response = await fetch(url, {
@@ -232,9 +245,10 @@ export class WhatsAppClient {
             const messageId = data.messages?.[0]?.id || "";
 
             // Log outbound message
-            if (supabase) {
-                await logWhatsAppMessage(supabase, {
+            if (log) {
+                await logWhatsAppMessage(log, {
                     direction: "OUTBOUND",
+                    clinic_id: this.clinicId,
                     phone: recipientPhone,
                     status: messageType,
                     message: displayText,
@@ -250,9 +264,10 @@ export class WhatsAppClient {
             );
 
             // Log error
-            if (supabase) {
-                await logWhatsAppMessage(supabase, {
+            if (log) {
+                await logWhatsAppMessage(log, {
                     direction: "WEBHOOK",
+                    clinic_id: this.clinicId,
                     phone: recipientPhone,
                     status: "ERROR",
                     message: `Send ${messageType} failed: ${error instanceof Error ? error.message : String(error)}`

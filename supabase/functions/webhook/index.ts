@@ -156,7 +156,12 @@ async function handleInboundMessage(req: Request) {
     }
 
     // Replies must come from the clinic's own number, using its own token.
-    const whatsappClient = new WhatsAppClient(clinic.accessToken, clinic.phoneNumberId);
+    const whatsappClient = new WhatsAppClient(
+        clinic.accessToken,
+        clinic.phoneNumberId,
+        supabase,
+        clinic.clinicId
+    );
 
     // ============================================================
     // IDEMPOTENCY CHECK
