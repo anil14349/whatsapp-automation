@@ -194,3 +194,113 @@ export async function removeStaff(type: StaffType, id: string): Promise<StaffSta
 
     return { success: `${result.data?.name ?? "Staff member"} removed.` };
 }
+
+export interface DoctorDay {
+    dayOfWeek: number;
+    label: string;
+    openTime: string | null;
+    closeTime: string | null;
+    working: boolean;
+}
+
+export interface DoctorLeave {
+    id: string;
+    leave_start_date: string;
+    leave_end_date: string;
+    reason: string | null;
+}
+
+export interface DoctorSchedule {
+    hours: DoctorDay[];
+    leaves: DoctorLeave[];
+    error?: string;
+}
+
+export async function loadDoctorSchedule(doctorId: string): Promise<DoctorSchedule> {
+    const result = await callAsUser(`doctor-schedule?doctorId=${encodeURIComponent(doctorId)}`);
+
+    if (!result.ok) {
+        return { hours: [], leaves: [], error: result.data?.error ?? "Could not load the schedule." };
+    }
+
+    return { hours: result.data.hours ?? [], leaves: result.data.leaves ?? [] };
+}
+
+export async function saveDoctorHours(
+    doctorId: string,
+    dayOfWeek: number,
+    openTime: string,
+    closeTime: string,
+    working: boolean
+): Promise<StaffState> {
+    const denied = await requireManager();
+    if (denied) return { error: denied };
+
+    const result = await callAsUser("doctor-schedule", {
+        method: "PATCH",
+        body: { doctorId, dayOfWeek, openTime, closeTime, working }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not save the hours." };
+    }
+
+    revalidatePath("/staff");
+
+    // The clinic's own hours win, and the endpoint says so when they clash.
+    return { success: result.data?.note ?? "Hours saved." };
+}
+
+export async function addDoctorLeave(
+    doctorId: string,
+    startDate: string,
+    endDate: string,
+    reason: string
+): Promise<StaffState> {
+    const denied = await requireManager();
+    if (denied) return { error: denied };
+
+    if (!startDate) {
+        return { error: "Pick the first day." };
+    }
+
+    const result = await callAsUser("doctor-schedule", {
+        method: "POST",
+        body: { doctorId, startDate, endDate: endDate || startDate, reason }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not record the leave." };
+    }
+
+    revalidatePath("/staff");
+
+    const booked = result.data?.existingAppointments ?? 0;
+
+    return {
+        success: booked
+            ? `Leave recorded. ${booked} appointment${booked === 1 ? " is" : "s are"} already booked in that period and ${booked === 1 ? "has" : "have"} not been cancelled.`
+            : "Leave recorded."
+    };
+}
+
+export async function cancelDoctorLeave(
+    doctorId: string,
+    leaveId: string
+): Promise<StaffState> {
+    const denied = await requireManager();
+    if (denied) return { error: denied };
+
+    const result = await callAsUser("doctor-schedule", {
+        method: "DELETE",
+        body: { doctorId, leaveId }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not cancel the leave." };
+    }
+
+    revalidatePath("/staff");
+
+    return { success: "Leave cancelled." };
+}

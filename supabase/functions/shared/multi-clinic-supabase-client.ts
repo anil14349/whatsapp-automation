@@ -8,6 +8,7 @@
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as types from "./multi-clinic-types.ts";
+import { getClinicHoursForDay, todayInTimezone } from "./clinic-slots.ts";
 
 export class MultiClinicSupabaseClient {
   private supabase: SupabaseClient;
@@ -292,7 +293,8 @@ export class MultiClinicSupabaseClient {
     clinicId: string,
     doctorId: string
   ): Promise<types.DoctorLeave[]> {
-    const today = new Date().toISOString().split("T")[0];
+    const clinic = await this.getClinic(clinicId);
+    const today = todayInTimezone(clinic?.timezone || "UTC");
 
     const { data, error } = await this.supabase
       .from("doctor_leaves")
@@ -534,8 +536,24 @@ export class MultiClinicSupabaseClient {
     const [startHour, startMin] = doctorHours.opening_time.split(":").map(Number);
     const [endHour, endMin] = doctorHours.closing_time.split(":").map(Number);
 
-    const startTime = startHour * 60 + startMin;
-    const endTime = endHour * 60 + endMin;
+    let startTime = startHour * 60 + startMin;
+    let endTime = endHour * 60 + endMin;
+
+    // A doctor's hours cannot outlast the clinic's. Without this a doctor
+    // listed until 18:00 was bookable at a clinic that shuts at 14:00 on a
+    // Saturday, and a Sunday-closed clinic still offered Sunday slots. Home
+    // visits are exempt: they do not happen at the clinic.
+    if (locationType !== "HOME") {
+      const clinicHours = await getClinicHoursForDay(this.supabase, clinicId, date);
+
+      if (!clinicHours) return [];
+
+      const [clinicStartHour, clinicStartMin] = clinicHours.openTime.split(":").map(Number);
+      const [clinicEndHour, clinicEndMin] = clinicHours.closeTime.split(":").map(Number);
+
+      startTime = Math.max(startTime, clinicStartHour * 60 + clinicStartMin);
+      endTime = Math.min(endTime, clinicEndHour * 60 + clinicEndMin);
+    }
 
     for (let time = startTime; time < endTime; time += 30) {
       if (isToday && time <= minutesNow) continue;

@@ -65,7 +65,7 @@ export async function getClinicTimezone(
  * single pair for the whole week. Reading only the latter offered Saturday
  * slots until 18:00 at a clinic that shuts at 14:00.
  */
-async function getClinicHoursForDay(
+export async function getClinicHoursForDay(
     supabase: SupabaseClient,
     clinicId: string,
     date: string

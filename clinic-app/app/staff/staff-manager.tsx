@@ -14,6 +14,7 @@ import {
 import { STAFF_LABELS } from "@/lib/labels";
 import { PhoneField } from "@/components/phone-field";
 import { displayPhone } from "@/lib/phone";
+import { DoctorSchedulePanel } from "./doctor-schedule-panel";
 
 export interface StaffMember {
     id: string;
@@ -48,6 +49,7 @@ export function StaffManager({
     const [rowState, setRowState] = useState<StaffState>({});
     const [editing, setEditing] = useState<StaffMember | null>(null);
     const [removing, setRemoving] = useState<StaffMember | null>(null);
+    const [scheduling, setScheduling] = useState<StaffMember | null>(null);
     const [busy, startAction] = useTransition();
 
     const members = staff[tab] ?? [];
@@ -70,6 +72,7 @@ export function StaffManager({
                             setRowState({});
                             setEditing(null);
                             setRemoving(null);
+                            setScheduling(null);
                         }}
                         className={`rounded-lg border px-3 py-1.5 text-sm transition ${
                             tab === option.type
@@ -134,6 +137,15 @@ export function StaffManager({
                         </button>
                     </div>
                 </div>
+            )}
+
+            {scheduling && (
+                <DoctorSchedulePanel
+                    key={scheduling.id}
+                    doctorId={scheduling.id}
+                    doctorName={scheduling.name}
+                    onClose={() => setScheduling(null)}
+                />
             )}
 
             {editing && (
@@ -270,10 +282,24 @@ export function StaffManager({
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="flex flex-wrap justify-end gap-2">
+                                                {tab === "doctor" && (
+                                                    <button
+                                                        disabled={busy}
+                                                        onClick={() => {
+                                                            setScheduling(member);
+                                                            setEditing(null);
+                                                            setRowState({});
+                                                        }}
+                                                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
+                                                    >
+                                                        Hours
+                                                    </button>
+                                                )}
                                                 <button
                                                     disabled={busy}
                                                     onClick={() => {
                                                         setEditing(member);
+                                                        setScheduling(null);
                                                         setRowState({});
                                                     }}
                                                     className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
