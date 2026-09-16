@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { updateService, renameService, removeService, type ServiceRow, type ServiceState } from "./actions";
+import { Switch } from "@/components/switch";
 
 export function ServiceManager({ services }: { services: ServiceRow[] }) {
     const [notice, setNotice] = useState<ServiceState>({});
@@ -48,11 +49,6 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                                 yours
                                             </span>
                                         )}
-                                        {!s.isEnabled && (
-                                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
-                                                off
-                                            </span>
-                                        )}
                                     </div>
                                     <div className="mt-1 text-xs text-slate-500">
                                         {price !== null ? `₹${price}` : "no price"} · {duration ?? 30} min
@@ -61,23 +57,16 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                     </div>
                                 </div>
 
-                                <div className="flex items-center gap-2">
-                                    <button
+                                <div className="flex items-center gap-3">
+                                    <Switch
+                                        checked={s.isEnabled}
                                         disabled={busy}
-                                        onClick={() => save(s.serviceTypeId, { isEnabled: !s.isEnabled })}
-                                        title={
-                                            s.isEnabled
-                                                ? "Patients can book this. Click to stop offering it."
-                                                : "Patients cannot see this. Click to start offering it."
+                                        label={`Offer ${s.name} to patients`}
+                                        describe={(on: boolean) => (on ? "Offered" : "Not offered")}
+                                        onChange={(next) =>
+                                            save(s.serviceTypeId, { isEnabled: next })
                                         }
-                                        className={`rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50 ${
-                                            s.isEnabled
-                                                ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                                                : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                                        }`}
-                                    >
-                                        {s.isEnabled ? "Offered" : "Not offered"}
-                                    </button>
+                                    />
                                     <button
                                         disabled={busy}
                                         onClick={() => setEditing(open ? null : s.serviceTypeId)}
