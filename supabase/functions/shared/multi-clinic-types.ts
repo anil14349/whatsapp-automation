@@ -324,6 +324,9 @@ export interface Appointment {
   /** Set when booked, so changing the clinic's window does not reclassify it. */
   is_revisit?: boolean;
 
+  /** What the counter calls out. Sequential per doctor per day. */
+  token_number?: number;
+
   notes?: string;
   
   created_at: string;

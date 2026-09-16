@@ -50,6 +50,7 @@ import { createAppointmentReminders } from "../shared/appointment-reminders.ts";
 import { getEnabledServices, getServiceById } from "../shared/clinic-services.ts";
 import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
 import { checkRevisit } from "../shared/revisit.ts";
+import { notifyDelay } from "../shared/delay-notice.ts";
 
 interface CreateAppointmentRequest {
   patientName: string;
@@ -774,13 +775,54 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
       });
     }
 
-    // Handle POST (create appointment)
+    // Handle POST (create appointment, or announce a delay)
     if (req.method === "POST") {
       let body: unknown;
       try {
         body = await req.json();
       } catch {
         return badRequestResponse("Invalid JSON body");
+      }
+
+      const asRecord = body as Record<string, unknown>;
+
+      if (asRecord.action === "delay") {
+        const minutes = Number(asRecord.minutes);
+        const doctorId = String(asRecord.doctorId ?? "");
+
+        if (!doctorId) {
+          return badRequestResponse("doctorId is required");
+        }
+
+        // Five hours late is not a delay, it is a cancelled clinic.
+        if (!Number.isInteger(minutes) || minutes < 5 || minutes > 300) {
+          return badRequestResponse("Delay must be between 5 and 300 minutes");
+        }
+
+        const { data: doctor } = await supabase
+          .from("doctors")
+          .select("id")
+          .eq("id", doctorId)
+          .eq("clinic_id", clinicId)
+          .maybeSingle();
+
+        if (!doctor) {
+          return badRequestResponse("Doctor not found at this clinic");
+        }
+
+        const outcome = await notifyDelay(supabase, clinicId, doctorId, minutes);
+
+        await recordAuditEvent(
+          supabase,
+          "consultation_delayed",
+          actor,
+          "doctor",
+          doctorId,
+          {},
+          { minutes, notified: outcome.notified, failed: outcome.failed }
+        );
+
+        return successResponse(outcome);
       }
 
       const validation = validateCreateRequest(body);

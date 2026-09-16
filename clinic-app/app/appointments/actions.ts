@@ -137,15 +137,46 @@ export interface ServiceOption {
     requiresDoctor: boolean;
 }
 
+/**
+ * Tell everyone still waiting for a doctor that they are running late.
+ *
+ * The booked times are left alone; moving them would free slots that are not
+ * really free and cascade through the rest of the day.
+ */
+export async function announceDelay(
+    doctorId: string,
+    minutes: number
+): Promise<BookingState> {
+    const result = await callAsUser("receptionists-appointments", {
+        method: "POST",
+        body: { action: "delay", doctorId, minutes }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not send the update." };
+    }
+
+    revalidatePath("/appointments");
+
+    const { notified = 0, failed = 0 } = result.data ?? {};
+
+    if (notified === 0 && failed === 0) {
+        return { success: "Nobody is still waiting, so no messages were sent." };
+    }
+
+    return {
+        success: failed
+            ? `Told ${notified} waiting patient${notified === 1 ? "" : "s"}. ${failed} could not be reached.`
+            : `Told ${notified} waiting patient${notified === 1 ? "" : "s"}.`
+    };
+}
+
 export async function loadServices(): Promise<ServiceOption[]> {
     const result = await callAsUser("receptionists-appointments?resource=services");
 
     return result.ok ? (result.data.services ?? []) : [];
 }
 
-/**
- * Correct the details of a booking. Moving it in time is the Move action.
- */
 export async function editAppointment(
     id: string,
     fields: {

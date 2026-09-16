@@ -1100,11 +1100,19 @@ export class PatientFlowHandler {
                         : "\n\n🔁 यह फ़ॉलो-अप विज़िट के रूप में दर्ज है।"
                     : "";
 
+                // The token is what the counter calls out; the booking id is
+                // unusable across a desk.
+                const tokenLine = appointment.token_number
+                    ? language === "EN"
+                        ? `\n🎟️ Token: ${appointment.token_number}`
+                        : `\n🎟️ टोकन: ${appointment.token_number}`
+                    : "";
+
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? `✅ Appointment confirmed!\n\n👨‍⚕️ Doctor: ${session.data?.selectedDoctorName}\n📅 Date: ${session.data?.selectedDate}\n🕐 Time: ${session.data?.selectedTime}\n📍 Location: ${session.data?.locationType === "home" ? "Home Visit" : "Clinic Visit"}\n\n📌 Booking ID: ${appointmentId}${revisitLine}\n\n⏰ You'll receive reminders before your appointment.`
-                        : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${session.data?.locationType === "home" ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}${revisitLine}\n\n⏰ आपको अपॉइंटमेंट से पहले रिमाइंडर मिलेंगे।`
+                        ? `✅ Appointment confirmed!\n\n👨‍⚕️ Doctor: ${session.data?.selectedDoctorName}\n📅 Date: ${session.data?.selectedDate}\n🕐 Time: ${session.data?.selectedTime}\n📍 Location: ${session.data?.locationType === "home" ? "Home Visit" : "Clinic Visit"}\n\n📌 Booking ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ You'll receive reminders before your appointment.`
+                        : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${session.data?.locationType === "home" ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ आपको अपॉइंटमेंट से पहले रिमाइंडर मिलेंगे।`
                 );
 
                 // Best effort: a booking must never fail because the doctor

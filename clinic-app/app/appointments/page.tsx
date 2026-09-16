@@ -63,6 +63,7 @@ export default async function AppointmentsPage({
             notes: a.notes ?? "",
             bookingSource: a.booking_source ?? null,
             isRevisit: a.is_revisit === true,
+            token: a.token_number ?? null,
             status: a.status
         }))
         : [];
