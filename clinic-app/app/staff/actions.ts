@@ -142,3 +142,55 @@ export async function resetStaffCredential(type: StaffType, id: string): Promise
 
     return { success: `New credential sent by ${result.data?.deliveredBy ?? "message"}.` };
 }
+
+export interface StaffEdit {
+    name: string;
+    phone?: string;
+    email?: string;
+    specialization?: string;
+    maxCollectionsPerDay?: number;
+}
+
+export async function editStaff(
+    type: StaffType,
+    id: string,
+    fields: StaffEdit
+): Promise<StaffState> {
+    const denied = await requireManager();
+    if (denied) return { error: denied };
+
+    if (!fields.name.trim()) {
+        return { error: "Name cannot be empty." };
+    }
+
+    const result = await callAsUser("staff", {
+        method: "PATCH",
+        body: { type, id, action: "edit", ...fields }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not save the changes." };
+    }
+
+    revalidatePath("/staff");
+
+    return { success: "Saved." };
+}
+
+export async function removeStaff(type: StaffType, id: string): Promise<StaffState> {
+    const denied = await requireManager();
+    if (denied) return { error: denied };
+
+    const result = await callAsUser("staff", {
+        method: "DELETE",
+        body: { type, id }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not remove the staff member." };
+    }
+
+    revalidatePath("/staff");
+
+    return { success: `${result.data?.name ?? "Staff member"} removed.` };
+}

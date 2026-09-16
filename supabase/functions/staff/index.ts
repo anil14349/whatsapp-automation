@@ -24,6 +24,7 @@ import { hashPassword, validatePinStrength, validatePasswordStrength } from "../
 import { sendStaffInviteEmail } from "../shared/email.ts";
 import { sendCredentialOverWhatsApp } from "../shared/credential-delivery.ts";
 import { withCors } from "../shared/cors.ts";
+import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
 
 type StaffType = "doctor" | "receptionist" | "collector";
 
@@ -45,9 +46,14 @@ interface UpdateStaffRequest {
   id: string;
   clinicId?: string;
   isActive?: boolean;
-  action?: "resetCredential";
+  action?: "resetCredential" | "edit";
   pin?: string;
   password?: string;
+  name?: string;
+  phone?: string;
+  email?: string;
+  specialization?: string;
+  maxCollectionsPerDay?: number;
 }
 
 const TABLES: Record<StaffType, string> = {
@@ -504,6 +510,229 @@ async function setStaffActive(
   return { status: 200, payload: { id: data.id, isActive: body.isActive } };
 }
 
+/**
+ * Correct a staff member's details.
+ *
+ * The phone number is how the bot decides whether an incoming message is from a
+ * doctor, so letting two people share one would hand the wrong person a staff
+ * menu. Checked across all three staff tables at this clinic.
+ */
+async function editStaff(
+  supabase: SupabaseClient,
+  clinicId: string,
+  body: UpdateStaffRequest
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  if (!body.id) {
+    return { status: 400, payload: { error: "id is required" } };
+  }
+
+  const { data: existing } = await supabase
+    .from(TABLES[body.type])
+    .select("*")
+    .eq("id", body.id)
+    .eq("clinic_id", clinicId)
+    .maybeSingle();
+
+  if (!existing) {
+    return { status: 404, payload: { error: "Staff member not found at this clinic" } };
+  }
+
+  const patch: Record<string, unknown> = {};
+
+  if (body.name !== undefined) {
+    const name = body.name.trim();
+
+    if (!name) {
+      return { status: 400, payload: { error: "Name cannot be empty" } };
+    }
+
+    if (name.length > 120) {
+      return { status: 400, payload: { error: "Name is too long" } };
+    }
+
+    patch.name = name;
+  }
+
+  if (body.phone !== undefined) {
+    const phone = body.phone.replace(/\D/g, "");
+
+    if (!phone && body.type !== "receptionist") {
+      return { status: 400, payload: { error: "A WhatsApp number is required" } };
+    }
+
+    if (phone && (phone.length < 10 || phone.length > 15)) {
+      return { status: 400, payload: { error: "Enter the number including country code" } };
+    }
+
+    if (phone && phone !== existing.phone) {
+      const clash = await findPhoneOwner(supabase, clinicId, phone, body.type, body.id);
+
+      if (clash) {
+        return { status: 409, payload: { error: `That number already belongs to ${clash}` } };
+      }
+    }
+
+    patch.phone = phone || null;
+  }
+
+  if (body.email !== undefined) {
+    const email = body.email.trim().toLowerCase();
+
+    // A receptionist signs in with their email, so removing it locks them out.
+    if (!email && body.type === "receptionist") {
+      return { status: 400, payload: { error: "A receptionist needs an email to sign in" } };
+    }
+
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      return { status: 400, payload: { error: "That email does not look right" } };
+    }
+
+    patch.email = email || null;
+  }
+
+  if (body.specialization !== undefined && body.type === "doctor") {
+    patch.specialization = body.specialization.trim() || null;
+  }
+
+  if (body.maxCollectionsPerDay !== undefined && body.type === "collector") {
+    const max = Number(body.maxCollectionsPerDay);
+
+    if (!Number.isInteger(max) || max < 1) {
+      return { status: 400, payload: { error: "Collections per day must be at least 1" } };
+    }
+
+    patch.max_collections_per_day = max;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return { status: 400, payload: { error: "Nothing to change" } };
+  }
+
+  const { error } = await supabase
+    .from(TABLES[body.type])
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", body.id)
+    .eq("clinic_id", clinicId);
+
+  if (error) {
+    return { status: 500, payload: { error: `Failed to update staff: ${error.message}` } };
+  }
+
+  return { status: 200, payload: { id: body.id, changed: Object.keys(patch) } };
+}
+
+/** Describes who already uses a number, or null when nobody does. */
+async function findPhoneOwner(
+  supabase: SupabaseClient,
+  clinicId: string,
+  phone: string,
+  skipType: StaffType,
+  skipId: string
+): Promise<string | null> {
+  const labels: Record<StaffType, string> = {
+    doctor: "a doctor",
+    receptionist: "a receptionist",
+    collector: "home visit staff"
+  };
+
+  for (const type of Object.keys(TABLES) as StaffType[]) {
+    let query = supabase
+      .from(TABLES[type])
+      .select("id, name")
+      .eq("clinic_id", clinicId)
+      .eq("phone", phone);
+
+    if (type === skipType) {
+      query = query.neq("id", skipId);
+    }
+
+    const { data } = await query.maybeSingle();
+
+    if (data) {
+      return `${labels[type]}, ${data.name}`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Remove a staff member outright.
+ *
+ * Refused while work still points at them, because deleting the row would
+ * either break the link or silently orphan an appointment a patient is still
+ * expecting. Deactivating is the answer in that case.
+ */
+async function deleteStaff(
+  supabase: SupabaseClient,
+  clinicId: string,
+  type: StaffType,
+  id: string
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  const { data: existing } = await supabase
+    .from(TABLES[type])
+    .select("id, name")
+    .eq("id", id)
+    .eq("clinic_id", clinicId)
+    .maybeSingle();
+
+  if (!existing) {
+    return { status: 404, payload: { error: "Staff member not found at this clinic" } };
+  }
+
+  const today = todayInTimezone(await getClinicTimezone(supabase, clinicId));
+
+  if (type === "doctor") {
+    const { count } = await supabase
+      .from("appointments")
+      .select("id", { count: "exact", head: true })
+      .eq("clinic_id", clinicId)
+      .eq("doctor_id", id)
+      .gte("appointment_date", today)
+      .neq("status", "CANCELLED");
+
+    if (count && count > 0) {
+      return {
+        status: 409,
+        payload: {
+          error: `${existing.name} still has ${count} appointment${count === 1 ? "" : "s"} booked. Cancel or move them first, or deactivate instead.`
+        }
+      };
+    }
+  }
+
+  if (type === "collector") {
+    const { count } = await supabase
+      .from("home_collection_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("clinic_id", clinicId)
+      .eq("assigned_technician_id", id)
+      .gte("requested_date", today)
+      .neq("status", "CANCELLED");
+
+    if (count && count > 0) {
+      return {
+        status: 409,
+        payload: {
+          error: `${existing.name} still has ${count} collection${count === 1 ? "" : "s"} assigned. Reassign them first, or deactivate instead.`
+        }
+      };
+    }
+  }
+
+  const { error } = await supabase
+    .from(TABLES[type])
+    .delete()
+    .eq("id", id)
+    .eq("clinic_id", clinicId);
+
+  if (error) {
+    return { status: 500, payload: { error: `Failed to remove staff: ${error.message}` } };
+  }
+
+  return { status: 200, payload: { id, removed: true, name: existing.name } };
+}
+
 async function handleRequest(user: TokenPayload, req: Request): Promise<Response> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -555,9 +784,13 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
 
   const result = req.method === "POST"
     ? await createStaff(supabase, clinicId, body as CreateStaffRequest)
-    : (body as UpdateStaffRequest).action === "resetCredential"
-      ? await resetStaffCredential(supabase, clinicId, body as UpdateStaffRequest)
-      : await setStaffActive(supabase, clinicId, body as UpdateStaffRequest);
+    : req.method === "DELETE"
+      ? await deleteStaff(supabase, clinicId, body.type, (body as UpdateStaffRequest).id)
+      : (body as UpdateStaffRequest).action === "resetCredential"
+        ? await resetStaffCredential(supabase, clinicId, body as UpdateStaffRequest)
+        : (body as UpdateStaffRequest).action === "edit"
+          ? await editStaff(supabase, clinicId, body as UpdateStaffRequest)
+          : await setStaffActive(supabase, clinicId, body as UpdateStaffRequest);
 
   debug("staff", `${req.method} ${body.type}`, {
     clinicId,
@@ -572,7 +805,7 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
 }
 
 Deno.serve(withCors(async (req: Request) => {
-  if (!["GET", "POST", "PATCH"].includes(req.method)) {
+  if (!["GET", "POST", "PATCH", "DELETE"].includes(req.method)) {
     return new Response(
       JSON.stringify({ error: "Method not allowed" }),
       { status: 405, headers: { "Content-Type": "application/json" } }

@@ -3,8 +3,11 @@
 import { useActionState, useState, useTransition } from "react";
 import {
     createStaff,
+    editStaff,
+    removeStaff,
     resetStaffCredential,
     setStaffActive,
+    type StaffEdit,
     type StaffState,
     type StaffType
 } from "./actions";
@@ -43,6 +46,8 @@ export function StaffManager({
     const [tab, setTab] = useState<StaffType>("doctor");
     const [state, action, pending] = useActionState(createStaff, INITIAL);
     const [rowState, setRowState] = useState<StaffState>({});
+    const [editing, setEditing] = useState<StaffMember | null>(null);
+    const [removing, setRemoving] = useState<StaffMember | null>(null);
     const [busy, startAction] = useTransition();
 
     const members = staff[tab] ?? [];
@@ -63,6 +68,8 @@ export function StaffManager({
                         onClick={() => {
                             setTab(option.type);
                             setRowState({});
+                            setEditing(null);
+                            setRemoving(null);
                         }}
                         className={`rounded-lg border px-3 py-1.5 text-sm transition ${
                             tab === option.type
@@ -99,6 +106,51 @@ export function StaffManager({
                         </p>
                     )}
                 </div>
+            )}
+
+            {removing && (
+                <div className="rounded-xl bg-white p-4 ring-1 ring-red-200">
+                    <p className="text-sm">
+                        Remove <strong>{removing.name}</strong>? This cannot be undone. Deactivating
+                        keeps the record and the history.
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                        <button
+                            disabled={busy}
+                            onClick={() => {
+                                const target = removing;
+                                setRemoving(null);
+                                run(() => removeStaff(tab, target.id));
+                            }}
+                            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                        >
+                            Remove for good
+                        </button>
+                        <button
+                            onClick={() => setRemoving(null)}
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-slate-300"
+                        >
+                            Keep
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {editing && (
+                <EditStaffPanel
+                    key={editing.id}
+                    type={tab}
+                    member={editing}
+                    busy={busy}
+                    onClose={() => setEditing(null)}
+                    onSave={(fields) =>
+                        startAction(async () => {
+                            const result = await editStaff(tab, editing.id, fields);
+                            setRowState(result);
+                            if (!result.error) setEditing(null);
+                        })
+                    }
+                />
             )}
 
             <form action={action} className="rounded-xl bg-white p-5 ring-1 ring-slate-200">
@@ -217,7 +269,17 @@ export function StaffManager({
                                             </span>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <div className="flex justify-end gap-2">
+                                            <div className="flex flex-wrap justify-end gap-2">
+                                                <button
+                                                    disabled={busy}
+                                                    onClick={() => {
+                                                        setEditing(member);
+                                                        setRowState({});
+                                                    }}
+                                                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
+                                                >
+                                                    Edit
+                                                </button>
                                                 {tab !== "collector" && (
                                                     <button
                                                         disabled={busy}
@@ -238,6 +300,13 @@ export function StaffManager({
                                                 >
                                                     {activeNow ? "Deactivate" : "Reactivate"}
                                                 </button>
+                                                <button
+                                                    disabled={busy}
+                                                    onClick={() => setRemoving(member)}
+                                                    className="rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:border-red-300 disabled:opacity-50"
+                                                >
+                                                    Remove
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -247,6 +316,115 @@ export function StaffManager({
                     </table>
                 </div>
             )}
+        </div>
+    );
+}
+
+function EditStaffPanel({
+    type,
+    member,
+    busy,
+    onClose,
+    onSave
+}: {
+    type: StaffType;
+    member: StaffMember;
+    busy: boolean;
+    onClose: () => void;
+    onSave: (fields: StaffEdit) => void;
+}) {
+    const [name, setName] = useState(member.name);
+    const [phone, setPhone] = useState(member.phone ?? "");
+    const [email, setEmail] = useState(member.email ?? "");
+    const [specialization, setSpecialization] = useState(member.specialization ?? "");
+    const [maxPerDay, setMaxPerDay] = useState(member.max_collections_per_day ?? 8);
+
+    return (
+        <div className="rounded-xl bg-white p-5 ring-1 ring-slate-200">
+            <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold">Edit {member.name}</h2>
+                <button onClick={onClose} className="text-sm text-slate-500 hover:text-slate-700">
+                    Close
+                </button>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+                <label className="space-y-1">
+                    <span className="text-xs font-medium text-slate-600">Name</span>
+                    <input
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    />
+                </label>
+
+                <PhoneField
+                    defaultValue={member.phone ?? ""}
+                    onChange={setPhone}
+                    hint={
+                        type === "doctor"
+                            ? "This is how the bot recognises them on WhatsApp"
+                            : undefined
+                    }
+                />
+
+                <label className="space-y-1">
+                    <span className="text-xs font-medium text-slate-600">
+                        Email{type === "receptionist" ? "" : " (optional)"}
+                    </span>
+                    <input
+                        value={email}
+                        type="email"
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                    />
+                    {type === "receptionist" && (
+                        <span className="block text-xs text-slate-400">They sign in with this</span>
+                    )}
+                </label>
+
+                {type === "doctor" && (
+                    <label className="space-y-1">
+                        <span className="text-xs font-medium text-slate-600">Specialisation</span>
+                        <input
+                            value={specialization}
+                            onChange={(e) => setSpecialization(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        />
+                    </label>
+                )}
+
+                {type === "collector" && (
+                    <label className="space-y-1">
+                        <span className="text-xs font-medium text-slate-600">
+                            Collections per day
+                        </span>
+                        <input
+                            type="number"
+                            min={1}
+                            value={maxPerDay}
+                            onChange={(e) => setMaxPerDay(Number(e.target.value))}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        />
+                    </label>
+                )}
+            </div>
+
+            <button
+                disabled={busy}
+                onClick={() =>
+                    onSave({
+                        name,
+                        phone,
+                        email,
+                        ...(type === "doctor" ? { specialization } : {}),
+                        ...(type === "collector" ? { maxCollectionsPerDay: maxPerDay } : {})
+                    })
+                }
+                className="mt-4 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
+            >
+                {busy ? "Saving…" : "Save changes"}
+            </button>
         </div>
     );
 }
