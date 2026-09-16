@@ -23,6 +23,8 @@ export interface StaffMember {
     phone?: string | null;
     email?: string | null;
     specialization?: string | null;
+    qualifications?: string | null;
+    photoUrl?: string | null;
     is_active?: boolean;
     status?: string;
     max_collections_per_day?: number;
@@ -38,6 +40,51 @@ const INITIAL: StaffState = {};
 
 function isActive(member: StaffMember): boolean {
     return member.status ? member.status === "ACTIVE" : member.is_active !== false;
+}
+
+/**
+ * A doctor's face, or their initials.
+ *
+ * The fallback is initials rather than a stock silhouette: a generic avatar on
+ * every row tells a patient nothing and makes a clinic that has not filled
+ * anything in look like one that has.
+ */
+function StaffFace({
+    member,
+    size = "small"
+}: {
+    member: Pick<StaffMember, "name" | "photoUrl">;
+    size?: "small" | "large";
+}) {
+    const box = size === "large" ? "h-12 w-12 text-sm" : "h-9 w-9 text-xs";
+
+    const initials = member.name
+        .replace(/^Dr\.?\s+/i, "")
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part) => part[0]?.toUpperCase() ?? "")
+        .join("");
+
+    if (member.photoUrl) {
+        return (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+                src={member.photoUrl}
+                alt=""
+                className={`${box} shrink-0 rounded-full object-cover ring-1 ring-slate-200`}
+            />
+        );
+    }
+
+    return (
+        <span
+            className={`${box} flex shrink-0 items-center justify-center rounded-full bg-brand-50 font-semibold text-brand-700 ring-1 ring-slate-200`}
+            aria-hidden="true"
+        >
+            {initials || "·"}
+        </span>
+    );
 }
 
 export function StaffManager({
@@ -258,8 +305,36 @@ export function StaffManager({
                                 </span>
                                 <input
                                     name="specialization"
+                                    placeholder="General Physician"
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                                 />
+                            </label>
+                            <label className="space-y-1">
+                                <span className="text-xs font-medium text-slate-600">
+                                    Qualifications
+                                </span>
+                                <input
+                                    name="qualifications"
+                                    maxLength={160}
+                                    placeholder="MBBS, MD (General Medicine)"
+                                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                />
+                                <span className="block text-xs text-slate-400">
+                                    Shown to patients when they choose a doctor.
+                                </span>
+                            </label>
+                            <label className="space-y-1 sm:col-span-2">
+                                <span className="text-xs font-medium text-slate-600">
+                                    Photo address
+                                </span>
+                                <input
+                                    name="photoUrl"
+                                    placeholder="https://example.com/dr-kumar.jpg"
+                                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                                />
+                                <span className="block text-xs text-slate-400">
+                                    Optional. Their initials are shown when there is no photo.
+                                </span>
                             </label>
                         </>
                     )}
@@ -304,12 +379,22 @@ export function StaffManager({
                                 return (
                                     <tr key={member.id}>
                                         <td className="px-4 py-3">
-                                            <div className="font-medium">{member.name}</div>
-                                            {member.specialization && (
-                                                <div className="text-xs text-slate-400">
-                                                    {member.specialization}
+                                            <div className="flex items-center gap-3">
+                                                <StaffFace member={member} />
+                                                <div>
+                                                    <div className="font-medium">{member.name}</div>
+                                                    {member.specialization && (
+                                                        <div className="text-xs text-slate-400">
+                                                            {member.specialization}
+                                                        </div>
+                                                    )}
+                                                    {member.qualifications && (
+                                                        <div className="text-xs text-slate-500">
+                                                            {member.qualifications}
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3 text-slate-600">
                                             <div>{member.phone ? displayPhone(member.phone) : "—"}</div>
@@ -411,6 +496,8 @@ function EditStaffPanel({
     const [phone, setPhone] = useState(member.phone ?? "");
     const [email, setEmail] = useState(member.email ?? "");
     const [specialization, setSpecialization] = useState(member.specialization ?? "");
+    const [qualifications, setQualifications] = useState(member.qualifications ?? "");
+    const [photoUrl, setPhotoUrl] = useState(member.photoUrl ?? "");
     const [maxPerDay, setMaxPerDay] = useState(member.max_collections_per_day ?? 8);
 
     return (
@@ -468,6 +555,40 @@ function EditStaffPanel({
                     </label>
                 )}
 
+                {type === "doctor" && (
+                    <label className="space-y-1">
+                        <span className="text-xs font-medium text-slate-600">Qualifications</span>
+                        <input
+                            value={qualifications}
+                            maxLength={160}
+                            placeholder="MBBS, MD (General Medicine)"
+                            onChange={(e) => setQualifications(e.target.value)}
+                            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                        />
+                        <span className="block text-xs text-slate-400">
+                            Shown to patients when they choose a doctor.
+                        </span>
+                    </label>
+                )}
+
+                {type === "doctor" && (
+                    <div className="space-y-1 sm:col-span-2">
+                        <span className="text-xs font-medium text-slate-600">Photo address</span>
+                        <div className="flex items-center gap-3">
+                            <StaffFace member={{ ...member, name, photoUrl }} size="large" />
+                            <input
+                                value={photoUrl}
+                                placeholder="https://example.com/dr-kumar.jpg"
+                                onChange={(e) => setPhotoUrl(e.target.value)}
+                                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                            />
+                        </div>
+                        <span className="block text-xs text-slate-400">
+                            Leave blank to show their initials instead.
+                        </span>
+                    </div>
+                )}
+
                 {type === "collector" && (
                     <label className="space-y-1">
                         <span className="text-xs font-medium text-slate-600">
@@ -492,7 +613,7 @@ function EditStaffPanel({
                             name,
                             phone,
                             email,
-                            ...(type === "doctor" ? { specialization } : {}),
+                            ...(type === "doctor" ? { specialization, qualifications, photoUrl } : {}),
                             ...(type === "collector" ? { maxCollectionsPerDay: maxPerDay } : {})
                         })
                     }

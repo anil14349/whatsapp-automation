@@ -41,6 +41,8 @@ export async function createStaff(_previous: StaffState, formData: FormData): Pr
     const email = String(formData.get("email") ?? "").trim();
     const phone = String(formData.get("phone") ?? "").replace(/[^\d]/g, "");
     const specialization = String(formData.get("specialization") ?? "").trim();
+    const qualifications = String(formData.get("qualifications") ?? "").trim();
+    const photoUrl = String(formData.get("photoUrl") ?? "").trim();
 
     if (!name) {
         return { error: "Name is required." };
@@ -61,7 +63,9 @@ export async function createStaff(_previous: StaffState, formData: FormData): Pr
             name,
             email: email || undefined,
             phone: phone || undefined,
-            specialization: specialization || undefined
+            specialization: specialization || undefined,
+            qualifications: qualifications || undefined,
+            photoUrl: photoUrl || undefined
         }
     });
 
@@ -148,6 +152,8 @@ export interface StaffEdit {
     phone?: string;
     email?: string;
     specialization?: string;
+    qualifications?: string;
+    photoUrl?: string;
     maxCollectionsPerDay?: number;
 }
 

@@ -6,7 +6,16 @@ import type { StaffType } from "./actions";
 
 async function load(type: StaffType): Promise<StaffMember[]> {
     const result = await callAsUser(`staff?type=${type}`);
-    return result.ok ? (result.data.staff ?? []) : [];
+
+    if (!result.ok) {
+        return [];
+    }
+
+    // The table is snake_case and the component is not.
+    return (result.data.staff ?? []).map((row: any) => ({
+        ...row,
+        photoUrl: row.photo_url ?? null
+    }));
 }
 
 export default async function StaffPage() {

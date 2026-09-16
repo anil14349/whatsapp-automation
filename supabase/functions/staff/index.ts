@@ -35,6 +35,8 @@ interface CreateStaffRequest {
   email?: string;
   phone?: string;
   specialization?: string;
+  qualifications?: string;
+  photoUrl?: string;
   maxCollectionsPerDay?: number;
   /** Optional initial credential; generated when omitted. */
   pin?: string;
@@ -53,6 +55,8 @@ interface UpdateStaffRequest {
   phone?: string;
   email?: string;
   specialization?: string;
+  qualifications?: string;
+  photoUrl?: string;
   maxCollectionsPerDay?: number;
 }
 
@@ -178,7 +182,7 @@ async function listStaff(
   type: StaffType
 ) {
   const columns: Record<StaffType, string> = {
-    doctor: "id, name, phone, email, specialization, is_active, availability_status",
+    doctor: "id, name, phone, email, specialization, qualifications, photo_url, is_active, availability_status",
     receptionist: "id, name, phone, email, status",
     collector: "id, name, phone, email, is_active, max_collections_per_day"
   };
@@ -236,6 +240,14 @@ async function createStaff(
       return { status: 400, payload: { error: "phone is required for a doctor" } };
     }
 
+    const photoUrl = body.photoUrl?.trim() || null;
+
+    // Reaches the browser as an img src, so anything but http(s) is a script
+    // rather than a photograph.
+    if (photoUrl && !/^https?:\/\//i.test(photoUrl)) {
+      return { status: 400, payload: { error: "The photo address must start with http:// or https://" } };
+    }
+
     const pin = body.pin?.trim() || generatePin();
     const strength = validatePinStrength(pin);
 
@@ -251,11 +263,13 @@ async function createStaff(
         phone,
         email: email ?? null,
         specialization: body.specialization ?? null,
+        qualifications: body.qualifications?.trim().slice(0, 160) || null,
+        photo_url: photoUrl,
         is_active: true,
         availability_status: "AVAILABLE",
         pin_hash: await hashPassword(pin)
       })
-      .select("id, name, phone, email, specialization")
+      .select("id, name, phone, email, specialization, qualifications, photo_url")
       .single();
 
     if (error) {
@@ -627,6 +641,22 @@ async function editStaff(
 
   if (body.specialization !== undefined && body.type === "doctor") {
     patch.specialization = body.specialization.trim() || null;
+  }
+
+  if (body.qualifications !== undefined && body.type === "doctor") {
+    patch.qualifications = body.qualifications.trim().slice(0, 160) || null;
+  }
+
+  if (body.photoUrl !== undefined && body.type === "doctor") {
+    const photo = body.photoUrl.trim();
+
+    // Reaches the browser as an img src, so anything but http(s) is a script
+    // rather than a photograph.
+    if (photo && !/^https?:\/\//i.test(photo)) {
+      return { status: 400, payload: { error: "The photo address must start with http:// or https://" } };
+    }
+
+    patch.photo_url = photo || null;
   }
 
   if (body.maxCollectionsPerDay !== undefined && body.type === "collector") {

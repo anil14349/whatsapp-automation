@@ -2064,13 +2064,17 @@ export class PatientFlowHandler {
                           ? "Offline"
                           : "ऑफलाइन";
 
+                // A patient choosing between names has little to choose on, so
+                // the qualification goes in front of the availability: it is
+                // what they are actually weighing up.
+                const detail = [doc.specialization, doc.qualifications, statusLabel]
+                    .filter((part: unknown) => typeof part === "string" && part.trim() !== "")
+                    .join(" · ");
+
                 return {
                     id: `doctor_${doc.id}`,
                     title: this.truncate(`${available ? "✅" : "⚠️"} Dr. ${doc.name}`, 24),
-                    description: this.truncate(
-                        doc.specialization ? `${doc.specialization} · ${statusLabel}` : statusLabel,
-                        72
-                    )
+                    description: this.truncate(detail, 72)
                 };
             });
 
