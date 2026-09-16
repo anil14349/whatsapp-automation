@@ -575,6 +575,19 @@ async function editStaff(
       return { status: 400, payload: { error: "A WhatsApp number is required" } };
     }
 
+    // Mirror of the email rule below: whichever is left has to be enough to
+    // sign in with, or the database refuses it and the message means nothing.
+    if (!phone && body.type === "receptionist") {
+      const email = body.email !== undefined ? body.email.trim() : existing.email;
+
+      if (!email) {
+        return {
+          status: 400,
+          payload: { error: "A receptionist needs an email or a WhatsApp number to sign in" }
+        };
+      }
+    }
+
     if (phone && (phone.length < 10 || phone.length > 15)) {
       return { status: 400, payload: { error: "Enter the number including country code" } };
     }

@@ -181,7 +181,10 @@ export async function handleReceptionistLogin(req: Request): Promise<Response> {
         );
       }
 
-      return badRequestResponse("Invalid email or password");
+      // Worded exactly as the "no such account" reply, so the difference
+      // between a wrong password and an account that does not exist cannot be
+      // read off the response.
+      return badRequestResponse("Invalid sign in details");
     }
 
     // Clear failed attempts on successful login
