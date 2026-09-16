@@ -8,6 +8,13 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { debug } from "./logger.ts";
 
+/**
+ * Admins were missing from this, and so were never locked out: the column is
+ * constrained to these values, so a failed admin attempt violated the check
+ * and was discarded.
+ */
+export type LoginUserType = "doctor" | "receptionist" | "admin";
+
 export interface RateLimitConfig {
   maxAttempts: number;        // Max failed attempts before lockout
   lockoutDurationMinutes: number;  // How long to lock account
@@ -32,7 +39,7 @@ export const DEFAULT_RATE_LIMIT: RateLimitConfig = {
 export async function isRateLimited(
   supabase: SupabaseClient,
   userId: string,
-  userType: "doctor" | "receptionist"
+  userType: LoginUserType
 ): Promise<boolean> {
   try {
     const now = new Date();
@@ -99,8 +106,9 @@ export async function isRateLimited(
 export async function recordFailedAttempt(
   supabase: SupabaseClient,
   userId: string,
-  userType: "doctor" | "receptionist",
-  clinicId: string
+  userType: LoginUserType,
+  /** Null for a platform admin, who belongs to no clinic. */
+  clinicId: string | null
 ): Promise<boolean> {
   try {
     const now = new Date();
@@ -193,7 +201,7 @@ export async function recordFailedAttempt(
 export async function clearFailedAttempts(
   supabase: SupabaseClient,
   userId: string,
-  userType: "doctor" | "receptionist"
+  userType: LoginUserType
 ): Promise<void> {
   try {
     await supabase
@@ -227,7 +235,7 @@ export async function clearFailedAttempts(
 export async function getRemainingLockoutTime(
   supabase: SupabaseClient,
   userId: string,
-  userType: "doctor" | "receptionist"
+  userType: LoginUserType
 ): Promise<number> {
   try {
     const { data, error } = await supabase

@@ -136,27 +136,29 @@ not a self-service one.
 
 ## Lockout
 
-**Doctors and receptionists** lock for 15 minutes after three failed attempts,
-counted in `login_rate_limits`.
+Three failed attempts locks an account for 15 minutes, counted in
+`login_rate_limits`. This applies to **all four kinds** of login.
 
 It is in the database rather than in memory on purpose. It used to be a
 module-level counter, and because edge isolates are recycled between requests
 the count reset constantly — the lockout never actually fired in production.
 The symptom was "3 attempts remaining" over and over.
 
-**Admins have no lockout.** `admins-auth-login` does not rate limit, so an
-admin password can be guessed at indefinitely. Verified by signing in
-successfully straight after three deliberate failures.
+Admins were left out of it for longer. `login_rate_limits.user_type` was
+constrained to `'doctor'` and `'receptionist'`, so a failed admin attempt
+violated the check and was discarded, and the account that creates staff and
+changes every setting was the only one a password could be guessed at
+indefinitely. Migration 030 widened the constraint, made `clinic_id` nullable
+for platform admins who have no clinic, and replaced the uniqueness with one
+that a null clinic cannot slip past — otherwise each attempt would have written
+a new row and the counter would never have passed one.
 
-This is the highest-value account in the system — it creates staff, changes
-every setting and reads the clinic's figures — and it is the only one without
-brute-force protection. Closing it needs a migration as well as code:
-`login_rate_limits.user_type` is constrained to `'doctor'` and
-`'receptionist'`, and its `clinic_id` is `NOT NULL`, which a platform admin
-does not have.
+The lock is checked **after** the account is found but **before** the password
+is compared: checking earlier would confirm which addresses exist by locking
+them, and checking later lets a locked account keep being probed.
 
-Until then, the mitigations available are a long random admin password and
-keeping the number of admin accounts small.
+`scripts/reset-admin-password.ts` clears the counter, so a forgotten password
+and a lockout are resolved together.
 
 ---
 

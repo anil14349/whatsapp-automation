@@ -13,6 +13,13 @@ import { badRequestResponse, errorResponse, forbiddenResponse, successResponse }
 import { isClinicActive } from "../shared/clinic-status.ts";
 import { debug } from "../shared/logger.ts";
 import { verifyPassword } from "../shared/bcrypt-password.ts";
+import {
+  isRateLimited,
+  recordFailedAttempt,
+  clearFailedAttempts,
+  getRemainingLockoutTime,
+  DEFAULT_RATE_LIMIT
+} from "../shared/rate-limiting.ts";
 import { withCors } from "../shared/cors.ts";
 
 interface LoginRequest {
@@ -76,15 +83,45 @@ export async function handleAdminLogin(req: Request): Promise<Response> {
     const supabase = createClient(supabaseUrl, supabaseKey);
     const admin = await findAdmin(supabase, body.email, body.clinicId);
 
+    // Checked before the password so a locked account cannot be probed, and
+    // only once an account is known, or this would confirm which addresses
+    // exist by locking them.
+    if (admin && await isRateLimited(supabase, admin.id, "admin")) {
+      const minutes = await getRemainingLockoutTime(supabase, admin.id, "admin");
+
+      debug("adminLogin", "Login rejected, locked out", { adminId: admin.id });
+
+      return badRequestResponse(
+        `Too many failed attempts. Try again in ${minutes} minutes.`
+      );
+    }
+
     // A missing account and a wrong password must be indistinguishable.
     const passwordValid = admin?.password_hash
       ? await verifyPassword(body.password, admin.password_hash)
       : false;
 
     if (!admin || !passwordValid) {
+      if (admin) {
+        const locked = await recordFailedAttempt(
+          supabase,
+          admin.id,
+          "admin",
+          admin.clinic_id ?? null
+        );
+
+        if (locked) {
+          return badRequestResponse(
+            `Invalid credentials. Account locked for ${DEFAULT_RATE_LIMIT.lockoutDurationMinutes} minutes.`
+          );
+        }
+      }
+
       debug("adminLogin", "Login rejected", { email: body.email });
       return badRequestResponse("Invalid credentials");
     }
+
+    await clearFailedAttempts(supabase, admin.id, "admin");
 
     // A platform ADMIN has no clinic and stays reachable so a deactivated
     // clinic can still be turned back on.
