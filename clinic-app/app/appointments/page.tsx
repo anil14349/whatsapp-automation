@@ -7,7 +7,7 @@
 
 import { redirect } from "next/navigation";
 import { callAsUser, readSession } from "@/lib/portal";
-import { PortalNav } from "@/app/nav";
+import { PortalShell, loadBranding } from "@/app/shell";
 import { WalkInForm, type DoctorOption } from "./walk-in-form";
 import { AppointmentTable, type AppointmentRow } from "./appointment-table";
 import type { ServiceOption } from "./actions";
@@ -50,6 +50,8 @@ export default async function AppointmentsPage({
         ? (await callAsUser("receptionists-appointments?resource=services")).data?.services ?? []
         : [];
 
+    const branding = await loadBranding();
+
     const rows: AppointmentRow[] = result.ok
         ? (result.data.appointments ?? []).map((a: any) => ({
             id: a.id,
@@ -71,9 +73,7 @@ export default async function AppointmentsPage({
     rows.sort((a, b) => a.time.localeCompare(b.time));
 
     return (
-        <main className="mx-auto max-w-5xl p-6">
-            <PortalNav session={session} />
-
+        <PortalShell session={session} branding={branding}>
             <h1 className="mb-4 text-xl font-semibold">Appointments</h1>
 
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -126,6 +126,6 @@ export default async function AppointmentsPage({
                     services={services}
                 />
             )}
-        </main>
+        </PortalShell>
     );
 }

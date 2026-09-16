@@ -5,11 +5,13 @@ const config: Config = {
     theme: {
         extend: {
             colors: {
+                // Read from CSS variables so a clinic's own colour can replace
+                // them at runtime. The defaults live in globals.css.
                 brand: {
-                    50: "#eef7f4",
-                    500: "#0f766e",
-                    600: "#0d6a62",
-                    700: "#0b564f"
+                    50: "var(--brand-50)",
+                    500: "var(--brand-500)",
+                    600: "var(--brand-600)",
+                    700: "var(--brand-700)"
                 }
             }
         }

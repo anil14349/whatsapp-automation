@@ -4,6 +4,12 @@
 
 :root {
     color-scheme: light;
+
+    /* A clinic that has set no colour keeps these. */
+    --brand-50: #eef7f4;
+    --brand-500: #0f766e;
+    --brand-600: #0d6a62;
+    --brand-700: #0b564f;
 }
 
 body {

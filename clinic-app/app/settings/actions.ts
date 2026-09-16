@@ -20,6 +20,8 @@ export interface ClinicDetails {
     afterHoursMessage: string | null;
     afterHoursReply: boolean;
     revisitWindowDays: number;
+    logoUrl: string | null;
+    brandColour: string | null;
 }
 
 export interface DayHours {
@@ -49,7 +51,9 @@ export async function saveDetails(
         timezone: String(formData.get("timezone") ?? "").trim(),
         afterHoursMessage: String(formData.get("afterHoursMessage") ?? "").trim(),
         afterHoursReply: formData.get("afterHoursReply") === "on",
-        revisitWindowDays: Number(formData.get("revisitWindowDays") ?? 0)
+        revisitWindowDays: Number(formData.get("revisitWindowDays") ?? 0),
+        logoUrl: String(formData.get("logoUrl") ?? "").trim(),
+        brandColour: String(formData.get("brandColour") ?? "").trim()
     };
 
     const result = await callAsUser("clinic-settings", { method: "PATCH", body });

@@ -7,7 +7,7 @@
 
 import { redirect } from "next/navigation";
 import { callAsUser, readSession } from "@/lib/portal";
-import { PortalNav } from "@/app/nav";
+import { PortalShell, loadBranding } from "@/app/shell";
 import { ServiceManager } from "./service-manager";
 import { AddServiceForm } from "./add-service-form";
 import type { ServiceRow } from "./actions";
@@ -31,11 +31,10 @@ export default async function ServicesPage() {
 
     const services: ServiceRow[] = result.ok ? (result.data.services ?? []) : [];
     const offered = services.filter((s) => s.isEnabled).length;
+    const branding = await loadBranding();
 
     return (
-        <main className="mx-auto max-w-4xl p-6">
-            <PortalNav session={session} />
-
+        <PortalShell session={session} branding={branding} width="max-w-4xl">
             <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
                 <h1 className="text-xl font-semibold">Services</h1>
                 <p className="text-sm text-slate-500">
@@ -60,6 +59,6 @@ export default async function ServicesPage() {
             </div>
 
             <ServiceManager services={services} />
-        </main>
+        </PortalShell>
     );
 }

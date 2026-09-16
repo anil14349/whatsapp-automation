@@ -45,7 +45,7 @@ async function getSettings(
   const [clinic, hours, holidays] = await Promise.all([
     supabase
       .from("clinics")
-      .select("id, name, phone, email, address, city, country, timezone, open_time, close_time, working_days, after_hours_message, enable_after_hours_reply, revisit_window_days")
+      .select("id, name, phone, email, address, city, country, timezone, open_time, close_time, working_days, after_hours_message, enable_after_hours_reply, revisit_window_days, logo_url, brand_colour")
       .eq("id", clinicId)
       .maybeSingle(),
     supabase
@@ -102,7 +102,9 @@ async function getSettings(
         timezone: clinic.data.timezone,
         afterHoursMessage: clinic.data.after_hours_message,
         afterHoursReply: clinic.data.enable_after_hours_reply === true,
-        revisitWindowDays: Number(clinic.data.revisit_window_days ?? 0)
+        revisitWindowDays: Number(clinic.data.revisit_window_days ?? 0),
+        logoUrl: clinic.data.logo_url,
+        brandColour: clinic.data.brand_colour
       },
       hours: week,
       holidays: holidays.data ?? []
@@ -214,6 +216,26 @@ async function updateSettings(
     }
 
     patch.revisit_window_days = days;
+  }
+
+  const logoUrl = text(body.logoUrl);
+  if (logoUrl !== undefined) {
+    // This ends up in an img src, so javascript: or data: there is a script
+    // rather than a picture.
+    if (logoUrl && !/^https?:\/\//i.test(logoUrl)) {
+      return { status: 400, payload: { error: "The logo address must start with http:// or https://" } };
+    }
+
+    patch.logo_url = logoUrl || null;
+  }
+
+  const brandColour = text(body.brandColour);
+  if (brandColour !== undefined) {
+    if (brandColour && !/^#[0-9A-Fa-f]{6}$/.test(brandColour)) {
+      return { status: 400, payload: { error: "The colour must be a hex value such as #0f766e" } };
+    }
+
+    patch.brand_colour = brandColour || null;
   }
 
   // The timezone decides what "today" means for every slot and reminder, so a

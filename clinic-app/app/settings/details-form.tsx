@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { saveDetails, addClosure, type ClinicDetails, type SettingsState } from "./actions";
 import { TimezoneField } from "./timezone-field";
+import { readableOn } from "@/lib/theme";
 
 export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
     const [state, action, pending] = useActionState<SettingsState, FormData>(saveDetails, {});
@@ -22,6 +23,13 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
                 </div>
 
                 <TimezoneField value={clinic.timezone} />
+            </div>
+
+            <div className="mt-4 border-t border-slate-100 pt-4">
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                    Appearance
+                </h3>
+                <BrandingFields logoUrl={clinic.logoUrl} brandColour={clinic.brandColour} />
             </div>
 
             <div className="mt-4 border-t border-slate-100 pt-4">
@@ -130,14 +138,100 @@ export function AddClosureForm() {
     );
 }
 
+/**
+ * The logo and colour, shown as they will actually appear.
+ *
+ * A hex field on its own gives no idea what the header will look like, and a
+ * pale colour with white text on it is only obvious once you see it.
+ */
+function BrandingFields({
+    logoUrl,
+    brandColour
+}: {
+    logoUrl: string | null;
+    brandColour: string | null;
+}) {
+    const [logo, setLogo] = useState(logoUrl ?? "");
+    const [colour, setColour] = useState(brandColour ?? "");
+
+    const valid = /^#[0-9a-f]{6}$/i.test(colour);
+    const preview = valid ? colour : "#0f766e";
+
+    return (
+        <div className="grid gap-3 sm:grid-cols-2">
+            <label className="space-y-1 sm:col-span-2">
+                <span className="block text-xs font-medium text-slate-600">Logo address</span>
+                <input
+                    name="logoUrl"
+                    value={logo}
+                    onChange={(e) => setLogo(e.target.value)}
+                    placeholder="https://example.com/logo.png"
+                    className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                />
+                <span className="block text-xs text-slate-400">
+                    Leave blank to show the clinic&apos;s initials instead.
+                </span>
+            </label>
+
+            <label className="space-y-1">
+                <span className="block text-xs font-medium text-slate-600">Colour</span>
+                <div className="flex items-center gap-2">
+                    <input
+                        type="color"
+                        value={preview}
+                        onChange={(e) => setColour(e.target.value)}
+                        aria-label="Pick a colour"
+                        className="h-9 w-12 cursor-pointer rounded border border-slate-200"
+                    />
+                    <input
+                        name="brandColour"
+                        value={colour}
+                        onChange={(e) => setColour(e.target.value)}
+                        placeholder="#0f766e"
+                        className="w-32 rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                    />
+                </div>
+                {colour && !valid && (
+                    <span className="block text-xs text-amber-700">
+                        Needs to look like #0f766e
+                    </span>
+                )}
+            </label>
+
+            <div className="space-y-1">
+                <span className="block text-xs font-medium text-slate-600">Preview</span>
+                <div className="flex items-center gap-2 rounded-lg border border-slate-200 p-2">
+                    {logo ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={logo} alt="" className="h-8 w-8 rounded-lg object-contain" />
+                    ) : (
+                        <span
+                            className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold"
+                            style={{ backgroundColor: preview, color: readableOn(preview) }}
+                        >
+                            CL
+                        </span>
+                    )}
+                    <button
+                        type="button"
+                        className="rounded-lg px-3 py-1.5 text-sm font-medium"
+                        style={{ backgroundColor: preview, color: readableOn(preview) }}
+                    >
+                        Button
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function Field({
     label,
     name,
     defaultValue,
     type = "text",
     required = false
-}: {
-    label: string;
+}: {    label: string;
     name: string;
     defaultValue: string;
     type?: string;
