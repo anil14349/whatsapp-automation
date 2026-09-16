@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { saveDetails, addClosure, type ClinicDetails, type SettingsState } from "./actions";
+import { TimezoneField } from "./timezone-field";
 
 export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
     const [state, action, pending] = useActionState<SettingsState, FormData>(saveDetails, {});
@@ -20,12 +21,7 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
                     <Field label="Address" name="address" defaultValue={clinic.address ?? ""} />
                 </div>
 
-                <Field
-                    label="Timezone"
-                    name="timezone"
-                    defaultValue={clinic.timezone}
-                    hint="Decides what today means for slots and reminders"
-                />
+                <TimezoneField value={clinic.timezone} />
             </div>
 
             <div className="mt-4 border-t border-slate-100 pt-4">
@@ -119,15 +115,13 @@ function Field({
     name,
     defaultValue,
     type = "text",
-    required = false,
-    hint
+    required = false
 }: {
     label: string;
     name: string;
     defaultValue: string;
     type?: string;
     required?: boolean;
-    hint?: string;
 }) {
     return (
         <label className="space-y-1">
@@ -139,7 +133,6 @@ function Field({
                 required={required}
                 className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
             />
-            {hint && <span className="block text-xs text-slate-400">{hint}</span>}
         </label>
     );
 }
