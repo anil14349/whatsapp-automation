@@ -7,11 +7,62 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { callAsUser } from "@/lib/portal";
+import { callAsUser, uploadAsUser } from "@/lib/portal";
 
 export interface BookingState {
     error?: string;
     success?: string;
+}
+
+export interface SentDocument {
+    id: string;
+    kind: string;
+    file_name: string;
+    status: string;
+    error_message: string | null;
+    sent_at: string | null;
+    created_at: string;
+}
+
+export async function loadDocuments(appointmentId: string): Promise<SentDocument[]> {
+    const result = await callAsUser(
+        `patient-documents?appointmentId=${encodeURIComponent(appointmentId)}`
+    );
+
+    return result.ok ? (result.data.documents ?? []) : [];
+}
+
+/**
+ * Send a report or prescription to the patient.
+ *
+ * The file is forwarded rather than read here: the portal has no service key,
+ * and putting one in it would give the browser process a way into every table.
+ */
+export async function sendDocument(
+    _previous: BookingState,
+    formData: FormData
+): Promise<BookingState> {
+    const file = formData.get("file");
+
+    if (!(file instanceof File) || file.size === 0) {
+        return { error: "Choose a file first." };
+    }
+
+    const result = await uploadAsUser("patient-documents", formData);
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not send the document." };
+    }
+
+    revalidatePath("/appointments");
+
+    // Stored but refused by Meta is not success, and the desk has to know
+    // because the patient is waiting for the result.
+    if (result.data?.status === "FAILED") {
+        return { error: result.data.error ?? "Saved, but WhatsApp would not accept it." };
+    }
+
+    return { success: "Sent." };
 }
 
 export async function loadSlots(doctorId: string, date: string): Promise<string[]> {

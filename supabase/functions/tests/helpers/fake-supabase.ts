@@ -287,9 +287,82 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
     }
 }
 
+export interface StoredObject {
+    bucket: string;
+    path: string;
+    bytes: number;
+    contentType?: string;
+}
+
+/**
+ * Enough of Supabase Storage to tell a stored file from a lost one.
+ *
+ * Object keys are recorded rather than contents: what the tests care about is
+ * which key was written, that a clinic cannot address another's, and that a
+ * half-finished upload is cleaned up rather than left orphaned.
+ */
+class FakeStorage {
+    readonly objects: StoredObject[] = [];
+
+    /** Set to make the next upload fail the way a full bucket would. */
+    uploadError: { message: string } | null = null;
+    signedUrlError: { message: string } | null = null;
+
+    from(bucket: string) {
+        const objects = this.objects;
+        const self = this;
+
+        return {
+            async upload(path: string, body: Uint8Array, opts?: { contentType?: string }) {
+                if (self.uploadError) {
+                    return { data: null, error: self.uploadError };
+                }
+
+                if (objects.some((o) => o.bucket === bucket && o.path === path)) {
+                    return { data: null, error: { message: "The resource already exists" } };
+                }
+
+                objects.push({
+                    bucket,
+                    path,
+                    bytes: body.byteLength,
+                    contentType: opts?.contentType
+                });
+
+                return { data: { path }, error: null };
+            },
+
+            async remove(paths: string[]) {
+                for (const path of paths) {
+                    const at = objects.findIndex((o) => o.bucket === bucket && o.path === path);
+                    if (at >= 0) objects.splice(at, 1);
+                }
+
+                return { data: null, error: null };
+            },
+
+            async createSignedUrl(path: string, seconds: number) {
+                if (self.signedUrlError) {
+                    return { data: null, error: self.signedUrlError };
+                }
+
+                if (!objects.some((o) => o.bucket === bucket && o.path === path)) {
+                    return { data: null, error: { message: "Object not found" } };
+                }
+
+                return {
+                    data: { signedUrl: `https://storage.test/${bucket}/${path}?exp=${seconds}` },
+                    error: null
+                };
+            }
+        };
+    }
+}
+
 export class FakeSupabaseClient {
     readonly store: SeedData;
     readonly writes: Array<{ table: string; action: string; rows: Row[] }> = [];
+    readonly storage = new FakeStorage();
     private readonly failures: Record<string, any> = {};
 
     constructor(seed: SeedData = {}) {

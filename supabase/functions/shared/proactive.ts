@@ -46,6 +46,11 @@
  *   staff_new_booking          {{1}} patient  {{2}} date  {{3}} time
  *     "New booking: {{1}} on {{2}} at {{3}}."
  *
+ *   patient_document           header: DOCUMENT   {{1}} patient  {{2}} what it is
+ *     Header set to a document, body:
+ *     "Hi {{1}}, your {{2}} from the clinic is attached. Reply to this message
+ *      if you have any questions."
+ *
  * Until a template is approved the fallback cannot fire, and a send outside the
  * window returns template_unavailable rather than being retried. That is
  * deliberate: retrying a template Meta has never heard of is noise.
@@ -66,7 +71,8 @@ export type TemplateKey =
     | "appointment_delay"
     | "staff_credential"
     | "waitlist_slot_available"
-    | "staff_new_booking";
+    | "staff_new_booking"
+    | "patient_document";
 
 /**
  * Template names are per WhatsApp Business Account, so a clinic that already
@@ -86,6 +92,8 @@ export interface ProactiveTemplate {
     language?: string;
     /** In the order the registered template numbers them. */
     parameters: string[];
+    /** For a template registered with a media header, such as a report. */
+    header?: { type: "document"; link: string; filename: string } | { type: "image"; link: string };
 }
 
 export interface ProactiveResult {
@@ -131,10 +139,14 @@ export async function sendProactive(
     client: WhatsAppClient,
     phone: string,
     freeform: string,
-    template: ProactiveTemplate | null
+    template: ProactiveTemplate | null,
+    /** Sent instead of the plain text when the window is still open. */
+    document?: { link: string; filename: string }
 ): Promise<ProactiveResult> {
     try {
-        const messageId = await client.sendTextMessage(phone, freeform);
+        const messageId = document
+            ? await client.sendDocumentMessage(phone, document.link, document.filename, freeform)
+            : await client.sendTextMessage(phone, freeform);
 
         return { delivered: true, messageId, via: "text", retryable: false };
     } catch (error) {
@@ -168,7 +180,8 @@ async function sendTemplate(
             phone,
             name,
             templateLanguage(template.language),
-            template.parameters
+            template.parameters,
+            template.header
         );
 
         debug("proactive", "Delivered by template", { phone, template: name });

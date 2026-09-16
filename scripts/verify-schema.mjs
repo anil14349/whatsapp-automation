@@ -157,6 +157,7 @@ for (const [table, definition] of Object.entries(spec.definitions ?? {})) {
 }
 
 const problems = [];
+const unknownTables = new Map();
 let checked = 0;
 
 for (const file of sourceFiles(FUNCTIONS_DIR)) {
@@ -165,9 +166,15 @@ for (const file of sourceFiles(FUNCTIONS_DIR)) {
     for (const ref of extractReferences(source, file)) {
         const columns = schema.get(ref.table);
 
-        // An unknown table is usually a view or a typo in a comment; report it
-        // separately rather than flooding the output with its columns.
-        if (!columns) continue;
+        // A table that does not exist is the worst version of the thing this
+        // gate is for, and it used to pass silently: the whole query was
+        // skipped, so none of its columns were ever counted.
+        if (!columns) {
+            if (!unknownTables.has(ref.table)) {
+                unknownTables.set(ref.table, `${ref.file}:${ref.line}`);
+            }
+            continue;
+        }
 
         checked++;
 
@@ -177,14 +184,29 @@ for (const file of sourceFiles(FUNCTIONS_DIR)) {
     }
 }
 
-if (problems.length > 0) {
-    console.error("verify-schema: columns referenced that do not exist\n");
+if (problems.length > 0 || unknownTables.size > 0) {
+    if (problems.length > 0) {
+        console.error("verify-schema: columns referenced that do not exist\n");
 
-    for (const p of problems) {
-        console.error(`  ${p.file}:${p.line}  ${p.table}.${p.column}`);
+        for (const p of problems) {
+            console.error(`  ${p.file}:${p.line}  ${p.table}.${p.column}`);
+        }
     }
 
-    console.error(`\n${problems.length} problem(s) across ${checked} column references`);
+    if (unknownTables.size > 0) {
+        console.error("\nverify-schema: tables referenced that the database does not have\n");
+
+        for (const [table, where] of unknownTables) {
+            console.error(`  ${where}  ${table}`);
+        }
+
+        console.error("\nA migration that has not been applied looks exactly like this.");
+    }
+
+    console.error(
+        `\n${problems.length} column problem(s) and ${unknownTables.size} unknown table(s) ` +
+        `across ${checked} checked column references`
+    );
     process.exit(1);
 }
 

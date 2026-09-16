@@ -119,3 +119,43 @@ export async function callAsUser<T = any>(
 
     return callPortal<T>(path, { ...options, token: session.token });
 }
+
+/**
+ * Forward a file to an edge function.
+ *
+ * Separate from callPortal because Content-Type must be left unset: fetch adds
+ * it along with the multipart boundary, and setting it by hand produces a body
+ * the other end cannot parse.
+ */
+export async function uploadAsUser<T = any>(
+    path: string,
+    form: FormData
+): Promise<PortalResponse<T>> {
+    const session = await readSession();
+
+    if (!session) {
+        return { ok: false, status: 401, data: { error: "Not signed in" } as T };
+    }
+
+    const response = await fetch(`${functionsBase()}/${path}`, {
+        method: "POST",
+        headers: {
+            apikey: anonKey(),
+            Authorization: `Bearer ${anonKey()}`,
+            "X-Portal-Token": session.token
+        },
+        body: form,
+        cache: "no-store"
+    });
+
+    const text = await response.text();
+
+    let data: any;
+    try {
+        data = text ? JSON.parse(text) : null;
+    } catch {
+        data = { error: text };
+    }
+
+    return { ok: response.ok, status: response.status, data };
+}

@@ -10,6 +10,7 @@ import {
     type ServiceOption
 } from "./actions";
 import { PhoneField } from "@/components/phone-field";
+import { DocumentPanel } from "./document-panel";
 import { displayPhone } from "@/lib/phone";
 import { useNotice } from "@/lib/use-notice";
 
@@ -61,6 +62,7 @@ export function AppointmentTable({
     const [busy, start] = useTransition();
     const [moving, setMoving] = useState<AppointmentRow | null>(null);
     const [editing, setEditing] = useState<AppointmentRow | null>(null);
+    const [sending, setSending] = useState<AppointmentRow | null>(null);
     const [slots, setSlots] = useState<string[]>([]);
     const [newDate, setNewDate] = useState(date);
 
@@ -71,6 +73,7 @@ export function AppointmentTable({
     function beginMove(row: AppointmentRow) {
         setMoving(row);
         setEditing(null);
+        setSending(null);
         setNotice({});
 
         // In a search the page has no single day, so the row carries its own.
@@ -85,6 +88,14 @@ export function AppointmentTable({
 
     function beginEdit(row: AppointmentRow) {
         setEditing(row);
+        setMoving(null);
+        setSending(null);
+        setNotice({});
+    }
+
+    function beginSend(row: AppointmentRow) {
+        setSending(row);
+        setEditing(null);
         setMoving(null);
         setNotice({});
     }
@@ -194,6 +205,15 @@ export function AppointmentTable({
                 />
             )}
 
+            {sending && (
+                <DocumentPanel
+                    key={sending.id}
+                    appointmentId={sending.id}
+                    patientName={sending.patientName}
+                    onClose={() => setSending(null)}
+                />
+            )}
+
             <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
                 <table className="w-full text-left text-sm">
                     <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
@@ -278,6 +298,17 @@ export function AppointmentTable({
                                                         className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
                                                     >
                                                         Edit
+                                                    </button>
+                                                )}
+                                                {/* A result can follow a visit that was completed
+                                                    days ago, so this is not tied to the open state. */}
+                                                {row.status !== "CANCELLED" && (
+                                                    <button
+                                                        disabled={busy}
+                                                        onClick={() => beginSend(row)}
+                                                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
+                                                    >
+                                                        Send report
                                                     </button>
                                                 )}
                                                 {open && (                                                    <>

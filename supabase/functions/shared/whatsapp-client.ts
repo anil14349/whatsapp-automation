@@ -194,6 +194,34 @@ export class WhatsAppClient {
     }
 
     /**
+     * Send a document, such as a lab report or a prescription.
+     *
+     * Meta fetches the link itself at send time and re-hosts the file in the
+     * conversation, so the URL only has to be reachable for that moment and
+     * the patient keeps the document afterwards.
+     */
+    async sendDocumentMessage(
+        recipientPhone: string,
+        link: string,
+        filename: string,
+        caption?: string,
+        supabase?: SupabaseClient
+    ): Promise<string> {
+        const payload = {
+            messaging_product: "whatsapp",
+            to: recipientPhone,
+            type: "document",
+            document: {
+                link,
+                filename,
+                ...(caption ? { caption } : {})
+            }
+        };
+
+        return this.sendPayload(payload, recipientPhone, "document", caption || filename, supabase);
+    }
+
+    /**
      * Send a template message
      */
     async sendTemplateMessage(
@@ -201,8 +229,30 @@ export class WhatsAppClient {
         templateName: string,
         templateLanguage: string = "en",
         parameters?: string[],
+        /** For templates registered with a media header. */
+        header?: { type: "document"; link: string; filename: string } | { type: "image"; link: string },
         supabase?: SupabaseClient
     ): Promise<string> {
+        const components: unknown[] = [];
+
+        if (header) {
+            components.push({
+                type: "header",
+                parameters: [
+                    header.type === "document"
+                        ? { type: "document", document: { link: header.link, filename: header.filename } }
+                        : { type: "image", image: { link: header.link } }
+                ]
+            });
+        }
+
+        if (parameters && parameters.length > 0) {
+            components.push({
+                type: "body",
+                parameters: parameters.map((param) => ({ type: "text", text: param }))
+            });
+        }
+
         const payload = {
             messaging_product: "whatsapp",
             to: recipientPhone,
@@ -212,17 +262,7 @@ export class WhatsAppClient {
                 language: {
                     code: templateLanguage
                 },
-                ...(parameters && {
-                    components: [
-                        {
-                            type: "body",
-                            parameters: parameters.map((param) => ({
-                                type: "text",
-                                text: param
-                            }))
-                        }
-                    ]
-                })
+                ...(components.length > 0 && { components })
             }
         };
 
