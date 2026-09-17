@@ -9,6 +9,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as types from "./multi-clinic-types.ts";
 import { debug } from "./logger.ts";
+import { clinicInstant, getClinicTimezone } from "./clinic-slots.ts";
 
 /**
  * Format reminder message for patient
@@ -46,11 +47,18 @@ export async function createAppointmentReminders(
   appointmentTime: string   // HH:MM
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    // Calculate reminder times (24 hours and 1 hour before)
-    const appointmentDateTime = new Date(`${appointmentDate}T${appointmentTime}:00`);
-    
+    const timezone = await getClinicTimezone(supabase, clinicId);
+    const appointmentDateTime = clinicInstant(appointmentDate, appointmentTime, timezone);
+
     const reminder24h = new Date(appointmentDateTime.getTime() - 24 * 60 * 60 * 1000);
     const reminder1h = new Date(appointmentDateTime.getTime() - 60 * 60 * 1000);
+
+    // A booking made inside the window has already missed that reminder. Left
+    // PENDING it is simply overdue, so the scheduler fires it on its next pass
+    // -- which is how booking at 23:52 for 11:30 tomorrow produced a "reminder"
+    // one minute later.
+    const now = Date.now();
+    const statusFor = (at: Date) => (at.getTime() > now ? "PENDING" : "SKIPPED");
 
     const reminders = [
       {
@@ -58,14 +66,14 @@ export async function createAppointmentReminders(
         appointment_id: appointmentId,
         reminder_type: "24_HOUR",
         scheduled_time: reminder24h.toISOString(),
-        status: "PENDING"
+        status: statusFor(reminder24h)
       },
       {
         clinic_id: clinicId,
         appointment_id: appointmentId,
         reminder_type: "1_HOUR",
         scheduled_time: reminder1h.toISOString(),
-        status: "PENDING"
+        status: statusFor(reminder1h)
       }
     ];
 

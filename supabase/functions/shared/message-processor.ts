@@ -348,10 +348,12 @@ async function handleGreeting(
                 data: { language: savedLanguage }
             });
 
+            const clinic = await getClinicConfig(supabase, session.clinic_id);
             const handler = new PatientFlowHandler(supabase, whatsappClient);
-            await handler.handle(
+
+            await handler.greetReturningPatient(
                 { ...session, state: "MAIN_MENU", data: { language: savedLanguage } },
-                { type: "text", text: "" }
+                clinic.clinic_name
             );
             return;
         }

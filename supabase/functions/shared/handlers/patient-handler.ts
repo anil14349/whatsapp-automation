@@ -237,6 +237,27 @@ export class PatientFlowHandler {
     }
 
     /**
+     * A patient who has been here before and already has a language.
+     *
+     * Their greeting used to be the bare menu, so nothing in it said which
+     * clinic had answered — which matters when a patient deals with more than
+     * one on the same app.
+     */
+    async greetReturningPatient(session: WhatsAppSession, clinicName: string): Promise<void> {
+        this.clinicId = session.clinic_id;
+
+        const language = session.data?.language || "EN";
+
+        await this.showMainMenu(
+            session.phone,
+            language,
+            language === "EN"
+                ? `👋 Welcome back to ${clinicName}!`
+                : `👋 ${clinicName} में आपका फिर से स्वागत है!`
+        );
+    }
+
+    /**
      * MAIN_MENU - Show patient options
      */
     private async handleMainMenu(
@@ -783,15 +804,13 @@ export class PatientFlowHandler {
             selectedDoctorName: doctor.name
         });
 
-        await this.whatsappClient.sendTextMessage(
+        await this.showDateMenu(
             phone,
+            language,
             language === "EN"
                 ? `✅ You've selected Dr. ${doctor.name}.`
-                : `✅ आपने डॉ. ${doctor.name} का चयन किया है।`,
-            this.supabase
+                : `✅ आपने डॉ. ${doctor.name} का चयन किया है।`
         );
-
-        await this.showDateMenu(phone, language);
     }
 
     /**
@@ -2329,10 +2348,12 @@ export class PatientFlowHandler {
 
     }
 
-    private async showDateMenu(phone: string, language: string): Promise<void> {
-        const message = language === "EN"
+    private async showDateMenu(phone: string, language: string, intro?: string): Promise<void> {
+        const question = language === "EN"
             ? "When would you like your appointment?"
             : "कृपया अपनी नियुक्ति की तारीख चुनें।";
+
+        const message = intro ? `${intro}\n\n${question}` : question;
 
         await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
             { id: BUTTON_IDS.DATE_SELECT.TODAY, title: language === "EN" ? "Today" : "आज" },

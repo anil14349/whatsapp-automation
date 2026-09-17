@@ -42,6 +42,53 @@ export function addDays(date: string, days: number): string {
 }
 
 /**
+ * The actual instant a clinic means by "2026-09-18 at 11:30".
+ *
+ * `new Date("2026-09-18T11:30:00")` is read as UTC by a runtime whose clock is
+ * UTC, so for a clinic in Asia/Kolkata every such instant landed five and a
+ * half hours late. Anything measured backwards from it inherited that: the
+ * hour-before reminder for an 11:30 appointment came out at 16:00 local, four
+ * and a half hours after the patient had been and gone.
+ */
+export function clinicInstant(date: string, time: string, timezone: string): Date {
+    const naive = new Date(`${date}T${time}:00Z`);
+
+    // Two passes, because the offset is itself a function of the instant and a
+    // clinic near a DST boundary would otherwise be an hour out.
+    let guess = new Date(naive.getTime() - zoneOffsetMs(naive, timezone));
+    guess = new Date(naive.getTime() - zoneOffsetMs(guess, timezone));
+
+    return guess;
+}
+
+/** How far ahead of UTC the zone is at that instant, in milliseconds. */
+function zoneOffsetMs(instant: Date, timezone: string): number {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: timezone,
+        hour12: false,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit"
+    }).formatToParts(instant);
+
+    const part = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+
+    const asIfUtc = Date.UTC(
+        part("year"),
+        part("month") - 1,
+        part("day"),
+        part("hour") % 24,
+        part("minute"),
+        part("second")
+    );
+
+    return asIfUtc - instant.getTime();
+}
+
+/**
  * The clinic's own timezone, falling back to UTC when it has none set.
  */
 export async function getClinicTimezone(
