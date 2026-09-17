@@ -46,14 +46,38 @@ with the request, so this is the check that actually establishes the sender.
 
 To turn it on for a clinic:
 
-1. Meta → your app → **Settings → Basic** → **App secret** → Show.
-2. Store it against the clinic:
+1. Meta → your app → **Settings → Basic** → **App secret** → Show. It is a 32
+character hex string, and it is a password: it is the only thing that makes a
+signature unforgeable.
+
+2. Find the clinic id if you do not have it:
 
    ```sql
-   UPDATE clinics SET whatsapp_app_secret = '<app secret>' WHERE id = '<clinic-uuid>';
+   SELECT id, name FROM clinics;
    ```
 
-   Or, for a single-clinic deployment, as the secret `WHATSAPP_APP_SECRET`.
+3. Store the secret against that clinic:
+
+   ```sql
+   UPDATE clinics
+   SET whatsapp_app_secret = '<the app secret>'
+   WHERE id = '<clinic-uuid>';
+   ```
+
+   Run it in the dashboard SQL editor, or with psql:
+
+   ```powershell
+   psql "postgresql://postgres@db.<ref>.supabase.co:5432/postgres?sslmode=require"
+   ```
+
+   For a single-clinic deployment the secret `WHATSAPP_APP_SECRET` does the same
+   job, and applies only to `DEFAULT_CLINIC_ID`.
+
+4. Confirm it took, without printing the secret:
+
+   ```sql
+   SELECT name, whatsapp_app_secret IS NOT NULL AS signature_checking FROM clinics;
+   ```
 
 **Enforcement follows the data.** A clinic with a secret set must send a valid
 signature or the request is refused; a clinic without one keeps working on the
@@ -67,6 +91,10 @@ by the query token.
 
 Rotating the app secret in Meta invalidates the stored one immediately, so
 update the column in the same sitting or inbound messages stop.
+
+**Setting the secret changes what a hand-made test request has to look like.**
+See [Verifying](#verifying) below — an unsigned POST that worked yesterday will
+return 401 today, and that is the feature working, not a fault.
 
 ## Message templates
 
@@ -145,6 +173,23 @@ $body = @{
 curl.exe -s -X POST -H "Content-Type: application/json" --data "@$env:TEMP\wa.json" `
     "https://<ref>.supabase.co/functions/v1/webhook?token=<post token>"
 ```
+
+**Once the clinic has an app secret this returns 401**, because it is not
+signed. Sign it the way Meta does — over the exact bytes being sent, which is
+why the JSON is written once and reused rather than rebuilt:
+
+```powershell
+$secret = Read-Host "App secret"   # not stored, not echoed into a script
+$hmac = [System.Security.Cryptography.HMACSHA256]::new([Text.Encoding]::UTF8.GetBytes($secret))
+$sig = "sha256=" + (($hmac.ComputeHash([Text.Encoding]::UTF8.GetBytes($body)) |
+    ForEach-Object { $_.ToString("x2") }) -join "")
+
+curl.exe -s -X POST -H "Content-Type: application/json" -H "X-Hub-Signature-256: $sig" `
+    --data "@$env:TEMP\wa.json" "https://<ref>.supabase.co/functions/v1/webhook?token=<post token>"
+```
+
+Change one character of the body without re-signing and it returns 401 — which
+is the point, and worth doing once to see it work.
 
 Then read `whatsapp_sessions` for that number to see the state it reached, and
 `whatsapp_log` for what was sent back.

@@ -66,3 +66,26 @@ turns gateway verification back on and the caller is rejected before the
 function runs. Both failures are silent. See
 [Module 2](MODULE_2_EDGE_FUNCTIONS.md#telling-the-two-401s-apart) for the
 one-line check.
+
+## Before going live
+
+Each of these is off until someone does something, and each one is quiet about
+it. The code ships in the safe-but-open state on purpose, so that a half
+configured clinic keeps working rather than dropping real patients' messages —
+which means nothing here will fail loudly to remind you.
+
+- [ ] **The Meta app secret is stored for every clinic.** Until then the
+      webhook is protected only by a token in a URL, and anyone holding it can
+      post a message as any phone number.
+      [Module 3](MODULE_3_WHATSAPP.md#proving-the-request-came-from-meta)
+- [ ] **`WHATSAPP_REQUIRE_SIGNATURE=true`**, once they all have one, so an
+      unconfigured clinic cannot be added later and silently run unsigned
+- [ ] **The eight message templates are approved.** Without them nothing the
+      clinic starts — reminders, delay notices, reports — survives the 24 hour
+      window. [Templates](WHATSAPP_TEMPLATES.md)
+- [ ] **The Meta app is live, not in development mode.** In development a send
+      returns a message id whether or not it reached anyone
+- [ ] **`SAMPLE_COLLECTOR_PHONES` is unset** and collectors exist as rows
+      instead. That list grants access on a phone number alone, with no PIN
+- [ ] **`ALLOWED_ORIGINS` names the portal's real domain**, not localhost
+- [ ] [Portal accounts](PORTAL_ACCOUNTS.md#before-going-live) — its own list

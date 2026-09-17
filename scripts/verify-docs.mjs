@@ -35,6 +35,37 @@ function markdownFiles(dir) {
 }
 
 const LINK = /\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+const HEADING = /^#{1,6}\s+(.+?)\s*$/gm;
+
+/** GitHub's rule: lower case, punctuation dropped, spaces to hyphens. */
+function anchors(text) {
+    const found = new Set();
+
+    for (const match of text.matchAll(HEADING)) {
+        found.add(
+            match[1]
+                .replace(/`/g, "")
+                .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+                .replace(/[*_]/g, "")
+                .toLowerCase()
+                .replace(/[^\w\s-]/g, "")
+                .trim()
+                .replace(/\s+/g, "-")
+        );
+    }
+
+    return found;
+}
+
+const anchorCache = new Map();
+
+function anchorsIn(path) {
+    if (!anchorCache.has(path)) {
+        anchorCache.set(path, anchors(readFileSync(path, "utf8")));
+    }
+
+    return anchorCache.get(path);
+}
 
 const problems = [];
 let checked = 0;
@@ -47,22 +78,35 @@ for (const file of markdownFiles(join(root, "docs"))) {
     for (const match of text.matchAll(LINK)) {
         const target = match[1];
 
-        if (/^(https?:|mailto:|tel:|#)/.test(target)) {
+        if (/^(https?:|mailto:|tel:)/.test(target)) {
             continue;
         }
 
-        const path = target.split("#")[0];
+        const [path, fragment] = target.split("#");
 
-        if (!path) {
+        // A link within this same page still has to point at a real heading.
+        const resolved = path ? resolve(dirname(file), path) : file;
+
+        if (!path && !fragment) {
             continue;
         }
 
         checked++;
 
-        if (!existsSync(resolve(dirname(file), path))) {
-            const line = text.slice(0, match.index).split("\n").length;
+        const line = () => text.slice(0, match.index).split("\n").length;
 
-            problems.push(`${file.slice(root.length + 1)}:${line}  ->  ${target}`);
+        if (!existsSync(resolved)) {
+            problems.push(`${file.slice(root.length + 1)}:${line()}  ->  ${target}`);
+            continue;
+        }
+
+        // A fragment that names nothing lands the reader at the top of the
+        // page, looking for a section that is not there. The old check threw
+        // the fragment away, so every one of these passed.
+        if (fragment && resolved.endsWith(".md") && !anchorsIn(resolved).has(fragment.toLowerCase())) {
+            problems.push(
+                `${file.slice(root.length + 1)}:${line()}  ->  ${target}  (no such heading)`
+            );
         }
     }
 }
