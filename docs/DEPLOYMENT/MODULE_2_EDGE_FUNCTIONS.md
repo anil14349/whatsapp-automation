@@ -23,7 +23,7 @@ bot, the staff API, and the reminder runner.
 | `services` | Which services a clinic offers | on |
 | `clinics` | Activate and deactivate clinics (platform admin) | on |
 | `clinic-settings` | Clinic details, hours, closures, location | on |
-| `clinic-branding` | Name, logo and colour for any signed-in user | on |
+| `clinic-branding` | Name, logo and colour for any signed-in user; logo upload for managers | on |
 | `clinic-summary` | Owner's figures | on |
 | `patient-documents` | Send a report or prescription | on |
 

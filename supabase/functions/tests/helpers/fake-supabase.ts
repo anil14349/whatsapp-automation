@@ -382,6 +382,16 @@ class FakeStorage {
                     data: { signedUrl: `https://storage.test/${bucket}/${path}?exp=${seconds}` },
                     error: null
                 };
+            },
+
+            // Public buckets only. Real storage builds this from the path
+            // without checking the object exists, and so does this.
+            getPublicUrl(path: string) {
+                return {
+                    data: {
+                        publicUrl: `https://storage.test/storage/v1/object/public/${bucket}/${path}`
+                    }
+                };
             }
         };
     }

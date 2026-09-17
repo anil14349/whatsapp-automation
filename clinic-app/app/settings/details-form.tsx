@@ -1,7 +1,14 @@
 "use client";
 
-import { useActionState, useState } from "react";
-import { saveDetails, addClosure, type ClinicDetails, type SettingsState } from "./actions";
+import { useActionState, useRef, useState, useTransition } from "react";
+import {
+    saveDetails,
+    addClosure,
+    uploadLogo,
+    removeLogo,
+    type ClinicDetails,
+    type SettingsState
+} from "./actions";
 import { TimezoneField } from "./timezone-field";
 import { readableOn } from "@/lib/theme";
 import { parseCoordinates } from "@/lib/coords";
@@ -157,6 +164,10 @@ export function AddClosureForm() {
  *
  * A hex field on its own gives no idea what the header will look like, and a
  * pale colour with white text on it is only obvious once you see it.
+ *
+ * The logo is uploaded rather than typed as an address. It used to be a URL
+ * field, which quietly required the clinic to host a PNG somewhere — something
+ * most of them have no way to do, so most of them had no logo.
  */
 function BrandingFields({
     logoUrl,
@@ -167,25 +178,80 @@ function BrandingFields({
 }) {
     const [logo, setLogo] = useState(logoUrl ?? "");
     const [colour, setColour] = useState(brandColour ?? "");
+    const [logoNotice, setLogoNotice] = useState<SettingsState>({});
+    const [busy, startLogo] = useTransition();
+    const fileRef = useRef<HTMLInputElement>(null);
 
     const valid = /^#[0-9a-f]{6}$/i.test(colour);
     const preview = valid ? colour : "#0f766e";
 
+    function choose(file: File | undefined) {
+        if (!file) return;
+
+        const form = new FormData();
+        form.append("file", file);
+
+        startLogo(async () => {
+            const result = await uploadLogo(form);
+            setLogoNotice(result);
+
+            if (result.logoUrl !== undefined) {
+                setLogo(result.logoUrl ?? "");
+            }
+
+            // Without this, choosing the same file again after a failure does
+            // not fire a change event.
+            if (fileRef.current) fileRef.current.value = "";
+        });
+    }
+
     return (
         <div className="grid gap-3 sm:grid-cols-2">
-            <label className="space-y-1 sm:col-span-2">
-                <span className="block text-xs font-medium text-slate-600">Logo address</span>
-                <input
-                    name="logoUrl"
-                    value={logo}
-                    onChange={(e) => setLogo(e.target.value)}
-                    placeholder="https://example.com/logo.png"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
-                />
+            <div className="space-y-1 sm:col-span-2">
+                <span className="block text-xs font-medium text-slate-600">Logo</span>
+                <div className="flex flex-wrap items-center gap-3">
+                    <input
+                        ref={fileRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        disabled={busy}
+                        onChange={(e) => choose(e.target.files?.[0])}
+                        aria-label="Logo image"
+                        className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700"
+                    />
+                    {logo && (
+                        <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                                startLogo(async () => {
+                                    const result = await removeLogo();
+                                    setLogoNotice(result);
+                                    if (result.logoUrl !== undefined) setLogo("");
+                                })
+                            }
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:border-slate-300"
+                        >
+                            Remove
+                        </button>
+                    )}
+                    {busy && <span className="text-xs text-slate-500">Working…</span>}
+                </div>
                 <span className="block text-xs text-slate-400">
-                    Leave blank to show the clinic&apos;s initials instead.
+                    PNG, JPEG or WebP, up to 2 MB. Leave it empty to show the clinic&apos;s
+                    initials instead. Saved as soon as you choose a file.
                 </span>
-            </label>
+                {logoNotice.error && (
+                    <span className="block text-xs text-red-700" role="alert">
+                        {logoNotice.error}
+                    </span>
+                )}
+                {logoNotice.success && !logoNotice.error && (
+                    <span className="block text-xs text-emerald-700" role="status">
+                        {logoNotice.success}
+                    </span>
+                )}
+            </div>
 
             <label className="space-y-1">
                 <span className="block text-xs font-medium text-slate-600">Colour</span>

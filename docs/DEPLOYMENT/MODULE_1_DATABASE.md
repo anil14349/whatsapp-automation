@@ -7,6 +7,7 @@ and nothing else can repair a missing column at run time.
 
 - `supabase/migrations/*.sql` — 29 files, applied in filename order.
 - One storage bucket, `patient-documents`.
+- One storage bucket, `clinic-logos`.
 
 ## Configuration required
 
@@ -70,6 +71,38 @@ minutes, which is long enough for Meta to fetch the file once and no longer.
 The size and type limits are enforced by storage itself, so a bad upload is
 refused before any of our code sees it. The edge function checks the same
 things again for a clear error message, not for safety.
+
+### The logo bucket
+
+Also created once. **Public**, unlike the one above: a logo appears on every
+page of the portal, so a signed URL would expire part-way through a session,
+and a logo is the one thing a clinic most wants seen.
+
+```powershell
+$key = (Select-String -Path .env.local -Pattern '^SU_SERVICE_ROLE_KEY=(.+)$').Matches[0].Groups[1].Value
+$body = @{
+    id = "clinic-logos"
+    name = "clinic-logos"
+    public = $true
+    file_size_limit = 2097152
+    allowed_mime_types = @("image/png", "image/jpeg", "image/webp")
+} | ConvertTo-Json -Compress
+[IO.File]::WriteAllText("$env:TEMP\bucket.json", $body)
+
+curl.exe -s --ssl-revoke-best-effort -H "apikey: $key" -H "Authorization: Bearer $key" `
+    -H "Content-Type: application/json" -X POST `
+    --data "@$env:TEMP\bucket.json" "https://<ref>.supabase.co/storage/v1/bucket"
+```
+
+**SVG is deliberately not allowed.** A browser opening an SVG directly runs any
+script inside it, on the storage origin — in a public bucket that is stored
+cross-site scripting that anyone can be linked to. PNG, JPEG and WebP cannot do
+this.
+
+Objects are keyed `<clinic-id>/<random>.<ext>`, built by the server and never
+from the uploaded filename, so one clinic cannot write into or delete from
+another's folder. Replacing a logo deletes the previous object; a logo the
+clinic hosts elsewhere is left alone, because it was never ours.
 
 ## Creating a clinic
 

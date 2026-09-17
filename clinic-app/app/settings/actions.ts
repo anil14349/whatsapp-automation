@@ -1,11 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { callAsUser } from "@/lib/portal";
+import { callAsUser, uploadAsUser } from "@/lib/portal";
 
 export interface SettingsState {
     error?: string;
     success?: string;
+    logoUrl?: string | null;
 }
 
 export interface ClinicDetails {
@@ -56,7 +57,6 @@ export async function saveDetails(
         afterHoursMessage: String(formData.get("afterHoursMessage") ?? "").trim(),
         afterHoursReply: formData.get("afterHoursReply") === "on",
         revisitWindowDays: Number(formData.get("revisitWindowDays") ?? 0),
-        logoUrl: String(formData.get("logoUrl") ?? "").trim(),
         brandColour: String(formData.get("brandColour") ?? "").trim(),
         latitude: String(formData.get("latitude") ?? "").trim(),
         longitude: String(formData.get("longitude") ?? "").trim(),
@@ -72,6 +72,58 @@ export async function saveDetails(
     revalidatePath("/settings");
 
     return { success: "Saved." };
+}
+
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
+
+/**
+ * Upload a logo file.
+ *
+ * Kept apart from saveDetails because the logo address it writes would then be
+ * overwritten by whatever the details form still held in its own field.
+ */
+export async function uploadLogo(form: FormData): Promise<SettingsState> {
+    const file = form.get("file");
+
+    if (!(file instanceof File) || file.size === 0) {
+        return { error: "Choose an image." };
+    }
+
+    if (file.size > MAX_LOGO_BYTES) {
+        return { error: `That image is ${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 2 MB.` };
+    }
+
+    if (!LOGO_TYPES.includes(file.type)) {
+        return { error: "A logo must be a PNG, JPEG or WebP image." };
+    }
+
+    const outbound = new FormData();
+    outbound.append("file", file);
+
+    const result = await uploadAsUser("clinic-branding", outbound);
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not upload the logo." };
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/", "layout");
+
+    return { success: "Logo updated.", logoUrl: result.data?.logoUrl ?? null };
+}
+
+export async function removeLogo(): Promise<SettingsState> {
+    const result = await callAsUser("clinic-branding", { method: "DELETE" });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not remove the logo." };
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/", "layout");
+
+    return { success: "Logo removed.", logoUrl: null };
 }
 
 export async function saveDay(
