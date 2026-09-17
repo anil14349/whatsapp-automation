@@ -1,12 +1,12 @@
 /**
  * Home Collection Reminder Service
  * 
- * Manages reminders for home blood collection requests.
+ * Manages reminders for home sample collection requests.
  * Similar to appointment reminders but simpler: single reminder on collection day.
  * 
  * Reminder Timeline:
  * - Created when home collection request is confirmed
- * - Scheduled for collection_date at 08:00 AM
+ * - Scheduled for collection_date at 08:00 in the clinic's own timezone
  * - Reminder sent once per request (unlike appointments which have 24h and 1h)
  * - Reminder cancelled if request is REJECTED or COMPLETED
  */
@@ -14,6 +14,10 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { debug } from "./logger.ts";
 import * as types from "./types.ts";
+import { clinicInstant, getClinicTimezone } from "./clinic-slots.ts";
+
+/** The hour the clinic means, not the hour UTC means. */
+const MORNING_REMINDER_AT = "08:00";
 
 export interface HomeCollectionReminderMessage {
   requestId: string;
@@ -79,8 +83,16 @@ export async function createHomeCollectionReminder(
   try {
     debug("homeCollectionReminder", "Creating reminder", { requestId, collectionDate });
 
-    // Calculate scheduled time (collection_date at 08:00 AM)
-    const scheduledTime = new Date(`${collectionDate}T08:00:00Z`).toISOString();
+    // 08:00 as the clinic reads a clock. `T08:00:00Z` meant 08:00 UTC, which is
+    // half past one in the afternoon in Asia/Kolkata -- after a morning
+    // collection has already happened.
+    const timezone = await getClinicTimezone(supabase, clinicId);
+    const due = clinicInstant(collectionDate, MORNING_REMINDER_AT, timezone);
+
+    // A collection booked for today, after the reminder hour, has missed it.
+    // Left PENDING the scheduler sends it at once, telling the patient about a
+    // visit they are already expecting.
+    const status = due.getTime() > Date.now() ? "PENDING" : "SKIPPED";
 
     const { data, error } = await supabase
       .from("home_collection_reminders")
@@ -88,8 +100,8 @@ export async function createHomeCollectionReminder(
         clinic_id: clinicId,
         request_id: requestId,
         patient_phone: patientPhone,
-        scheduled_time: scheduledTime,
-        status: "PENDING",
+        scheduled_time: due.toISOString(),
+        status,
         preferred_language: preferredLanguage || "EN",
         attempts: 0,
         max_attempts: 3,
