@@ -27,7 +27,6 @@ import { debug } from "./logger.ts";
 export const CALENDAR_BUCKET = "appointment-calendar";
 
 const DEFAULT_MINUTES = 30;
-
 export interface CalendarEvent {
     appointmentId: string;
     clinicName: string;
@@ -38,6 +37,26 @@ export interface CalendarEvent {
     location?: string;
     token?: number | null;
     durationMinutes?: number;
+    language?: string;
+}
+
+/**
+ * What the patient sees as the attachment's name.
+ *
+ * "appointment.ics" tells them nothing in a list of files a year later, so it
+ * carries the day and the doctor. Dots are stripped from the rest of the name
+ * because a phone decides how to open a file from its last one.
+ */
+export function calendarFileName(event: CalendarEvent): string {
+    const day = new Intl.DateTimeFormat("en-GB", {
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC"
+    }).format(new Date(`${event.date}T00:00:00Z`));
+
+    const who = event.doctorName ? ` - Dr ${event.doctorName}` : "";
+
+    return `Appointment ${day}${who}`.replace(/[^A-Za-z0-9 -]/g, "").trim() + ".ics";
 }
 
 /** ICS wants UTC as 20260918T060000Z. */
@@ -103,9 +122,10 @@ export function buildIcs(event: CalendarEvent): string {
 /**
  * Store the file and hand Meta a link to it.
  *
- * Served as text/plain rather than text/calendar: Meta's document endpoint
- * rejects media types outside its own list, and text/calendar is not on it.
- * The `.ics` name is what makes a phone offer to add it to a calendar.
+ * Served as `text/calendar`. It went out as `text/plain` first, on the
+ * assumption that Meta's document endpoint would refuse anything outside its
+ * documented media types -- it does not, and the file arrived looking like a
+ * text file because that is what we had called it.
  */
 export async function sendAppointmentCalendar(
     supabase: SupabaseClient,
@@ -120,7 +140,7 @@ export async function sendAppointmentCalendar(
         const upload = await supabase.storage
             .from(CALENDAR_BUCKET)
             .upload(path, new TextEncoder().encode(buildIcs(event)), {
-                contentType: "text/plain",
+                contentType: "text/calendar",
                 upsert: true
             });
 
@@ -145,8 +165,10 @@ export async function sendAppointmentCalendar(
         await client.sendDocumentMessage(
             phone,
             signed.data.signedUrl,
-            "appointment.ics",
-            undefined,
+            calendarFileName(event),
+            event.language === "HI"
+                ? "📅 इसे खोलकर अपने कैलेंडर ऐप में जोड़ें"
+                : "📅 Open this to add the appointment to your calendar",
             supabase
         );
 

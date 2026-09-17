@@ -107,7 +107,7 @@ clinic hosts elsewhere is left alone, because it was never ours.
 
 ### The calendar bucket
 
-Private, small, and `text/plain` only. It holds the `.ics` file sent with a
+Private, small, and `text/calendar` only. It holds the `.ics` file sent with a
 booking confirmation.
 
 ```powershell
@@ -117,7 +117,7 @@ $body = @{
     name = "appointment-calendar"
     public = $false
     file_size_limit = 65536
-    allowed_mime_types = @("text/plain")
+    allowed_mime_types = @("text/calendar")
 } | ConvertTo-Json -Compress
 [IO.File]::WriteAllText("$env:TEMP\bucket.json", $body)
 
@@ -132,9 +132,11 @@ is none of them, and the first attempt to store one there was refused with a
 400 â€” widening that allow-list to fit this would have loosened the control for
 everything else.
 
-**It is served as `text/plain`, not `text/calendar`.** Meta's document endpoint
-accepts only its own list of media types and `text/calendar` is not on it. The
-`.ics` filename is what makes a phone offer to add the event to a calendar.
+**It is served as `text/calendar`.** It went out as `text/plain` first, on the
+assumption that Meta's document endpoint refuses media types outside its
+documented list. It does not — tested against the live API, and the file then
+arrives with a calendar icon and opens in a calendar app. Sent as `text/plain`
+it still arrives, but as a text file, which is what the phone was told it was.
 
 ## Creating a clinic
 

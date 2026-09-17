@@ -1419,7 +1419,8 @@ export class PatientFlowHandler {
                     time: session.data?.selectedTime,
                     timezone: config.timezone,
                     location: where,
-                    token: appointment.token_number
+                    token: appointment.token_number,
+                    language
                 });
 
                 await this.notifyDoctorNewBooking(

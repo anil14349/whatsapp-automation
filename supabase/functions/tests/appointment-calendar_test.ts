@@ -12,7 +12,7 @@ import { fakeSupabase } from "./helpers/fake-supabase.ts";
 import { FakeWhatsAppClient } from "./helpers/fake-whatsapp.ts";
 import { seed, session, tap, CLINIC_A, DOCTOR_A, PATIENT_PHONE } from "./helpers/fixtures.ts";
 import { BUTTON_IDS } from "../shared/button-ids.ts";
-import { buildIcs } from "../shared/appointment-calendar.ts";
+import { buildIcs, calendarFileName } from "../shared/appointment-calendar.ts";
 
 Deno.env.set("SUPABASE_URL", "http://localhost:54321");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-key");
@@ -59,6 +59,22 @@ Deno.test("it is a complete calendar with one event and an alarm", () => {
 
 Deno.test("the id is stable, so re-sending updates the entry rather than adding one", () => {
     assertStringIncludes(buildIcs(EVENT), "UID:APT_1@");
+});
+
+Deno.test("the attachment is named for the day and the doctor, not 'appointment.ics'", () => {
+    // The month is the locale's own abbreviation, which for en-GB is "Sept".
+    assertEquals(calendarFileName(EVENT), "Appointment 18 Sept - Dr Akilesh.ics");
+});
+
+Deno.test("only the extension carries a dot, since a phone opens a file by its last one", () => {
+    const name = calendarFileName({ ...EVENT, doctorName: "A. B. Kumar" });
+
+    assertEquals(name.split(".").length, 2, name);
+    assert(name.endsWith(".ics"), name);
+});
+
+Deno.test("a clinic with no named doctor still gets a usable name", () => {
+    assertEquals(calendarFileName({ ...EVENT, doctorName: undefined }), "Appointment 18 Sept.ics");
 });
 
 function bookingAt(overrides: Record<string, unknown> = {}) {
