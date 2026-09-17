@@ -202,3 +202,43 @@ Deno.test("the menu drops home collection only when nothing is offered at home",
         "home collection was offered with every home service switched off"
     );
 });
+
+Deno.test("home collection books an appointment, not an orphan request", async () => {
+    // It used to enter LOCATION_SELECT, a parallel flow writing to
+    // home_collection_requests - a table no portal screen reads.
+    const { send, current } = build();
+
+    await send("MAIN_MENU", { language: "EN" }, tap(BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION));
+
+    assertEquals(current()?.state, "BOOK_ADDRESS");
+    assertEquals(current()?.data?.serviceTypeId, SAMPLE);
+    assertEquals(current()?.data?.locationType, "HOME");
+});
+
+Deno.test("home collection asks for a pin and says why", async () => {
+    const { send, said } = build();
+
+    await send("MAIN_MENU", { language: "EN" }, tap(BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION));
+
+    assert(/share your location/i.test(said()), said());
+    assert(/typed address cannot be used/i.test(said()), said());
+});
+
+Deno.test("home collection never asks the patient where they want it", async () => {
+    // They have already answered that by tapping the button.
+    const { send, said } = build();
+
+    await send("MAIN_MENU", { language: "EN" }, tap(BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION));
+
+    assert(!/Where would you like this/i.test(said()), said());
+});
+
+Deno.test("a service switched off by its master switch cannot be booked by a stale tap", async () => {
+    // offered_at_clinic stays true, so only the master switch refuses it.
+    const { send, current, said } = build({ enable_doctor_consultations: false });
+
+    await send("SERVICE_SELECT", { language: "EN" }, tap(serviceButtonId(CONSULT)));
+
+    assertEquals(current()?.state, "MAIN_MENU");
+    assert(/not available at this clinic/i.test(said()), said());
+});

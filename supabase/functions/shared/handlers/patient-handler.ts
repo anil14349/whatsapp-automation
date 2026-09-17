@@ -9,7 +9,8 @@ import {
     getEnabledServices,
     getServiceById,
     formatPrice,
-    type ClinicService
+    type ClinicService,
+    type ServiceChannel
 } from "../clinic-services.ts";
 import {
     addDays,
@@ -115,6 +116,10 @@ export class PatientFlowHandler {
 
                 case "BOOK_ADDRESS":
                     await this.handleBookAddress(phone, message, session);
+                    break;
+
+                case "BOOK_ADDRESS_DETAIL":
+                    await this.handleBookAddressDetail(phone, message, session);
                     break;
 
                 case "BOOK_DOCTOR":
@@ -272,7 +277,14 @@ export class PatientFlowHandler {
 
         // Service ids are per clinic, so they cannot be part of the fixed list.
         if (isServiceButton(buttonId)) {
-            await this.handleServiceChosen(phone, language, clinicId, serviceIdFromButton(buttonId));
+            await this.handleServiceChosen(
+                phone,
+                language,
+                clinicId,
+                serviceIdFromButton(buttonId),
+                false,
+                session.data ?? {}
+            );
             return;
         }
 
@@ -304,13 +316,7 @@ export class PatientFlowHandler {
                 break;
 
             case BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION:
-                await this.updateSession(phone, "LOCATION_SELECT", { language });
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    language === "EN"
-                        ? "Please share your location or type your address for home sample collection."
-                        : "कृपया घर से सैंपल लेने के लिए अपना स्थान साझा करें या पता लिखें।"
-                );
+                await this.startHomeCollection(phone, language, clinicId, session.data ?? {});
                 break;
 
             case BUTTON_IDS.PATIENT_MENU.MORE:
@@ -359,6 +365,90 @@ export class PatientFlowHandler {
 
         await this.updateSession(phone, "SERVICE_SELECT", { language, servicePage: 0 });
         await this.showServiceList(phone, language, services, 0);
+    }
+
+    /**
+     * Start a home visit from the menu button.
+     *
+     * This used to open a parallel flow of its own that wrote to
+     * `home_collection_requests` - a table no portal screen reads - so a
+     * patient could complete it and have nobody receive the request. It now
+     * books an ordinary appointment, which the front desk can actually see.
+     */
+    private async startHomeCollection(
+        phone: string,
+        language: string,
+        clinicId: string,
+        data: Record<string, unknown>
+    ): Promise<void> {
+        const services = await getEnabledServices(this.supabase, clinicId, "home");
+
+        if (services.length === 0) {
+            await this.updateSession(phone, "MAIN_MENU", { language });
+            await this.showMainMenu(
+                phone,
+                language,
+                language === "EN"
+                    ? "Sorry, we are not visiting homes at the moment."
+                    : "क्षमा करें, अभी हम घर पर नहीं आ रहे हैं।"
+            );
+            return;
+        }
+
+        if (services.length === 1) {
+            await this.beginHomeVisit(phone, language, services[0], data);
+            return;
+        }
+
+        // homeOnly keeps the rest of the flow on the home channel: the patient
+        // has already said where, so they must not be asked again.
+        await this.updateSession(phone, "SERVICE_SELECT", {
+            ...data,
+            language,
+            servicePage: 0,
+            homeOnly: true
+        });
+        await this.showServiceList(phone, language, services, 0);
+    }
+
+    private async beginHomeVisit(
+        phone: string,
+        language: string,
+        service: ClinicService,
+        data: Record<string, unknown>
+    ): Promise<void> {
+        await this.updateSession(phone, "BOOK_ADDRESS", {
+            ...data,
+            language,
+            serviceTypeId: service.serviceTypeId,
+            serviceName: service.name,
+            requiresDoctor: service.requiresDoctor,
+            locationType: LOCATION_HOME
+        });
+
+        await this.askForLocation(phone, language, service.name);
+    }
+
+    /**
+     * Ask for a shared pin.
+     *
+     * Says why a typed address is refused, because otherwise this reads as the
+     * bot failing to understand a perfectly good address.
+     */
+    private async askForLocation(
+        phone: string,
+        language: string,
+        serviceName?: string
+    ): Promise<void> {
+        const en = language === "EN";
+        const lead = serviceName ? `${serviceName}\n\n` : "";
+
+        await this.whatsappClient.sendTextMessage(
+            phone,
+            en
+                ? `${lead}📍 Please share your location so we know where to come.\n\nTap ➕ (or 📎) → Location → Send your current location.\n\nWe measure that pin against the area we travel to, so a typed address cannot be used.`
+                : `${lead}📍 कृपया अपना स्थान साझा करें ताकि हमें पता चले कि कहाँ आना है।\n\n➕ (या 📎) → Location → Send your current location दबाएँ।\n\nहम उसी पिन से दूरी मापते हैं, इसलिए लिखा हुआ पता काम नहीं करेगा।`
+        );
     }
 
     private async showServiceList(
@@ -431,13 +521,19 @@ export class PatientFlowHandler {
         phone: string,
         language: string,
         clinicId: string,
-        serviceTypeId: string
+        serviceTypeId: string,
+        homeOnly = false,
+        data: Record<string, unknown> = {}
     ): Promise<void> {
-        const service = await getServiceById(this.supabase, clinicId, serviceTypeId);
+        const channel: ServiceChannel = homeOnly ? "home" : "clinic";
 
-        // Hiding a button is not authorisation: a stale tap must not book a
-        // service the clinic has since switched off.
-        if (!service || !service.offeredAtClinic) {
+        // Validated against the channel list rather than the service's own
+        // flags, so a master switch the clinic has since turned off counts too.
+        // Hiding a button is not authorisation.
+        const available = await getEnabledServices(this.supabase, clinicId, channel);
+        const service = available.find((s) => s.serviceTypeId === serviceTypeId);
+
+        if (!service) {
             await this.updateSession(phone, "MAIN_MENU", { language });
             await this.showMainMenu(
                 phone,
@@ -449,7 +545,13 @@ export class PatientFlowHandler {
             return;
         }
 
-        const data = {
+        if (homeOnly) {
+            await this.beginHomeVisit(phone, language, service, data);
+            return;
+        }
+
+        const next = {
+            ...data,
             language,
             serviceTypeId: service.serviceTypeId,
             serviceName: service.name,
@@ -462,18 +564,18 @@ export class PatientFlowHandler {
         const canVisit = atHome.some((s) => s.serviceTypeId === service.serviceTypeId);
 
         if (canVisit) {
-            await this.updateSession(phone, "BOOK_LOCATION", data);
+            await this.updateSession(phone, "BOOK_LOCATION", next);
             await this.askWhere(phone, language, service.name);
             return;
         }
 
         if (service.requiresDoctor) {
-            await this.updateSession(phone, "BOOK_DOCTOR", data);
+            await this.updateSession(phone, "BOOK_DOCTOR", next);
             await this.showDoctorList(phone, language, clinicId);
             return;
         }
 
-        await this.updateSession(phone, "BOOK_DATE", data);
+        await this.updateSession(phone, "BOOK_DATE", next);
         await this.showDateMenu(phone, language);
     }
 
@@ -544,9 +646,10 @@ export class PatientFlowHandler {
     /**
      * BOOK_ADDRESS - where the visit should happen
      *
-     * A pin is measured against the clinic's collection radius, the same one
-     * the sample collectors use: a doctor will not drive further than the
-     * clinic already said it travels.
+     * A shared pin is required. A typed address was accepted here on nothing
+     * but its length, and carries no coordinates, so `checkServiceArea` never
+     * ran for one: anyone could type eight characters and book a visit from
+     * any distance. Refusing text is what makes the radius mean anything.
      */
     private async handleBookAddress(
         phone: string,
@@ -561,52 +664,77 @@ export class PatientFlowHandler {
         const language = session.data?.language || "EN";
         const en = language === "EN";
 
-        let address: string | null = null;
-        let latitude: number | null = null;
-        let longitude: number | null = null;
+        if (!message.latitude || !message.longitude) {
+            await this.askForLocation(phone, language, session.data?.serviceName);
+            return;
+        }
 
-        if (message.latitude && message.longitude) {
-            const area = await checkServiceArea(
-                this.supabase,
-                session.clinic_id,
-                message.latitude,
-                message.longitude
+        const area = await checkServiceArea(
+            this.supabase,
+            session.clinic_id,
+            message.latitude,
+            message.longitude
+        );
+
+        if (!area.servable) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                en
+                    ? `📍 Sorry, that location is outside the area we visit.\n\nIt is about ${Math.round(area.distanceKm ?? 0)} km away and we travel up to ${area.radiusKm} km.\n\nYou can share a different location, or book at the clinic instead.`
+                    : `📍 क्षमा करें, वह स्थान हमारे क्षेत्र से बाहर है।\n\nयह लगभग ${Math.round(area.distanceKm ?? 0)} किमी दूर है और हम ${area.radiusKm} किमी तक जाते हैं।`
             );
+            return;
+        }
 
-            if (!area.servable) {
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    en
-                        ? `📍 Sorry, that address is outside the area we visit.\n\nIt is about ${Math.round(area.distanceKm ?? 0)} km away and we travel up to ${area.radiusKm} km.\n\nYou can share a different location, or book at the clinic instead.`
-                        : `📍 क्षमा करें, वह पता हमारे क्षेत्र से बाहर है।\n\nयह लगभग ${Math.round(area.distanceKm ?? 0)} किमी दूर है और हम ${area.radiusKm} किमी तक जाते हैं।`
-                );
-                return;
-            }
+        await this.updateSession(phone, "BOOK_ADDRESS_DETAIL", {
+            ...session.data,
+            locationType: LOCATION_HOME,
+            serviceLatitude: message.latitude,
+            serviceLongitude: message.longitude
+        });
 
-            latitude = message.latitude;
-            longitude = message.longitude;
-        } else {
-            const typed = (message.text || "").trim();
+        await this.whatsappClient.sendInteractiveButtonMessage(
+            phone,
+            en
+                ? "📍 Location received.\n\nType your flat or house number and a nearby landmark so we can find the door."
+                : "📍 स्थान मिल गया।\n\nअपना फ्लैट/मकान नंबर और पास का कोई लैंडमार्क लिखें।",
+            [{ id: BUTTON_IDS.ACTION.SKIP, title: en ? "Skip" : "छोड़ें" }],
+            this.supabase
+        );
+    }
 
-            if (typed.length < 8) {
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    en
-                        ? "Please share your location, or type the full address including a landmark."
-                        : "कृपया अपना स्थान साझा करें, या लैंडमार्क सहित पूरा पता लिखें।"
-                );
-                return;
-            }
+    /**
+     * BOOK_ADDRESS_DETAIL - flat number and landmark
+     *
+     * Free text is safe here: the pin has already decided servability, and
+     * this only helps whoever travels find the door.
+     */
+    private async handleBookAddressDetail(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        if (session.state !== "BOOK_ADDRESS_DETAIL") {
+            await this.showMainMenu(phone, session.data?.language || "EN");
+            return;
+        }
 
-            address = typed;
+        const language = session.data?.language || "EN";
+        const reply = (message.text || "").trim();
+
+        let detail: string | null = null;
+
+        switch (reply) {
+            case BUTTON_IDS.ACTION.SKIP:
+                break;
+
+            default:
+                detail = reply.length > 0 ? reply.slice(0, 200) : null;
         }
 
         const data = {
             ...session.data,
-            locationType: LOCATION_HOME,
-            serviceAddress: address,
-            serviceLatitude: latitude,
-            serviceLongitude: longitude
+            serviceAddress: detail
         };
 
         if (session.data?.requiresDoctor) {
@@ -629,18 +757,25 @@ export class PatientFlowHandler {
     ): Promise<void> {
         const language = session.data?.language || "EN";
         const reply = message.text.trim();
+        const homeOnly = session.data?.homeOnly === true;
 
         if (isServiceButton(reply)) {
             await this.handleServiceChosen(
                 phone,
                 language,
                 session.clinic_id,
-                serviceIdFromButton(reply)
+                serviceIdFromButton(reply),
+                homeOnly,
+                session.data ?? {}
             );
             return;
         }
 
-        const services = await getEnabledServices(this.supabase, session.clinic_id, "clinic");
+        const services = await getEnabledServices(
+            this.supabase,
+            session.clinic_id,
+            homeOnly ? "home" : "clinic"
+        );
 
         if (reply === BUTTON_IDS.PAGINATION.MORE_SERVICES) {
             const nextPage = (session.data?.servicePage || 0) + 1;
@@ -660,7 +795,9 @@ export class PatientFlowHandler {
                 phone,
                 language,
                 session.clinic_id,
-                services[index - 1].serviceTypeId
+                services[index - 1].serviceTypeId,
+                homeOnly,
+                session.data ?? {}
             );
             return;
         }

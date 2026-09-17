@@ -144,7 +144,7 @@ Deno.test("an address within the radius is accepted and kept", async () => {
         location(NEARBY_LAT, NEARBY_LON, PATIENT_PHONE)
     );
 
-    assertEquals(current()?.state, "BOOK_DOCTOR");
+    assertEquals(current()?.state, "BOOK_ADDRESS_DETAIL");
     assertEquals(current()?.data?.serviceLatitude, NEARBY_LAT);
     assertEquals(current()?.data?.serviceLongitude, NEARBY_LON);
     assertEquals(current()?.data?.locationType, LOCATION_HOME);
@@ -163,8 +163,11 @@ Deno.test("an address beyond the radius is refused and does not move on", async 
     assert(/outside the area we visit/i.test(said()), said());
 });
 
-Deno.test("a typed address is accepted when it is long enough to find", async () => {
-    const { send, current } = build();
+Deno.test("a typed address is refused, however complete it looks", async () => {
+    // It used to be accepted on length alone. There are no coordinates in a
+    // typed address, so checkServiceArea never ran for one and the radius
+    // meant nothing.
+    const { send, current, said } = build();
 
     await send(
         "BOOK_ADDRESS",
@@ -172,11 +175,23 @@ Deno.test("a typed address is accepted when it is long enough to find", async ()
         textMessage("14 Rajpath, opposite the post office, New Delhi")
     );
 
-    assertEquals(current()?.state, "BOOK_DOCTOR");
-    assertEquals(
-        current()?.data?.serviceAddress,
-        "14 Rajpath, opposite the post office, New Delhi"
+    assertEquals(current()?.state, "BOOK_ADDRESS");
+    assertEquals(current()?.data?.serviceAddress, undefined);
+    assert(/share your location/i.test(said()), said());
+});
+
+Deno.test("a typed address cannot smuggle in a patient we do not travel to", async () => {
+    // The hole worth naming: typing a Chennai address booked a home visit
+    // 1700 km away, while the same place shared as a pin is refused.
+    const { send, current } = build();
+
+    await send(
+        "BOOK_ADDRESS",
+        { language: "EN", requiresDoctor: true, locationType: LOCATION_HOME },
+        textMessage("22 Mount Road, near the bus stand, Chennai 600002")
     );
+
+    assertEquals(current()?.state, "BOOK_ADDRESS");
 });
 
 Deno.test("a scrap of an address is not enough to send a doctor to", async () => {
@@ -189,7 +204,47 @@ Deno.test("a scrap of an address is not enough to send a doctor to", async () =>
     );
 
     assertEquals(current()?.state, "BOOK_ADDRESS");
-    assert(/full address/i.test(said()), said());
+    assert(/share your location/i.test(said()), said());
+});
+
+Deno.test("a landmark is kept, and never replaces the pin", async () => {
+    const { send, current } = build();
+
+    await send(
+        "BOOK_ADDRESS_DETAIL",
+        {
+            language: "EN",
+            requiresDoctor: true,
+            locationType: LOCATION_HOME,
+            serviceLatitude: NEARBY_LAT,
+            serviceLongitude: NEARBY_LON
+        },
+        textMessage("Flat 3B, above the chemist")
+    );
+
+    assertEquals(current()?.state, "BOOK_DOCTOR");
+    assertEquals(current()?.data?.serviceAddress, "Flat 3B, above the chemist");
+    assertEquals(current()?.data?.serviceLatitude, NEARBY_LAT);
+});
+
+Deno.test("skipping the landmark still carries the pin forward", async () => {
+    const { send, current } = build();
+
+    await send(
+        "BOOK_ADDRESS_DETAIL",
+        {
+            language: "EN",
+            requiresDoctor: true,
+            locationType: LOCATION_HOME,
+            serviceLatitude: NEARBY_LAT,
+            serviceLongitude: NEARBY_LON
+        },
+        tap(BUTTON_IDS.ACTION.SKIP)
+    );
+
+    assertEquals(current()?.state, "BOOK_DOCTOR");
+    assertEquals(current()?.data?.serviceAddress, null);
+    assertEquals(current()?.data?.serviceLatitude, NEARBY_LAT);
 });
 
 Deno.test("a clinic that has set no radius still accepts a far address", async () => {
@@ -207,7 +262,7 @@ Deno.test("a clinic that has set no radius still accepts a far address", async (
 
     assertEquals(
         current()?.state,
-        "BOOK_DOCTOR",
+        "BOOK_ADDRESS_DETAIL",
         "an unconfigured clinic must not refuse everyone"
     );
 });
