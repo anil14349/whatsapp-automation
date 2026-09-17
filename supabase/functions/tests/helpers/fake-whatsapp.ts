@@ -11,7 +11,7 @@ import { WhatsAppApiError, WhatsAppClient } from "../../shared/whatsapp-client.t
 
 export interface SentMessage {
     to: string;
-    type: "text" | "buttons" | "list" | "template";
+    type: "text" | "buttons" | "list" | "template" | "document";
     body: string;
     buttons?: Array<{ id: string; title: string }>;
     sections?: Array<{
@@ -21,6 +21,8 @@ export interface SentMessage {
     buttonTitle?: string;
     templateLanguage?: string;
     parameters?: string[];
+    link?: string;
+    filename?: string;
 }
 
 export class FakeWhatsAppClient extends WhatsAppClient {
@@ -105,6 +107,16 @@ export class FakeWhatsAppClient extends WhatsAppClient {
 
         this.sent.push({ to, type: "list", body, buttonTitle, sections });
         return `fake_list_${this.sent.length}`;
+    }
+
+    override async sendDocumentMessage(
+        to: string,
+        link: string,
+        filename: string,
+        caption?: string
+    ): Promise<string> {
+        this.sent.push({ to, type: "document", body: caption ?? filename, link, filename });
+        return `fake_document_${this.sent.length}`;
     }
 
     override async sendTemplateMessage(

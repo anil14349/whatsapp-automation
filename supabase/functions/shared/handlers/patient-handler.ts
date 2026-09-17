@@ -23,6 +23,7 @@ import {
     rescheduleAppointment
 } from "../appointments.ts";
 import { createAppointmentReminders, markReminderAsSkipped } from "../appointment-reminders.ts";
+import { sendAppointmentCalendar } from "../appointment-calendar.ts";
 import { sendProactive } from "../proactive.ts";
 import { debug, info, recordAuditEvent } from "../logger.ts";
 import { isValidPatientName, normalizePhoneNumber, isValidBookingDate, formatBookingDateErrorMessage } from "../validators.ts";
@@ -1359,32 +1360,75 @@ export class PatientFlowHandler {
                     lastAppointmentId: appointmentId
                 });
 
+                const config = await getClinicConfig(this.supabase, clinicId);
+                const isEn = language === "EN";
+
                 // Saying so on the confirmation saves an argument at the desk.
                 const revisitLine = appointment.is_revisit
-                    ? language === "EN"
-                        ? "\n\n🔁 Recorded as a follow-up visit."
-                        : "\n\n🔁 यह फ़ॉलो-अप विज़िट के रूप में दर्ज है।"
+                    ? isEn
+                        ? "\n🔁 Recorded as a follow-up visit."
+                        : "\n🔁 यह फ़ॉलो-अप विज़िट के रूप में दर्ज है।"
                     : "";
 
-                // The token is what the counter calls out; the booking id is
-                // unusable across a desk.
+                // A bare "Token: 1" means nothing to someone who has not been
+                // here before, so it says what to do with it.
                 const tokenLine = appointment.token_number
-                    ? language === "EN"
-                        ? `\n🎟️ Token: ${appointment.token_number}`
-                        : `\n🎟️ टोकन: ${appointment.token_number}`
+                    ? isEn
+                        ? `\n🎟️ Token ${appointment.token_number} — show this at reception`
+                        : `\n🎟️ टोकन ${appointment.token_number} — रिसेप्शन पर दिखाएँ`
                     : "";
 
-                closing = language === "EN"
-                    ? `✅ Appointment confirmed!\n\n👨‍⚕️ Doctor: ${session.data?.selectedDoctorName}\n📅 Date: ${session.data?.selectedDate}\n🕐 Time: ${session.data?.selectedTime}\n📍 Location: ${isHomeVisit(session.data?.locationType) ? "Home Visit" : "Clinic Visit"}\n\n📌 Booking ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ You'll receive reminders before your appointment.`
-                    : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${isHomeVisit(session.data?.locationType) ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ आपको अपॉइंटमेंट से पहले रिमाइंडर मिलेंगे।`;
+                // Where to go, rather than which kind of visit it is.
+                const clinicAddress = [config.address, config.city].filter(Boolean).join(", ");
+                const where = isHomeVisit(session.data?.locationType)
+                    ? (isEn ? "At your home" : "आपके घर पर") +
+                      (session.data?.serviceAddress ? ` — ${session.data.serviceAddress}` : "")
+                    : clinicAddress || (isEn ? "At the clinic" : "क्लिनिक में");
 
-                // Best effort: a booking must never fail because the doctor
-                // could not be reached.
+                const callUs = config.clinic_phone
+                    ? isEn
+                        ? `\n\nTo change or cancel, message us here or call +${config.clinic_phone}.`
+                        : `\n\nबदलने या रद्द करने के लिए यहाँ संदेश भेजें या +${config.clinic_phone} पर कॉल करें।`
+                    : isEn
+                      ? "\n\nTo change or cancel, just message us here."
+                      : "\n\nबदलने या रद्द करने के लिए यहाँ संदेश भेजें।";
+
+                const confirmation = [
+                    isEn ? "✅ Your appointment is confirmed" : "✅ आपकी नियुक्ति की पुष्टि हो गई है",
+                    "",
+                    config.clinic_name,
+                    "",
+                    `👨‍⚕️ Dr. ${session.data?.selectedDoctorName}`,
+                    `📅 ${this.formatLongDate(session.data?.selectedDate, language)}`,
+                    `🕐 ${this.formatClockTime(session.data?.selectedTime)}`,
+                    `📍 ${where}`
+                ].join("\n") + tokenLine + revisitLine + callUs;
+
+                // No buttons: this is a receipt, not a question. Asking "what
+                // would you like to do?" of someone who has just finished is
+                // noise, and "Book Appointment" right after booking is absurd.
+                await this.whatsappClient.sendTextMessage(phone, confirmation, this.supabase);
+
+                // Best effort, both of them: the booking is already made, so
+                // neither a calendar file nor the doctor's copy may undo it.
+                await sendAppointmentCalendar(this.supabase, this.whatsappClient, clinicId, phone, {
+                    appointmentId,
+                    clinicName: config.clinic_name,
+                    doctorName: session.data?.selectedDoctorName,
+                    date: session.data?.selectedDate,
+                    time: session.data?.selectedTime,
+                    timezone: config.timezone,
+                    location: where,
+                    token: appointment.token_number
+                });
+
                 await this.notifyDoctorNewBooking(
                     session.data?.selectedDoctorId,
                     clinicId,
                     session.data
                 );
+
+                return;
             } catch (error) {
                 // Someone claimed the slot between selection and insert.
                 if (error instanceof Error && error.message === "SLOT_TAKEN") {
@@ -2278,6 +2322,40 @@ export class PatientFlowHandler {
         } catch {
             return dateString;
         }
+    }
+
+    /**
+     * "Friday, 18 September" — the weekday is what a patient checks against.
+     *
+     * Formatted in UTC because the input is a bare date; reading it in a zone
+     * behind UTC would show the day before.
+     */
+    private formatLongDate(dateString: string, language: string): string {
+        try {
+            return new Intl.DateTimeFormat(language === "EN" ? "en-IN" : "hi-IN", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                timeZone: "UTC"
+            }).format(new Date(`${dateString}T00:00:00Z`));
+        } catch {
+            return dateString;
+        }
+    }
+
+    /** 24 hour times are what the database holds; "11:30 am" is what people read. */
+    private formatClockTime(time: string): string {
+        const match = /^(\d{1,2}):(\d{2})$/.exec(time ?? "");
+
+        if (!match) {
+            return time;
+        }
+
+        const hour = Number(match[1]);
+        const suffix = hour < 12 ? "am" : "pm";
+        const twelve = hour % 12 === 0 ? 12 : hour % 12;
+
+        return `${twelve}:${match[2]} ${suffix}`;
     }
 
     /**

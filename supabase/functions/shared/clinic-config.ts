@@ -19,6 +19,7 @@ interface ClinicConfig {
     enable_after_hours_reply: boolean;
     after_hours_message?: string;
     address?: string;
+    city?: string;
     website?: string;
 }
 
@@ -71,6 +72,7 @@ export async function getClinicConfig(
             enable_after_hours_reply: data.enable_after_hours_reply === true,
             after_hours_message: data.after_hours_message || undefined,
             address: data.address,
+            city: data.city,
             website: data.website
         };
 
