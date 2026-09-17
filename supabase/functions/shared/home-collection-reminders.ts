@@ -49,8 +49,8 @@ export function formatHomeCollectionReminderMessage(content: HomeCollectionRemin
   }
 
   // Default: English
-  return `🩸 Blood Collection Reminder\n\n` +
-         `Hi! Our health team will visit you on ${collectionDate} for blood collection.\n\n` +
+  return `� Sample Collection Reminder\n\n` +
+         `Hi! Our health team will visit you on ${collectionDate} to collect your sample.\n\n` +
          `📋 Request ID: ${requestId}\n` +
          `🏥 Clinic: ${clinicName}\n\n` +
          `💡 Please remember:\n` +

@@ -163,7 +163,7 @@ export class HomeCollectionHandler {
             // Request location
             await this.whatsappClient.sendTextMessage(
                 phone,
-                "Please share your location or type your address for home blood collection.\n\nYou can:\n• Attach your location in WhatsApp, or\n• Type your address"
+                "Please share your location or type your address for home sample collection.\n\nYou can:\n• Attach your location in WhatsApp, or\n• Type your address"
             );
         }
     }
@@ -906,7 +906,7 @@ export class HomeCollectionHandler {
     private async showRequestConfirmation(phone: string, data: any): Promise<void> {
         let address = data?.address || `Coordinates: ${data?.latitude}, ${data?.longitude}`;
 
-        const message = `Please confirm your home collection request:\n\n📍 Address: ${address}\n\nWe will visit you within 2-4 hours for blood collection.\n\nConfirm this request?`;
+        const message = `Please confirm your home collection request:\n\n📍 Address: ${address}\n\nWe will visit you within 2-4 hours to collect your sample.\n\nConfirm this request?`;
 
         await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
             { id: BUTTON_IDS.CONFIRMATION.YES, title: "Yes, Confirm" },

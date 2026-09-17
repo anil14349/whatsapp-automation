@@ -224,24 +224,16 @@ export class PatientFlowHandler {
         // Update session
         await this.updateSession(phone, "MAIN_MENU", { language: selectedLanguage });
 
-        // Send welcome message
         const config = await getClinicConfig(this.supabase, session.clinic_id);
         const clinicName = config.clinic_name;
 
-        if (selectedLanguage === "EN") {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                `👋 Welcome to ${clinicName}!\n\nWhat would you like to do today?`
-            );
-        } else {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                `👋 ${clinicName} में आपका स्वागत है!\n\nआज आप क्या करना चाहते हैं?`
-            );
-        }
-
-        // Show main menu
-        await this.showMainMenu(phone, selectedLanguage);
+        await this.showMainMenu(
+            phone,
+            selectedLanguage,
+            selectedLanguage === "EN"
+                ? `👋 Welcome to ${clinicName}!`
+                : `👋 ${clinicName} में आपका स्वागत है!`
+        );
     }
 
     /**
@@ -424,14 +416,14 @@ export class PatientFlowHandler {
         // Hiding a button is not authorisation: a stale tap must not book a
         // service the clinic has since switched off.
         if (!service || !service.offeredAtClinic) {
-            await this.whatsappClient.sendTextMessage(
+            await this.updateSession(phone, "MAIN_MENU", { language });
+            await this.showMainMenu(
                 phone,
+                language,
                 language === "EN"
                     ? "Sorry, that service is not available at this clinic."
                     : "क्षमा करें, यह सेवा इस क्लिनिक में उपलब्ध नहीं है।"
             );
-            await this.updateSession(phone, "MAIN_MENU", { language });
-            await this.showMainMenu(phone, language);
             return;
         }
 
@@ -1270,6 +1262,9 @@ export class PatientFlowHandler {
 
         if (buttonId === BUTTON_IDS.CONFIRMATION.YES) {
             // Proceed with booking
+            // Carried to the end so the outcome and the menu are one message.
+            let closing: string | undefined;
+
             try {
                 // One active appointment per patient: block a second concurrent booking.
                 const upcoming = await this.supabaseClient.getPatientAppointments(clinicId, phone, true);
@@ -1278,13 +1273,12 @@ export class PatientFlowHandler {
                 );
 
                 if (active) {
-                    await this.whatsappClient.sendTextMessage(
+                    await this.updateSession(phone, "MAIN_MENU", { language });
+                    await this.showMainMenu(
                         phone,
+                        language,
                         `You already have an appointment on ${active.appointment_date} at ${active.appointment_time}. Please cancel or reschedule it before booking another.`
                     );
-
-                    await this.updateSession(phone, "MAIN_MENU", { language });
-                    await this.showMainMenu(phone, language);
                     return;
                 }
 
@@ -1361,12 +1355,9 @@ export class PatientFlowHandler {
                         : `\n🎟️ टोकन: ${appointment.token_number}`
                     : "";
 
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    language === "EN"
-                        ? `✅ Appointment confirmed!\n\n👨‍⚕️ Doctor: ${session.data?.selectedDoctorName}\n📅 Date: ${session.data?.selectedDate}\n🕐 Time: ${session.data?.selectedTime}\n📍 Location: ${isHomeVisit(session.data?.locationType) ? "Home Visit" : "Clinic Visit"}\n\n📌 Booking ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ You'll receive reminders before your appointment.`
-                        : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${isHomeVisit(session.data?.locationType) ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ आपको अपॉइंटमेंट से पहले रिमाइंडर मिलेंगे।`
-                );
+                closing = language === "EN"
+                    ? `✅ Appointment confirmed!\n\n👨‍⚕️ Doctor: ${session.data?.selectedDoctorName}\n📅 Date: ${session.data?.selectedDate}\n🕐 Time: ${session.data?.selectedTime}\n📍 Location: ${isHomeVisit(session.data?.locationType) ? "Home Visit" : "Clinic Visit"}\n\n📌 Booking ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ You'll receive reminders before your appointment.`
+                    : `✅ नियुक्ति की पुष्टि हुई!\n\n👨‍⚕️ डॉक्टर: ${session.data?.selectedDoctorName}\n📅 तारीख: ${session.data?.selectedDate}\n🕐 समय: ${session.data?.selectedTime}\n📍 स्थान: ${isHomeVisit(session.data?.locationType) ? "घर पर मुलाकात" : "क्लिनिक में"}\n\n📌 बुकिंग ID: ${appointmentId}${tokenLine}${revisitLine}\n\n⏰ आपको अपॉइंटमेंट से पहले रिमाइंडर मिलेंगे।`;
 
                 // Best effort: a booking must never fail because the doctor
                 // could not be reached.
@@ -1378,36 +1369,30 @@ export class PatientFlowHandler {
             } catch (error) {
                 // Someone claimed the slot between selection and insert.
                 if (error instanceof Error && error.message === "SLOT_TAKEN") {
-                    await this.whatsappClient.sendTextMessage(
+                    await this.updateSession(phone, "MAIN_MENU", { language });
+                    await this.showMainMenu(
                         phone,
+                        language,
                         "That time was just booked by someone else. Please choose another slot."
                     );
-
-                    await this.updateSession(phone, "MAIN_MENU", { language });
-                    await this.showMainMenu(phone, language);
                     return;
                 }
 
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    language === "EN"
-                        ? `❌ Booking failed: ${error instanceof Error ? error.message : "Unknown error"}`
-                        : `❌ बुकिंग विफल: ${error instanceof Error ? error.message : "अज्ञात त्रुटि"}`
-                );
+                closing = language === "EN"
+                    ? `❌ Booking failed: ${error instanceof Error ? error.message : "Unknown error"}`
+                    : `❌ बुकिंग विफल: ${error instanceof Error ? error.message : "अज्ञात त्रुटि"}`;
 
                 await this.updateSession(phone, "MAIN_MENU", { language });
             }
 
-            await this.showMainMenu(phone, language);
+            await this.showMainMenu(phone, language, closing);
         } else if (buttonId === BUTTON_IDS.CONFIRMATION.NO) {
             await this.updateSession(phone, "MAIN_MENU", { language });
-            await this.whatsappClient.sendTextMessage(
+            await this.showMainMenu(
                 phone,
-                language === "EN"
-                    ? "❌ Booking cancelled. Returning to main menu..."
-                    : "❌ बुकिंग रद्द की गई। मुख्य मेनू पर जा रहे हैं..."
+                language,
+                language === "EN" ? "❌ Booking cancelled." : "❌ बुकिंग रद्द की गई।"
             );
-            await this.showMainMenu(phone, language);
         } else {
             await this.showBookingConfirmation(phone, session.data, language);
         }
@@ -1519,6 +1504,7 @@ export class PatientFlowHandler {
         const language = session.data?.language || "EN";
         // Accept tapped buttons (confirm_yes/confirm_no) as well as typed replies.
         const confirmation = this.normalizeConfirmation(message.text);
+        let closing: string | undefined;
 
         if (confirmation === "yes" || confirmation === "y" || confirmation === "हाँ") {
             const appointmentId = session.data?.selectedAppointmentId;
@@ -1563,32 +1549,24 @@ export class PatientFlowHandler {
                     );
                 }
 
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    language === "EN"
-                        ? "✅ Appointment cancelled successfully."
-                        : "✅ नियुक्ति सफलतापूर्वक रद्द की गई।"
-                );
+                closing = language === "EN"
+                    ? "✅ Appointment cancelled successfully."
+                    : "✅ नियुक्ति सफलतापूर्वक रद्द की गई।";
             } else {
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    language === "EN"
-                        ? `❌ Cancellation failed: ${result.message}`
-                        : `❌ रद्दीकरण विफल: ${result.message}`
-                );
+                closing = language === "EN"
+                    ? `❌ Cancellation failed: ${result.message}`
+                    : `❌ रद्दीकरण विफल: ${result.message}`;
             }
 
             await this.updateSession(phone, "MAIN_MENU", { language });
-            await this.showMainMenu(phone, language);
+            await this.showMainMenu(phone, language, closing);
         } else if (confirmation === "no" || confirmation === "n" || confirmation === "नहीं") {
             await this.updateSession(phone, "MAIN_MENU", { language });
-            await this.whatsappClient.sendTextMessage(
+            await this.showMainMenu(
                 phone,
-                language === "EN"
-                    ? "Cancellation aborted."
-                    : "रद्दीकरण रद्द किया गया।"
+                language,
+                language === "EN" ? "Cancellation aborted." : "रद्दीकरण रद्द किया गया।"
             );
-            await this.showMainMenu(phone, language);
         } else {
             await this.whatsappClient.sendTextMessage(
                 phone,
@@ -1822,6 +1800,7 @@ export class PatientFlowHandler {
         const language = session.data?.language || "EN";
         // Accept tapped buttons (confirm_yes/confirm_no) as well as typed replies.
         const confirmation = this.normalizeConfirmation(message.text);
+        let closing: string | undefined;
 
         if (confirmation === "yes" || confirmation === "y" || confirmation === "हाँ") {
             const result = await rescheduleAppointment(
@@ -1833,32 +1812,24 @@ export class PatientFlowHandler {
             );
 
             if (result.success) {
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    language === "EN"
-                        ? `✅ Appointment rescheduled to ${session.data?.newDate} at ${session.data?.newTime}`
-                        : `✅ नियुक्ति को ${session.data?.newDate} को ${session.data?.newTime} पर पुनः समय निर्धारित किया गया`
-                );
+                closing = language === "EN"
+                    ? `✅ Appointment rescheduled to ${session.data?.newDate} at ${session.data?.newTime}`
+                    : `✅ नियुक्ति को ${session.data?.newDate} को ${session.data?.newTime} पर पुनः समय निर्धारित किया गया`;
             } else {
-                await this.whatsappClient.sendTextMessage(
-                    phone,
-                    language === "EN"
-                        ? `❌ Rescheduling failed: ${result.message}`
-                        : `❌ पुनः समय निर्धारण विफल: ${result.message}`
-                );
+                closing = language === "EN"
+                    ? `❌ Rescheduling failed: ${result.message}`
+                    : `❌ पुनः समय निर्धारण विफल: ${result.message}`;
             }
 
             await this.updateSession(phone, "MAIN_MENU", { language });
-            await this.showMainMenu(phone, language);
+            await this.showMainMenu(phone, language, closing);
         } else if (confirmation === "no" || confirmation === "n" || confirmation === "नहीं") {
             await this.updateSession(phone, "MAIN_MENU", { language });
-            await this.whatsappClient.sendTextMessage(
+            await this.showMainMenu(
                 phone,
-                language === "EN"
-                    ? "Rescheduling aborted."
-                    : "पुनः समय निर्धारण रद्द किया गया।"
+                language,
+                language === "EN" ? "Rescheduling aborted." : "पुनः समय निर्धारण रद्द किया गया।"
             );
-            await this.showMainMenu(phone, language);
         } else {
             await this.whatsappClient.sendTextMessage(
                 phone,
@@ -1902,11 +1873,18 @@ export class PatientFlowHandler {
         );
     }
 
-    private async showMainMenu(phone: string, language: string): Promise<void> {
-        const message =
-            language === "EN"
-                ? "📋 What would you like to do?\n\n🔖 Tap a button to choose:"
-                : "📋 आप क्या करना चाहते हैं?\n\n🔖 चुनने के लिए बटन दबाएं:";
+    /**
+     * The one message a patient sees at the top of the flow.
+     *
+     * `intro` is folded into the same bubble rather than sent before it: a
+     * welcome and then a separate "what would you like to do?" asked the same
+     * question twice, a second apart, and the first had no buttons on it.
+     */
+    private async showMainMenu(phone: string, language: string, intro?: string): Promise<void> {
+        const prompt =
+            language === "EN" ? "What would you like to do?" : "आप क्या करना चाहते हैं?";
+
+        const message = intro ? `${intro}\n\n${prompt}` : `📋 ${prompt}`;
 
         // Offering home collection at a clinic that does not do it wastes one of
         // only three buttons and strands the patient in a dead flow.
