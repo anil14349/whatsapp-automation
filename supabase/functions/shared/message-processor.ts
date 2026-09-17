@@ -10,7 +10,7 @@ import { getRoleByPhoneForClinic } from "./staff-directory.ts";
 import { getClinicConfig, isClinicOpen, getAfterHoursMessage } from "./clinic-config.ts";
 import { sendLanguagePrompt } from "./languages.ts";
 import { sendPinPrompt } from "./doctor-auth.ts";
-import { BUTTON_IDS } from "./button-ids.ts";
+import { BUTTON_IDS, isValidPatientMenuButton, isServiceButton } from "./button-ids.ts";
 
 // These states belong to the home-collection flow whoever is in them.
 const HOME_COLLECTION_STATES = new Set([
@@ -80,18 +80,27 @@ export async function processMessage(
 
     // Dispatch replies arrive unprompted, and patients can be mid collection request.
     if (dispatchReply || HOME_COLLECTION_STATES.has(session.state)) {
-        await handleHomeCollectionMessage(
-            supabase,
-            whatsappClient,
-            senderPhone,
-            senderName,
-            messageText,
-            normalizedMessage,
-            session,
-            context.latitude,
-            context.longitude
-        );
-        return;
+        // The patient handler already honours a menu id tapped from an older
+        // message, but routing by state got here first, so a tap on "More
+        // Options" while being asked for an address was stored AS the address.
+        const tappedMenu =
+            messageType === "interactive" &&
+            (isValidPatientMenuButton(messageText.trim()) || isServiceButton(messageText.trim()));
+
+        if (!tappedMenu || session.role === "HOME_COLLECTION_PERSON") {
+            await handleHomeCollectionMessage(
+                supabase,
+                whatsappClient,
+                senderPhone,
+                senderName,
+                messageText,
+                normalizedMessage,
+                session,
+                context.latitude,
+                context.longitude
+            );
+            return;
+        }
     }
 
     if (session.role === "DOCTOR") {

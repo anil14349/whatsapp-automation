@@ -271,7 +271,13 @@ async function handleInboundMessage(req: Request) {
             name: senderName,
             status: messageType,
             message: messageText
-                ? await redactCredentials(supabase, senderPhone, messageType, messageText)
+                ? await redactCredentials(
+                    supabase,
+                    clinic.clinicId,
+                    senderPhone,
+                    messageType,
+                    messageText
+                )
                 : (inbound.latitude
                     ? `[location: ${inbound.latitude},${inbound.longitude}]`
                     : ""),

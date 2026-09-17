@@ -29,6 +29,7 @@ export function couldBeAPin(messageType: string, text: string): boolean {
 
 export async function redactCredentials(
     supabase: SupabaseClient,
+    clinicId: string,
     phone: string,
     messageType: string,
     text: string
@@ -37,10 +38,14 @@ export async function redactCredentials(
         return text;
     }
 
+    // Scoped, because the same number can be a doctor at one clinic and a
+    // patient at another: the unscoped read could find the wrong session and
+    // log the PIN.
     const { data, error } = await supabase
         .from("whatsapp_sessions")
         .select("state")
         .eq("phone", phone)
+        .eq("clinic_id", clinicId)
         .maybeSingle();
 
     // Failing closed here loses one log line and keeps a credential out of the
