@@ -140,13 +140,25 @@ export async function sendProactive(
     phone: string,
     freeform: string,
     template: ProactiveTemplate | null,
-    /** Sent instead of the plain text when the window is still open. */
-    document?: { link: string; filename: string }
+    options: {
+        /** Sent instead of the plain text when the window is still open. */
+        document?: { link: string; filename: string };
+        /**
+         * Recorded in `whatsapp_log` in place of the body. A staff credential
+         * would otherwise sit there in plain text for as long as the row does.
+         */
+        logAs?: string;
+    } = {}
 ): Promise<ProactiveResult> {
     try {
-        const messageId = document
-            ? await client.sendDocumentMessage(phone, document.link, document.filename, freeform)
-            : await client.sendTextMessage(phone, freeform);
+        const messageId = options.document
+            ? await client.sendDocumentMessage(
+                phone,
+                options.document.link,
+                options.document.filename,
+                freeform
+            )
+            : await client.sendTextMessage(phone, freeform, undefined, options.logAs);
 
         return { delivered: true, messageId, via: "text", retryable: false };
     } catch (error) {

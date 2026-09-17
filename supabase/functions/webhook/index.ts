@@ -10,6 +10,7 @@ import {
     getClinicAppSecret
 } from "../shared/clinic-routing.ts";
 import { isSignatureValid, signatureHeaderName } from "../shared/webhook-signature.ts";
+import { redactCredentials } from "../shared/inbound-redaction.ts";
 
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -269,8 +270,9 @@ async function handleInboundMessage(req: Request) {
             phone: senderPhone,
             name: senderName,
             status: messageType,
-            message: messageText ||
-                (inbound.latitude
+            message: messageText
+                ? await redactCredentials(supabase, senderPhone, messageType, messageText)
+                : (inbound.latitude
                     ? `[location: ${inbound.latitude},${inbound.longitude}]`
                     : ""),
             message_id: messageId,

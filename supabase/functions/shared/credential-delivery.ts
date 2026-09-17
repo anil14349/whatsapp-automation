@@ -63,7 +63,11 @@ export async function sendCredentialOverWhatsApp(
         {
             key: "staff_credential",
             parameters: [name, route.clinicName, credential]
-        }
+        },
+        // The whole point of delivering this over WhatsApp is that the admin
+        // never sees it; writing it into whatsapp_log would undo that, and
+        // leave it readable for as long as the row lives.
+        { logAs: `Portal ${kind} issued to ${name} (not recorded)` }
     );
 
     if (outcome.delivered) {

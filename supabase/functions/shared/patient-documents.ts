@@ -215,6 +215,6 @@ async function deliver(
             parameters: [to.name, label],
             header: { type: "document", link: signed.data.signedUrl, filename: to.fileName }
         },
-        { link: signed.data.signedUrl, filename: to.fileName }
+        { document: { link: signed.data.signedUrl, filename: to.fileName } }
     );
 }

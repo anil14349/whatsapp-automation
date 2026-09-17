@@ -59,7 +59,9 @@ export class WhatsAppClient {
     async sendTextMessage(
         recipientPhone: string,
         message: string,
-        supabase?: SupabaseClient
+        supabase?: SupabaseClient,
+        /** Recorded in place of the body when the body is a secret. */
+        logAs?: string
     ): Promise<string> {
         const payload = {
             messaging_product: "whatsapp",
@@ -70,7 +72,7 @@ export class WhatsAppClient {
             }
         };
 
-        return this.sendPayload(payload, recipientPhone, "text", message, supabase);
+        return this.sendPayload(payload, recipientPhone, "text", message, supabase, logAs);
     }
 
     /**
@@ -283,7 +285,9 @@ export class WhatsAppClient {
         recipientPhone: string,
         messageType: string,
         displayText: string,
-        supabase?: SupabaseClient
+        supabase?: SupabaseClient,
+        /** Recorded in place of displayText when the body must not be kept. */
+        logAs?: string
     ): Promise<string> {
         const url = `${this.baseUrl}/${this.apiVersion}/${this.phoneNumberId}/messages`;
         const log = supabase ?? this.supabase;
@@ -317,7 +321,7 @@ export class WhatsAppClient {
                     clinic_id: this.clinicId,
                     phone: recipientPhone,
                     status: messageType,
-                    message: displayText,
+                    message: logAs ?? displayText,
                     message_id: messageId
                 });
             }
