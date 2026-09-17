@@ -1530,12 +1530,19 @@ export class PatientFlowHandler {
                       ? "\n\nTo change or cancel, just message us here."
                       : "\n\nबदलने या रद्द करने के लिए यहाँ संदेश भेजें।";
 
+                // A service with no doctor has no name to print, and printing
+                // one anyway produced "Dr. undefined" on a real confirmation.
+                const doctorName = session.data?.selectedDoctorName;
+                const whoOrWhat = doctorName
+                    ? `👨‍⚕️ Dr. ${doctorName}`
+                    : `🩺 ${session.data?.serviceName ?? (isEn ? "Appointment" : "नियुक्ति")}`;
+
                 const confirmation = [
                     isEn ? "✅ Your appointment is confirmed" : "✅ आपकी नियुक्ति की पुष्टि हो गई है",
                     "",
                     config.clinic_name,
                     "",
-                    `👨‍⚕️ Dr. ${session.data?.selectedDoctorName}`,
+                    whoOrWhat,
                     `📅 ${this.formatLongDate(session.data?.selectedDate, language)}`,
                     `🕐 ${this.formatClockTime(session.data?.selectedTime)}`,
                     `📍 ${where}`

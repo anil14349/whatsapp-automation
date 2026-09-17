@@ -157,3 +157,24 @@ Deno.test("the confirmation carries no buttons, being a receipt", async () => {
     assertEquals(confirmation?.type, "text");
 });
 
+Deno.test("a service with no doctor is named, not called Dr. undefined", async () => {
+    // Found on a real handset: a home sample collection has no doctor, and the
+    // confirmation printed the missing name rather than omitting the line.
+    const { wa, confirm } = bookingAt();
+
+    await confirm({
+        ...BOOKING,
+        selectedDoctorId: undefined,
+        selectedDoctorName: undefined,
+        serviceName: "Sample Collection",
+        locationType: "HOME",
+        serviceAddress: "Flat 3B, above the chemist"
+    });
+
+    const said = wa.sent.map((m) => m.body).join("\n");
+
+    assert(!/undefined/i.test(said), said);
+    assertStringIncludes(said, "Sample Collection");
+    assertStringIncludes(said, "At your home — Flat 3B, above the chemist");
+});
+
