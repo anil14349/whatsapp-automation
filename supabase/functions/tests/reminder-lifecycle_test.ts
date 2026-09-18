@@ -185,3 +185,21 @@ Deno.test("marking someone seen stops the hour-before reminder", async () => {
 
     assertEquals(reminder("1_HOUR")?.status, "SKIPPED");
 });
+
+Deno.test("reopening a visit brings its reminders back", async () => {
+    const { supabase, reminder } = build();
+    // As marking Visited then Reopen leaves them.
+    supabase.store.appointment_reminders.forEach((r: any) => (r.status = "SKIPPED"));
+
+    await rescheduleAppointmentReminders(
+        supabase as any,
+        CLINIC_A,
+        APPOINTMENT,
+        FUTURE_DATE,
+        FUTURE_TIME
+    );
+
+    // Reopened and still ahead of us, so it needs its reminder again.
+    assertEquals(reminder("1_HOUR")?.status, "PENDING");
+    assertEquals(reminder("24_HOUR")?.status, "PENDING");
+});

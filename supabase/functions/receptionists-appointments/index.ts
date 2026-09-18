@@ -46,7 +46,7 @@ import { debug, recordAuditEvent } from "../shared/logger.ts";
 import { cancelAppointment, rescheduleAppointment } from "../shared/appointments.ts";
 import MultiClinicSupabaseClient from "../shared/multi-clinic-supabase-client.ts";
 import { withCors } from "../shared/cors.ts";
-import { createAppointmentReminders, skipAppointmentReminders } from "../shared/appointment-reminders.ts";
+import { createAppointmentReminders, skipAppointmentReminders, rescheduleAppointmentReminders } from "../shared/appointment-reminders.ts";
 import { getEnabledServices, getServiceById } from "../shared/clinic-services.ts";
 import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
 import { MIN_SEARCH_LENGTH, searchAppointments } from "../shared/appointment-search.ts";
@@ -418,7 +418,7 @@ async function updateAppointment(
 
   const { data: existing } = await supabase
     .from("appointments")
-    .select("id, status")
+    .select("id, status, appointment_date, appointment_time")
     .eq("id", body.id)
     .eq("clinic_id", clinicId)
     .maybeSingle();
@@ -452,6 +452,17 @@ async function updateAppointment(
   // Someone already seen should not later be told their visit is in an hour.
   if (status === "COMPLETED" || status === "NO_SHOW") {
     await skipAppointmentReminders(supabase, body.id);
+  }
+
+  // And reopening puts them back, or the visit runs with no reminder at all.
+  if (status === "CONFIRMED") {
+    await rescheduleAppointmentReminders(
+      supabase,
+      clinicId,
+      body.id,
+      existing.appointment_date,
+      existing.appointment_time
+    );
   }
 
   await recordAuditEvent(
