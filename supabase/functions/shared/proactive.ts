@@ -95,6 +95,10 @@
  *     "Hi {{1}}, your {{2}} from the clinic is attached. Please call the
  *      clinic if you have any questions."
  *
+ *     Registered as patient_document_v2, because Meta holds a deleted name for
+ *     a while and the first attempt had no document header. The secret
+ *     TEMPLATE_PATIENT_DOCUMENT points this key at that name.
+ *
  *     It used to invite a reply. A reply reaches the booking menu, and the
  *     portal has no inbox for anyone to read one in, so a patient asking about
  *     their own test result would have been answered with an offer to book an

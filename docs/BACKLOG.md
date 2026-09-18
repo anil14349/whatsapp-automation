@@ -56,8 +56,11 @@ production**. Until one is approved, every clinic-initiated message is relying
 on the recipient having messaged us in the last 24 hours.
 
 `patient_document` was registered with no Document header, which would have made
-every report send fail. It was deleted and recreated with one on 2026-09-18, so
-it is now correct — but, like the rest, still waiting on Meta.
+every report send fail. Deleting it to fix that turned out to be a one-way door:
+**Meta holds a deleted template name and refuses to recreate it for some time.**
+It was therefore re-registered as `patient_document_v2`, with the header, and the
+Supabase secret `TEMPLATE_PATIENT_DOCUMENT=patient_document_v2` points the code
+at it. Delete a template only when you are ready to live without the name.
 
 A ready-made proof once anything is approved: `918886436111` is outside the
 window and returns `131047`, so a single `sendProactive` to it exercises the
