@@ -44,7 +44,7 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
             </div>
 
             <div className="mt-4 border-t border-slate-100 pt-4">
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600">
                     Appearance
                 </h3>
                 <BrandingFields logoUrl={clinic.logoUrl} brandColour={clinic.brandColour} />
@@ -71,7 +71,7 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
             </div>
 
             <div className="mt-4 border-t border-slate-100 pt-4">
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600">
                     Home sample collection
                 </h3>
                 <HomeCollectionFields clinic={clinic} />
