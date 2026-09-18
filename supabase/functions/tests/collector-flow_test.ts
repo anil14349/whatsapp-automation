@@ -19,6 +19,9 @@ Deno.env.set("SUPABASE_URL", "http://localhost:54321");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-key");
 
 const COLLECTOR = "919000000088";
+const OTHER_COLLECTOR = "919000000099";
+const ME = "col-1";
+const THEM = "col-2";
 
 function visit(id: string, overrides: Record<string, unknown> = {}) {
     return {
@@ -31,6 +34,7 @@ function visit(id: string, overrides: Record<string, unknown> = {}) {
         location_type: "HOME",
         status: "CONFIRMED",
         service_address: "Flat 3B, above the chemist",
+        collector_id: ME,
         ...overrides
     };
 }
@@ -39,7 +43,8 @@ function build(appointments: Record<string, unknown>[], state = "COLLECTOR_MENU"
     const supabase = fakeSupabase(seed());
 
     supabase.store.sample_collectors = [
-        { id: "col-1", clinic_id: CLINIC_A, name: "Ravi", phone: COLLECTOR, is_active: true }
+        { id: ME, clinic_id: CLINIC_A, name: "Ravi", phone: COLLECTOR, is_active: true },
+        { id: THEM, clinic_id: CLINIC_A, name: "Sita", phone: OTHER_COLLECTOR, is_active: true }
     ];
 
     supabase.store.appointments = appointments;
@@ -120,7 +125,7 @@ Deno.test("an empty day says so rather than showing nothing", async () => {
 
     await send("hi", "text");
 
-    assert(/No home collections booked for today/i.test(said()), said());
+    assert(/No home collections booked for you today/i.test(said()), said());
 });
 
 Deno.test("choosing a visit asks before closing it", async () => {
@@ -133,12 +138,6 @@ Deno.test("choosing a visit asks before closing it", async () => {
 });
 
 Deno.test("confirming marks the appointment collected", async () => {
-    const { send, appointment } = build(
-        [visit("APT_1")],
-        "COLLECTOR_CONFIRM"
-    );
-
-    // The session carries the choice, as it would after the list tap.
     const { supabase } = build([visit("APT_1")]);
     supabase.store.whatsapp_sessions[0].state = "COLLECTOR_CONFIRM";
     supabase.store.whatsapp_sessions[0].data = { selectedVisitId: "APT_1" };
@@ -190,4 +189,69 @@ Deno.test("a visit id from another clinic cannot be closed", async () => {
 
     const row = supabase.rows("appointments").find((a: any) => a.id === "APT_THEIRS");
     assertEquals(row?.status, "CONFIRMED");
+});
+
+Deno.test("another collector's round is not shown", async () => {
+    const { send, wa } = build([
+        visit("APT_MINE"),
+        visit("APT_SITAS", { collector_id: THEM, patient_name: "Meera" })
+    ]);
+
+    await send("hi", "text");
+
+    const list = wa.sent.find((m) => m.type === "list");
+
+    assertEquals(list?.sections?.[0].rows.map((r) => r.id), [visitButtonId("APT_MINE")]);
+});
+
+Deno.test("unclaimed work is shown to everyone, and labelled", async () => {
+    // Nobody free when it was booked. Invisible would be worse than shared.
+    const { send, wa } = build([visit("APT_FREE", { collector_id: null })]);
+
+    await send("hi", "text");
+
+    const row = wa.sent.find((m) => m.type === "list")?.sections?.[0].rows[0];
+
+    assertEquals(row?.id, visitButtonId("APT_FREE"));
+    assert(/Unassigned/i.test(row?.description ?? ""), row?.description);
+});
+
+Deno.test("closing an unclaimed visit claims it", async () => {
+    const { supabase } = build([visit("APT_FREE", { collector_id: null })]);
+    supabase.store.whatsapp_sessions[0].state = "COLLECTOR_CONFIRM";
+    supabase.store.whatsapp_sessions[0].data = { selectedVisitId: "APT_FREE" };
+
+    await processMessage(supabase as any, new FakeWhatsAppClient() as any, {
+        messageId: crypto.randomUUID(),
+        senderPhone: COLLECTOR,
+        senderName: "Ravi",
+        messageText: BUTTON_IDS.CONFIRMATION.YES,
+        messageType: "interactive",
+        clinicId: CLINIC_A
+    });
+
+    const row = supabase.rows("appointments").find((a: any) => a.id === "APT_FREE");
+
+    assertEquals(row?.status, "COMPLETED");
+    assertEquals(row?.collector_id, ME, "the round should show who actually went");
+});
+
+Deno.test("a stale tap cannot close another collector's visit", async () => {
+    const { supabase } = build([visit("APT_SITAS", { collector_id: THEM })]);
+    supabase.store.whatsapp_sessions[0].state = "COLLECTOR_CONFIRM";
+    supabase.store.whatsapp_sessions[0].data = { selectedVisitId: "APT_SITAS" };
+
+    await processMessage(supabase as any, new FakeWhatsAppClient() as any, {
+        messageId: crypto.randomUUID(),
+        senderPhone: COLLECTOR,
+        senderName: "Ravi",
+        messageText: BUTTON_IDS.CONFIRMATION.YES,
+        messageType: "interactive",
+        clinicId: CLINIC_A
+    });
+
+    const row = supabase.rows("appointments").find((a: any) => a.id === "APT_SITAS");
+
+    assertEquals(row?.status, "CONFIRMED");
+    assertEquals(row?.collector_id, THEM);
 });

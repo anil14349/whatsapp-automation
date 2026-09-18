@@ -16,6 +16,7 @@ import type { ExtractedMessage, WhatsAppSession } from "../types.ts";
 import { BUTTON_IDS } from "../button-ids.ts";
 import { formatClockTime, formatLongDate } from "../appointment-format.ts";
 import { getClinicTimezone, todayInTimezone } from "../clinic-slots.ts";
+import { getCollectorsForClinic } from "../staff-directory.ts";
 import { isHomeVisit } from "../location-type.ts";
 import { debug, recordAuditEvent } from "../logger.ts";
 
@@ -69,13 +70,22 @@ export class CollectorFlowHandler {
         }
     }
 
-    /** Home visits still to do today, for this collector's clinic. */
-    private async todaysVisits(clinicId: string): Promise<any[]> {
+    /** Who is messaging, so a round can be theirs rather than the clinic's. */
+    private async me(phone: string, clinicId: string): Promise<string | null> {
+        const collectors = await getCollectorsForClinic(this.supabase, clinicId);
+        return collectors.find((c) => c.phone === phone)?.id ?? null;
+    }
+
+    /**
+     * Home visits still to do today: this collector's own, plus anything
+     * nobody was free to take. Unclaimed work has to be visible to someone.
+     */
+    private async todaysVisits(clinicId: string, collectorId: string | null): Promise<any[]> {
         const today = todayInTimezone(await getClinicTimezone(this.supabase, clinicId));
 
         const { data, error } = await this.supabase
             .from("appointments")
-            .select("id, patient_name, appointment_time, service_address, location_type, status, service_type:service_types(name)")
+            .select("id, patient_name, appointment_time, service_address, location_type, status, collector_id, service_type:service_types(name)")
             .eq("clinic_id", clinicId)
             .eq("appointment_date", today)
             .eq("status", "CONFIRMED")
@@ -88,18 +98,21 @@ export class CollectorFlowHandler {
 
         // Filtered here rather than in the query: location_type has been spelt
         // both ways, and isHomeVisit is the one place that knows.
-        return (data ?? []).filter((row: any) => isHomeVisit(row.location_type));
+        return (data ?? [])
+            .filter((row: any) => isHomeVisit(row.location_type))
+            .filter((row: any) => !row.collector_id || row.collector_id === collectorId);
     }
 
     private async showTodaysVisits(session: WhatsAppSession): Promise<void> {
-        const visits = await this.todaysVisits(session.clinic_id);
+        const mine = await this.me(session.phone, session.clinic_id);
+        const visits = await this.todaysVisits(session.clinic_id, mine);
 
         await this.update(session.phone, session.clinic_id, "COLLECTOR_MENU", {});
 
         if (visits.length === 0) {
             await this.whatsappClient.sendTextMessage(
                 session.phone,
-                "📋 No home collections booked for today.\n\nMessage me again to check later.",
+                "📋 No home collections booked for you today.\n\nMessage me again to check later.",
                 this.supabase
             );
             return;
@@ -111,7 +124,10 @@ export class CollectorFlowHandler {
         const rows = shown.map((visit: any) => ({
             id: visitButtonId(visit.id),
             title: `${formatClockTime(visit.appointment_time)} · ${visit.patient_name}`.slice(0, 24),
-            description: (visit.service_address || visit.service_type?.name || "Home visit").slice(0, 72)
+            description: (
+                (visit.collector_id ? "" : "Unassigned · ") +
+                (visit.service_address || visit.service_type?.name || "Home visit")
+            ).slice(0, 72)
         }));
 
         const more = visits.length > shown.length
@@ -128,9 +144,10 @@ export class CollectorFlowHandler {
     }
 
     private async askToConfirm(session: WhatsAppSession, appointmentId: string): Promise<void> {
-        const visits = await this.todaysVisits(session.clinic_id);
-        // Resolved against today's own list, so a stale tap cannot reach
-        // another clinic's appointment.
+        const mine = await this.me(session.phone, session.clinic_id);
+        const visits = await this.todaysVisits(session.clinic_id, mine);
+        // Resolved against the list this collector was actually shown, so a
+        // stale tap cannot reach another round or another clinic.
         const visit = visits.find((row: any) => row.id === appointmentId);
 
         if (!visit) {
@@ -162,12 +179,32 @@ export class CollectorFlowHandler {
         }
 
         const appointmentId = String(session.data?.selectedVisitId);
+        const mine = await this.me(session.phone, session.clinic_id);
 
-        // Scoped by clinic as well as id: an appointment id alone must never
-        // be enough to close someone else's visit.
+        // Checked here rather than as a filter on the update: the list this
+        // collector was shown is already "mine or unclaimed", so re-finding it
+        // there is the whole ownership rule in one place.
+        const visits = await this.todaysVisits(session.clinic_id, mine);
+        const visit = visits.find((row: any) => row.id === appointmentId);
+
+        if (!visit) {
+            await this.whatsappClient.sendTextMessage(
+                session.phone,
+                "That one is not on your round any more.",
+                this.supabase
+            );
+            await this.showTodaysVisits(session);
+            return;
+        }
+
+        // Closing an unclaimed visit claims it, so the round shows who went.
         const { data, error } = await this.supabase
             .from("appointments")
-            .update({ status: "COMPLETED", completed_at: new Date().toISOString() })
+            .update({
+                status: "COMPLETED",
+                completed_at: new Date().toISOString(),
+                ...(mine ? { collector_id: mine } : {})
+            })
             .eq("id", appointmentId)
             .eq("clinic_id", session.clinic_id)
             .eq("status", "CONFIRMED")

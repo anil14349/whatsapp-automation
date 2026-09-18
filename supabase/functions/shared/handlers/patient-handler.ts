@@ -5,7 +5,8 @@ import { BUTTON_IDS, isValidPatientMenuButton, isValidConfirmationButton, isVali
 import { knownPatientNames, MAX_REMEMBERED_NAMES } from "../patient-names.ts";
 import { asLocationType, isHomeVisit, LOCATION_CLINIC, LOCATION_HOME } from "../location-type.ts";
 import { checkServiceArea } from "../geo.ts";
-import { getCollectorsForClinic } from "../staff-directory.ts";
+import { getCollectorsForClinic, type Collector } from "../staff-directory.ts";
+import { pickCollector } from "../collector-assignment.ts";
 import { formatClockTime, formatLongDate } from "../appointment-format.ts";
 import {
     getEnabledServices,
@@ -1481,6 +1482,18 @@ export class PatientFlowHandler {
 
                 const appointmentId = appointment.id;
 
+                // Assigned after the insert rather than as part of it, so a
+                // rota problem can never cost the patient their booking.
+                let assignedCollector: Collector | null = null;
+
+                if (isHomeVisit(session.data?.locationType)) {
+                    assignedCollector = await this.assignCollector(
+                        appointmentId,
+                        clinicId,
+                        session.data?.selectedDate
+                    );
+                }
+
                 // Create appointment reminders (24-hour and 1-hour before)
                 const reminderResult = await createAppointmentReminders(
                     this.supabase,
@@ -1580,7 +1593,11 @@ export class PatientFlowHandler {
                 );
 
                 if (isHomeVisit(session.data?.locationType)) {
-                    await this.notifyCollectorsOfHomeVisit(clinicId, session.data);
+                    await this.notifyCollectorsOfHomeVisit(
+                        clinicId,
+                        session.data,
+                        assignedCollector
+                    );
                 }
 
                 return;
@@ -2361,6 +2378,49 @@ export class PatientFlowHandler {
     }
 
     /**
+     * Put the visit on a collector's round.
+     *
+     * Never throws: the booking is already committed, and an unassigned visit
+     * is still visible to every collector as unclaimed work.
+     */
+    private async assignCollector(
+        appointmentId: string,
+        clinicId: string,
+        date: string | undefined
+    ): Promise<Collector | null> {
+        try {
+            const collector = await pickCollector(this.supabase, clinicId, String(date ?? ""));
+
+            if (!collector) {
+                debug("patientFlow", "No collector free for this home visit", { appointmentId });
+                return null;
+            }
+
+            const { error } = await this.supabase
+                .from("appointments")
+                .update({ collector_id: collector.id })
+                .eq("id", appointmentId)
+                .eq("clinic_id", clinicId);
+
+            if (error) {
+                debug("patientFlow", "Could not assign a collector", {
+                    appointmentId,
+                    error: error.message
+                });
+                return null;
+            }
+
+            return collector;
+        } catch (error) {
+            debug("patientFlow", "Collector assignment failed", {
+                appointmentId,
+                error: error instanceof Error ? error.message : String(error)
+            });
+            return null;
+        }
+    }
+
+    /**
      * Tell the collectors a home visit has been booked.
      *
      * Nothing told them at all: the old flow dispatched from a table the
@@ -2369,12 +2429,17 @@ export class PatientFlowHandler {
      */
     private async notifyCollectorsOfHomeVisit(
         clinicId: string,
-        data: Record<string, any> | undefined
+        data: Record<string, any> | undefined,
+        assigned: Collector | null
     ): Promise<void> {
         try {
-            const collectors = await getCollectorsForClinic(this.supabase, clinicId);
+            // Only the collector who has it, unless nobody could take it - then
+            // everyone, so an unclaimed visit is not silently nobody's.
+            const tell = assigned
+                ? [assigned]
+                : await getCollectorsForClinic(this.supabase, clinicId);
 
-            if (collectors.length === 0) {
+            if (tell.length === 0) {
                 debug("patientFlow", "Home visit booked with no collector to tell", { clinicId });
                 return;
             }
@@ -2383,11 +2448,13 @@ export class PatientFlowHandler {
             const bookedOn = formatLongDate(String(data?.selectedDate ?? ""), "EN");
             const bookedAt = formatClockTime(String(data?.selectedTime ?? ""));
 
-            for (const collector of collectors) {
+            const lead = assigned ? "🏠 New home visit" : "🏠 Unassigned home visit";
+
+            for (const collector of tell) {
                 await sendProactive(
                     this.whatsappClient,
                     collector.phone,
-                    `🏠 New home visit for ${bookedFor} on ${bookedOn} at ${bookedAt} has been received.`,
+                    `${lead} for ${bookedFor} on ${bookedOn} at ${bookedAt} has been received.`,
                     {
                         key: "staff_new_booking",
                         parameters: [bookedFor, bookedOn, bookedAt]

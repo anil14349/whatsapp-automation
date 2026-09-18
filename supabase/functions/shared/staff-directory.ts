@@ -13,6 +13,7 @@ import { debug } from "./logger.ts";
 export type StaffRole = "DOCTOR" | "HOME_COLLECTION_PERSON" | "PATIENT";
 
 export interface Collector {
+    id: string;
     phone: string;
     name: string;
     maxPerDay: number;
@@ -70,12 +71,13 @@ export async function getCollectorsForClinic(
     try {
         const { data, error } = await supabase
             .from("sample_collectors")
-            .select("phone, name, max_collections_per_day")
+            .select("id, phone, name, max_collections_per_day")
             .eq("clinic_id", clinicId)
             .eq("is_active", true);
 
         if (!error && data && data.length > 0) {
             return data.map((row) => ({
+                id: row.id,
                 phone: row.phone,
                 name: row.name,
                 maxPerDay: row.max_collections_per_day ?? 8
