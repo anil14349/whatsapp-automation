@@ -46,7 +46,7 @@ import { debug, recordAuditEvent } from "../shared/logger.ts";
 import { cancelAppointment, rescheduleAppointment } from "../shared/appointments.ts";
 import MultiClinicSupabaseClient from "../shared/multi-clinic-supabase-client.ts";
 import { withCors } from "../shared/cors.ts";
-import { createAppointmentReminders } from "../shared/appointment-reminders.ts";
+import { createAppointmentReminders, skipAppointmentReminders } from "../shared/appointment-reminders.ts";
 import { getEnabledServices, getServiceById } from "../shared/clinic-services.ts";
 import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
 import { MIN_SEARCH_LENGTH, searchAppointments } from "../shared/appointment-search.ts";
@@ -447,6 +447,11 @@ async function updateAppointment(
 
   if (error) {
     return { status: 500, payload: { error: `Failed to update appointment: ${error.message}` } };
+  }
+
+  // Someone already seen should not later be told their visit is in an hour.
+  if (status === "COMPLETED" || status === "NO_SHOW") {
+    await skipAppointmentReminders(supabase, body.id);
   }
 
   await recordAuditEvent(

@@ -26,6 +26,7 @@ import { withAuth, successResponse, errorResponse, badRequestResponse } from "..
 import { TokenPayload } from "../shared/jwt-auth.ts";
 import { debug } from "../shared/logger.ts";
 import { withCors } from "../shared/cors.ts";
+import { skipAppointmentReminders } from "../shared/appointment-reminders.ts";
 
 interface StatusUpdateRequest {
   appointmentId: string;
@@ -123,6 +124,12 @@ async function updateAppointmentStatus(
         appointmentId
       });
       return null;
+    }
+
+    // Same rule as the front desk: someone already seen should not later be
+    // told their visit is in an hour.
+    if (status === "COMPLETED" || status === "NO_SHOW") {
+      await skipAppointmentReminders(supabase, appointmentId);
     }
 
     return data;

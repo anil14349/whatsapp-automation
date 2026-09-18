@@ -282,7 +282,10 @@ export async function markReminderAsSkipped(
         updated_at: new Date().toISOString()
       })
       .eq("appointment_id", appointmentId)
-      .eq("reminder_type", reminderType);
+      .eq("reminder_type", reminderType)
+      // One already sent stays SENT: it happened, and rewriting it to SKIPPED
+      // would lose the only record that the patient was messaged.
+      .eq("status", "PENDING");
 
     if (error) {
       return { success: false, error: error.message };
@@ -293,6 +296,73 @@ export async function markReminderAsSkipped(
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     debug("reminders", "Error marking reminder as skipped", { error: errorMsg });
+    return { success: false, error: errorMsg };
+  }
+}
+
+/**
+ * Stop both reminders for an appointment.
+ *
+ * Cancelling used to leave them PENDING, so the scheduler still messaged the
+ * patient about a visit that was no longer happening.
+ */
+export async function skipAppointmentReminders(
+  supabase: SupabaseClient,
+  appointmentId: string
+): Promise<void> {
+  await markReminderAsSkipped(supabase, appointmentId, "24_HOUR");
+  await markReminderAsSkipped(supabase, appointmentId, "1_HOUR");
+}
+
+/**
+ * Move an appointment's reminders to a new date and time.
+ *
+ * One already sent is reset rather than left alone: it told the patient a time
+ * that no longer applies, so the new time needs its own reminder.
+ */
+export async function rescheduleAppointmentReminders(
+  supabase: SupabaseClient,
+  clinicId: string,
+  appointmentId: string,
+  appointmentDate: string,
+  appointmentTime: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const timezone = await getClinicTimezone(supabase, clinicId);
+    const appointmentDateTime = clinicInstant(appointmentDate, appointmentTime, timezone);
+    const now = Date.now();
+
+    const scheduleFor: Array<["24_HOUR" | "1_HOUR", Date]> = [
+      ["24_HOUR", new Date(appointmentDateTime.getTime() - 24 * 60 * 60 * 1000)],
+      ["1_HOUR", new Date(appointmentDateTime.getTime() - 60 * 60 * 1000)]
+    ];
+
+    for (const [reminderType, at] of scheduleFor) {
+      const { error } = await supabase
+        .from("appointment_reminders")
+        .update({
+          scheduled_time: at.toISOString(),
+          status: at.getTime() > now ? "PENDING" : "SKIPPED",
+          sent_at: null,
+          message_id: null,
+          error_message: null,
+          attempts: 0,
+          updated_at: new Date().toISOString()
+        })
+        .eq("appointment_id", appointmentId)
+        .eq("clinic_id", clinicId)
+        .eq("reminder_type", reminderType);
+
+      if (error) {
+        return { success: false, error: error.message };
+      }
+    }
+
+    debug("reminders", "Moved reminders", { appointmentId, appointmentDate, appointmentTime });
+    return { success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    debug("reminders", "Error moving reminders", { error: errorMsg });
     return { success: false, error: errorMsg };
   }
 }

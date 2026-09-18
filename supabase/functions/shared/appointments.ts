@@ -6,6 +6,12 @@ import {
     debug
 } from "./logger.ts";
 import { isValidISODate, isValidTimeString } from "./validators.ts";
+import {
+    rescheduleAppointmentReminders,
+    skipAppointmentReminders
+} from "./appointment-reminders.ts";
+import { getServiceById } from "./clinic-services.ts";
+import { isClinicServiceSlotAvailable } from "./clinic-slots.ts";
 
 /**
  * Appointment Business Logic
@@ -72,6 +78,11 @@ export async function cancelAppointment(
 
         if (updateError) throw updateError;
 
+        // Here rather than in the callers: the WhatsApp flow remembered to do
+        // this and the portal did not, so cancelling at the desk still left the
+        // patient a reminder for a visit that was no longer happening.
+        await skipAppointmentReminders(supabase, appointmentId);
+
         // Log in Supabase
         await recordAuditEvent(
             supabase,
@@ -104,6 +115,54 @@ export async function cancelAppointment(
 }
 
 /**
+ * Is the requested slot free for this appointment?
+ *
+ * A doctor-free service (sample collection, most diagnostics) has no diary to
+ * consult, so asking the doctor-slot check about it returned "Doctor not found:
+ * null" and the patient was told the slot was taken. Its capacity lives on the
+ * clinic's own service hours instead.
+ */
+async function isNewSlotFree(
+    supabase: SupabaseClient,
+    client: MultiClinicSupabaseClient,
+    existing: { clinic_id: string; doctor_id: string | null; service_type_id: string | null },
+    newDate: string,
+    newTime: string
+): Promise<boolean> {
+    if (existing.doctor_id) {
+        return await client.isSlotAvailable(
+            existing.clinic_id,
+            existing.doctor_id,
+            newDate,
+            newTime
+        );
+    }
+
+    const service = existing.service_type_id
+        ? await getServiceById(supabase, existing.clinic_id, existing.service_type_id)
+        : null;
+
+    // A service turned off since booking leaves nothing to measure capacity
+    // against. Allow the move: the appointment already exists, and stranding
+    // the patient on a slot they cannot leave is the worse outcome.
+    if (!service) {
+        debug("rescheduleAppointment", "No service to check capacity against, allowing", {
+            clinicId: existing.clinic_id,
+            serviceTypeId: existing.service_type_id
+        });
+        return true;
+    }
+
+    return await isClinicServiceSlotAvailable(
+        supabase,
+        existing.clinic_id,
+        service,
+        newDate,
+        newTime
+    );
+}
+
+/**
  * Reschedule an appointment
  */
 export async function rescheduleAppointment(
@@ -116,7 +175,10 @@ export async function rescheduleAppointment(
 ): Promise<AppointmentResponse> {
     const client = new MultiClinicSupabaseClient(
         Deno.env.get("SUPABASE_URL") || "",
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+        // Reuse the caller's client; building a second from env made every
+        // test that reached here talk to the real network.
+        supabase
     );
 
     try {
@@ -131,7 +193,7 @@ export async function rescheduleAppointment(
 
         const { data: existing, error: fetchError } = await supabase
             .from("appointments")
-            .select("id, status, clinic_id, doctor_id, patient_phone, appointment_date, appointment_time")
+            .select("id, status, clinic_id, doctor_id, service_type_id, patient_phone, appointment_date, appointment_time")
             .eq("id", appointmentId)
             .eq("clinic_id", clinicId)
             .maybeSingle();
@@ -155,9 +217,10 @@ export async function rescheduleAppointment(
             };
         }
 
-        const slotAvailable = await client.isSlotAvailable(
-            existing.clinic_id,
-            existing.doctor_id,
+        const slotAvailable = await isNewSlotFree(
+            supabase,
+            client,
+            existing,
             newDate,
             newTime
         );
@@ -181,6 +244,16 @@ export async function rescheduleAppointment(
             .eq("clinic_id", clinicId);
 
         if (updateError) throw updateError;
+
+        // Reminders are scheduled off the appointment time, so moving one
+        // without them leaves a reminder pointing at the old slot.
+        await rescheduleAppointmentReminders(
+            supabase,
+            clinicId,
+            appointmentId,
+            newDate,
+            newTime
+        );
 
         // Log in Supabase
         await recordAuditEvent(
