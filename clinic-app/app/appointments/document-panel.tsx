@@ -118,7 +118,7 @@ export function DocumentPanel({
                 </button>
             </form>
 
-            <p className="mt-2 text-xs text-slate-400">
+            <p className="mt-2 text-xs text-slate-500">
                 PDF, JPEG or PNG, up to 10 MB. It arrives in the patient&apos;s WhatsApp and stays
                 there.
             </p>
@@ -147,7 +147,7 @@ export function DocumentPanel({
                                 {DELIVERY_WORDS[doc.status] ?? doc.status.toLowerCase()}
                             </span>
                             <span className="text-slate-700">{doc.file_name}</span>
-                            <span className="text-slate-400">
+                            <span className="text-slate-500">
                                 {(doc.sent_at ?? doc.created_at).slice(0, 16).replace("T", " ")}
                             </span>
                             {doc.error_message && (
@@ -159,7 +159,7 @@ export function DocumentPanel({
             )}
 
             {sent !== null && sent.length === 0 && (
-                <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-400">
+                <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">
                     Nothing sent for this visit yet.
                 </p>
             )}

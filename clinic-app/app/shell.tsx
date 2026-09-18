@@ -44,7 +44,7 @@ const LINKS = [
  * narrower column, so their content sat inset from the logo above it. One
  * constant for all three is the only arrangement that cannot drift again.
  */
-const CHROME_WIDTH = "max-w-5xl";
+const CHROME_WIDTH = "max-w-6xl";
 
 /**
  * The frame every portal page sits in.
@@ -98,7 +98,7 @@ export function PortalShell({
 
             <footer className="border-t border-slate-200 bg-white">
                 <div
-                    className={`mx-auto flex ${CHROME_WIDTH} flex-wrap items-center justify-between gap-2 px-6 py-4 text-xs text-slate-400`}
+                    className={`mx-auto flex ${CHROME_WIDTH} flex-wrap items-center justify-between gap-2 px-6 py-4 text-xs text-slate-500`}
                 >
                     <span>
                         © {year} {branding.name}

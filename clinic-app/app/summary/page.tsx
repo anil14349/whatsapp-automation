@@ -210,7 +210,7 @@ export default async function SummaryPage({
                         />
                     </div>
 
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-500">
                         Returning patients in this period: {summary.revisits}. Cancelled:{" "}
                         {summary.cancelled}, which are left out of the figures above.
                     </p>
@@ -233,7 +233,7 @@ function Stat({
 }) {
     return (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-            <div className="text-xs font-medium uppercase tracking-wide text-slate-400">
+            <div className="text-xs font-medium uppercase tracking-wide text-slate-600">
                 {label}
             </div>
             <div
@@ -243,7 +243,7 @@ function Stat({
             >
                 {value}
             </div>
-            {note && <div className="mt-0.5 text-xs text-slate-400">{note}</div>}
+            {note && <div className="mt-0.5 text-xs text-slate-500">{note}</div>}
         </div>
     );
 }
@@ -260,7 +260,7 @@ function Panel({
     return (
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
             <h2 className="mb-3 text-sm font-semibold">{title}</h2>
-            {children ?? <p className="text-sm text-slate-400">{empty}</p>}
+            {children ?? <p className="text-sm text-slate-500">{empty}</p>}
         </div>
     );
 }
@@ -271,7 +271,7 @@ function Panel({
  */
 function Bars({ rows }: { rows: Array<{ label: string; count: number }> }) {
     if (rows.length === 0) {
-        return <p className="text-sm text-slate-400">Nothing yet.</p>;
+        return <p className="text-sm text-slate-500">Nothing yet.</p>;
     }
 
     const most = Math.max(...rows.map((r) => r.count), 1);

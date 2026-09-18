@@ -63,7 +63,7 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
                         defaultValue={clinic.revisitWindowDays}
                         className="w-32 rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
                     />
-                    <span className="block text-xs text-slate-400">
+                    <span className="block text-xs text-slate-500">
                         A patient returning to the same doctor within this many days is marked a
                         revisit. Zero switches it off.
                     </span>
@@ -149,7 +149,7 @@ export function AddClosureForm() {
                 disabled={pending}
                 className="ml-auto rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-slate-300 disabled:opacity-60"
             >
-                {pending ? "Adding…" : "Close this day"}
+                {pending ? "Adding…" : "Add closure"}
             </button>
 
             {state.error && (
@@ -244,7 +244,7 @@ function BrandingFields({
                     )}
                     {busy && <span className="text-xs text-slate-500">Working…</span>}
                 </div>
-                <span className="block text-xs text-slate-400">
+                <span className="block text-xs text-slate-500">
                     PNG, JPEG or WebP, up to 2 MB. Leave it empty to show the clinic&apos;s
                     initials instead. Saved as soon as you choose a file.
                 </span>
@@ -394,7 +394,7 @@ function HomeCollectionFields({ clinic }: { clinic: ClinicDetails }) {
                 </label>
             </div>
 
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500">
                 Paste the pair straight from Google Maps into either box and they will split
                 themselves.{" "}
                 {limited ? (

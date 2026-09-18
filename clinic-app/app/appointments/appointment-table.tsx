@@ -43,7 +43,7 @@ const STATUS_STYLES: Record<string, string> = {
     CONFIRMED: "bg-blue-50 text-blue-700",
     COMPLETED: "bg-green-50 text-green-700",
     NO_SHOW: "bg-slate-100 text-slate-600",
-    CANCELLED: "bg-slate-50 text-slate-400"
+    CANCELLED: "bg-slate-50 text-slate-500"
 };
 
 const STATUS_DOTS: Record<string, string> = {
@@ -377,7 +377,7 @@ export function AppointmentTable({
 
                             return (
                                 <tr key={row.id}>
-                                    <td className="px-4 py-3 text-right text-slate-400 tabular-nums">
+                                    <td className="px-4 py-3 text-right text-slate-500 tabular-nums">
                                         {index + 1}
                                     </td>
                                     {showDate && (
@@ -414,7 +414,7 @@ export function AppointmentTable({
                                     </td>
                                     <td className="px-4 py-3">
                                         <div className="text-slate-600">{row.serviceName ?? "—"}</div>
-                                        <div className="flex gap-1.5 text-xs text-slate-400">
+                                        <div className="flex gap-1.5 text-xs text-slate-500">
                                             {/* Deliberately not teal: that belongs to the product
                                                 and its primary actions, not to a fact about a visit. */}
                                             {row.locationType === "HOME" && (
@@ -430,7 +430,7 @@ export function AppointmentTable({
                                     {showDoctor && (
                                         <td className="px-4 py-3 text-slate-600">
                                             {row.doctorName ?? (
-                                                <span className="text-slate-400">no doctor needed</span>
+                                                <span className="text-slate-500">no doctor needed</span>
                                             )}
                                         </td>
                                     )}

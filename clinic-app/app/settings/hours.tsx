@@ -76,7 +76,7 @@ function DayRow({
                 onChange={(e) => setOpen(e.target.value)}
                 className="rounded-lg border border-slate-200 px-2 py-1 text-sm disabled:bg-slate-50 disabled:text-slate-400"
             />
-            <span className="text-slate-400">to</span>
+            <span className="text-slate-500">to</span>
             <input
                 type="time"
                 value={close}

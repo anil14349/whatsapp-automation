@@ -76,7 +76,7 @@ export function AddServiceForm({ title, summary }: { title: string; summary: str
                         placeholder="MRI Scan"
                         className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
                     />
-                    <span className="block text-xs text-slate-400">
+                    <span className="block text-xs text-slate-500">
                         Up to 24 characters, so it fits on a patient&apos;s phone
                     </span>
                 </label>

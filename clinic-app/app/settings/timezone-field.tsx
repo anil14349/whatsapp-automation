@@ -58,7 +58,7 @@ export function TimezoneField({ value }: { value: string }) {
                 />
             )}
 
-            <span className="block text-xs text-slate-400">
+            <span className="block text-xs text-slate-500">
                 Decides what today means for slots and reminders. It is {formatNow(selected)} there
                 now.
             </span>

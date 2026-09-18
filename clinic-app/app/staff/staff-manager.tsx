@@ -152,7 +152,7 @@ export function StaffManager({
                             }`}
                         >
                             {option.label}
-                            <span className="ml-1.5 text-xs text-slate-400">
+                            <span className="ml-1.5 text-xs text-slate-500">
                                 {(staff[option.type] ?? []).length}
                             </span>
                         </button>
@@ -303,7 +303,7 @@ export function StaffManager({
                                     defaultValue={state.values?.email ?? ""}
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                                 />
-                                <span className="block text-xs text-slate-400">
+                                <span className="block text-xs text-slate-500">
                                     Needed only if they have no WhatsApp number
                                 </span>
                             </label>
@@ -352,7 +352,7 @@ export function StaffManager({
                                     defaultValue={state.values?.qualifications ?? ""}
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                                 />
-                                <span className="block text-xs text-slate-400">
+                                <span className="block text-xs text-slate-500">
                                     Shown to patients when they choose a doctor.
                                 </span>
                             </label>
@@ -366,7 +366,7 @@ export function StaffManager({
                                     defaultValue={state.values?.photoUrl ?? ""}
                                     className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                                 />
-                                <span className="block text-xs text-slate-400">
+                                <span className="block text-xs text-slate-500">
                                     Optional. Their initials are shown when there is no photo.
                                 </span>
                             </label>
@@ -421,7 +421,7 @@ export function StaffManager({
                                                 <div>
                                                     <div className="font-medium">{member.name}</div>
                                                     {member.specialization && (
-                                                        <div className="text-xs text-slate-400">
+                                                        <div className="text-xs text-slate-500">
                                                             {member.specialization}
                                                         </div>
                                                     )}
@@ -436,7 +436,7 @@ export function StaffManager({
                                         <td className="px-4 py-3 text-slate-600">
                                             <div>{member.phone ? displayPhone(member.phone) : "—"}</div>
                                             {member.email && (
-                                                <div className="text-xs text-slate-400">{member.email}</div>
+                                                <div className="text-xs text-slate-500">{member.email}</div>
                                             )}
                                         </td>
                                         <td className="px-4 py-3">
@@ -577,7 +577,7 @@ function EditStaffPanel({
                         className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     />
                     {type === "receptionist" && (
-                        <span className="block text-xs text-slate-400">They sign in with this</span>
+                        <span className="block text-xs text-slate-500">They sign in with this</span>
                     )}
                 </label>
 
@@ -602,7 +602,7 @@ function EditStaffPanel({
                             onChange={(e) => setQualifications(e.target.value)}
                             className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                         />
-                        <span className="block text-xs text-slate-400">
+                        <span className="block text-xs text-slate-500">
                             Shown to patients when they choose a doctor.
                         </span>
                     </label>
@@ -620,7 +620,7 @@ function EditStaffPanel({
                                 className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                             />
                         </div>
-                        <span className="block text-xs text-slate-400">
+                        <span className="block text-xs text-slate-500">
                             Leave blank to show their initials instead.
                         </span>
                     </div>

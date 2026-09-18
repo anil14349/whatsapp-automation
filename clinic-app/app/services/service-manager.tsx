@@ -155,7 +155,7 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
 
                                     {s.isOwn ? (
                                         <div className="sm:col-span-2 flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-3">
-                                            <span className="text-xs text-slate-400">
+                                            <span className="text-xs text-slate-500">
                                                 Refused while patients are still booked for it
                                             </span>
                                             <button
@@ -218,7 +218,7 @@ function NameField({
                 }}
                 className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm disabled:bg-slate-50"
             />
-            <span className="block text-xs text-slate-400">
+            <span className="block text-xs text-slate-500">
                 {renamed
                     ? `This is what patients see. Normally called "${catalogueName}".`
                     : "This is what patients see on their phone"}
@@ -286,7 +286,7 @@ function NumberField({
                 }}
                 className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm disabled:bg-slate-50"
             />
-            {hint && <span className="block text-xs text-slate-400">{hint}</span>}
+            {hint && <span className="block text-xs text-slate-500">{hint}</span>}
         </label>
     );
 }
