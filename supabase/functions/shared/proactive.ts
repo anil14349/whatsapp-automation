@@ -101,8 +101,13 @@
  *
  *   patient_document           header: DOCUMENT   {{1}} patient  {{2}} what it is
  *     Header set to a document, body:
- *     "Hi {{1}}, your {{2}} from the clinic is attached. Reply to this message
- *      if you have any questions."
+ *     "Hi {{1}}, your {{2}} from the clinic is attached. Please call the
+ *      clinic if you have any questions."
+ *
+ *     It used to invite a reply. A reply reaches the booking menu, and the
+ *     portal has no inbox for anyone to read one in, so a patient asking about
+ *     their own test result would have been answered with an offer to book an
+ *     appointment. The phone is the only channel that reaches a person.
  *
  *   A quick reply's label is what arrives, so every label above is a word
  *   menuIdForKeyword() maps to a menu id: Cancel, Reschedule, Book. Adding a

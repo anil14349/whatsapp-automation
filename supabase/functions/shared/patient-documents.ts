@@ -202,9 +202,13 @@ async function deliver(
     const client = new WhatsAppClient(route.accessToken, route.phoneNumberId, supabase, clinicId);
     const label = KIND_LABELS[to.kind];
 
+    // Not "reply if you have questions": a reply reaches the booking menu, and
+    // there is no inbox in the portal for anyone to read it in.
+    const askUs = "\n\nPlease call the clinic if you have any questions.";
+
     const caption = to.note?.trim()
-        ? `📄 Your ${label} from ${route.clinicName}\n\n${to.note.trim()}`
-        : `📄 Your ${label} from ${route.clinicName}`;
+        ? `📄 Your ${label} from ${route.clinicName}\n\n${to.note.trim()}${askUs}`
+        : `📄 Your ${label} from ${route.clinicName}${askUs}`;
 
     return await sendProactive(
         client,
