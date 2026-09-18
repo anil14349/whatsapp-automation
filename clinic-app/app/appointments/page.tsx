@@ -31,6 +31,26 @@ function daySummary(rows: AppointmentRow[]): string {
     return parts.join(" · ");
 }
 
+/** Postgres gives back "10:00:00", the booking form gives "10:00". */
+function minutesOfDay(time: string): number {
+    const [hours, minutes] = String(time ?? "").split(":");
+    return Number(hours) * 60 + Number(minutes ?? 0);
+}
+
+// Two visits at the same minute are common, so the tie is broken rather than
+// left to whatever order the database happened to return.
+function byTimeThenToken(a: AppointmentRow, b: AppointmentRow): number {
+    const byTime = minutesOfDay(a.time) - minutesOfDay(b.time);
+
+    if (byTime !== 0) {
+        return byTime;
+    }
+
+    const byToken = (a.token ?? Number.MAX_SAFE_INTEGER) - (b.token ?? Number.MAX_SAFE_INTEGER);
+
+    return byToken !== 0 ? byToken : a.patientName.localeCompare(b.patientName);
+}
+
 export default async function AppointmentsPage({
     searchParams
 }: {
@@ -103,6 +123,7 @@ export default async function AppointmentsPage({
             bookingSource: a.booking_source ?? null,
             isRevisit: a.is_revisit === true || a.isRevisit === true,
             token: a.token_number ?? a.tokenNumber ?? null,
+            locationType: a.location_type ?? a.locationType ?? null,
             status: a.status
         }))
         : [];
@@ -110,7 +131,7 @@ export default async function AppointmentsPage({
     // A day's list reads by time. Search results read newest first, which the
     // endpoint has already ordered, so they are left alone.
     if (!searching) {
-        rows.sort((a, b) => a.time.localeCompare(b.time));
+        rows.sort(byTimeThenToken);
     }
 
     return (

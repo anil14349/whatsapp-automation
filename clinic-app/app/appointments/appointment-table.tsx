@@ -29,6 +29,7 @@ export interface AppointmentRow {
     bookingSource: string | null;
     isRevisit: boolean;
     token: number | null;
+    locationType: string | null;
     status: string;
 }
 
@@ -38,6 +39,11 @@ const STATUS_STYLES: Record<string, string> = {
     NO_SHOW: "bg-amber-50 text-amber-700",
     CANCELLED: "bg-slate-100 text-slate-500"
 };
+
+/** Postgres hands back "10:00:00" and the clock on the wall does not. */
+function clockTime(time: string): string {
+    return String(time ?? "").slice(0, 5);
+}
 
 export function AppointmentTable({
     rows,
@@ -66,6 +72,17 @@ export function AppointmentTable({
     const [sending, setSending] = useState<AppointmentRow | null>(null);
     const [slots, setSlots] = useState<string[]>([]);
     const [newDate, setNewDate] = useState(date);
+    const [place, setPlace] = useState<"ALL" | "CLINIC" | "HOME">("ALL");
+
+    const counts = {
+        home: rows.filter((r) => r.locationType === "HOME").length,
+        clinic: rows.filter((r) => r.locationType !== "HOME").length
+    };
+
+    const shown =
+        place === "ALL"
+            ? rows
+            : rows.filter((r) => (place === "HOME" ? r.locationType === "HOME" : r.locationType !== "HOME"));
 
     function run(fn: () => Promise<BookingState>) {
         start(async () => setNotice(await fn()));
@@ -216,10 +233,36 @@ export function AppointmentTable({
             )}
 
             <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+                {counts.home > 0 && counts.clinic > 0 && (
+                    /* Home visits and clinic visits are different work. Only
+                       offered when the day actually holds both. */
+                    <div className="flex gap-1 border-b border-slate-200 bg-slate-50 px-3 py-2">
+                        {(
+                            [
+                                ["ALL", `All ${rows.length}`],
+                                ["CLINIC", `At the clinic ${counts.clinic}`],
+                                ["HOME", `Home visits ${counts.home}`]
+                            ] as const
+                        ).map(([value, label]) => (
+                            <button
+                                key={value}
+                                onClick={() => setPlace(value)}
+                                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                                    place === value
+                                        ? "bg-white text-slate-900 ring-1 ring-slate-200"
+                                        : "text-slate-500 hover:text-slate-900"
+                                }`}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+
                 <table className="w-full text-left text-sm">
                     <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
                         <tr>
-                            <th className="px-4 py-3">Token</th>
+                            <th className="px-4 py-3 text-right">#</th>
                             {showDate && <th className="px-4 py-3">Date</th>}
                             <th className="px-4 py-3">Time</th>
                             <th className="px-4 py-3">Patient</th>
@@ -230,29 +273,34 @@ export function AppointmentTable({
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {rows.map((row) => {
+                        {shown.map((row, index) => {
                             const open = row.status === "CONFIRMED";
 
                             return (
                                 <tr key={row.id}>
-                                    <td className="px-4 py-3">
-                                        {row.token ? (
-                                            <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-slate-900 px-2 text-xs font-semibold text-white">
-                                                {row.token}
-                                            </span>
-                                        ) : (
-                                            <span className="text-slate-300">—</span>
-                                        )}
+                                    <td className="px-4 py-3 text-right text-slate-400 tabular-nums">
+                                        {index + 1}
                                     </td>
                                     {showDate && (
-                                        <td className="px-4 py-3 whitespace-nowrap text-slate-600">
+                                        <td className="px-4 py-3 whitespace-nowrap text-slate-600 tabular-nums">
                                             {row.date}
                                         </td>
                                     )}
-                                    <td className="px-4 py-3 font-medium">{row.time}</td>
+                                    <td className="px-4 py-3 whitespace-nowrap font-medium tabular-nums">
+                                        {clockTime(row.time)}
+                                    </td>
                                     <td className="px-4 py-3">
-                                        <div>{row.patientName}</div>
-                                        <div className="text-xs text-slate-400">
+                                        <div className="flex items-center gap-2">
+                                            <span>{row.patientName}</span>
+                                            {/* The clinic queue number, which only visits to
+                                                the clinic itself are given. */}
+                                            {row.token !== null && (
+                                                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1.5 text-[11px] font-semibold text-white tabular-nums">
+                                                    {row.token}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="text-xs text-slate-400 tabular-nums">
                                             {displayPhone(row.patientPhone)}
                                         </div>
                                         {/* The front desk should not have to remember who is
@@ -265,11 +313,16 @@ export function AppointmentTable({
                                     </td>
                                     <td className="px-4 py-3">
                                         <div className="text-slate-700">{row.serviceName ?? "—"}</div>
-                                        {/* A walk-in has had no confirmation message, unlike a
-                                            patient who booked themselves. */}
-                                        {row.bookingSource === "WALK_IN" && (
-                                            <div className="text-xs text-slate-400">walk-in</div>
-                                        )}
+                                        <div className="flex gap-1.5 text-xs text-slate-400">
+                                            {row.locationType === "HOME" && (
+                                                <span className="font-medium text-teal-700">
+                                                    at home
+                                                </span>
+                                            )}
+                                            {/* A walk-in has had no confirmation message, unlike
+                                                a patient who booked themselves. */}
+                                            {row.bookingSource === "WALK_IN" && <span>walk-in</span>}
+                                        </div>
                                     </td>
                                     {showDoctor && (
                                         <td className="px-4 py-3 text-slate-600">

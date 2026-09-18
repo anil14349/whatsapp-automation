@@ -47,6 +47,7 @@ interface AppointmentRow {
   service_type: { code: string; name: string } | null;
   token_number: number | null;
   is_revisit: boolean | null;
+  location_type: string | null;
   notes: string;
   completed_at: string | null;
   created_at: string;
@@ -77,6 +78,7 @@ async function fetchDoctorAppointments(
         service_type:service_types(code, name),
         token_number,
         is_revisit,
+        location_type,
         booking_source,
         notes,
         completed_at,
@@ -164,6 +166,7 @@ function formatAppointment(row: AppointmentRow) {
       : null,
     tokenNumber: row.token_number ?? null,
     isRevisit: row.is_revisit === true,
+    locationType: row.location_type ?? null,
     notes: row.notes,
     completedAt: row.completed_at,
     createdAt: row.created_at
