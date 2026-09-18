@@ -35,7 +35,7 @@ export default async function SettingsPage() {
 
     if (!result.ok) {
         return (
-            <PortalShell session={session} branding={branding} width="max-w-4xl">
+            <PortalShell session={session} branding={branding}>
                 <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
                     {result.data?.error ?? "Could not load settings."}
                 </p>
@@ -50,7 +50,7 @@ export default async function SettingsPage() {
     const openDays = hours.filter((d) => !d.closed).length;
 
     return (
-        <PortalShell session={session} branding={branding} width="max-w-4xl">
+        <PortalShell session={session} branding={branding}>
             <div className="space-y-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <h1 className="text-xl font-semibold">Settings</h1>

@@ -36,11 +36,13 @@ const LINKS = [
 ];
 
 /**
- * The header and footer keep this width whatever the page asks for.
+ * Header, main and footer all measure this. Nothing may override it.
  *
- * They used to take the page's own `width`, so Settings and Services - which
- * hold their forms to a narrower column - had a visibly narrower header than
- * every other screen.
+ * The header and footer used to take the page's own `width`, so Settings and
+ * Services had a visibly narrower header than every other screen. Pinning the
+ * chrome fixed that and moved the seam: those two pages still asked for a
+ * narrower column, so their content sat inset from the logo above it. One
+ * constant for all three is the only arrangement that cannot drift again.
  */
 const CHROME_WIDTH = "max-w-5xl";
 
@@ -54,12 +56,10 @@ const CHROME_WIDTH = "max-w-5xl";
 export function PortalShell({
     session,
     branding,
-    width = "max-w-5xl",
     children
 }: {
     session: PortalSession;
     branding: Branding;
-    width?: string;
     children: React.ReactNode;
 }) {
     const canManage = session.role === "CLINIC_OWNER" || session.role === "ADMIN";
@@ -94,7 +94,7 @@ export function PortalShell({
                 </div>
             </header>
 
-            <main className={`mx-auto w-full ${width} flex-1 px-6 py-6`}>{children}</main>
+            <main className={`mx-auto w-full ${CHROME_WIDTH} flex-1 px-6 py-6`}>{children}</main>
 
             <footer className="border-t border-slate-200 bg-white">
                 <div

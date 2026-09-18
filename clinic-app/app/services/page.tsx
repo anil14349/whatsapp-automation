@@ -33,7 +33,7 @@ export default async function ServicesPage() {
     const offered = services.filter((s) => s.isEnabled).length;
 
     return (
-        <PortalShell session={session} branding={branding} width="max-w-4xl">
+        <PortalShell session={session} branding={branding}>
             <AddServiceForm
                 title="Services"
                 summary={`${offered} of ${services.length} offered to patients`}
