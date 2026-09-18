@@ -1734,45 +1734,16 @@ export class PatientFlowHandler {
             const appointmentId = session.data?.selectedAppointmentId;
             const clinicId = session.clinic_id;
 
-            // Captured before cancelling so the freed slot can be offered on.
-            const { data: cancelled } = await this.supabase
-                .from("appointments")
-                .select("doctor_id, appointment_date, appointment_time")
-                .eq("id", appointmentId)
-                .eq("clinic_id", clinicId)
-                .maybeSingle();
-
             const result = await cancelAppointment(
                 this.supabase,
                 appointmentId,
                 clinicId,
-                "Patient initiated cancellation"
+                "Patient initiated cancellation",
+                "patient",
+                this.whatsappClient
             );
 
             if (result.success) {
-                // Mark reminders as skipped (don't send reminders for cancelled appointments)
-                await markReminderAsSkipped(this.supabase, appointmentId, "24_HOUR");
-                await markReminderAsSkipped(this.supabase, appointmentId, "1_HOUR");
-
-                if (cancelled) {
-                    const waitlist = new WaitlistHandler(this.supabase, this.whatsappClient);
-
-                    await waitlist.notifyWaitlistOnCancellation(
-                        cancelled.doctor_id,
-                        cancelled.appointment_date,
-                        cancelled.appointment_time,
-                        clinicId
-                    );
-
-                    // Patients on the date-level waitlist are waiting on "ANY" time.
-                    await waitlist.notifyWaitlistOnCancellation(
-                        cancelled.doctor_id,
-                        cancelled.appointment_date,
-                        "ANY",
-                        clinicId
-                    );
-                }
-
                 closing = language === "EN"
                     ? "✅ Appointment cancelled successfully."
                     : "✅ नियुक्ति सफलतापूर्वक रद्द की गई।";

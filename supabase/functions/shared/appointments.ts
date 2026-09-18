@@ -12,6 +12,8 @@ import {
 } from "./appointment-reminders.ts";
 import { getServiceById } from "./clinic-services.ts";
 import { isClinicServiceSlotAvailable } from "./clinic-slots.ts";
+import { WaitlistHandler } from "./handlers/waitlist-handler.ts";
+import type { WhatsAppClient } from "./whatsapp-client.ts";
 
 /**
  * Appointment Business Logic
@@ -36,14 +38,16 @@ export async function cancelAppointment(
     appointmentId: string,
     clinicId: string,
     reason?: string,
-    actor: string = "patient"
+    actor: string = "patient",
+    /** Supplied by callers that can send: freeing a slot tells the waitlist. */
+    notifier?: WhatsAppClient
 ): Promise<AppointmentResponse> {
     try {
         // Scoped by clinic: an appointment id alone must never be enough to
         // cancel another clinic's booking.
         const { data: existing, error: fetchError } = await supabase
             .from("appointments")
-            .select("id, status")
+            .select("id, status, doctor_id, appointment_date, appointment_time")
             .eq("id", appointmentId)
             .eq("clinic_id", clinicId)
             .maybeSingle();
@@ -82,6 +86,22 @@ export async function cancelAppointment(
         // this and the portal did not, so cancelling at the desk still left the
         // patient a reminder for a visit that was no longer happening.
         await skipAppointmentReminders(supabase, appointmentId);
+
+        // Same reason: the slot has just come free, and only the WhatsApp flow
+        // was telling anyone waiting for it. Cancelling at the desk left the
+        // waitlist untouched, which is the half of the feature nobody sees.
+        if (notifier && existing.doctor_id) {
+            const waitlist = new WaitlistHandler(supabase, notifier);
+
+            for (const time of [existing.appointment_time, "ANY"]) {
+                await waitlist.notifyWaitlistOnCancellation(
+                    existing.doctor_id,
+                    existing.appointment_date,
+                    time,
+                    clinicId
+                );
+            }
+        }
 
         // Log in Supabase
         await recordAuditEvent(

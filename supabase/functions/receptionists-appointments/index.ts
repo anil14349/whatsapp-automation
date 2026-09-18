@@ -52,6 +52,22 @@ import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
 import { MIN_SEARCH_LENGTH, searchAppointments } from "../shared/appointment-search.ts";
 import { checkRevisit } from "../shared/revisit.ts";
 import { notifyDelay } from "../shared/delay-notice.ts";
+import { WhatsAppClient } from "../shared/whatsapp-client.ts";
+import { getClinicRouteById } from "../shared/clinic-routing.ts";
+
+/** Cancelling frees a slot, and someone may be waiting for it. */
+async function waitlistNotifier(
+  supabase: SupabaseClient,
+  clinicId: string
+): Promise<WhatsAppClient | undefined> {
+  const route = await getClinicRouteById(supabase, clinicId);
+
+  if (!route) {
+    return undefined;
+  }
+
+  return new WhatsAppClient(route.accessToken, route.phoneNumberId, supabase, clinicId);
+}
 
 interface CreateAppointmentRequest {
   patientName: string;
@@ -372,7 +388,8 @@ async function updateAppointment(
       body.id,
       clinicId,
       body.reason || "Cancelled by clinic staff",
-      actor
+      actor,
+      await waitlistNotifier(supabase, clinicId)
     );
 
     return result.success
