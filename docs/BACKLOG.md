@@ -130,6 +130,33 @@ set before they were deleted. Either wire it or drop it.
 
 ---
 
+## 7. Home collection asks for latitude and longitude
+
+Settings → Home collection asks a clinic administrator for `17.5255` and
+`78.2721`. The field accepts a pasted Google Maps pair and splits it, which is
+the only reason it is usable at all, but it still asks someone who books blood
+tests for a living to think in coordinates.
+
+**The coordinates are not decoration.** The WhatsApp flow measures every shared
+location pin against them, so a clinic that has not set them accepts a booking
+from any distance — the failure is silent and one-way, which is why the card
+spells out which of the two states the clinic is in.
+
+What it should ask for is an address, with the coordinates derived and kept
+behind an Advanced disclosure. That needs a geocoding provider, and the choice
+is not free:
+
+- an API key and a billing account, per deployment
+- a provider that covers Indian addresses properly, which rules out some
+- the clinic's address already sits in `clinics.address`, so the first offer
+  should be "use the clinic's own address" and not a search box at all
+
+The last point is probably most of the value for a tenth of the work: one
+button that fills both boxes from the address already on file, leaving the
+search box for clinics whose collection centre is not their front door.
+
+---
+
 ## 4. Two verification gates check nothing that runs — DONE
 
 `verify:menus` and `verify:coverage` both read the legacy Apps Script monolith,

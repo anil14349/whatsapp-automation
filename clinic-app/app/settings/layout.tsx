@@ -26,9 +26,12 @@ export default async function SettingsLayout({ children }: { children: React.Rea
 
     return (
         <PortalShell session={session} branding={branding}>
-            <h1 className="mb-4 text-xl font-semibold">Settings</h1>
+            <h1 className="mb-3 text-xl font-semibold">Settings</h1>
 
-            <div className="flex">
+            {/* The row is given the height the workspace has, not the height its
+                tallest child happens to need, or the divider stops wherever the
+                nav ends and looks arbitrary. */}
+            <div className="flex min-h-[calc(100vh-14rem)]">
                 <SettingsNav />
                 {/* Separates the navigation from the content without boxing the
                     navigation in: the cards carry the borders here. */}
