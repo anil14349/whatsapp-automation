@@ -8,6 +8,7 @@
  */
 
 import { cookies } from "next/headers";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 const SESSION_COOKIE = "portal_session";
 
@@ -85,6 +86,29 @@ export async function callPortal<T = any>(
     return { ok: response.ok, status: response.status, data };
 }
 
+/**
+ * The cookie is signed, so what it claims can be trusted.
+ *
+ * It used to be plain base64: anyone could rewrite `role` to CLINIC_OWNER and
+ * the header would greet them as one, with the manager-only links on show. No
+ * data followed, because every call carries the portal JWT that the edge
+ * functions verify - but a portal that displays a role it has not checked is
+ * one refactor away from trusting it.
+ */
+function sessionSecret(): string {
+    const secret = process.env.PORTAL_SESSION_SECRET;
+
+    if (!secret) {
+        throw new Error("PORTAL_SESSION_SECRET is not configured");
+    }
+
+    return secret;
+}
+
+function sign(payload: string): string {
+    return createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
+}
+
 export async function readSession(): Promise<PortalSession | null> {
     // Next 15 resolves cookies asynchronously.
     const raw = (await cookies()).get(SESSION_COOKIE)?.value;
@@ -93,15 +117,33 @@ export async function readSession(): Promise<PortalSession | null> {
         return null;
     }
 
+    const dot = raw.lastIndexOf(".");
+
+    // No signature at all: either a cookie from before signing, or a forgery.
+    if (dot < 1) {
+        return null;
+    }
+
+    const payload = raw.slice(0, dot);
+    const provided = Buffer.from(raw.slice(dot + 1), "base64url");
+
     try {
-        return JSON.parse(Buffer.from(raw, "base64").toString("utf8")) as PortalSession;
+        const expected = Buffer.from(sign(payload), "base64url");
+
+        if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) {
+            return null;
+        }
+
+        return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as PortalSession;
     } catch {
         return null;
     }
 }
 
 export function serialiseSession(session: PortalSession): string {
-    return Buffer.from(JSON.stringify(session), "utf8").toString("base64");
+    const payload = Buffer.from(JSON.stringify(session), "utf8").toString("base64url");
+
+    return `${payload}.${sign(payload)}`;
 }
 
 export const SESSION_COOKIE_NAME = SESSION_COOKIE;

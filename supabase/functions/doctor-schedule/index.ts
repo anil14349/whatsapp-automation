@@ -338,9 +338,10 @@ async function addLeave(
     { start, end, existingAppointments: count ?? 0 }
   );
 
+  // Named as the cancel call expects it back, which `id` was not.
   return {
     status: 200,
-    payload: { id: inserted?.id, start, end, existingAppointments: count ?? 0 }
+    payload: { leaveId: inserted?.id, start, end, existingAppointments: count ?? 0 }
   };
 }
 
