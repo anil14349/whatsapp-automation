@@ -827,7 +827,13 @@ export class PatientFlowHandler {
         const doctorId = session.data?.selectedDoctorId;
 
         if (doctorId) {
-            return await this.supabaseClient.getAvailableSlots(clinicId, doctorId, date, locationType);
+            return await this.supabaseClient.getAvailableSlots(
+                clinicId,
+                doctorId,
+                date,
+                locationType,
+                session.data?.serviceTypeId
+            );
         }
 
         const serviceTypeId = session.data?.serviceTypeId;
@@ -1898,7 +1904,7 @@ export class PatientFlowHandler {
         // The new time must come from the same doctor's real availability.
         const { data: appointment } = await this.supabase
             .from("appointments")
-            .select("doctor_id")
+            .select("doctor_id, service_type_id")
             .eq("id", session.data?.selectedAppointmentId)
             .maybeSingle();
 
@@ -1907,7 +1913,8 @@ export class PatientFlowHandler {
                   session.clinic_id,
                   appointment.doctor_id,
                   newDate,
-                  "clinic"
+                  "clinic",
+                  appointment.service_type_id ?? undefined
               )
             : [];
 
@@ -1927,6 +1934,7 @@ export class PatientFlowHandler {
             language,
             selectedAppointmentId: session.data?.selectedAppointmentId,
             rescheduleDoctorId: appointment?.doctor_id,
+            rescheduleServiceTypeId: appointment?.service_type_id ?? undefined,
             newDate,
             slotPage: 0
         });
@@ -1960,7 +1968,8 @@ export class PatientFlowHandler {
                 session.clinic_id,
                 doctorId,
                 newDate,
-                "clinic"
+                "clinic",
+                session.data?.rescheduleServiceTypeId
             );
 
             await this.updateSession(phone, "RESCHEDULE_TIME", { ...session.data, slotPage: nextPage });
@@ -1984,7 +1993,8 @@ export class PatientFlowHandler {
             session.clinic_id,
             doctorId,
             newDate,
-            "clinic"
+            "clinic",
+            session.data?.rescheduleServiceTypeId
         );
 
         const slotFree = slots?.some(

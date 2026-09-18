@@ -15,8 +15,9 @@ out to have no callers at all — see [Dead settings](#dead-settings) below.
 |---|---|---|---|
 | When the premises are open | `clinic_hours.opening_time` / `closing_time` / `is_active` | Settings → Opening hours | everything |
 | When a doctor works | `doctor_available_hours`, `doctor_home_visit_hours` | Staff → doctor | doctor services only |
-| How much notice a booking needs | `clinic_services.min_booking_window_hours` | Services → **Least notice (hours)** | doctor-free services only |
-| What time of day a service runs | `clinic_services.available_from` / `available_to` | Services → **Runs from / Runs until** | doctor-free services only |
+| How much notice a booking needs | `clinic_services.min_booking_window_hours` | Services → **Least notice (hours)** | every service |
+| What time of day a service runs | `clinic_services.available_from` / `available_to` | Services → **Runs from / Runs until** | every service |
+| How far ahead it may be booked | `clinic_services.max_booking_window_days` | Services → **Book up to (days ahead)** | every service |
 
 Plus one that is not about time of day:
 
@@ -55,9 +56,10 @@ than stored, since it would offer nothing at all.
 
 ---
 
-## The two slot paths are not the same code
+## The two slot paths
 
-This is the part that catches people.
+There are still two, and they are still separate code, but they now apply the
+same per-service rules.
 
 [`getClinicServiceSlots`](../../supabase/functions/shared/clinic-slots.ts) —
 services with no doctor, such as sample collection and imaging. Honours clinic
@@ -66,12 +68,14 @@ hours, closures, `available_from` / `available_to`, `min_booking_window_hours`,
 
 [`getAvailableSlots`](../../supabase/functions/shared/multi-clinic-supabase-client.ts) —
 consultations, keyed on a doctor. Honours the doctor's hours clipped to the
-clinic's, the doctor's availability status, clinic closures, doctor leave, and
-existing appointments. It reads **no `clinic_services` column at all**, so
-least-notice and the availability window do nothing for a consultation.
+clinic's, the doctor's availability status, clinic closures, doctor leave,
+existing appointments, and — when the caller passes the service — the same
+window and notice period.
 
-Setting "Least notice" to 8 on Consultation looks like it worked and changes
-nothing. That mistake has already been made once and reverted.
+**The service has to be passed in.** It takes a doctor id, so a caller that
+omits the service gets the doctor's whole day, exactly as before. Every caller
+that knows which service is being booked now supplies it; one that does not is
+not refused, it simply gets no narrowing.
 
 ---
 

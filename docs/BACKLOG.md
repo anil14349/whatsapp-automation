@@ -85,25 +85,7 @@ deliberately left unset until there is a real one to publish.
 
 ---
 
-## 4. Consultations ignore the per-service scheduling settings
-
-The two slot paths are separate code. `getAvailableSlots`, which serves
-anything with a doctor, reads no `clinic_services` column, so
-`min_booking_window_hours` and the availability window apply to doctor-free
-services only.
-
-**The failure mode is silence.** Setting "Least notice" to 8 on Consultation is
-accepted by the portal, displays afterwards as 8, and changes nothing about
-what patients are offered. That has already been done once and reverted.
-
-The fix is to read the service row in `getAvailableSlots` and apply the same
-two limits after the doctor's hours are clipped to the clinic's. The awkward
-part is that path takes a doctor id, not a service id, so the service has to be
-carried down to it.
-
----
-
-## 5. Home collection asks for latitude and longitude
+## 4. Home collection asks for latitude and longitude
 
 Settings → Home collection asks a clinic administrator for `17.5255` and
 `78.2721`. The field accepts a pasted Google Maps pair and splits it, which is

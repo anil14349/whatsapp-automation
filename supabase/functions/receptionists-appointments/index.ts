@@ -196,7 +196,8 @@ async function listAvailableSlots(
   _supabase: SupabaseClient,
   clinicId: string,
   doctorId: string,
-  date: string
+  date: string,
+  serviceTypeId?: string
 ): Promise<string[]> {
   try {
     const client = new MultiClinicSupabaseClient(
@@ -204,7 +205,7 @@ async function listAvailableSlots(
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    return await client.getAvailableSlots(clinicId, doctorId, date);
+    return await client.getAvailableSlots(clinicId, doctorId, date, "CLINIC", serviceTypeId);
   } catch (error) {
     debug("receptionistAppointments", "Slot lookup failed", {
       error: error instanceof Error ? error.message : String(error)
@@ -631,7 +632,8 @@ async function editAppointment(
         supabase,
         clinicId,
         doctorId,
-        existing.appointment_date
+        existing.appointment_date,
+        patch.service_type_id ?? existing.service_type_id ?? undefined
       );
       const wanted = String(existing.appointment_time).slice(0, 5);
 
@@ -760,7 +762,13 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
           return badRequestResponse("doctorId and date are required");
         }
 
-        const slots = await listAvailableSlots(supabase, clinicId, doctorId, dateParam);
+        const slots = await listAvailableSlots(
+          supabase,
+          clinicId,
+          doctorId,
+          dateParam,
+          url.searchParams.get("serviceTypeId") ?? undefined
+        );
 
         return successResponse({ doctorId, date: dateParam, slots });
       }

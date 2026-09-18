@@ -8,7 +8,8 @@
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as types from "./multi-clinic-types.ts";
-import { getClinicHoursForDay, getClinicTimezone, todayInTimezone } from "./clinic-slots.ts";
+import { addDays, getClinicHoursForDay, getClinicTimezone, todayInTimezone } from "./clinic-slots.ts";
+import { getServiceById } from "./clinic-services.ts";
 import { checkRevisit } from "./revisit.ts";
 
 export class MultiClinicSupabaseClient {
@@ -497,7 +498,8 @@ export class MultiClinicSupabaseClient {
     clinicId: string,
     doctorId: string,
     date: string,
-    locationType: string = "CLINIC"
+    locationType: string = "CLINIC",
+    serviceTypeId?: string
   ): Promise<string[]> {
     // Check doctor availability status first
     const doctor = await this.getDoctorById(clinicId, doctorId);
@@ -571,8 +573,42 @@ export class MultiClinicSupabaseClient {
       endTime = Math.min(endTime, clinicEndHour * 60 + clinicEndMin);
     }
 
+    // The service's own rules. getClinicServiceSlots applies these for services
+    // with no doctor; anything with one came through here instead and read no
+    // clinic_services column, so "Least notice" on a consultation was accepted,
+    // displayed, and ignored.
+    const service = serviceTypeId
+      ? await getServiceById(this.supabase, clinicId, serviceTypeId)
+      : null;
+
+    const toMinutes = (hhmm: string) => {
+      const [h, m] = hhmm.split(":").map(Number);
+      return h * 60 + m;
+    };
+
+    // Narrows the hours already settled on; it can never widen them.
+    if (service?.availableFrom) {
+      startTime = Math.max(startTime, toMinutes(service.availableFrom));
+    }
+
+    if (service?.availableTo) {
+      endTime = Math.min(endTime, toMinutes(service.availableTo));
+    }
+
+    // Eight hours' notice at 10pm rules out most of tomorrow morning too, so
+    // the day after today has to be checked as well. With no service this is
+    // minutesNow on the day itself, which is what it was before.
+    const noticeMinutes = service ? service.minNoticeHours * 60 : 0;
+    const isTomorrow = date === addDays(todayLocal, 1);
+
+    const earliest = isToday
+      ? minutesNow + noticeMinutes
+      : isTomorrow
+        ? minutesNow + noticeMinutes - 24 * 60
+        : -1;
+
     for (let time = startTime; time < endTime; time += 30) {
-      if (isToday && time <= minutesNow) continue;
+      if (time <= earliest) continue;
 
       const hour = Math.floor(time / 60);
       const min = time % 60;
@@ -590,9 +626,10 @@ export class MultiClinicSupabaseClient {
     clinicId: string,
     doctorId: string,
     date: string,
-    time: string
+    time: string,
+    serviceTypeId?: string
   ): Promise<boolean> {
-    const slots = await this.getAvailableSlots(clinicId, doctorId, date);
+    const slots = await this.getAvailableSlots(clinicId, doctorId, date, "CLINIC", serviceTypeId);
     return slots.includes(time);
   }
 
@@ -798,7 +835,13 @@ export class MultiClinicSupabaseClient {
       if (!doctor?.is_active) continue;
 
       // Get available slots
-      const slots = await this.getAvailableSlots(clinicId, doctor.id, date, locationType);
+      const slots = await this.getAvailableSlots(
+        clinicId,
+        doctor.id,
+        date,
+        locationType,
+        serviceTypeId
+      );
 
       if (slots.length > 0) {
         results.push({

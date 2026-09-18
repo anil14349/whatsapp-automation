@@ -154,7 +154,8 @@ async function isNewSlotFree(
             existing.clinic_id,
             existing.doctor_id,
             newDate,
-            newTime
+            newTime,
+            existing.service_type_id ?? undefined
         );
     }
 
