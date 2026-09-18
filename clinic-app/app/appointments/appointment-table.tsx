@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
     editAppointment,
     loadSlots,
@@ -33,16 +33,81 @@ export interface AppointmentRow {
     status: string;
 }
 
+/**
+ * Blue means booked, green seen, slate did not turn up. Teal is never used
+ * here: it belongs to the product and its primary actions, not to what is
+ * happening to a patient.
+ */
 const STATUS_STYLES: Record<string, string> = {
     CONFIRMED: "bg-blue-50 text-blue-700",
-    COMPLETED: "bg-emerald-50 text-emerald-700",
-    NO_SHOW: "bg-amber-50 text-amber-700",
-    CANCELLED: "bg-slate-100 text-slate-500"
+    COMPLETED: "bg-green-50 text-green-700",
+    NO_SHOW: "bg-slate-100 text-slate-600",
+    CANCELLED: "bg-slate-50 text-slate-400"
+};
+
+const STATUS_DOTS: Record<string, string> = {
+    CONFIRMED: "bg-blue-600",
+    COMPLETED: "bg-green-600",
+    NO_SHOW: "bg-slate-500",
+    CANCELLED: "bg-slate-300"
+};
+
+/** Neutral by default; colour is spent only where it means something. */
+const BUTTON = {
+    plain: "rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50",
+    good: "rounded-lg border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 transition hover:border-green-300 hover:bg-green-100 disabled:opacity-50",
+    quiet: "rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-50",
+    danger: "w-full rounded-lg px-3 py-1.5 text-left text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50",
+    menuItem:
+        "w-full rounded-lg px-3 py-1.5 text-left text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
 };
 
 /** Postgres hands back "10:00:00" and the clock on the wall does not. */
 function clockTime(time: string): string {
     return String(time ?? "").slice(0, 5);
+}
+
+/**
+ * The actions the desk needs occasionally, folded away.
+ *
+ * Closes on any outside click, because a menu left open over the next row is
+ * worse than one that closes too eagerly.
+ */
+function RowMenu({
+    open,
+    onToggle,
+    children
+}: {
+    open: boolean;
+    onToggle: () => void;
+    children: React.ReactNode;
+}) {
+    useEffect(() => {
+        if (!open) return;
+
+        const close = () => onToggle();
+        window.addEventListener("click", close);
+        return () => window.removeEventListener("click", close);
+    }, [open, onToggle]);
+
+    return (
+        <div className="relative" onClick={(e) => e.stopPropagation()}>
+            <button
+                onClick={onToggle}
+                aria-label="More actions"
+                aria-expanded={open}
+                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold leading-none text-slate-500 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+                •••
+            </button>
+
+            {open && (
+                <div className="absolute right-0 top-8 z-20 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+                    {children}
+                </div>
+            )}
+        </div>
+    );
 }
 
 export function AppointmentTable({
@@ -73,6 +138,7 @@ export function AppointmentTable({
     const [slots, setSlots] = useState<string[]>([]);
     const [newDate, setNewDate] = useState(date);
     const [place, setPlace] = useState<"ALL" | "CLINIC" | "HOME">("ALL");
+    const [menu, setMenu] = useState<string | null>(null);
 
     const counts = {
         home: rows.filter((r) => r.locationType === "HOME").length,
@@ -286,12 +352,14 @@ export function AppointmentTable({
                                             {row.date}
                                         </td>
                                     )}
-                                    <td className="px-4 py-3 whitespace-nowrap font-medium tabular-nums">
+                                    <td className="px-4 py-3 whitespace-nowrap text-base font-semibold text-slate-900 tabular-nums">
                                         {clockTime(row.time)}
                                     </td>
                                     <td className="px-4 py-3">
                                         <div className="flex items-center gap-2">
-                                            <span>{row.patientName}</span>
+                                            <span className="font-medium text-slate-900">
+                                                {row.patientName}
+                                            </span>
                                             {/* The clinic queue number, which only visits to
                                                 the clinic itself are given. */}
                                             {row.token !== null && (
@@ -300,7 +368,7 @@ export function AppointmentTable({
                                                 </span>
                                             )}
                                         </div>
-                                        <div className="text-xs text-slate-400 tabular-nums">
+                                        <div className="text-xs text-slate-500 tabular-nums">
                                             {displayPhone(row.patientPhone)}
                                         </div>
                                         {/* The front desk should not have to remember who is
@@ -312,10 +380,12 @@ export function AppointmentTable({
                                         )}
                                     </td>
                                     <td className="px-4 py-3">
-                                        <div className="text-slate-700">{row.serviceName ?? "—"}</div>
+                                        <div className="text-slate-600">{row.serviceName ?? "—"}</div>
                                         <div className="flex gap-1.5 text-xs text-slate-400">
+                                            {/* Deliberately not teal: that belongs to the product
+                                                and its primary actions, not to a fact about a visit. */}
                                             {row.locationType === "HOME" && (
-                                                <span className="font-medium text-teal-700">
+                                                <span className="font-medium text-slate-600">
                                                     at home
                                                 </span>
                                             )}
@@ -333,82 +403,37 @@ export function AppointmentTable({
                                     )}
                                     <td className="px-4 py-3">
                                         <span
-                                            className={`rounded-full px-2 py-1 text-xs font-medium ${
+                                            className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${
                                                 STATUS_STYLES[row.status] ?? "bg-slate-100 text-slate-600"
                                             }`}
                                         >
+                                            <span
+                                                className={`h-1.5 w-1.5 rounded-full ${
+                                                    STATUS_DOTS[row.status] ?? "bg-slate-400"
+                                                }`}
+                                            />
                                             {statusLabel(row.status)}
                                         </span>
                                     </td>
                                     {canEdit && (
                                         <td className="px-4 py-3">
-                                            <div className="flex flex-wrap justify-end gap-1.5">
-                                                {/* A name can be spelt wrong whether or not the
-                                                    patient has already been seen. */}
-                                                {row.status !== "CANCELLED" && (
+                                            {/* Only what the desk reaches for all day stays on
+                                                the row; six equal buttons read as noise. */}
+                                            <div className="flex items-center justify-end gap-1.5">
+                                                {open && (
                                                     <button
                                                         disabled={busy}
-                                                        onClick={() => beginEdit(row)}
-                                                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
+                                                        onClick={() =>
+                                                            run(() =>
+                                                                updateAppointment(row.id, "status", {
+                                                                    status: "COMPLETED"
+                                                                })
+                                                            )
+                                                        }
+                                                        className={BUTTON.good}
                                                     >
-                                                        Edit
+                                                        Visited
                                                     </button>
-                                                )}
-                                                {/* A result can follow a visit that was completed
-                                                    days ago, so this is not tied to the open state. */}
-                                                {row.status !== "CANCELLED" && (
-                                                    <button
-                                                        disabled={busy}
-                                                        onClick={() => beginSend(row)}
-                                                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
-                                                    >
-                                                        Send report
-                                                    </button>
-                                                )}
-                                                {open && (                                                    <>
-                                                        <button
-                                                            disabled={busy}
-                                                            onClick={() =>
-                                                                run(() =>
-                                                                    updateAppointment(row.id, "status", {
-                                                                        status: "COMPLETED"
-                                                                    })
-                                                                )
-                                                            }
-                                                            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
-                                                        >
-                                                            Visited
-                                                        </button>
-                                                        <button
-                                                            disabled={busy}
-                                                            onClick={() =>
-                                                                run(() =>
-                                                                    updateAppointment(row.id, "status", {
-                                                                        status: "NO_SHOW"
-                                                                    })
-                                                                )
-                                                            }
-                                                            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
-                                                        >
-                                                            No-show
-                                                        </button>
-                                                        <button
-                                                            disabled={busy || !row.doctorId}
-                                                            onClick={() => beginMove(row)}
-                                                            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
-                                                        >
-                                                            Move
-                                                        </button>
-                                                        <button
-                                                            disabled={busy}
-                                                            onClick={() =>
-                                                                run(() => updateAppointment(row.id, "cancel"))
-                                                            }
-                                                            className="rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:border-red-300 disabled:opacity-50"
-                                                        >
-                                                            Cancel
-                                                        </button>
-                                                    </>
                                                 )}
                                                 {!open && row.status !== "CANCELLED" && (
                                                     <button
@@ -420,10 +445,87 @@ export function AppointmentTable({
                                                                 })
                                                             )
                                                         }
-                                                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
+                                                        className={BUTTON.plain}
                                                     >
                                                         Reopen
                                                     </button>
+                                                )}
+                                                {/* A result can follow a visit that was completed
+                                                    days ago, so this is not tied to the open state. */}
+                                                {row.status !== "CANCELLED" && (
+                                                    <button
+                                                        disabled={busy}
+                                                        onClick={() => beginSend(row)}
+                                                        className={BUTTON.plain}
+                                                    >
+                                                        Send report
+                                                    </button>
+                                                )}
+                                                {row.status !== "CANCELLED" && (
+                                                    <RowMenu
+                                                        open={menu === row.id}
+                                                        onToggle={() =>
+                                                            setMenu(menu === row.id ? null : row.id)
+                                                        }
+                                                    >
+                                                        {/* A name can be spelt wrong whether or not
+                                                            the patient has already been seen. */}
+                                                        <button
+                                                            disabled={busy}
+                                                            onClick={() => {
+                                                                setMenu(null);
+                                                                beginEdit(row);
+                                                            }}
+                                                            className={BUTTON.menuItem}
+                                                        >
+                                                            Edit details
+                                                        </button>
+                                                        {open && (
+                                                            <>
+                                                                <button
+                                                                    disabled={busy || !row.doctorId}
+                                                                    onClick={() => {
+                                                                        setMenu(null);
+                                                                        beginMove(row);
+                                                                    }}
+                                                                    className={BUTTON.menuItem}
+                                                                >
+                                                                    Move to another time
+                                                                </button>
+                                                                <button
+                                                                    disabled={busy}
+                                                                    onClick={() => {
+                                                                        setMenu(null);
+                                                                        run(() =>
+                                                                            updateAppointment(
+                                                                                row.id,
+                                                                                "status",
+                                                                                { status: "NO_SHOW" }
+                                                                            )
+                                                                        );
+                                                                    }}
+                                                                    className={BUTTON.menuItem}
+                                                                >
+                                                                    Did not turn up
+                                                                </button>
+                                                                <button
+                                                                    disabled={busy}
+                                                                    onClick={() => {
+                                                                        setMenu(null);
+                                                                        run(() =>
+                                                                            updateAppointment(
+                                                                                row.id,
+                                                                                "cancel"
+                                                                            )
+                                                                        );
+                                                                    }}
+                                                                    className={BUTTON.danger}
+                                                                >
+                                                                    Cancel appointment
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                    </RowMenu>
                                                 )}
                                             </div>
                                         </td>
@@ -440,7 +542,7 @@ export function AppointmentTable({
                                                                     updateOwnAppointmentStatus(row.id, "COMPLETED")
                                                                 )
                                                             }
-                                                            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
+                                                            className={BUTTON.good}
                                                         >
                                                             Visited
                                                         </button>
@@ -451,7 +553,7 @@ export function AppointmentTable({
                                                                     updateOwnAppointmentStatus(row.id, "NO_SHOW")
                                                                 )
                                                             }
-                                                            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
+                                                            className={BUTTON.quiet}
                                                         >
                                                             No-show
                                                         </button>

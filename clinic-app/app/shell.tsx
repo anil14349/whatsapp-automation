@@ -3,6 +3,7 @@ import { callAsUser, type PortalSession } from "@/lib/portal";
 import { roleLabel } from "@/lib/labels";
 import { brandShades, readableOn } from "@/lib/theme";
 import { SignOutButton } from "./appointments/sign-out";
+import { PortalNav } from "./portal-nav";
 
 export interface Branding {
     name: string;
@@ -67,17 +68,11 @@ export function PortalShell({
                         </span>
                     </Link>
 
-                    <nav className="flex items-center gap-1">
-                        {LINKS.filter((link) => canManage || !link.managersOnly).map((link) => (
-                            <Link
-                                key={link.href}
-                                href={link.href}
-                                className="rounded-lg px-3 py-1.5 text-sm text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
-                            >
-                                {link.label}
-                            </Link>
-                        ))}
-                    </nav>
+                    <PortalNav
+                        links={LINKS.filter((link) => canManage || !link.managersOnly).map(
+                            (link) => ({ href: link.href, label: link.label })
+                        )}
+                    />
 
                     <div className="ml-auto flex items-center gap-3">
                         <span className="hidden text-sm text-slate-500 sm:inline">

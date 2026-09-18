@@ -5,11 +5,13 @@
 :root {
     color-scheme: light;
 
-    /* A clinic that has set no colour keeps these. */
-    --brand-50: #eef7f4;
+    /* A clinic that has set no colour keeps these. Teal is the product and its
+       primary actions; blue, green, amber and red are reserved for what is
+       happening to an appointment. */
+    --brand-50: #f0fdfa;
     --brand-500: #0f766e;
-    --brand-600: #0d6a62;
-    --brand-700: #0b564f;
+    --brand-600: #0b5f59;
+    --brand-700: #094e49;
 }
 
 body {

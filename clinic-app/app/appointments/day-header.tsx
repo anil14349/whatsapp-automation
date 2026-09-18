@@ -59,16 +59,18 @@ export function DayHeader({
                                     setDelay(!delay);
                                     setWalkIn(false);
                                 }}
-                                className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-900 hover:border-amber-300"
+                                className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 transition hover:bg-amber-100"
                             >
                                 Running late
                             </button>
+                            {/* The one thing the desk does most, and the only solid
+                                teal on the screen. */}
                             <button
                                 onClick={() => {
                                     setWalkIn(!walkIn);
                                     setDelay(false);
                                 }}
-                                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+                                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
                             >
                                 Book walk-in
                             </button>
