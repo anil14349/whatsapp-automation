@@ -44,9 +44,10 @@ export function SettingsNav() {
         >
             {GROUPS.map((group) => (
                 <div key={group.title}>
-                    {/* 15px, not 12: the items carry a 3px indicator, and a
-                        label out of line with them is worse than no label. */}
-                    <h2 className="mb-1.5 pl-[15px] pr-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    {/* Outdented and widely tracked on purpose. Aligned to the
+                        item text it read as the first link in the group, and
+                        people tried to click it. */}
+                    <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                         {group.title}
                     </h2>
                     <ul className="space-y-1">
