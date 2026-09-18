@@ -6,8 +6,7 @@
  */
 
 import { validateRequest, hasRole, TokenPayload } from "./jwt-auth.ts";
-import { isClinicActive } from "./clinic-status.ts";
-import { isAccountActive } from "./account-status.ts";
+import { checkAccess } from "./access-check.ts";
 import { debug } from "./logger.ts";
 
 export interface AuthContext {
@@ -139,12 +138,20 @@ export async function withAuth(
   requiredRoles: TokenPayload["role"] | TokenPayload["role"][] | null,
   handler: (user: TokenPayload) => Promise<Response>
 ): Promise<Response> {
+  // Reported as Server-Timing so a slow request can be blamed on the right
+  // part from outside, without adding logging to every function.
+  const started = performance.now();
+  let authDone = started;
+  let checksDone = started;
+
   try {
     // Check authentication
     const user = await requireAuth(req);
     if (!user) {
       return unauthorizedResponse("Missing or invalid authentication token");
     }
+
+    authDone = performance.now();
 
     // Check role (if specified)
     if (requiredRoles && !requireRole(user, requiredRoles)) {
@@ -154,14 +161,12 @@ export async function withAuth(
       return forbiddenResponse(`This endpoint requires role: ${roles}`);
     }
 
-    // Both are checked per request, not just at login, so deactivating a
-    // clinic or an account does not wait for the token to expire. They are
-    // two separate queries and were awaited one after the other, which put a
-    // pair of round trips in front of every single request.
-    const [clinicActive, accountActive] = await Promise.all([
-      user.clinicId ? isClinicActive(user.clinicId) : Promise.resolve(true),
-      isAccountActive(user)
-    ]);
+    // Checked per request, not just at login, so deactivating a clinic or an
+    // account does not wait for the token to expire. One query answers both:
+    // as two it was the slowest part of every request.
+    const { clinicActive, accountActive } = await checkAccess(user);
+
+    checksDone = performance.now();
 
     // A platform ADMIN has no clinic.
     if (!clinicActive) {
@@ -183,7 +188,25 @@ export async function withAuth(
     }
 
     // Call handler with authenticated user
-    return await handler(user);
+    const response = await handler(user);
+    const handlerDone = performance.now();
+
+    const timing = [
+      `jwt;dur=${Math.round(authDone - started)}`,
+      `checks;dur=${Math.round(checksDone - authDone)}`,
+      `handler;dur=${Math.round(handlerDone - checksDone)}`,
+      `total;dur=${Math.round(handlerDone - started)}`
+    ].join(", ");
+
+    // Headers on a Response are immutable once constructed, so it is rebuilt.
+    const headers = new Headers(response.headers);
+    headers.set("Server-Timing", timing);
+
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers
+    });
   } catch (error) {
     debug("authMiddleware", "Handler error", {
       error: error instanceof Error ? error.message : String(error)
