@@ -29,6 +29,69 @@ const DAY_LABELS = ["", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 
+/**
+ * What a clinic still has to configure before it can offer home collection.
+ *
+ * Switching it on is not a preference, it is a promise to travel to someone's
+ * house. Without coordinates every shared pin is accepted however far away it
+ * is; without a radius the same; without an active collector nobody is
+ * assigned and the visit sits unclaimed; without hours on the service the
+ * premises hours apply and a blood draw can be booked for twenty past eleven
+ * at night. Each of those fails quietly, after a patient has committed.
+ */
+async function homeCollectionBlockers(
+  supabase: SupabaseClient,
+  clinicId: string,
+  clinic: Record<string, unknown>
+): Promise<string[]> {
+  const blockers: string[] = [];
+  const num = (value: unknown) => (value === null || value === undefined ? NaN : Number(value));
+
+  const lat = num(clinic.latitude);
+  const lon = num(clinic.longitude);
+  const radius = num(clinic.home_collection_radius_km);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    blockers.push("the clinic's location");
+  }
+
+  if (!Number.isFinite(radius) || radius <= 0) {
+    blockers.push("a collection radius");
+  }
+
+  const [collectors, services] = await Promise.all([
+    supabase
+      .from("sample_collectors")
+      .select("id, max_collections_per_day")
+      .eq("clinic_id", clinicId)
+      .eq("is_active", true),
+    supabase
+      .from("clinic_services")
+      .select("available_from, available_to")
+      .eq("clinic_id", clinicId)
+      .eq("is_enabled", true)
+      .eq("offered_at_home", true)
+  ]);
+
+  const staff = collectors.data ?? [];
+
+  if (staff.length === 0) {
+    blockers.push("at least one active collector");
+  } else if (staff.every((row: Record<string, any>) => !(Number(row.max_collections_per_day) > 0))) {
+    blockers.push("a daily limit for each collector");
+  }
+
+  const offered = services.data ?? [];
+
+  if (offered.length === 0) {
+    blockers.push("a service offered at the patient's home");
+  } else if (offered.every((row: Record<string, any>) => !row.available_from || !row.available_to)) {
+    blockers.push("the hours that service runs");
+  }
+
+  return blockers;
+}
+
 function resolveClinicId(user: TokenPayload, requested?: string | null): string | null {
   if (user.role === "ADMIN") {
     return requested || null;
@@ -65,6 +128,8 @@ async function getSettings(
   if (clinic.error || !clinic.data) {
     return { status: 404, payload: { error: "Clinic not found" } };
   }
+
+  const homeCollectionBlockedBy = await homeCollectionBlockers(supabase, clinicId, clinic.data);
 
   const byDay = new Map(
     (hours.data ?? []).map((row: Record<string, any>) => [row.day_of_week, row])
@@ -111,7 +176,8 @@ async function getSettings(
         homeCollectionRadiusKm: clinic.data.home_collection_radius_km === null
           ? null
           : Number(clinic.data.home_collection_radius_km),
-        homeCollectionEnabled: clinic.data.enable_home_collection === true
+        homeCollectionEnabled: clinic.data.enable_home_collection === true,
+        homeCollectionBlockedBy
       },
       hours: week,
       holidays: holidays.data ?? []
@@ -256,6 +322,10 @@ async function updateSettings(
     patch.enable_after_hours_reply = body.afterHoursReply;
   }
 
+  if (typeof body.homeCollectionEnabled === "boolean") {
+    patch.enable_home_collection = body.homeCollectionEnabled;
+  }
+
   if (body.revisitWindowDays !== undefined) {
     const days = Number(body.revisitWindowDays);
 
@@ -323,6 +393,31 @@ async function updateSettings(
 
   if (Object.keys(patch).length === 1) {
     return { status: 400, payload: { error: "Nothing to change" } };
+  }
+
+  // Checked against the values this update is about to write, not the ones on
+  // file, so setting the coordinates and switching it on in one go works.
+  if (body.homeCollectionEnabled === true) {
+    const current = await supabase
+      .from("clinics")
+      .select("latitude, longitude, home_collection_radius_km")
+      .eq("id", clinicId)
+      .maybeSingle();
+
+    const blockers = await homeCollectionBlockers(supabase, clinicId, {
+      ...(current.data ?? {}),
+      ...patch
+    });
+
+    if (blockers.length > 0) {
+      return {
+        status: 400,
+        payload: {
+          error: `Home collection needs ${blockers.join(", ")} before it can be switched on.`,
+          blockedBy: blockers
+        }
+      };
+    }
   }
 
   const { error } = await supabase.from("clinics").update(patch).eq("id", clinicId);

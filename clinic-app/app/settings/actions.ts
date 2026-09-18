@@ -27,6 +27,8 @@ export interface ClinicDetails {
     longitude: number | null;
     homeCollectionRadiusKm: number | null;
     homeCollectionEnabled: boolean;
+    /** What the clinic still has to configure before it may be switched on. */
+    homeCollectionBlockedBy: string[];
 }
 
 export interface DayHours {
@@ -85,6 +87,10 @@ export async function saveDetails(
     // another section, so the section that owns it announces itself.
     if (formData.has("afterHoursSection")) {
         body.afterHoursReply = formData.get("afterHoursReply") === "on";
+    }
+
+    if (formData.has("homeCollectionSection")) {
+        body.homeCollectionEnabled = formData.get("homeCollectionEnabled") === "on";
     }
 
     if (Object.keys(body).length === 0) {

@@ -138,6 +138,7 @@ export function HomeCollectionForm({ clinic }: { clinic: ClinicDetails }) {
             title="Home sample collection"
             description="Where the clinic is, and how far it will send someone."
         >
+            <input type="hidden" name="homeCollectionSection" value="1" />
             <HomeCollectionFields clinic={clinic} />
         </Section>
     );
@@ -400,14 +401,33 @@ function HomeCollectionFields({ clinic }: { clinic: ClinicDetails }) {
     const located = lat.trim() !== "" && lon.trim() !== "";
     const limited = located && radius.trim() !== "" && Number(radius) > 0;
 
+    // Switching it on is a promise to travel to someone's house, so the things
+    // that make that possible have to exist first. The server refuses too;
+    // this is so nobody has to submit the form to find out.
+    const blockers = clinic.homeCollectionBlockedBy ?? [];
+    const canEnable = clinic.homeCollectionEnabled || blockers.length === 0;
+
     return (
         <div className="space-y-3">
-            {!clinic.homeCollectionEnabled && (
-                <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500">
-                    Home collection is switched off for this clinic, so these settings are not in
-                    use yet.
-                </p>
-            )}
+            <label
+                className={`flex items-start gap-2 text-sm ${canEnable ? "" : "opacity-60"}`}
+            >
+                <input
+                    type="checkbox"
+                    name="homeCollectionEnabled"
+                    defaultChecked={clinic.homeCollectionEnabled}
+                    disabled={!canEnable}
+                    className="mt-0.5 h-4 w-4 rounded border-slate-300"
+                />
+                <span>
+                    Offer home sample collection to patients
+                    {!canEnable && (
+                        <span className="mt-1 block text-xs text-amber-700">
+                            Not yet. Still needs {blockers.join(", ")}.
+                        </span>
+                    )}
+                </span>
+            </label>
 
             <div className="grid gap-3 sm:grid-cols-3">
                 <label className="space-y-1">
