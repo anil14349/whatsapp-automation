@@ -43,7 +43,33 @@ deliberately left unset until there is a real one to publish.
 
 ---
 
-## 3. Two verification gates check nothing that runs — DONE
+## 3. Patients' comments are collected and never shown
+
+After a completed appointment the bot asks for a rating out of five, then an
+optional comment in the patient's own words. Both are stored in `feedback`:
+`rating`, `comments`, `patient_name`, `doctor_name`, `status`.
+
+The portal shows **the average rating and nothing else** — one tile on Summary
+reading "Patient rating, from N patients". No screen reads `feedback.comments`.
+
+So the clinic asks a patient what they thought, keeps the answer, and no
+member of staff can ever read it. That is worse than not asking: the patient
+believes they have been heard, and a complaint about a specific visit goes
+nowhere. The one thing feedback is for — finding out what went wrong — is the
+one thing the portal cannot do with it.
+
+**The shape of the fix.** A list on Summary, or its own section: recent
+feedback newest first, showing the rating, the comment, the patient and the
+doctor. `summary.ts` already queries this table for the average, so the data
+path exists; it returns `{ rated, average }` and would need the rows too.
+
+Worth deciding at the same time: whether a low rating should be visible
+somewhere the desk will see it that day, rather than only in a list someone
+remembers to open.
+
+---
+
+## 4. Two verification gates check nothing that runs — DONE
 
 `verify:menus` and `verify:coverage` both read the legacy Apps Script monolith,
 which is no longer production, so they passed regardless of the state of the
@@ -55,8 +81,13 @@ cannot fail is worse than no gate, because it is counted.
 
 ---
 
-## 4. Smaller open items
+## 5. Smaller open items
 
+- `FEEDBACK_SAMPLING_RATE` is seeded at `0.30` by `001` and typed in
+  `types.ts`, and is read by nothing: every completed appointment gets a
+  survey, not three in ten. Same shape as `HOME_COLLECTION_MIN_LEAD_HOURS`
+  before it was deleted — a setting that looks live and is not. Either sample
+  or drop the row.
 - A clinic switched on **before** the readiness guard existed can still have
   `enable_home_collection` true with no coordinates, because the guard refuses
   to *turn it on* and does not revisit rows already on. `002` defaults the
