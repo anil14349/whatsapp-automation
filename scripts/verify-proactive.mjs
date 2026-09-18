@@ -70,6 +70,46 @@ function bodyOf(text, name) {
 }
 
 const problems = [];
+let checkedBodies = 0;
+
+/**
+ * Meta refuses a template body that starts or ends with a variable.
+ *
+ * The bodies live in a comment, so nothing type checks them and a wording
+ * change only fails when someone pastes it into WhatsApp Manager and is
+ * rejected — long after the code was merged.
+ */
+function checkTemplateBodies() {
+    const text = readFileSync(join(root, "shared/proactive.ts"), "utf8");
+    const header = text.slice(0, text.indexOf("*/"));
+
+    // Pair the quotes without demanding a variable first. Requiring one made
+    // the match skip the quoted button labels, which have none, and pair a
+    // closing quote with the next opening one — so this read the parameter
+    // legend between two bodies and passed on text that was never a body.
+    const bodies = [...header.matchAll(/"([^"]*)"/g)]
+        .map((match) => match[1].replace(/\n\s*\*\s*/g, " ").trim())
+        .filter((body) => /\{\{\d\}\}/.test(body));
+
+    if (bodies.length === 0) {
+        problems.push("no template bodies found in proactive.ts — has the comment moved?");
+        return;
+    }
+
+    for (const body of bodies) {
+        if (/^\{\{\d\}\}/.test(body)) {
+            problems.push(`a template body starts with a variable: "${body}"`);
+        }
+
+        if (/\{\{\d\}\}[\s.,!?]*$/.test(body)) {
+            problems.push(`a template body ends with a variable: "${body}"`);
+        }
+    }
+
+    checkedBodies = bodies.length;
+}
+
+checkTemplateBodies();
 
 for (const relative of PROACTIVE_FILES) {
     const text = readFileSync(join(root, relative), "utf8");
@@ -107,5 +147,5 @@ if (problems.length > 0) {
 
 console.log(
     `verify-proactive: all ${PROACTIVE_FILES.length + PROACTIVE_FUNCTIONS.length} ` +
-    `clinic-initiated paths fall back to a template`
+    `clinic-initiated paths fall back to a template, ${checkedBodies} template bodies well formed`
 );

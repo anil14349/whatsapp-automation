@@ -2332,7 +2332,7 @@ export class PatientFlowHandler {
             await sendProactive(
                 this.whatsappClient,
                 doctor.phone,
-                `📅 New booking\n\n${data?.patientName || "A patient"} — ${data?.selectedDate} at ${data?.selectedTime}`,
+                `📅 New booking\n\n${data?.patientName || "A patient"} — ${data?.selectedDate} at ${data?.selectedTime}\n\nNo reply is needed.`,
                 {
                     key: "staff_new_booking",
                     parameters: [

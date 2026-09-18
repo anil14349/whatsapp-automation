@@ -19,8 +19,13 @@
  * Category UTILITY for all of them (they follow a user action, so they are not
  * marketing), in English and Hindi under the same name.
  *
+ * Meta refuses a body that starts or ends with a variable, so each of these
+ * closes on words. That is why two of them carry a closing sentence that adds
+ * little - it is there to satisfy the validator.
+ *
  *   appointment_reminder_24h   {{1}} patient  {{2}} phrase  {{3}} date  {{4}} time
- *     "Hi {{1}}, a reminder that you have {{2}} tomorrow, {{3}} at {{4}}."
+ *     "Hi {{1}}, a reminder that you have {{2}} tomorrow, {{3}} at {{4}}. Use
+ *      the buttons below if you need to change anything."
  *     Two QUICK REPLY buttons: "Cancel" and "Reschedule".
  *
  *     A quick reply arrives as message type "button" carrying the button's
@@ -55,7 +60,7 @@
  *      free. Reply to this message to book it."
  *
  *   staff_new_booking          {{1}} patient  {{2}} date  {{3}} time
- *     "New booking: {{1}} on {{2}} at {{3}}."
+ *     "New booking for {{1}} on {{2}} at {{3}}. No reply is needed."
  *
  *   patient_document           header: DOCUMENT   {{1}} patient  {{2}} what it is
  *     Header set to a document, body:

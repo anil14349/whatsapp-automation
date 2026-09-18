@@ -66,14 +66,14 @@ export function formatReminderMessage(
 
   if (hi) {
     if (reminderType === "24_HOUR") {
-      return `👋 नमस्ते ${patientName}!\n\n📅 याद दिला रहे हैं: कल ${appointmentTime} बजे आपकी ${phrase} है।`;
+      return `👋 नमस्ते ${patientName}!\n\n📅 याद दिला रहे हैं: कल ${appointmentTime} बजे आपकी ${phrase} है।\n\nकुछ बदलना हो तो नीचे दिए गए बटन दबाएं।`;
     }
 
     return `⏰ ${patientName}, आपकी अपॉइंटमेंट 1 घंटे में है!\n\n🩺 ${subject}\n⏰ समय: ${appointmentTime}\n📅 तारीख: ${appointmentDate}\n\nकृपया समय पर पहुंचें। धन्यवाद!`;
   }
 
   if (reminderType === "24_HOUR") {
-    return `👋 Hi ${patientName}!\n\n📅 Reminder: You have ${phrase} tomorrow at ${appointmentTime}.`;
+    return `👋 Hi ${patientName}!\n\n📅 Reminder: You have ${phrase} tomorrow at ${appointmentTime}.\n\nUse the buttons below if you need to change anything.`;
   }
 
   return `⏰ ${patientName}, your appointment is in 1 hour!\n\n🩺 ${subject}\n⏰ Time: ${appointmentTime}\n📅 Date: ${appointmentDate}\n\nPlease arrive on time. Thank you!`;
