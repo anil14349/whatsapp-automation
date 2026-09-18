@@ -72,16 +72,16 @@
  *      {{3}}. Please sign in and change it straight away."
  *
  *   waitlist_slot_available    {{1}} date  {{2}} time
- *     "You asked to be told if a slot opened up. One has become free on {{1}}
- *      at {{2}}. Tap below to book it."
+ *     "The slot you were waiting for on {{1}} at {{2}} is now free. Tap below
+ *      to book it."
  *     One QUICK REPLY button: "Book".
  *
  *     Meta first read "Good news - a slot you were waiting for has become
- *     free" as MARKETING: a cheerful offer to buy something. It is a reply to
- *     the patient's own waitlist request, so it now says so. Keep any rewrite
- *     anchored to what they asked for, or it drifts back into marketing, which
- *     costs more and which a patient can opt out of - and the one message they
- *     must not miss is the one about the slot they were waiting for.
+ *     free" as MARKETING. "You were waiting for" is what keeps it utility: it
+ *     ties the message to something the patient asked for. Announcing that a
+ *     slot is available, with no such reference, is an advert by Meta's
+ *     definition - which costs more and which a patient can opt out of, and
+ *     the one message they must not miss is this one.
  *
  *   staff_new_booking          {{1}} patient  {{2}} date  {{3}} time
  *     "New booking for {{1}} on {{2}} at {{3}}. No reply is needed."

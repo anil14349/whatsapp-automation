@@ -286,13 +286,11 @@ export class WaitlistHandler {
                 this.whatsappClient,
                 data.phone,
                 isEn
-                    ? `📋 You asked to be told if a slot opened up.\n\n` +
-                      `One has become free:\n\n` +
+                    ? `📋 The slot you were waiting for is now free:\n\n` +
                       `📅 ${date}\n` +
                       timeLine +
                       `\nTap below to book it.`
-                    : `📋 आपने खाली स्लॉट की जानकारी मांगी थी।\n\n` +
-                      `एक स्लॉट खाली हो गया है:\n\n` +
+                    : `📋 जिस स्लॉट का आप इंतजार कर रहे थे वह अब खाली है:\n\n` +
                       `📅 ${date}\n` +
                       timeLine +
                       `\nबुक करने के लिए नीचे दबाएं।`,
