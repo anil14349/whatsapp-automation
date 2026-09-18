@@ -1674,26 +1674,15 @@ export class PatientFlowHandler {
 
         const language = session.data?.language || "EN";
         const clinicId = session.clinic_id;
-        // The list is numbered, so "2" must be mapped back to its appointment id.
-        const appointmentId = await this.resolveAppointmentId(phone, clinicId, message.text);
+        // The list is numbered, so "2" must be mapped back to its appointment.
+        const chosen = await this.resolveAppointment(phone, clinicId, message.text);
 
-        if (!appointmentId) {
+        if (!chosen) {
             await this.showCancelOptions(phone, language, clinicId, session.data ?? {});
             return;
         }
 
-        // Store selected appointment for cancellation
-        await this.updateSession(phone, "CANCEL_CONFIRM", {
-            language,
-            selectedAppointmentId: appointmentId
-        });
-
-        await this.whatsappClient.sendTextMessage(
-            phone,
-            language === "EN"
-                ? `Are you sure you want to cancel appointment ${appointmentId}? (yes/no)`
-                : `क्या आप निश्चित रूप से नियुक्ति ${appointmentId} को रद्द करना चाहते हैं? (हाँ/नहीं)`
-        );
+        await this.confirmChosenAppointment(phone, language, chosen, "cancel", session.data ?? {});
     }
 
     /**
@@ -1802,26 +1791,15 @@ export class PatientFlowHandler {
 
         const language = session.data?.language || "EN";
         const clinicId = session.clinic_id;
-        // The list is numbered, so "2" must be mapped back to its appointment id.
-        const appointmentId = await this.resolveAppointmentId(phone, clinicId, message.text);
+        // The list is numbered, so "2" must be mapped back to its appointment.
+        const chosen = await this.resolveAppointment(phone, clinicId, message.text);
 
-        if (!appointmentId) {
+        if (!chosen) {
             await this.showRescheduleOptions(phone, language, clinicId, session.data ?? {});
             return;
         }
 
-        await this.updateSession(phone, "RESCHEDULE_DATE", {
-            ...session.data,
-            language,
-            selectedAppointmentId: appointmentId
-        });
-
-        await this.whatsappClient.sendTextMessage(
-            phone,
-            language === "EN"
-                ? "Please provide the new appointment date (YYYY-MM-DD):"
-                : "कृपया नई नियुक्ति तारीख दें (YYYY-MM-DD):"
-        );
+        await this.confirmChosenAppointment(phone, language, chosen, "reschedule", session.data ?? {});
     }
 
     /**
@@ -2434,27 +2412,34 @@ export class PatientFlowHandler {
      * Helper: Format date for display
      */
     /**
-     * Helper: Map a position from the numbered list onto an appointment id
+     * Helper: Map a position from the numbered list onto the appointment
      */
-    private async resolveAppointmentId(
+    private async resolveAppointment(
         phone: string,
         clinicId: string,
         input: string
-    ): Promise<string | null> {
+    ): Promise<any | null> {
         const raw = (input || "").trim();
 
-        if (!/^\d+$/.test(raw)) {
-            return raw || null;
-        }
+        let appointments: any[] = [];
 
-        const appointments = await this.supabaseClient.getPatientAppointments(clinicId, phone, true);
-        const index = parseInt(raw, 10) - 1;
-
-        if (!appointments || index < 0 || index >= appointments.length) {
+        try {
+            appointments = await this.supabaseClient.getPatientAppointments(clinicId, phone, true);
+        } catch (error) {
+            debug("patientFlow", "Could not load appointments to resolve a choice", {
+                error: error instanceof Error ? error.message : String(error)
+            });
             return null;
         }
 
-        return appointments[index].id;
+        if (/^\d+$/.test(raw)) {
+            const index = parseInt(raw, 10) - 1;
+            return appointments[index] ?? null;
+        }
+
+        // Scoped to this patient's own list, so a guessed id belonging to
+        // someone else resolves to nothing.
+        return appointments.find((apt: any) => apt.id === raw) ?? null;
     }
 
     /**

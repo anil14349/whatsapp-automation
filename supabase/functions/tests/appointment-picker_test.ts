@@ -129,6 +129,48 @@ Deno.test("picking from the list resolves to the right appointment", async () =>
     assertEquals(current()?.data?.selectedAppointmentId, "APT_TWO");
 });
 
+Deno.test("picking from the list does not read the id back either", async () => {
+    // The single-appointment path was fixed first; this one still echoed
+    // "Are you sure you want to cancel appointment APT_20260917_bso41e?".
+    const { send, wa, said } = build([
+        appointment("APT_ONE", "10:00"),
+        appointment("APT_TWO", "11:30")
+    ]);
+
+    await send("CANCEL_SELECT", { language: "EN" }, tap("2"));
+
+    assert(!/APT_/.test(said()), `an internal id reached the patient:\n${said()}`);
+
+    const asked = wa.sent.find((m) => /Cancel this appointment/i.test(m.body));
+    assertEquals(asked?.type, "buttons");
+});
+
+Deno.test("picking from the list to reschedule offers dates", async () => {
+    const { send, current, said } = build([
+        appointment("APT_ONE", "10:00"),
+        appointment("APT_TWO", "11:30")
+    ]);
+
+    await send("RESCHEDULE_SELECT", { language: "EN" }, tap("1"));
+
+    assertEquals(current()?.state, "RESCHEDULE_DATE");
+    assertEquals(current()?.data?.selectedAppointmentId, "APT_ONE");
+    assert(!/YYYY-MM-DD/.test(said()), said());
+});
+
+Deno.test("an id belonging to someone else is not accepted", async () => {
+    // The choice is resolved against this patient's own list, so a guessed id
+    // never becomes a selection.
+    const { send, current } = build([
+        appointment("APT_MINE", "10:00"),
+        appointment("APT_THEIRS", "09:00", { patient_phone: "919999999999" })
+    ]);
+
+    await send("CANCEL_SELECT", { language: "EN" }, tap("APT_THEIRS"));
+
+    assert(current()?.data?.selectedAppointmentId !== "APT_THEIRS", "another patient's appointment was selected");
+});
+
 Deno.test("no appointments returns to the menu and says so", async () => {
     const { send, current, said } = build([]);
 
