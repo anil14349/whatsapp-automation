@@ -7,7 +7,8 @@ import { PatientFlowHandler } from "./handlers/patient-handler.ts";
 import { DoctorFlowHandler } from "./handlers/doctor-handler.ts";
 import { CollectorFlowHandler } from "./handlers/collector-handler.ts";
 import { getRoleByPhoneForClinic } from "./staff-directory.ts";
-import { getClinicConfig, isClinicOpen, getAfterHoursMessage } from "./clinic-config.ts";
+import { getClinicConfig, getAfterHoursMessage } from "./clinic-config.ts";
+import { clinicOpenState } from "./clinic-slots.ts";
 import { sendLanguagePrompt } from "./languages.ts";
 import { sendPinPrompt } from "./doctor-auth.ts";
 import { BUTTON_IDS } from "./button-ids.ts";
@@ -149,13 +150,19 @@ async function isBlockedByAfterHours(
     try {
         const config = await getClinicConfig(supabase, session.clinic_id);
 
-        if (!config.enable_after_hours_reply || isClinicOpen(config, new Date())) {
+        if (!config.enable_after_hours_reply) {
+            return false;
+        }
+
+        const state = await clinicOpenState(supabase, session.clinic_id, config.timezone);
+
+        if (state.open) {
             return false;
         }
 
         await whatsappClient.sendTextMessage(
             senderPhone,
-            getAfterHoursMessage(config),
+            getAfterHoursMessage(config, state.hours),
             supabase
         );
 

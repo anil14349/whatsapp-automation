@@ -120,81 +120,24 @@ export function clearClinicConfigCache(): void {
 }
 
 /**
- * Check if clinic is open at given time
- */
-export function isClinicOpen(config: ClinicConfig, date: Date): boolean {
-    // Edge functions run in UTC, so day and time must be read in the clinic timezone.
-    const { dayOfWeek, currentTime } = getLocalDayAndTime(date, config.timezone);
-
-    const workingDays = config.working_days.split(",").map((d) => d.trim());
-    if (!workingDays.includes(dayOfWeek)) {
-        return false; // Clinic closed on this day
-    }
-
-    return currentTime >= config.open_time && currentTime < config.close_time;
-}
-
-/**
- * Resolve the short weekday and HH:MM for a timestamp in the given IANA timezone
- */
-function getLocalDayAndTime(
-    date: Date,
-    timezone: string
-): { dayOfWeek: string; currentTime: string } {
-    try {
-        const parts = new Intl.DateTimeFormat("en-US", {
-            timeZone: timezone,
-            weekday: "short",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false
-        }).formatToParts(date);
-
-        const lookup = (type: string) =>
-            parts.find((part) => part.type === type)?.value || "";
-
-        // Intl can emit "24" for midnight in hourCycle h23/h24 edge cases.
-        const hour = lookup("hour") === "24" ? "00" : lookup("hour");
-
-        return {
-            dayOfWeek: lookup("weekday"),
-            currentTime: `${hour}:${lookup("minute")}`
-        };
-    } catch {
-        return {
-            dayOfWeek: date.toLocaleString("en-US", { weekday: "short" }),
-            currentTime: date.toISOString().substring(11, 16)
-        };
-    }
-}
-
-/**
- * Format clinic hours for display
- */
-export function formatClinicHours(config: ClinicConfig): string {
-    return `${config.open_time} - ${config.close_time}`;
-}
-
-/**
- * Format working days for display
- */
-export function formatWorkingDays(config: ClinicConfig): string {
-    const days = config.working_days.split(",").map((d) => d.trim());
-    return days.join(", ");
-}
-
-/**
  * Get after-hours message
  */
-export function getAfterHoursMessage(config: ClinicConfig): string {
+export function getAfterHoursMessage(
+    config: ClinicConfig,
+    /** Today's own hours. Omitted or null means the clinic is shut all day. */
+    todayHours?: { openTime: string; closeTime: string } | null
+): string {
     if (config.after_hours_message) {
         return config.after_hours_message;
     }
 
+    const hours = todayHours
+        ? `🕐 Today we are open ${todayHours.openTime} - ${todayHours.closeTime}\n`
+        : `🕐 We are closed today.\n`;
+
     return (
         `⏰ We're currently closed.\n\n` +
-        `🕐 Clinic Hours: ${formatClinicHours(config)}\n` +
-        `📅 Working Days: ${formatWorkingDays(config)}\n` +
+        hours +
         `📞 Call us: ${config.clinic_phone}\n\n` +
         `Your message has been received. We'll respond during our working hours.`
     );

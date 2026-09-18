@@ -48,6 +48,7 @@ interface Summary {
     feedback: { rated: number; average: number | null };
     documents: { sent: number; failed: number };
     reminders: { sent: number; failed: number };
+    undelivered: number;
     truncated: boolean;
 }
 
@@ -175,7 +176,7 @@ export default async function SummaryPage({
                         </Panel>
                     </div>
 
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-4">
                         <Stat
                             label="Patient rating"
                             value={summary.feedback.average ?? "—"}
@@ -196,6 +197,16 @@ export default async function SummaryPage({
                             value={summary.reminders.sent}
                             note={summary.reminders.failed > 0 ? `${summary.reminders.failed} did not send` : undefined}
                             tone={summary.reminders.failed > 0 ? "warn" : "plain"}
+                        />
+                        <Stat
+                            label="Not delivered"
+                            value={summary.undelivered}
+                            note={
+                                summary.undelivered > 0
+                                    ? "WhatsApp could not deliver these"
+                                    : "everything reached its patient"
+                            }
+                            tone={summary.undelivered > 0 ? "warn" : "plain"}
                         />
                     </div>
 

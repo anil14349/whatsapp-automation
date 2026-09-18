@@ -175,8 +175,34 @@ export async function getClinicHoursForDay(
     };
 }
 
-function minutesNowIn(timezone: string): { today: string; minutes: number } {
-    const parts = new Intl.DateTimeFormat("en-GB", {
+/**
+ * Whether the clinic is open right now, and the hours it keeps today.
+ *
+ * The after-hours reply used to ask `isClinicOpen`, which knows only the
+ * week-wide open_time/close_time on `clinics`. With real hours set per weekday
+ * that answer is wrong on most days - it would have told a patient the clinic
+ * was closed at 07:00 on a Monday that opens at 06:30, and the message quoted
+ * the week-wide window as if it applied every day.
+ */
+export async function clinicOpenState(
+    supabase: SupabaseClient,
+    clinicId: string,
+    timezone: string
+): Promise<{ open: boolean; hours: { openTime: string; closeTime: string } | null }> {
+    const { today, minutes } = minutesNowIn(timezone);
+    const hours = await getClinicHoursForDay(supabase, clinicId, today);
+
+    if (!hours) {
+        return { open: false, hours: null };
+    }
+
+    return {
+        open: minutes >= toMinutes(hours.openTime) && minutes < toMinutes(hours.closeTime),
+        hours: { openTime: hours.openTime, closeTime: hours.closeTime }
+    };
+}
+
+function minutesNowIn(timezone: string): { today: string; minutes: number } {    const parts = new Intl.DateTimeFormat("en-GB", {
         timeZone: timezone,
         year: "numeric",
         month: "2-digit",
@@ -285,8 +311,17 @@ export async function getClinicServiceSlots(
     const isToday = date === today;
 
     const step = service.durationMinutes > 0 ? service.durationMinutes : 30;
-    const open = toMinutes(hours.openTime);
-    const close = toMinutes(hours.closeTime);
+
+    // A lab keeps shorter hours than the building it sits in, so the service's
+    // own window narrows the premises hours but can never widen them.
+    const open = Math.max(
+        toMinutes(hours.openTime),
+        service.availableFrom ? toMinutes(service.availableFrom) : 0
+    );
+    const close = Math.min(
+        toMinutes(hours.closeTime),
+        service.availableTo ? toMinutes(service.availableTo) : 24 * 60
+    );
 
     const slots: string[] = [];
 

@@ -23,6 +23,9 @@ export interface ClinicService {
     durationMinutes: number;
     concurrentCapacity: number;
     displayOrder: number;
+    /** Narrower than the premises hours; null follows them. */
+    availableFrom: string | null;
+    availableTo: string | null;
 }
 
 export type ServiceChannel = "clinic" | "home";
@@ -78,7 +81,9 @@ function toService(row: Record<string, any>): ClinicService | null {
         homePrice: row.home_price ?? type.default_home_price ?? null,
         durationMinutes: row.duration_minutes ?? type.default_duration_minutes ?? 30,
         concurrentCapacity: row.concurrent_capacity ?? 1,
-        displayOrder: row.display_order ?? 0
+        displayOrder: row.display_order ?? 0,
+        availableFrom: row.available_from ? String(row.available_from).slice(0, 5) : null,
+        availableTo: row.available_to ? String(row.available_to).slice(0, 5) : null
     };
 }
 
@@ -135,7 +140,7 @@ export async function getEnabledServices(
             supabase
                 .from("clinic_services")
                 .select(
-                    "service_type_id, requires_doctor, offered_at_clinic, offered_at_home, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, display_name, " +
+                    "service_type_id, requires_doctor, offered_at_clinic, offered_at_home, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, display_name, available_from, available_to, " +
                     "service_type:service_types(code, name, category, default_clinic_price, default_home_price, default_duration_minutes, is_active)"
                 )
                 .eq("clinic_id", clinicId)

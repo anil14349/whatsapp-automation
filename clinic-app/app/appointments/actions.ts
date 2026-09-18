@@ -216,10 +216,12 @@ export async function announceDelay(
         return { success: "Nobody is still waiting, so no messages were sent." };
     }
 
+    // "Told" claimed more than we know: WhatsApp only accepts the message here
+    // and reports failures minutes later, where Summary picks them up.
     return {
         success: failed
-            ? `Told ${notified} waiting patient${notified === 1 ? "" : "s"}. ${failed} could not be reached.`
-            : `Told ${notified} waiting patient${notified === 1 ? "" : "s"}.`
+            ? `Sent to ${notified} waiting patient${notified === 1 ? "" : "s"}. ${failed} could not be reached.`
+            : `Sent to ${notified} waiting patient${notified === 1 ? "" : "s"}. Any that do not arrive are counted on Summary.`
     };
 }
 

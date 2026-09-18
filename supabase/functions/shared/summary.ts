@@ -38,6 +38,14 @@ export interface Summary {
     feedback: { rated: number; average: number | null };
     documents: { sent: number; failed: number };
     reminders: { sent: number; failed: number };
+    /**
+     * Messages WhatsApp accepted and then reported it could not deliver.
+     *
+     * A delay notice and a feedback request have no row of their own, so the
+     * desk was shown "sent" and never heard otherwise. This is the only place
+     * those failures surface.
+     */
+    undelivered: number;
     /** True when the period held more rows than were counted. */
     truncated: boolean;
 }
@@ -54,7 +62,7 @@ export async function buildSummary(
 ): Promise<Summary | null> {
     // The three counts do not depend on the appointments, so waiting for that
     // query before starting them made the slowest screen slower still.
-    const [appointments, feedback, documents, reminders] = await Promise.all([
+    const [appointments, feedback, documents, reminders, undelivered] = await Promise.all([
         supabase
             .from("appointments")
             .select("status, booking_source, location_type, is_revisit, appointment_time, doctor:doctors(name)")
@@ -64,7 +72,8 @@ export async function buildSummary(
             .limit(MAX_ROWS + 1),
         feedbackSummary(supabase, clinicId, from, to),
         documentSummary(supabase, clinicId, from, to),
-        reminderSummary(supabase, clinicId, from, to)
+        reminderSummary(supabase, clinicId, from, to),
+        undeliveredCount(supabase, clinicId, from, to)
     ]);
 
     const { data, error } = appointments;
@@ -142,6 +151,7 @@ export async function buildSummary(
         feedback,
         documents,
         reminders,
+        undelivered,
         truncated
     };
 }
@@ -180,18 +190,20 @@ async function countWhere(
     column: string,
     from: string,
     to: string,
-    status: string
+    status: string | string[]
 ): Promise<number> {
+    const statuses = Array.isArray(status) ? status : [status];
+
     const { count, error } = await supabase
         .from(table)
         .select("id", { count: "exact", head: true })
         .eq("clinic_id", clinicId)
-        .eq("status", status)
+        .in("status", statuses)
         .gte(column, `${from}T00:00:00`)
         .lte(column, `${to}T23:59:59`);
 
     if (error) {
-        debug("summary", "Count failed", { table, status, error: error.message });
+        debug("summary", "Count failed", { table, statuses, error: error.message });
         return 0;
     }
 
@@ -205,15 +217,49 @@ async function documentSummary(
     to: string
 ): Promise<{ sent: number; failed: number }> {
     const [sent, failed] = await Promise.all([
-        countWhere(supabase, "patient_documents", clinicId, "created_at", from, to, "SENT"),
+        // DELIVERED is the one Meta has confirmed; SENT only means it was
+        // accepted, and counting it alone read as zero once the confirmed ones
+        // started moving on.
+        countWhere(supabase, "patient_documents", clinicId, "created_at", from, to, [
+            "SENT",
+            "DELIVERED"
+        ]),
         countWhere(supabase, "patient_documents", clinicId, "created_at", from, to, "FAILED")
     ]);
 
     return { sent, failed };
 }
 
-async function reminderSummary(
+/**
+ * Messages Meta took and then failed to deliver.
+ *
+ * Read from the delivery log rather than a status column, because the two
+ * messages this most often catches - a delay notice and a feedback request -
+ * have no row of their own to carry a verdict.
+ */
+async function undeliveredCount(
     supabase: SupabaseClient,
+    clinicId: string,
+    from: string,
+    to: string
+): Promise<number> {
+    const { count, error } = await supabase
+        .from("whatsapp_log")
+        .select("id", { count: "exact", head: true })
+        .eq("clinic_id", clinicId)
+        .eq("metadata->>delivery", "failed")
+        .gte("created_at", `${from}T00:00:00`)
+        .lte("created_at", `${to}T23:59:59`);
+
+    if (error) {
+        debug("summary", "Undelivered count failed", { error: error.message });
+        return 0;
+    }
+
+    return count ?? 0;
+}
+
+async function reminderSummary(    supabase: SupabaseClient,
     clinicId: string,
     from: string,
     to: string
