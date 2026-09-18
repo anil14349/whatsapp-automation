@@ -18,6 +18,7 @@ import {
 } from "../shared/auth-middleware.ts";
 import { debug, recordAuditEvent } from "../shared/logger.ts";
 import { clearClinicServiceCache } from "../shared/clinic-services.ts";
+import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
 import { withCors } from "../shared/cors.ts";
 
 interface UpdateRequest {
@@ -430,7 +431,7 @@ async function deleteServiceType(
     };
   }
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayInTimezone(await getClinicTimezone(supabase, clinicId));
 
   const { data: booked, error: bookedError } = await supabase
     .from("appointments")

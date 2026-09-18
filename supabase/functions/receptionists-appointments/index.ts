@@ -238,8 +238,9 @@ async function createAppointment(
     }
 
     // Appointments need an explicit id and service type, mirroring the
-    // WhatsApp booking path.
-    const dateStr = new Date().toISOString().split("T")[0].replace(/-/g, "");
+    // WhatsApp booking path. The date in the id is the clinic's day, so a
+    // booking taken at 1am in India is not stamped with yesterday.
+    const dateStr = todayInTimezone(await getClinicTimezone(supabase, clinicId)).replace(/-/g, "");
     const random = crypto.randomUUID().replace(/-/g, "").substring(0, 6);
     const appointmentId = `APT_${dateStr}_${random}`;
 

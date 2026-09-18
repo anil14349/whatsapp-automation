@@ -13,6 +13,7 @@ import {
     selfServicePinResetEnabled
 } from "../doctor-auth.ts";
 import { hashPassword, validatePinStrength } from "../bcrypt-password.ts";
+import { getClinicTimezone, todayInTimezone } from "../clinic-slots.ts";
 
 /**
  * Doctor Flow Handler - Manages doctor portal interactions
@@ -1225,7 +1226,9 @@ export class DoctorFlowHandler {
                 return;
             }
 
-            const today = new Date().toISOString().split("T")[0];
+            // The clinic's day, not the server's: a doctor opening this at
+            // 1am in India was shown the previous day's list.
+            const today = todayInTimezone(await getClinicTimezone(this.supabase, clinicId));
 
             const appointments = await this.supabaseClient.getDoctorAppointments(clinicId, doctorId, today);
 
@@ -1264,7 +1267,7 @@ export class DoctorFlowHandler {
      */
     private async showMarkStatusAppointments(phone: string, doctorId: string, clinicId: string): Promise<void> {
         try {
-            const today = new Date().toISOString().split("T")[0];
+            const today = todayInTimezone(await getClinicTimezone(this.supabase, clinicId));
             const appointments = await this.supabaseClient.getDoctorAppointments(clinicId, doctorId, today);
 
             const confirmedAppointments = appointments.filter(apt => apt.status === "CONFIRMED");

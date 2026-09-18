@@ -18,6 +18,7 @@ import { WhatsAppClient } from "../shared/whatsapp-client.ts";
 import { runReminderScheduler } from "../shared/appointment-reminder-scheduler.ts";
 import { FeedbackHandler } from "../shared/handlers/feedback-handler.ts";
 import { getActiveClinicRoutes } from "../shared/clinic-routing.ts";
+import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
 import { debug } from "../shared/logger.ts";
 
 interface ClinicRunResult {
@@ -44,8 +45,11 @@ async function processClinic(
         maxConcurrent: 5
     });
 
-    // Appointments whose date has passed are closed off automatically.
-    const today = new Date().toISOString().split("T")[0];
+    // Appointments whose date has passed are closed off automatically, by the
+    // clinic's own day: on UTC, an Indian clinic's evening is still "today"
+    // here, so yesterday's visits stayed open until 05:30 local.
+    // The caller passes exactly one clinic, so one timezone is the right one.
+    const today = todayInTimezone(await getClinicTimezone(supabase, clinicIds[0]));
     const { data: completed, error: completeError } = await supabase
         .from("appointments")
         .update({

@@ -8,7 +8,7 @@
 
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as types from "./multi-clinic-types.ts";
-import { getClinicHoursForDay, todayInTimezone } from "./clinic-slots.ts";
+import { getClinicHoursForDay, getClinicTimezone, todayInTimezone } from "./clinic-slots.ts";
 import { checkRevisit } from "./revisit.ts";
 
 export class MultiClinicSupabaseClient {
@@ -432,7 +432,11 @@ export class MultiClinicSupabaseClient {
       .eq("patient_phone", patientPhone);
 
     if (upcomingOnly) {
-      const today = new Date().toISOString().split("T")[0];
+      // The clinic's day, not the server's: after 18:30 UTC a clinic in
+      // Asia/Kolkata is already on tomorrow, and yesterday's visit was still
+      // being listed as upcoming.
+      const today = todayInTimezone(await getClinicTimezone(this.supabase, clinicId));
+
       query = query
         .gte("appointment_date", today)
         .neq("status", "CANCELLED");
@@ -724,7 +728,7 @@ export class MultiClinicSupabaseClient {
     clinicId: string,
     doctorId: string
   ): Promise<types.DoctorHomeVisitSchedule[]> {
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayInTimezone(await getClinicTimezone(this.supabase, clinicId));
 
     const { data, error } = await this.supabase
       .from("doctor_home_visit_schedules")

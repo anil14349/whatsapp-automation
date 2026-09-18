@@ -21,6 +21,7 @@ import {
   errorResponse
 } from "../shared/auth-middleware.ts";
 import { debug, recordAuditEvent } from "../shared/logger.ts";
+import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
 import { withCors } from "../shared/cors.ts";
 
 /** Monday is 1 and Sunday is 7, matching clinic_operating_hours. */
@@ -40,7 +41,7 @@ async function getSettings(
   supabase: SupabaseClient,
   clinicId: string
 ): Promise<{ status: number; payload: Record<string, unknown> }> {
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayInTimezone(await getClinicTimezone(supabase, clinicId));
 
   const [clinic, hours, holidays] = await Promise.all([
     supabase

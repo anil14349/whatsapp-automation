@@ -90,18 +90,35 @@ function zoneOffsetMs(instant: Date, timezone: string): number {
 
 /**
  * The clinic's own timezone, falling back to UTC when it has none set.
+ *
+ * Cached: a clinic does not move, and this is now asked on paths that run for
+ * every message rather than only when building a slot list.
  */
+const timezones: Record<string, string> = {};
+
+export function clearClinicTimezoneCache(): void {
+    for (const key of Object.keys(timezones)) {
+        delete timezones[key];
+    }
+}
+
 export async function getClinicTimezone(
     supabase: SupabaseClient,
     clinicId: string
 ): Promise<string> {
+    if (timezones[clinicId]) {
+        return timezones[clinicId];
+    }
+
     const { data } = await supabase
         .from("clinics")
         .select("timezone")
         .eq("id", clinicId)
         .maybeSingle();
 
-    return data?.timezone || "UTC";
+    timezones[clinicId] = data?.timezone || "UTC";
+
+    return timezones[clinicId];
 }
 
 /**
