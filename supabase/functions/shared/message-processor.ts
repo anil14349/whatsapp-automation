@@ -127,18 +127,46 @@ export async function processMessage(
         );
     } else {
         // Patient or default
+        //
+        // A reminder asks the patient to reply CANCEL or RESCHEDULE, and a
+        // typed word used to fall through to the generic menu - which offers
+        // to book another appointment and hides cancelling behind "More
+        // Options". The keyword becomes the menu id the handler already
+        // honours from any state.
+        const keywordId = menuIdForKeyword(normalizedMessage);
+
         await handlePatientMessage(
             supabase,
             whatsappClient,
             senderPhone,
             senderName,
-            messageText,
-            normalizedMessage,
+            keywordId ?? messageText,
+            keywordId ?? normalizedMessage,
             session,
             context.latitude,
             context.longitude
         );
     }
+}
+
+/**
+ * The menu a typed word stands for, if any.
+ *
+ * English is accepted in both languages because patients type it either way.
+ */
+function menuIdForKeyword(message: string): string | null {
+    const cancel = ["cancel", "cancel appointment", "रद्द", "रद्द करें"];
+    const reschedule = ["reschedule", "postpone", "change time", "बदलें", "समय बदलें", "स्थगित"];
+
+    if (cancel.includes(message)) {
+        return BUTTON_IDS.PATIENT_MENU.CANCEL;
+    }
+
+    if (reschedule.includes(message)) {
+        return BUTTON_IDS.PATIENT_MENU.RESCHEDULE;
+    }
+
+    return null;
 }
 
 /**

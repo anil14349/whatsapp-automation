@@ -16,7 +16,7 @@ import {
     markReminderAsFailed,
     getAppointmentDetailsForReminder,
     formatReminderMessage,
-    reminderSubject
+    reminderPhrase
 } from "./appointment-reminders.ts";
 import { sendProactive } from "./proactive.ts";
 import { debug, recordAuditEvent } from "./logger.ts";
@@ -107,9 +107,9 @@ async function sendReminder(
             language: (details.preferredLanguage || "EN") as "EN" | "HI"
         });
 
-        // The template body reads "appointment with {{2}}", so the parameter
-        // carries the title; it must match what the free-form message says.
-        const subject = reminderSubject(
+        // The template body reads "you have {{2}}", so the parameter carries
+        // the whole phrase; it must match what the free-form message says.
+        const subject = reminderPhrase(
             details.doctorName,
             details.serviceName,
             details.preferredLanguage || "EN"

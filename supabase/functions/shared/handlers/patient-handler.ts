@@ -54,7 +54,8 @@ export class PatientFlowHandler {
         this.whatsappClient = whatsappClient;
         this.supabaseClient = new MultiClinicSupabaseClient(
             Deno.env.get("SUPABASE_URL") || "",
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+            supabase
         );
     }
 
@@ -307,12 +308,12 @@ export class PatientFlowHandler {
 
             case BUTTON_IDS.PATIENT_MENU.CANCEL:
                 await this.updateSession(phone, "CANCEL_SELECT");
-                await this.showCancelOptions(phone, language, clinicId);
+                await this.showCancelOptions(phone, language, clinicId, session.data ?? {});
                 break;
 
             case BUTTON_IDS.PATIENT_MENU.RESCHEDULE:
                 await this.updateSession(phone, "RESCHEDULE_SELECT");
-                await this.showRescheduleOptions(phone, language, clinicId);
+                await this.showRescheduleOptions(phone, language, clinicId, session.data ?? {});
                 break;
 
             case BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION:
@@ -1677,7 +1678,7 @@ export class PatientFlowHandler {
         const appointmentId = await this.resolveAppointmentId(phone, clinicId, message.text);
 
         if (!appointmentId) {
-            await this.showCancelOptions(phone, language, clinicId);
+            await this.showCancelOptions(phone, language, clinicId, session.data ?? {});
             return;
         }
 
@@ -1805,7 +1806,7 @@ export class PatientFlowHandler {
         const appointmentId = await this.resolveAppointmentId(phone, clinicId, message.text);
 
         if (!appointmentId) {
-            await this.showRescheduleOptions(phone, language, clinicId);
+            await this.showRescheduleOptions(phone, language, clinicId, session.data ?? {});
             return;
         }
 
@@ -1836,7 +1837,28 @@ export class PatientFlowHandler {
             return;
         }
         const language = session.data?.language || "EN";
-        const newDate = message.text.trim();
+        let newDate = message.text.trim();
+
+        // The picker offers Today/Tomorrow rather than asking for YYYY-MM-DD,
+        // so those ids have to resolve to a date before anything parses it.
+        if (isValidDateSelectButton(newDate)) {
+            const timezone = await getClinicTimezone(this.supabase, session.clinic_id);
+            const today = todayInTimezone(timezone);
+
+            if (newDate === BUTTON_IDS.DATE_SELECT.TODAY) {
+                newDate = today;
+            } else if (newDate === BUTTON_IDS.DATE_SELECT.TOMORROW) {
+                newDate = addDays(today, 1);
+            } else {
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    language === "EN"
+                        ? "📅 Please enter the new date (YYYY-MM-DD):\n\n(Up to 7 days ahead)"
+                        : "📅 कृपया नई तारीख दर्ज करें (YYYY-MM-DD):\n\n(7 दिन आगे तक)"
+                );
+                return;
+            }
+        }
 
         // Reschedule must honour the same 0-7 day window as a new booking.
         const rescheduleToday = todayInTimezone(
@@ -2506,24 +2528,146 @@ export class PatientFlowHandler {
     /**
      * Helper: Show cancel options
      */
-    private async showCancelOptions(phone: string, language: string, clinicId: string): Promise<void> {
-        await this.whatsappClient.sendTextMessage(
-            phone,
-            language === "EN"
-                ? "Please provide the appointment ID to cancel:"
-                : "रद्द करने के लिए कृपया नियुक्ति आईडी प्रदान करें:"
-        );
+    private async showCancelOptions(
+        phone: string,
+        language: string,
+        clinicId: string,
+        data: Record<string, unknown> = {}
+    ): Promise<void> {
+        await this.showAppointmentPicker(phone, language, clinicId, "cancel", data);
     }
 
     /**
      * Helper: Show reschedule options
      */
-    private async showRescheduleOptions(phone: string, language: string, clinicId: string): Promise<void> {
-        await this.whatsappClient.sendTextMessage(
+    private async showRescheduleOptions(
+        phone: string,
+        language: string,
+        clinicId: string,
+        data: Record<string, unknown> = {}
+    ): Promise<void> {
+        await this.showAppointmentPicker(phone, language, clinicId, "reschedule", data);
+    }
+
+    /**
+     * Ask which appointment, showing them rather than asking for an id.
+     *
+     * Both of these used to send "Please provide the appointment ID", an
+     * internal `APT_...` string deliberately never shown to the patient. The
+     * step below already accepted a position from a numbered list; the list
+     * was simply never printed.
+     */
+    private async showAppointmentPicker(
+        phone: string,
+        language: string,
+        clinicId: string,
+        purpose: "cancel" | "reschedule",
+        data: Record<string, unknown>
+    ): Promise<void> {
+        const en = language === "EN";
+        let appointments: any[] = [];
+
+        try {
+            appointments = await this.supabaseClient.getPatientAppointments(clinicId, phone, true);
+        } catch (error) {
+            debug("patientFlow", "Could not load appointments to pick from", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+        }
+
+        if (appointments.length === 0) {
+            await this.updateSession(phone, "MAIN_MENU", { language });
+            await this.showMainMenu(
+                phone,
+                language,
+                en
+                    ? "You have no upcoming appointments."
+                    : "आपकी कोई आगामी नियुक्ति नहीं है।"
+            );
+            return;
+        }
+
+        const describe = (apt: any) =>
+            apt.doctor?.name
+                ? `Dr. ${apt.doctor.name}`
+                : apt.service_type?.name || (en ? "Appointment" : "नियुक्ति");
+
+        const when = (apt: any) =>
+            `${this.formatLongDate(apt.appointment_date, language)}, ${this.formatClockTime(apt.appointment_time)}`;
+
+        // Only one appointment may be active at a time, so a list of one is the
+        // normal case and picking from it is a step for nothing.
+        if (appointments.length === 1) {
+            const only = appointments[0];
+            await this.confirmChosenAppointment(phone, language, only, purpose, data);
+            return;
+        }
+
+        const rows = appointments.slice(0, 9).map((apt: any, idx: number) => ({
+            // The position is what the next step resolves back to an id.
+            id: String(idx + 1),
+            title: when(apt).slice(0, 24),
+            description: [describe(apt), apt.patient_name].filter(Boolean).join(" · ")
+        }));
+
+        await this.whatsappClient.sendInteractiveListMessage(
             phone,
-            language === "EN"
-                ? "Please provide the appointment ID to reschedule:"
-                : "पुनः समय निर्धारित करने के लिए कृपया नियुक्ति आईडी प्रदान करें:"
+            purpose === "cancel"
+                ? (en ? "Which appointment would you like to cancel?" : "आप कौन सी नियुक्ति रद्द करना चाहते हैं?")
+                : (en ? "Which appointment would you like to move?" : "आप कौन सी नियुक्ति बदलना चाहते हैं?"),
+            en ? "Choose one" : "एक चुनें",
+            [{ title: en ? "Your appointments" : "आपकी नियुक्तियाँ", rows }],
+            this.supabase
+        );
+    }
+
+    /** The one appointment they must have meant. */
+    private async confirmChosenAppointment(
+        phone: string,
+        language: string,
+        appointment: any,
+        purpose: "cancel" | "reschedule",
+        data: Record<string, unknown>
+    ): Promise<void> {
+        const en = language === "EN";
+        const who = appointment.doctor?.name
+            ? `Dr. ${appointment.doctor.name}`
+            : appointment.service_type?.name || (en ? "Appointment" : "नियुक्ति");
+
+        const detail =
+            `${who}\n📅 ${this.formatLongDate(appointment.appointment_date, language)}` +
+            `\n🕐 ${this.formatClockTime(appointment.appointment_time)}`;
+
+        if (purpose === "reschedule") {
+            await this.updateSession(phone, "RESCHEDULE_DATE", {
+                ...data,
+                language,
+                selectedAppointmentId: appointment.id
+            });
+
+            await this.showDateMenu(
+                phone,
+                language,
+                en ? `Moving your appointment:\n\n${detail}` : `नियुक्ति बदल रहे हैं:\n\n${detail}`
+            );
+            return;
+        }
+
+        await this.updateSession(phone, "CANCEL_CONFIRM", {
+            language,
+            selectedAppointmentId: appointment.id
+        });
+
+        await this.whatsappClient.sendInteractiveButtonMessage(
+            phone,
+            en
+                ? `Cancel this appointment?\n\n${detail}`
+                : `क्या यह नियुक्ति रद्द करें?\n\n${detail}`,
+            [
+                { id: BUTTON_IDS.CONFIRMATION.YES, title: en ? "Yes, cancel" : "हाँ, रद्द करें" },
+                { id: BUTTON_IDS.CONFIRMATION.NO, title: en ? "No, keep it" : "नहीं, रहने दें" }
+            ],
+            this.supabase
         );
     }
 

@@ -14,8 +14,10 @@ import { checkRevisit } from "./revisit.ts";
 export class MultiClinicSupabaseClient {
   private supabase: SupabaseClient;
 
-  constructor(supabaseUrl: string, supabaseKey: string) {
-    this.supabase = createClient(supabaseUrl, supabaseKey);
+  // `existing` avoids a second connection to the same project, and is what
+  // lets a caller that already has a client hand it over instead.
+  constructor(supabaseUrl: string, supabaseKey: string, existing?: SupabaseClient) {
+    this.supabase = existing ?? createClient(supabaseUrl, supabaseKey);
   }
 
   // ============================================================================

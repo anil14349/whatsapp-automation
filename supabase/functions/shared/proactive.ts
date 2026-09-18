@@ -19,13 +19,18 @@
  * Category UTILITY for all of them (they follow a user action, so they are not
  * marketing), in English and Hindi under the same name.
  *
- *   appointment_reminder_24h   {{1}} patient  {{2}} doctor  {{3}} date  {{4}} time
- *     "Hi {{1}}, a reminder of your appointment with {{2}} tomorrow,
- *      {{3}} at {{4}}. Reply to this message to reschedule or cancel."
+ *   appointment_reminder_24h   {{1}} patient  {{2}} phrase  {{3}} date  {{4}} time
+ *     "Hi {{1}}, a reminder that you have {{2}} tomorrow, {{3}} at {{4}}.
+ *      Reply CANCEL to cancel, or RESCHEDULE to change the time."
  *
- *   appointment_reminder_1h    {{1}} patient  {{2}} doctor  {{3}} time
- *     "Hi {{1}}, your appointment with {{2}} is at {{3}}, about an hour from
- *      now. Reply to this message if you are running late."
+ *   appointment_reminder_1h    {{1}} patient  {{2}} phrase  {{3}} time
+ *     "Hi {{1}}, you have {{2}} at {{3}}, about an hour from now. Reply to
+ *      this message if you are running late."
+ *
+ *   {{2}} is a whole phrase - "an appointment with Dr. Akilesh" or "a Sample
+ *   Collection appointment" - because a service does not read correctly after
+ *   "with". Build it with reminderPhrase() so the template and the free-form
+ *   message cannot drift apart.
  *
  *   home_collection_reminder   {{1}} patient  {{2}} date  {{3}} time window
  *     "Hi {{1}}, our technician will visit for your sample collection on

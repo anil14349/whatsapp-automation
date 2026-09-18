@@ -11,7 +11,7 @@
  */
 
 import { assert, assertEquals, assertStringIncludes } from "std/testing/asserts.ts";
-import { formatReminderMessage, reminderSubject } from "../shared/appointment-reminders.ts";
+import { formatReminderMessage, reminderPhrase, reminderSubject } from "../shared/appointment-reminders.ts";
 
 Deno.env.set("SUPABASE_URL", "http://localhost:54321");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-key");
@@ -27,16 +27,25 @@ const BASE = {
 Deno.test("a doctor is titled once, not twice", () => {
     const said = formatReminderMessage({ ...BASE, doctorName: "Akilesh" });
 
-    assertStringIncludes(said, "with Dr. Akilesh tomorrow");
+    assertStringIncludes(said, "an appointment with Dr. Akilesh tomorrow");
     assert(!/Dr\.\s*Dr\./.test(said), said);
 });
 
-Deno.test("a service with no doctor is named instead", () => {
+Deno.test("a service takes the adjective position, not 'with'", () => {
+    // "an appointment with Sample Collection" is not English.
     const said = formatReminderMessage({ ...BASE, serviceName: "Sample Collection" });
 
-    assertStringIncludes(said, "with Sample Collection tomorrow");
+    assertStringIncludes(said, "a Sample Collection appointment tomorrow");
+    assert(!/with Sample Collection/i.test(said), said);
     assert(!/Dr\./.test(said), said);
     assert(!/undefined/i.test(said), said);
+});
+
+Deno.test("the reminder says how to act, in words the bot accepts", () => {
+    const said = formatReminderMessage({ ...BASE, serviceName: "Sample Collection" });
+
+    assertStringIncludes(said, "Reply CANCEL");
+    assertStringIncludes(said, "RESCHEDULE");
 });
 
 Deno.test("the hour-before reminder follows the same rule", () => {
@@ -59,7 +68,7 @@ Deno.test("the hour-before reminder follows the same rule", () => {
 Deno.test("neither a doctor nor a service still reads as a sentence", () => {
     const said = formatReminderMessage(BASE);
 
-    assertStringIncludes(said, "with your appointment tomorrow");
+    assertStringIncludes(said, "You have an appointment tomorrow");
     assert(!/undefined|null/i.test(said), said);
 });
 
@@ -70,9 +79,18 @@ Deno.test("Hindi titles the doctor in Hindi", () => {
     assert(!/Dr\./.test(said), said);
 });
 
-Deno.test("the template parameter carries the same title as the message", () => {
-    // The template body has no "Dr." of its own, so the parameter must.
-    assertEquals(reminderSubject("Akilesh", "Consultation", "EN"), "Dr. Akilesh");
+Deno.test("the template parameter carries the same phrase as the message", () => {
+    // The template body reads "you have {{2}}", so the parameter must be the
+    // whole phrase. These two drifted once already.
+    assertEquals(reminderPhrase("Akilesh", "Consultation", "EN"), "an appointment with Dr. Akilesh");
+    assertEquals(reminderPhrase(undefined, "Sample Collection", "EN"), "a Sample Collection appointment");
+    assertEquals(reminderPhrase(undefined, undefined, "EN"), "an appointment");
+
+    const said = formatReminderMessage({ ...BASE, serviceName: "Sample Collection" });
+    assertStringIncludes(said, reminderPhrase(undefined, "Sample Collection", "EN"));
+});
+
+Deno.test("the hour-before label stays short, since it is not in a sentence", () => {
+    assertEquals(reminderSubject("Akilesh", undefined, "EN"), "Dr. Akilesh");
     assertEquals(reminderSubject(undefined, "Sample Collection", "EN"), "Sample Collection");
-    assertEquals(reminderSubject(undefined, undefined, "EN"), "your appointment");
 });

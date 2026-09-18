@@ -12,10 +12,7 @@ import { debug } from "./logger.ts";
 import { clinicInstant, getClinicTimezone } from "./clinic-slots.ts";
 
 /**
- * Format reminder message for patient
- */
-/**
- * Who or what the appointment is with.
+ * Who or what the appointment is with, as a bare label.
  *
  * A sample collection has no doctor. The fallback used to be the literal
  * string "Dr.", which the template then prefixed again: "Dr. Dr.".
@@ -34,6 +31,30 @@ export function reminderSubject(
   return serviceName || (hi ? "अपॉइंटमेंट" : "your appointment");
 }
 
+/**
+ * The same thing as a noun phrase, for dropping into a sentence.
+ *
+ * "an appointment with Dr. Akilesh" reads correctly; "an appointment with
+ * Sample Collection" does not, so a service takes the adjective position.
+ */
+export function reminderPhrase(
+  doctorName: string | undefined,
+  serviceName: string | undefined,
+  language: string
+): string {
+  const hi = language === "HI";
+
+  if (doctorName) {
+    return hi ? `डॉ. ${doctorName} के साथ अपॉइंटमेंट` : `an appointment with Dr. ${doctorName}`;
+  }
+
+  if (serviceName) {
+    return hi ? `${serviceName} अपॉइंटमेंट` : `a ${serviceName} appointment`;
+  }
+
+  return hi ? "अपॉइंटमेंट" : "an appointment";
+}
+
 export function formatReminderMessage(
   content: types.ReminderMessageContent
 ): string {
@@ -41,17 +62,18 @@ export function formatReminderMessage(
 
   const hi = language === "HI";
   const subject = reminderSubject(doctorName, serviceName, language);
+  const phrase = reminderPhrase(doctorName, serviceName, language);
 
   if (hi) {
     if (reminderType === "24_HOUR") {
-      return `👋 नमस्ते ${patientName}!\n\n📅 याद दिला रहे हैं: कल ${appointmentTime} बजे आपकी ${subject} के साथ अपॉइंटमेंट है।\n\nयदि आप रद्द या स्थगित करना चाहते हैं तो हमें बताएं।`;
+      return `👋 नमस्ते ${patientName}!\n\n📅 याद दिला रहे हैं: कल ${appointmentTime} बजे आपकी ${phrase} है।\n\nरद्द करने के लिए "रद्द" लिखें, समय बदलने के लिए "बदलें" लिखें।`;
     }
 
     return `⏰ ${patientName}, आपकी अपॉइंटमेंट 1 घंटे में है!\n\n🩺 ${subject}\n⏰ समय: ${appointmentTime}\n📅 तारीख: ${appointmentDate}\n\nकृपया समय पर पहुंचें। धन्यवाद!`;
   }
 
   if (reminderType === "24_HOUR") {
-    return `👋 Hi ${patientName}!\n\n📅 Reminder: You have an appointment with ${subject} tomorrow at ${appointmentTime}.\n\nLet us know if you need to cancel or reschedule.`;
+    return `👋 Hi ${patientName}!\n\n📅 Reminder: You have ${phrase} tomorrow at ${appointmentTime}.\n\nReply CANCEL to cancel, or RESCHEDULE to change the time.`;
   }
 
   return `⏰ ${patientName}, your appointment is in 1 hour!\n\n🩺 ${subject}\n⏰ Time: ${appointmentTime}\n📅 Date: ${appointmentDate}\n\nPlease arrive on time. Thank you!`;
