@@ -40,14 +40,16 @@ export function SettingsNav() {
         // taking the way out of it off the screen.
         <nav
             aria-label="Settings sections"
-            className="sticky top-20 w-52 shrink-0 space-y-7 self-start"
+            className="sticky top-20 mr-6 w-[184px] shrink-0 space-y-7 self-start"
         >
             {GROUPS.map((group) => (
                 <div key={group.title}>
-                    <h2 className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    {/* 15px, not 12: the items carry a 3px indicator, and a
+                        label out of line with them is worse than no label. */}
+                    <h2 className="mb-1.5 pl-[15px] pr-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
                         {group.title}
                     </h2>
-                    <ul className="space-y-0.5">
+                    <ul className="space-y-1">
                         {group.items.map((item) => {
                             // Exact, because General lives at /settings and would
                             // otherwise light up on every section.
@@ -58,10 +60,10 @@ export function SettingsNav() {
                                     <Link
                                         href={item.href}
                                         aria-current={active ? "page" : undefined}
-                                        className={`block rounded-lg px-3 py-1.5 text-sm transition ${
+                                        className={`block rounded-md border-l-[3px] px-3 py-1.5 text-sm transition ${
                                             active
-                                                ? "bg-brand-50 font-medium text-brand-700"
-                                                : "text-slate-600 hover:bg-slate-50"
+                                                ? "border-brand-600 bg-brand-50 font-semibold text-brand-700"
+                                                : "border-transparent text-slate-600 hover:bg-slate-50"
                                         }`}
                                     >
                                         {item.label}

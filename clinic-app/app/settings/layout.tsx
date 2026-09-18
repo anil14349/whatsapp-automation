@@ -28,9 +28,12 @@ export default async function SettingsLayout({ children }: { children: React.Rea
         <PortalShell session={session} branding={branding}>
             <h1 className="mb-4 text-xl font-semibold">Settings</h1>
 
-            <div className="flex gap-6">
+            <div className="flex">
                 <SettingsNav />
-                <div className="min-w-0 flex-1 space-y-4">{children}</div>
+                {/* Separates the navigation from the content without boxing the
+                    navigation in: the cards carry the borders here. */}
+                <div aria-hidden="true" className="w-px shrink-0 self-stretch bg-slate-200" />
+                <div className="min-w-0 flex-1 space-y-4 pl-6">{children}</div>
             </div>
         </PortalShell>
     );
