@@ -40,7 +40,7 @@ export function SettingsNav() {
         // taking the way out of it off the screen.
         <nav
             aria-label="Settings sections"
-            className="sticky top-20 w-52 shrink-0 space-y-5 self-start"
+            className="sticky top-20 w-52 shrink-0 space-y-7 self-start"
         >
             {GROUPS.map((group) => (
                 <div key={group.title}>
