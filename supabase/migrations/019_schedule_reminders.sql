@@ -33,14 +33,17 @@ BEGIN
         SELECT 1 FROM vault.decrypted_secrets
         WHERE name = 'scheduler_token' AND coalesce(decrypted_secret, '') <> ''
     ) THEN
-        v_missing := v_missing || 'scheduler_token';
+        -- array_append, not `|| 'literal'`: an untyped literal lets Postgres
+        -- read `||` as array-to-array and try to cast it, so this guard died
+        -- with "malformed array literal" instead of naming what was missing.
+        v_missing := array_append(v_missing, 'scheduler_token');
     END IF;
 
     IF NOT EXISTS (
         SELECT 1 FROM vault.decrypted_secrets
         WHERE name = 'functions_url' AND coalesce(decrypted_secret, '') <> ''
     ) THEN
-        v_missing := v_missing || 'functions_url';
+        v_missing := array_append(v_missing, 'functions_url');
     END IF;
 
     IF array_length(v_missing, 1) > 0 THEN
