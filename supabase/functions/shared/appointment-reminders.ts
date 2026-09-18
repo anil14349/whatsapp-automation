@@ -16,9 +16,9 @@ import { formatClockTime, formatLongDate } from "./appointment-format.ts";
  * Who or what the appointment is with.
  *
  * A sample collection has no doctor. The fallback used to be the literal
- * string "Dr.", which the template then prefixed again: "Dr. Dr.". It is
- * shown under a neutral "For:" label for the same reason — "Doctor: Sample
- * Collection" is the same fault wearing a different hat.
+ * string "Dr.", which the template then prefixed again: "Dr. Dr.". Shown on a
+ * line of its own with no label, because no one label fits both: "With:" is
+ * wrong for a service and "Doctor:" is wrong for one too.
  */
 export function reminderSubject(
   doctorName: string | undefined,
@@ -46,17 +46,17 @@ export function formatReminderMessage(
 
   if (hi) {
     if (reminderType === "24_HOUR") {
-      return `👋 नमस्ते ${patientName}!\n\nआपकी कल की विज़िट की याद:\n\n🩺 किसके लिए: ${subject}\n📅 तारीख: ${day}\n🕐 समय: ${when}\n\nकुछ बदलना हो तो नीचे दिए गए बटन दबाएं।`;
+      return `👋 नमस्ते ${patientName}!\n\nकल आपकी विज़िट की याद:\n\n🩺 ${subject}\n📅 ${day}\n🕐 ${when}\n\nकुछ बदलना हो तो नीचे दिए गए बटन दबाएं।`;
     }
 
-    return `⏰ ${patientName}, आपकी अपॉइंटमेंट लगभग 1 घंटे में है।\n\n🩺 किसके लिए: ${subject}\n🕐 समय: ${when}\n\nकृपया समय पर पहुंचें। धन्यवाद!`;
+    return `⏰ ${patientName}, आपकी विज़िट लगभग 1 घंटे में है।\n\n🩺 ${subject}\n🕐 ${when}\n\nकृपया समय पर पहुंचें। धन्यवाद!`;
   }
 
   if (reminderType === "24_HOUR") {
-    return `👋 Hi ${patientName}!\n\nA reminder for your visit tomorrow:\n\n🩺 For: ${subject}\n📅 Date: ${day}\n🕐 Time: ${when}\n\nUse the buttons below if you need to change anything.`;
+    return `👋 Hi ${patientName}!\n\nA reminder for your visit tomorrow:\n\n🩺 ${subject}\n📅 ${day}\n🕐 ${when}\n\nUse the buttons below if you need to change anything.`;
   }
 
-  return `⏰ ${patientName}, your visit is in about an hour.\n\n🩺 For: ${subject}\n🕐 Time: ${when}\n\nPlease arrive on time. Thank you!`;
+  return `⏰ ${patientName}, your visit is in about an hour.\n\n🩺 ${subject}\n🕐 ${when}\n\nPlease arrive on time. Thank you!`;
 }
 
 /**

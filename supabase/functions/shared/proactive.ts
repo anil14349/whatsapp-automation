@@ -24,11 +24,11 @@
  * little - it is there to satisfy the validator.
  *
  *   appointment_reminder_24h   {{1}} patient  {{2}} doctor or service  {{3}} date  {{4}} time
- *     "Hi {{1}}, a reminder for your visit tomorrow.
+ *     "Hi {{1}}, a reminder for your visit tomorrow:
  *
- *      For: {{2}}
- *      Date: {{3}}
- *      Time: {{4}}
+ *      🩺 {{2}}
+ *      📅 {{3}}
+ *      🕐 {{4}}
  *
  *      Use the buttons below if you need to change anything."
  *     Two QUICK REPLY buttons: "Cancel" and "Reschedule".
@@ -40,17 +40,17 @@
  *     the window was open or not.
  *
  *   appointment_reminder_1h    {{1}} patient  {{2}} doctor or service  {{3}} time
- *     "Hi {{1}}, your visit is in about an hour.
+ *     "Hi {{1}}, your visit is in about an hour:
  *
- *      For: {{2}}
- *      Time: {{3}}
+ *      🩺 {{2}}
+ *      🕐 {{3}}
  *
  *      Please arrive on time."
  *
- *   {{2}} is "Dr. Akilesh" or "Sample Collection", from reminderSubject(). The
- *   label is "For:" rather than "Doctor:" because a sample collection has no
- *   doctor, and "Doctor: Sample Collection" is the same fault that produced
- *   "Dr. Dr." on a real handset.
+ *   {{2}} is "Dr. Akilesh" or "Sample Collection", from reminderSubject(), on
+ *   a line with no label. No one label fits both: an appointment is "with" a
+ *   doctor but "for" a sample collection, and "Doctor: Sample Collection" is
+ *   the same fault that produced "Dr. Dr." on a real handset.
  *
  *   home_collection_reminder   {{1}} patient  {{2}} date  {{3}} time window
  *     "Hi {{1}}, our technician will visit for your sample collection on

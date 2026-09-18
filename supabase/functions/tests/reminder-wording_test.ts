@@ -27,17 +27,19 @@ const BASE = {
 Deno.test("a doctor is titled once, not twice", () => {
     const said = formatReminderMessage({ ...BASE, doctorName: "Akilesh" });
 
-    assertStringIncludes(said, "For: Dr. Akilesh");
+    assertStringIncludes(said, "🩺 Dr. Akilesh");
     assert(!/Dr\.\s*Dr\./.test(said), said);
 });
 
-Deno.test("a service is not labelled as a doctor", () => {
-    // "Doctor: Sample Collection" is the same fault as "Dr. Dr.", so the label
-    // has to work with or without one.
+Deno.test("a service is not labelled as a doctor, or as anything else", () => {
+    // No one label fits both: an appointment is "with" a doctor but "for" a
+    // sample collection, and "Doctor: Sample Collection" is "Dr. Dr." again.
     const said = formatReminderMessage({ ...BASE, serviceName: "Sample Collection" });
 
-    assertStringIncludes(said, "For: Sample Collection");
+    assertStringIncludes(said, "🩺 Sample Collection");
     assert(!/Doctor:/i.test(said), said);
+    assert(!/\bWith:/i.test(said), said);
+    assert(!/\bFor:/i.test(said), said);
     assert(!/Dr\./.test(said), said);
     assert(!/undefined/i.test(said), said);
 });
@@ -72,15 +74,15 @@ Deno.test("the hour-before reminder follows the same rule", () => {
         serviceName: "Sample Collection"
     });
 
-    assertStringIncludes(withDoctor, "For: Dr. Akilesh");
-    assertStringIncludes(without, "For: Sample Collection");
+    assertStringIncludes(withDoctor, "🩺 Dr. Akilesh");
+    assertStringIncludes(without, "🩺 Sample Collection");
     assert(!/Dr\./.test(without), without);
 });
 
 Deno.test("neither a doctor nor a service still reads as a sentence", () => {
     const said = formatReminderMessage(BASE);
 
-    assertStringIncludes(said, "For: Appointment");
+    assertStringIncludes(said, "🩺 Appointment");
     assert(!/undefined|null/i.test(said), said);
 });
 
@@ -92,8 +94,8 @@ Deno.test("Hindi titles the doctor in Hindi", () => {
 });
 
 Deno.test("the template parameter is the same name the message shows", () => {
-    // The template puts {{2}} under its own "For:" label, so the parameter is
-    // the plain name. These two drifted once already.
+    // The template puts {{2}} on its own line, so the parameter is the plain
+    // name. These two drifted once already.
     assertEquals(reminderSubject("Akilesh", "Consultation", "EN"), "Dr. Akilesh");
     assertEquals(reminderSubject(undefined, "Sample Collection", "EN"), "Sample Collection");
     assertEquals(reminderSubject(undefined, undefined, "EN"), "Appointment");
