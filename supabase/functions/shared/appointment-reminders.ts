@@ -14,25 +14,47 @@ import { clinicInstant, getClinicTimezone } from "./clinic-slots.ts";
 /**
  * Format reminder message for patient
  */
+/**
+ * Who or what the appointment is with.
+ *
+ * A sample collection has no doctor. The fallback used to be the literal
+ * string "Dr.", which the template then prefixed again: "Dr. Dr.".
+ */
+export function reminderSubject(
+  doctorName: string | undefined,
+  serviceName: string | undefined,
+  language: string
+): string {
+  const hi = language === "HI";
+
+  if (doctorName) {
+    return hi ? `डॉ. ${doctorName}` : `Dr. ${doctorName}`;
+  }
+
+  return serviceName || (hi ? "अपॉइंटमेंट" : "your appointment");
+}
+
 export function formatReminderMessage(
   content: types.ReminderMessageContent
 ): string {
-  const { reminderType, patientName, doctorName, appointmentDate, appointmentTime, language } = content;
+  const { reminderType, patientName, doctorName, serviceName, appointmentDate, appointmentTime, language } = content;
 
-  if (language === "HI") {
+  const hi = language === "HI";
+  const subject = reminderSubject(doctorName, serviceName, language);
+
+  if (hi) {
     if (reminderType === "24_HOUR") {
-      return `👋 नमस्ते ${patientName}!\n\n📅 याद दिला रहे हैं: आपकी डॉ. ${doctorName} के साथ कल ${appointmentTime} बजे अपॉइंटमेंट है।\n\nयदि आप रद्द या स्थगित करना चाहते हैं तो हमें बताएं।`;
-    } else {
-      return `⏰ ${patientName}, आपकी अपॉइंटमेंट 1 घंटे में है!\n\n👨‍⚕️ डॉ. ${doctorName}\n⏰ समय: ${appointmentTime}\n📅 तारीख: ${appointmentDate}\n\nकृपया समय पर पहुंचें। धन्यवाद!`;
+      return `👋 नमस्ते ${patientName}!\n\n📅 याद दिला रहे हैं: कल ${appointmentTime} बजे आपकी ${subject} के साथ अपॉइंटमेंट है।\n\nयदि आप रद्द या स्थगित करना चाहते हैं तो हमें बताएं।`;
     }
-  } else {
-    // English
-    if (reminderType === "24_HOUR") {
-      return `👋 Hi ${patientName}!\n\n📅 Reminder: You have an appointment with Dr. ${doctorName} tomorrow at ${appointmentTime}.\n\nLet us know if you need to cancel or reschedule.`;
-    } else {
-      return `⏰ ${patientName}, your appointment is in 1 hour!\n\n👨‍⚕️ Dr. ${doctorName}\n⏰ Time: ${appointmentTime}\n📅 Date: ${appointmentDate}\n\nPlease arrive on time. Thank you!`;
-    }
+
+    return `⏰ ${patientName}, आपकी अपॉइंटमेंट 1 घंटे में है!\n\n🩺 ${subject}\n⏰ समय: ${appointmentTime}\n📅 तारीख: ${appointmentDate}\n\nकृपया समय पर पहुंचें। धन्यवाद!`;
   }
+
+  if (reminderType === "24_HOUR") {
+    return `👋 Hi ${patientName}!\n\n📅 Reminder: You have an appointment with ${subject} tomorrow at ${appointmentTime}.\n\nLet us know if you need to cancel or reschedule.`;
+  }
+
+  return `⏰ ${patientName}, your appointment is in 1 hour!\n\n🩺 ${subject}\n⏰ Time: ${appointmentTime}\n📅 Date: ${appointmentDate}\n\nPlease arrive on time. Thank you!`;
 }
 
 /**
@@ -283,6 +305,7 @@ export async function getAppointmentDetailsForReminder(
   patientName?: string;
   patientPhone?: string;
   doctorName?: string;
+  serviceName?: string;
   appointmentDate?: string;
   appointmentTime?: string;
   preferredLanguage?: string;
@@ -297,7 +320,8 @@ export async function getAppointmentDetailsForReminder(
         appointment_date,
         appointment_time,
         preferred_language,
-        doctor:doctors(name)
+        doctor:doctors(name),
+        service_type:service_types(name)
       `)
       .eq("id", appointmentId)
       .single();
@@ -314,12 +338,16 @@ export async function getAppointmentDetailsForReminder(
       appointment_time: string;
       preferred_language: string | null;
       doctor: { name: string } | null;
+      service_type: { name: string } | null;
     };
 
     return {
       patientName: row.patient_name,
       patientPhone: row.patient_phone,
-      doctorName: row.doctor?.name || "Dr.",
+      // Left undefined rather than defaulted: the caller decides what to say
+      // when a service has no doctor.
+      doctorName: row.doctor?.name || undefined,
+      serviceName: row.service_type?.name || undefined,
       appointmentDate: row.appointment_date,
       appointmentTime: row.appointment_time,
       preferredLanguage: row.preferred_language || "EN"

@@ -60,6 +60,26 @@ function build(date: string, time: string) {
     return supabase;
 }
 
+/** The clinic's own wall-clock date and time for an instant. */
+function clinicDateTime(instant: Date): { date: string; time: string } {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: IST,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23"
+    }).formatToParts(instant);
+
+    const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+
+    return {
+        date: `${part("year")}-${part("month")}-${part("day")}`,
+        time: `${part("hour")}:${part("minute")}`
+    };
+}
+
 function reminder(supabase: any, type: string) {
     return supabase.rows("appointment_reminders").find((r: any) => r.reminder_type === type);
 }
@@ -84,11 +104,14 @@ Deno.test("a reminder still ahead of us is left to be sent", async () => {
 });
 
 Deno.test("booking inside the day does not fire yesterday's reminder now", async () => {
-    // Tomorrow, so the 24 hour mark is already behind us but the hour is not.
-    const tomorrow = new Date(Date.now() + 20 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const supabase = build(tomorrow, "23:30");
+    // Five hours out, so the 24 hour mark is behind us and the hour is not.
+    // Taken from the clock rather than a literal time: "tomorrow at 23:30"
+    // only satisfied that between 18:00 and 04:00 UTC, and the suite went red
+    // on its own at 05:12 with nothing changed.
+    const { date, time } = clinicDateTime(new Date(Date.now() + 5 * 60 * 60 * 1000));
+    const supabase = build(date, time);
 
-    await createAppointmentReminders(supabase as any, CLINIC_A, APPOINTMENT, tomorrow, "23:30");
+    await createAppointmentReminders(supabase as any, CLINIC_A, APPOINTMENT, date, time);
 
     assertEquals(reminder(supabase, "24_HOUR")?.status, "SKIPPED");
     assertEquals(reminder(supabase, "1_HOUR")?.status, "PENDING");

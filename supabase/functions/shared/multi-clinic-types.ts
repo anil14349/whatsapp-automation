@@ -561,7 +561,9 @@ export interface SendReminderRequest {
 export interface ReminderMessageContent {
   reminderType: '24_HOUR' | '1_HOUR';
   patientName: string;
-  doctorName: string;
+  /** Absent for a service booked without a doctor, such as a sample collection. */
+  doctorName?: string;
+  serviceName?: string;
   appointmentDate: string;
   appointmentTime: string;
   language: string;  // "EN" or "HI"

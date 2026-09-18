@@ -15,7 +15,8 @@ import {
     markReminderAsSent,
     markReminderAsFailed,
     getAppointmentDetailsForReminder,
-    formatReminderMessage
+    formatReminderMessage,
+    reminderSubject
 } from "./appointment-reminders.ts";
 import { sendProactive } from "./proactive.ts";
 import { debug, recordAuditEvent } from "./logger.ts";
@@ -99,11 +100,20 @@ async function sendReminder(
         const message = formatReminderMessage({
             reminderType: reminder.reminder_type as "24_HOUR" | "1_HOUR",
             patientName: details.patientName || "Patient",
-            doctorName: details.doctorName || "Doctor",
+            doctorName: details.doctorName,
+            serviceName: details.serviceName,
             appointmentDate: details.appointmentDate || "",
             appointmentTime: details.appointmentTime || "",
             language: (details.preferredLanguage || "EN") as "EN" | "HI"
         });
+
+        // The template body reads "appointment with {{2}}", so the parameter
+        // carries the title; it must match what the free-form message says.
+        const subject = reminderSubject(
+            details.doctorName,
+            details.serviceName,
+            details.preferredLanguage || "EN"
+        );
 
         // A reminder is by definition sent long after the patient last wrote,
         // so free-form alone was rejected outside the 24 hour window and the
@@ -120,12 +130,12 @@ async function sendReminder(
                 parameters: reminder.reminder_type === "1_HOUR"
                     ? [
                         details.patientName || "Patient",
-                        details.doctorName || "your doctor",
+                        subject,
                         details.appointmentTime || ""
                     ]
                     : [
                         details.patientName || "Patient",
-                        details.doctorName || "your doctor",
+                        subject,
                         details.appointmentDate || "",
                         details.appointmentTime || ""
                     ]

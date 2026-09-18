@@ -130,6 +130,53 @@ async function isRequestSigned(
 }
 
 /**
+ * Record what Meta says happened to a message we sent.
+ *
+ * `failed` is the one that matters: a number outside the app's tester list, or
+ * not on WhatsApp at all, is accepted at send time and only reported here.
+ */
+async function recordDeliveryStatuses(statuses: any[] | undefined): Promise<void> {
+    if (!Array.isArray(statuses) || statuses.length === 0) {
+        return;
+    }
+
+    for (const status of statuses) {
+        const id = String(status?.id || "");
+
+        if (!id) {
+            continue;
+        }
+
+        const errors = Array.isArray(status.errors)
+            ? status.errors.map((e: any) => ({
+                code: e?.code,
+                title: e?.title,
+                detail: e?.error_data?.details ?? e?.message
+            }))
+            : undefined;
+
+        if (errors) {
+            console.error("WhatsApp reported a delivery failure", { id, errors });
+        }
+
+        const { error } = await supabase
+            .from("whatsapp_log")
+            .update({
+                metadata: {
+                    delivery: status.status,
+                    at: status.timestamp,
+                    ...(errors ? { errors } : {})
+                }
+            })
+            .eq("message_id", id);
+
+        if (error) {
+            console.error("Could not record delivery status", { id, error: error.message });
+        }
+    }
+}
+
+/**
  * Handle inbound WhatsApp messages (POST request)
  */
 async function handleInboundMessage(req: Request) {
@@ -180,9 +227,11 @@ async function handleInboundMessage(req: Request) {
 
     const message = value.messages?.[0];
 
-    // Ignore non-message events (status, read receipts, etc.)
     if (!message) {
-        console.log("Received webhook without message payload");
+        // Delivery reports arrive here. They were discarded, which is why a
+        // message id from Meta looked like proof of delivery: an undelivered
+        // message and a read one were indistinguishable afterwards.
+        await recordDeliveryStatuses(value.statuses);
         return new Response("EVENT_RECEIVED", { status: 200 });
     }
 
