@@ -14,6 +14,7 @@ import { seed, CLINIC_A, CLINIC_B, today } from "./helpers/fixtures.ts";
 import { processMessage } from "../shared/message-processor.ts";
 import { BUTTON_IDS } from "../shared/button-ids.ts";
 import { visitButtonId } from "../shared/handlers/collector-handler.ts";
+import { hashPassword } from "../shared/bcrypt-password.ts";
 
 Deno.env.set("SUPABASE_URL", "http://localhost:54321");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-key");
@@ -22,6 +23,10 @@ const COLLECTOR = "919000000088";
 const OTHER_COLLECTOR = "919000000099";
 const ME = "col-1";
 const THEM = "col-2";
+
+/** Hashed once: bcrypt is deliberately slow. */
+const PIN = "8317";
+const PIN_HASH = await hashPassword(PIN);
 
 function visit(id: string, overrides: Record<string, unknown> = {}) {
     return {
@@ -43,8 +48,22 @@ function build(appointments: Record<string, unknown>[], state = "COLLECTOR_MENU"
     const supabase = fakeSupabase(seed());
 
     supabase.store.sample_collectors = [
-        { id: ME, clinic_id: CLINIC_A, name: "Ravi", phone: COLLECTOR, is_active: true },
-        { id: THEM, clinic_id: CLINIC_A, name: "Sita", phone: OTHER_COLLECTOR, is_active: true }
+        {
+            id: ME,
+            clinic_id: CLINIC_A,
+            name: "Ravi",
+            phone: COLLECTOR,
+            is_active: true,
+            pin_hash: PIN_HASH
+        },
+        {
+            id: THEM,
+            clinic_id: CLINIC_A,
+            name: "Sita",
+            phone: OTHER_COLLECTOR,
+            is_active: true,
+            pin_hash: PIN_HASH
+        }
     ];
 
     supabase.store.appointments = appointments;
@@ -79,13 +98,19 @@ function build(appointments: Record<string, unknown>[], state = "COLLECTOR_MENU"
 
     const said = () => wa.sent.map((m) => m.body).join("\n");
 
-    return { supabase, wa, send, session, appointment, said };
+    /** Say hi, then clear the PIN gate, which is where the round starts. */
+    const signIn = async () => {
+        await send("hi", "text");
+        await send(PIN, "text");
+    };
+
+    return { supabase, wa, send, signIn, session, appointment, said };
 }
 
 Deno.test("a collector is shown today's visits, not asked to book one", async () => {
-    const { send, wa, said } = build([visit("APT_1")]);
+    const { signIn, wa, said } = build([visit("APT_1")]);
 
-    await send("hi", "text");
+    await signIn();
 
     const list = wa.sent.find((m) => m.type === "list");
 
@@ -95,12 +120,12 @@ Deno.test("a collector is shown today's visits, not asked to book one", async ()
 });
 
 Deno.test("only home visits appear, not clinic appointments", async () => {
-    const { send, wa } = build([
+    const { signIn, wa } = build([
         visit("APT_HOME"),
         visit("APT_CLINIC", { location_type: "CLINIC", service_address: null })
     ]);
 
-    await send("hi", "text");
+    await signIn();
 
     const list = wa.sent.find((m) => m.type === "list");
 
@@ -108,12 +133,12 @@ Deno.test("only home visits appear, not clinic appointments", async () => {
 });
 
 Deno.test("another clinic's visit is never listed", async () => {
-    const { send, wa } = build([
+    const { signIn, wa } = build([
         visit("APT_MINE"),
         visit("APT_THEIRS", { clinic_id: CLINIC_B })
     ]);
 
-    await send("hi", "text");
+    await signIn();
 
     const list = wa.sent.find((m) => m.type === "list");
 
@@ -121,9 +146,9 @@ Deno.test("another clinic's visit is never listed", async () => {
 });
 
 Deno.test("an empty day says so rather than showing nothing", async () => {
-    const { send, said } = build([]);
+    const { signIn, said } = build([]);
 
-    await send("hi", "text");
+    await signIn();
 
     assert(/No home collections booked for you today/i.test(said()), said());
 });
@@ -192,12 +217,12 @@ Deno.test("a visit id from another clinic cannot be closed", async () => {
 });
 
 Deno.test("another collector's round is not shown", async () => {
-    const { send, wa } = build([
+    const { signIn, wa } = build([
         visit("APT_MINE"),
         visit("APT_SITAS", { collector_id: THEM, patient_name: "Meera" })
     ]);
 
-    await send("hi", "text");
+    await signIn();
 
     const list = wa.sent.find((m) => m.type === "list");
 
@@ -206,9 +231,9 @@ Deno.test("another collector's round is not shown", async () => {
 
 Deno.test("unclaimed work is shown to everyone, and labelled", async () => {
     // Nobody free when it was booked. Invisible would be worse than shared.
-    const { send, wa } = build([visit("APT_FREE", { collector_id: null })]);
+    const { signIn, wa } = build([visit("APT_FREE", { collector_id: null })]);
 
-    await send("hi", "text");
+    await signIn();
 
     const row = wa.sent.find((m) => m.type === "list")?.sections?.[0].rows[0];
 

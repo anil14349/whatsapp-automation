@@ -14,6 +14,8 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { ExtractedMessage, WhatsAppSession } from "../types.ts";
 import { BUTTON_IDS } from "../button-ids.ts";
+import { PIN_CONFIG } from "../config.ts";
+import { findCollector, setCollectorPin, verifyCollectorPin } from "../collector-auth.ts";
 import { formatClockTime, formatLongDate } from "../appointment-format.ts";
 import { getClinicTimezone, todayInTimezone } from "../clinic-slots.ts";
 import { getCollectorsForClinic } from "../staff-directory.ts";
@@ -46,6 +48,18 @@ export class CollectorFlowHandler {
         const reply = (message.text || "").trim();
 
         try {
+            // Nothing below this line runs until the collector has proved who
+            // they are. The round names patients and their home addresses.
+            if (session.state === "COLLECTOR_SET_PIN") {
+                await this.handleSetPin(session, reply);
+                return;
+            }
+
+            if (session.state !== "COLLECTOR_MENU" && session.state !== "COLLECTOR_CONFIRM") {
+                await this.handleLogin(session, reply);
+                return;
+            }
+
             if (session.state === "COLLECTOR_CONFIRM" && session.data?.selectedVisitId) {
                 await this.handleConfirm(session, reply);
                 return;
@@ -68,6 +82,103 @@ export class CollectorFlowHandler {
                 "Sorry, something went wrong. Please try again."
             );
         }
+    }
+
+    /**
+     * COLLECTOR_LOGIN - the PIN, or the prompt to set a first one.
+     *
+     * A collector with no PIN is not refused: they already exist, and locking
+     * out whoever is working today to close a gap they did not open would be
+     * its own outage. They are sent to set one instead, which is the same
+     * decision doctors faced.
+     */
+    private async handleLogin(session: WhatsAppSession, reply: string): Promise<void> {
+        const account = await findCollector(this.supabase, session.phone, session.clinic_id);
+
+        if (!account) {
+            // Not a collector any more. Say nothing about why.
+            await this.whatsappClient.sendTextMessage(
+                session.phone,
+                "Sorry, something went wrong. Please try again.",
+                this.supabase
+            );
+            return;
+        }
+
+        if (!account.hasPin) {
+            await this.update(session.phone, session.clinic_id, "COLLECTOR_SET_PIN", {});
+            await this.whatsappClient.sendTextMessage(
+                session.phone,
+                `👋 Hello ${account.name}.\n\nBefore your round, please choose a PIN of ${PIN_CONFIG.PIN_LENGTH_MIN} to ${PIN_CONFIG.PIN_LENGTH_MAX} digits. You will use it each time you check your visits.\n\nSend the PIN now.`,
+                this.supabase
+            );
+            return;
+        }
+
+        const result = await verifyCollectorPin(
+            this.supabase,
+            session.phone,
+            session.clinic_id,
+            reply
+        );
+
+        if (result.outcome === "ok") {
+            await this.showTodaysVisits({ ...session, state: "COLLECTOR_MENU" });
+            return;
+        }
+
+        if (result.outcome === "locked") {
+            await this.whatsappClient.sendTextMessage(
+                session.phone,
+                `🔒 Too many wrong PINs. Try again in ${result.minutes} minute${result.minutes === 1 ? "" : "s"}.`,
+                this.supabase
+            );
+            return;
+        }
+
+        await this.whatsappClient.sendTextMessage(
+            session.phone,
+            result.outcome === "wrong"
+                ? `❌ Wrong PIN. ${result.remaining} attempt${result.remaining === 1 ? "" : "s"} left.\n\nSend your PIN to see today's visits.`
+                : "🔑 Send your PIN to see today's visits.",
+            this.supabase
+        );
+    }
+
+    /** COLLECTOR_SET_PIN - the first PIN, chosen by the collector. */
+    private async handleSetPin(session: WhatsAppSession, reply: string): Promise<void> {
+        const account = await findCollector(this.supabase, session.phone, session.clinic_id);
+
+        if (!account) {
+            return;
+        }
+
+        const stored = await setCollectorPin(this.supabase, account.id, reply);
+
+        if (!stored.ok) {
+            await this.whatsappClient.sendTextMessage(
+                session.phone,
+                `❌ ${stored.error}\n\nPlease choose another PIN.`,
+                this.supabase
+            );
+            return;
+        }
+
+        await recordAuditEvent(
+            this.supabase,
+            "COLLECTOR_PIN_SET",
+            session.phone,
+            "collector",
+            account.id
+        );
+
+        await this.whatsappClient.sendTextMessage(
+            session.phone,
+            "✅ PIN saved. You will be asked for it each time.",
+            this.supabase
+        );
+
+        await this.showTodaysVisits({ ...session, state: "COLLECTOR_MENU" });
     }
 
     /** Who is messaging, so a round can be theirs rather than the clinic's. */

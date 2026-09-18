@@ -209,7 +209,7 @@ async function getOrCreateSession(
             role === "DOCTOR"
                 ? "DOCTOR_LOGIN"
                 : role === "HOME_COLLECTION_PERSON"
-                  ? "COLLECTOR_MENU"
+                  ? "COLLECTOR_LOGIN"
                   : "LANGUAGE_SELECT";
 
         const { data: newSession } = await supabase
@@ -235,7 +235,7 @@ async function getOrCreateSession(
             role === "DOCTOR"
                 ? "DOCTOR_LOGIN"
                 : role === "HOME_COLLECTION_PERSON"
-                  ? "LOCATION_SELECT"
+                  ? "COLLECTOR_LOGIN"
                   : "LANGUAGE_SELECT";
 
         return {
@@ -309,13 +309,15 @@ async function handleGreeting(
         // Don't reset session for doctors, keep DOCTOR_LOGIN state
         await sendPinPrompt(supabase, whatsappClient, phone, clinicId, language);
     } else if (session.role === "HOME_COLLECTION_PERSON") {
+        // Greeting a collector must not open the round: it goes through the
+        // same PIN gate as any other message, which is what saying hi now does.
         await updateSession(supabase, phone, session.clinic_id, {
-            state: "COLLECTOR_MENU",
+            state: "COLLECTOR_LOGIN",
             data: {}
         });
 
         await new CollectorFlowHandler(supabase, whatsappClient).handle(
-            { ...session, state: "COLLECTOR_MENU", data: {} },
+            { ...session, state: "COLLECTOR_LOGIN", data: {} },
             { type: "text", text: "" }
         );
     } else {

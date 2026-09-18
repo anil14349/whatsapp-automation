@@ -3,36 +3,22 @@ import { validatePin, PIN_CONFIG } from "./config.ts";
 import { verifyPassword } from "./bcrypt-password.ts";
 import { BUTTON_IDS } from "./button-ids.ts";
 import { debug } from "./logger.ts";
+import {
+    attemptsRemaining,
+    clearAttemptCache,
+    clearFailures,
+    isLockedOut,
+    lockoutMinutesRemaining,
+    recordFailure
+} from "./login-attempts.ts";
 
 /**
  * Doctor Portal Authentication
  * Manages PIN-based login with rate limiting and attempt tracking
- */
-
-interface AuthAttempt {
-    phone: string;
-    clinic_id: string;
-    attempt_count: number;
-    last_attempt_at: Date;
-    locked_until?: Date;
-    is_locked: boolean;
-}
-
-/**
- * Per-request cache only.
  *
- * Attempts live in login_rate_limits because edge isolates are recycled
- * between messages; an in-memory counter reset itself and the lockout never
- * actually triggered.
+ * The counting and locking is shared with collectors; only finding the account
+ * and checking the PIN is doctor-specific.
  */
-let __authAttemptsCache: { [key: string]: AuthAttempt } = {};
-
-/**
- * Get cache key for auth attempt tracking
- */
-function getAuthCacheKey(phone: string, clinicId: string): string {
-    return `auth_${phone}_${clinicId}`;
-}
 
 async function findDoctorId(
     supabase: SupabaseClient,
@@ -50,66 +36,6 @@ async function findDoctorId(
 }
 
 /**
- * Read the stored attempt state, caching it for the rest of this request.
- */
-async function loadAttempt(
-    supabase: SupabaseClient,
-    phone: string,
-    clinicId: string
-): Promise<AuthAttempt> {
-    const cacheKey = getAuthCacheKey(phone, clinicId);
-    const cached = __authAttemptsCache[cacheKey];
-
-    if (cached) {
-        return cached;
-    }
-
-    const blank: AuthAttempt = {
-        phone,
-        clinic_id: clinicId,
-        attempt_count: 0,
-        last_attempt_at: new Date(),
-        is_locked: false
-    };
-
-    try {
-        const doctorId = await findDoctorId(supabase, phone, clinicId);
-
-        if (doctorId) {
-            const { data } = await supabase
-                .from("login_rate_limits")
-                .select("failed_attempts, locked_until")
-                .eq("user_id", doctorId)
-                .eq("user_type", "doctor")
-                .maybeSingle();
-
-            if (data) {
-                blank.attempt_count = data.failed_attempts ?? 0;
-
-                if (data.locked_until) {
-                    const until = new Date(data.locked_until);
-
-                    if (until > new Date()) {
-                        blank.locked_until = until;
-                        blank.is_locked = true;
-                    } else {
-                        // Lockout expired; the counter starts again.
-                        blank.attempt_count = 0;
-                    }
-                }
-            }
-        }
-    } catch (error) {
-        debug("doctorAuth", "Could not read attempt state", {
-            error: error instanceof Error ? error.message : String(error)
-        });
-    }
-
-    __authAttemptsCache[cacheKey] = blank;
-    return blank;
-}
-
-/**
  * Check if doctor account is currently locked due to failed attempts
  */
 export async function isAccountLocked(
@@ -117,15 +43,43 @@ export async function isAccountLocked(
     phone: string,
     clinicId: string
 ): Promise<boolean> {
-    const attempt = await loadAttempt(supabase, phone, clinicId);
+    const doctorId = await findDoctorId(supabase, phone, clinicId);
 
-    if (attempt.locked_until && attempt.locked_until > new Date()) {
-        return true;
+    return doctorId ? await isLockedOut(supabase, doctorId, "doctor") : false;
+}
+
+export async function getLockoutMinutesRemaining(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string
+): Promise<number> {
+    const doctorId = await findDoctorId(supabase, phone, clinicId);
+
+    return doctorId ? await lockoutMinutesRemaining(supabase, doctorId, "doctor") : 0;
+}
+
+async function recordFailedAttempt(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string
+): Promise<void> {
+    const doctorId = await findDoctorId(supabase, phone, clinicId);
+
+    if (doctorId) {
+        await recordFailure(supabase, doctorId, "doctor", clinicId);
     }
+}
 
-    attempt.is_locked = false;
-    attempt.locked_until = undefined;
-    return false;
+async function clearFailedAttempts(
+    supabase: SupabaseClient,
+    phone: string,
+    clinicId: string
+): Promise<void> {
+    const doctorId = await findDoctorId(supabase, phone, clinicId);
+
+    if (doctorId) {
+        await clearFailures(supabase, doctorId, "doctor");
+    }
 }
 
 /**
@@ -141,24 +95,11 @@ export async function getRemainingAttempts(
         return -1;
     }
 
-    const attempt = await loadAttempt(supabase, phone, clinicId);
+    const doctorId = await findDoctorId(supabase, phone, clinicId);
 
-    return Math.max(0, PIN_CONFIG.MAX_ATTEMPTS - attempt.attempt_count);
-}
-
-export async function getLockoutMinutesRemaining(
-    supabase: SupabaseClient,
-    phone: string,
-    clinicId: string
-): Promise<number> {
-    const attempt = await loadAttempt(supabase, phone, clinicId);
-
-    if (!attempt.locked_until) {
-        return 0;
-    }
-
-    const msRemaining = attempt.locked_until.getTime() - Date.now();
-    return Math.max(0, Math.ceil(msRemaining / 60000));
+    return doctorId
+        ? await attemptsRemaining(supabase, doctorId, "doctor")
+        : PIN_CONFIG.MAX_ATTEMPTS;
 }
 
 /**
@@ -297,107 +238,10 @@ async function verifyPinForDoctor(
 }
 
 /**
- * Record a failed authentication attempt
- * Increments attempt counter and locks account if max attempts reached
- */
-async function recordFailedAttempt(
-    supabase: SupabaseClient,
-    phone: string,
-    clinicId: string
-): Promise<void> {
-    const attempt = await loadAttempt(supabase, phone, clinicId);
-
-    attempt.attempt_count += 1;
-    attempt.last_attempt_at = new Date();
-
-    if (attempt.attempt_count >= PIN_CONFIG.MAX_ATTEMPTS) {
-        attempt.is_locked = true;
-        attempt.locked_until = new Date(Date.now() + PIN_CONFIG.LOCKOUT_MINUTES * 60 * 1000);
-
-        debug("doctorAuth", "Account locked due to failed attempts", {
-            phone,
-            attempts: attempt.attempt_count
-        });
-    }
-
-    try {
-        const doctorId = await findDoctorId(supabase, phone, clinicId);
-
-        if (!doctorId) {
-            return;
-        }
-
-        const row = {
-            failed_attempts: attempt.attempt_count,
-            last_failed_at: attempt.last_attempt_at.toISOString(),
-            locked_until: attempt.locked_until?.toISOString() ?? null
-        };
-
-        // login_rate_limits has no unique index on (user_id, user_type), so an
-        // upsert with onConflict would be rejected by Postgres.
-        const { data: existing } = await supabase
-            .from("login_rate_limits")
-            .select("id")
-            .eq("user_id", doctorId)
-            .eq("user_type", "doctor")
-            .maybeSingle();
-
-        if (existing) {
-            await supabase
-                .from("login_rate_limits")
-                .update(row)
-                .eq("user_id", doctorId)
-                .eq("user_type", "doctor");
-        } else {
-            await supabase
-                .from("login_rate_limits")
-                .insert({ user_id: doctorId, user_type: "doctor", clinic_id: clinicId, ...row });
-        }
-    } catch (error) {
-        debug("doctorAuth", "Could not persist failed attempt", {
-            error: error instanceof Error ? error.message : String(error)
-        });
-    }
-}
-
-/**
- * Clear failed authentication attempts (after successful login)
- */
-async function clearFailedAttempts(
-    supabase: SupabaseClient,
-    phone: string,
-    clinicId: string
-): Promise<void> {
-    delete __authAttemptsCache[getAuthCacheKey(phone, clinicId)];
-
-    try {
-        const doctorId = await findDoctorId(supabase, phone, clinicId);
-
-        if (!doctorId) {
-            return;
-        }
-
-        await supabase
-            .from("login_rate_limits")
-            .update({
-                failed_attempts: 0,
-                locked_until: null,
-                updated_at: new Date().toISOString()
-            })
-            .eq("user_id", doctorId)
-            .eq("user_type", "doctor");
-    } catch (error) {
-        debug("doctorAuth", "Could not clear failed attempts", {
-            error: error instanceof Error ? error.message : String(error)
-        });
-    }
-}
-
-/**
  * Clear auth cache (for testing)
  */
 export function clearAuthCache(): void {
-    __authAttemptsCache = {};
+    clearAttemptCache();
 }
 
 /**

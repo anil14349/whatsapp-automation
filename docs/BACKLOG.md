@@ -6,49 +6,7 @@ for things we have decided to live with, and the reason why.
 
 ---
 
-## 1. Collectors have no authentication
-
-**Severity: high. This is the one to do first.**
-
-A sample collector is identified by their phone number and nothing else.
-`getRoleByPhoneForClinic` in [staff-directory.ts](../supabase/functions/shared/staff-directory.ts)
-looks the number up in `sample_collectors`, and if it matches an active row the
-sender is a collector from that moment on. There is no PIN, no second factor,
-and no session expiry.
-
-Doctors are not like this. A doctor matched by phone lands in `DOCTOR_LOGIN`
-and must clear a bcrypt `doctors.pin_hash` before the menu opens. Collectors
-have no equivalent column and no login state.
-
-**Why it matters more since 2026-09-18.** The collector round now lists, for
-every home visit that day: the patient's name, their appointment time, and
-their home address. Before the round existed a spoofed collector number got
-very little; now it gets a list of who is home and when.
-
-What an attacker needs: the ability to present a collector's number to the
-webhook. Meta's signature check stops a forged inbound message, so the
-realistic paths are a lost or borrowed handset, a recycled number, or a SIM
-swap — the same exposure doctors have, minus the PIN that covers them.
-
-**The shape of the fix**, mirroring what already works for doctors:
-
-- add `sample_collectors.pin_hash`, nullable
-- add a `COLLECTOR_LOGIN` state and gate `COLLECTOR_MENU` behind it
-- reuse `validatePinStrength` and the bcrypt helpers in `doctor-auth.ts`
-- reuse `login_rate_limits` for lockout (`user_type` already distinguishes)
-- issue the first PIN through `POST /staff {type:"collector"}`, which already
-  has credential delivery over WhatsApp
-
-Most of the machinery exists. The work is wiring, a migration, and tests.
-
-**Care needed on rollout:** existing collectors have no PIN. Refusing everyone
-with `pin_hash IS NULL` locks out whoever is working that day. Either issue
-PINs before enforcing, or allow a null hash to log in once and force a set —
-the same decision doctors faced.
-
----
-
-## 2. Message templates are all PENDING
+## 1. Message templates are all PENDING
 
 Six templates are registered on WABA `2247488996013974` and none are approved,
 so **the 24-hour-window fallback in `sendProactive` has never actually run in
@@ -68,7 +26,7 @@ whole fallback, with `whatsapp_log.metadata` showing the delivery status.
 
 ---
 
-## 3. Clinic phone and email are still seed data
+## 2. Clinic phone and email are still seed data
 
 `clinics` for Wellsun now holds the real address and coordinates — APR Praveen's
 Luxuria, Patancheru, Hyderabad, at 17.5255 / 78.2721 — but **`phone` is still
@@ -85,7 +43,7 @@ deliberately left unset until there is a real one to publish.
 
 ---
 
-## 4. Home collection asks for latitude and longitude
+## 3. Home collection asks for latitude and longitude
 
 Settings → Home collection asks a clinic administrator for `17.5255` and
 `78.2721`. The field accepts a pasted Google Maps pair and splits it, which is

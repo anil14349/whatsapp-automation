@@ -367,6 +367,16 @@ async function createStaff(
     return { status: 400, payload: { error: "phone is required for a collector" } };
   }
 
+  const collectorPin = body.pin?.trim() || generatePin();
+  const collectorStrength = validatePinStrength(collectorPin);
+
+  if (!collectorStrength.valid) {
+    return {
+      status: 400,
+      payload: { error: `Invalid PIN: ${collectorStrength.errors.join(", ")}` }
+    };
+  }
+
   const { data, error } = await supabase
     .from("sample_collectors")
     .insert({
@@ -375,7 +385,8 @@ async function createStaff(
       phone,
       email: email ?? null,
       is_active: true,
-      max_collections_per_day: body.maxCollectionsPerDay ?? 8
+      max_collections_per_day: body.maxCollectionsPerDay ?? 8,
+      pin_hash: await hashPassword(collectorPin)
     })
     .select("id, name, phone, email, max_collections_per_day")
     .single();
@@ -387,7 +398,24 @@ async function createStaff(
     };
   }
 
-  return { status: 201, payload: { staff: data } };
+  const collectorDelivery = await deliverCredential(
+    supabase,
+    clinicId,
+    { name, phone, email },
+    collectorPin,
+    "PIN",
+    clinic.name
+  );
+
+  return {
+    status: 201,
+    payload: {
+      staff: data,
+      temporaryPin: collectorDelivery.sent ? undefined : collectorPin,
+      deliveredBy: collectorDelivery.channel,
+      deliveryError: collectorDelivery.reason
+    }
+  };
 }
 
 /**
@@ -405,15 +433,61 @@ async function resetStaffCredential(
     return { status: 400, payload: { error: "id is required" } };
   }
 
-  if (body.type === "collector") {
-    return { status: 400, payload: { error: "Collectors do not have portal credentials" } };
-  }
-
   const { data: clinic } = await supabase
     .from("clinics")
     .select("name")
     .eq("id", clinicId)
     .maybeSingle();
+
+  // Collectors sign in on WhatsApp rather than the portal, but a PIN they have
+  // forgotten still has to be replaceable without deleting the person.
+  if (body.type === "collector") {
+    const pin = body.pin?.trim() || generatePin();
+    const strength = validatePinStrength(pin);
+
+    if (!strength.valid) {
+      return { status: 400, payload: { error: `Invalid PIN: ${strength.errors.join(", ")}` } };
+    }
+
+    const { data: collector } = await supabase
+      .from("sample_collectors")
+      .select("id, name, phone, email")
+      .eq("id", body.id)
+      .eq("clinic_id", clinicId)
+      .maybeSingle();
+
+    if (!collector) {
+      return { status: 404, payload: { error: "No such collector at this clinic" } };
+    }
+
+    const { error } = await supabase
+      .from("sample_collectors")
+      .update({ pin_hash: await hashPassword(pin), updated_at: new Date().toISOString() })
+      .eq("id", collector.id)
+      .eq("clinic_id", clinicId);
+
+    if (error) {
+      return { status: 500, payload: { error: `Failed to reset the PIN: ${error.message}` } };
+    }
+
+    const delivered = await deliverCredential(
+      supabase,
+      clinicId,
+      { name: collector.name, phone: collector.phone, email: collector.email },
+      pin,
+      "PIN",
+      clinic?.name ?? "the clinic"
+    );
+
+    return {
+      status: 200,
+      payload: {
+        temporaryPin: delivered.sent ? undefined : pin,
+        deliveredBy: delivered.channel,
+        deliveryError: delivered.reason
+      }
+    };
+  }
 
   if (body.type === "doctor") {
     const pin = body.pin?.trim() || generatePin();
