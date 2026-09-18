@@ -3,8 +3,6 @@
     "test": "deno test --allow-all --config supabase/functions/deno.json supabase/functions/tests/",
     "test:watch": "deno test --allow-all --watch --config supabase/functions/deno.json supabase/functions/tests/",
     "typecheck": "node scripts/typecheck-functions.mjs",
-    "verify:menus": "node scripts/verify-menu-flows.mjs",
-    "verify:coverage": "node scripts/verify-flow-coverage.mjs",
     "verify:supabase-menus": "node scripts/verify-supabase-menus.mjs",
     "verify:clinic-scope": "node scripts/verify-clinic-scope.mjs",
     "verify:session-payload": "node scripts/verify-session-payload.mjs",
@@ -12,7 +10,7 @@
     "verify:proactive": "node scripts/verify-proactive.mjs",
     "verify:docs": "node scripts/verify-docs.mjs",
     "verify:schema": "node scripts/verify-schema.mjs",
-    "verify": "npm run typecheck && npm run test && npm run verify:menus && npm run verify:coverage && npm run verify:supabase-menus && npm run verify:clinic-scope && npm run verify:session-payload && npm run verify:outbound-logging && npm run verify:proactive && npm run verify:docs"
+    "verify": "npm run typecheck && npm run test && npm run verify:supabase-menus && npm run verify:clinic-scope && npm run verify:session-payload && npm run verify:outbound-logging && npm run verify:proactive && npm run verify:docs"
   },
   "devDependencies": {
     "supabase": "^2.117.0"

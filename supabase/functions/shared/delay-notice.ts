@@ -15,6 +15,7 @@ import { WhatsAppClient } from "./whatsapp-client.ts";
 import { BUTTON_IDS } from "./button-ids.ts";
 import { getClinicRouteById } from "./clinic-routing.ts";
 import { getClinicTimezone, todayInTimezone } from "./clinic-slots.ts";
+import { formatClockTime } from "./appointment-format.ts";
 import { sendProactive } from "./proactive.ts";
 import { debug } from "./logger.ts";
 
@@ -84,8 +85,8 @@ export async function notifyDelay(
 
     const affected = (waiting ?? []).map((row) => ({
         name: String(row.patient_name ?? "Patient"),
-        time: String(row.appointment_time).slice(0, 5),
-        expected: addMinutes(String(row.appointment_time), minutes),
+        time: formatClockTime(String(row.appointment_time)),
+        expected: formatClockTime(addMinutes(String(row.appointment_time), minutes)),
         token: row.token_number ?? null
     }));
 
@@ -107,14 +108,15 @@ export async function notifyDelay(
         clinicId
     );
 
-    const doctorName = doctor?.name ? `Dr ${doctor.name}` : "The doctor";
+    // "Dr." and "11:30 am", matching every other message the patient gets.
+    const doctorName = doctor?.name ? `Dr. ${doctor.name}` : "The doctor";
 
     let notified = 0;
     let failed = 0;
 
     for (const row of waiting ?? []) {
-        const time = String(row.appointment_time).slice(0, 5);
-        const expected = addMinutes(String(row.appointment_time), minutes);
+        const time = formatClockTime(String(row.appointment_time));
+        const expected = formatClockTime(addMinutes(String(row.appointment_time), minutes));
         const token = row.token_number ? `\n🎟️ Token ${row.token_number}` : "";
         const hindi = row.preferred_language && row.preferred_language !== "EN";
 

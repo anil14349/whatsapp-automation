@@ -52,13 +52,22 @@ export async function buildSummary(
     from: string,
     to: string
 ): Promise<Summary | null> {
-    const { data, error } = await supabase
-        .from("appointments")
-        .select("status, booking_source, location_type, is_revisit, appointment_time, doctor:doctors(name)")
-        .eq("clinic_id", clinicId)
-        .gte("appointment_date", from)
-        .lte("appointment_date", to)
-        .limit(MAX_ROWS + 1);
+    // The three counts do not depend on the appointments, so waiting for that
+    // query before starting them made the slowest screen slower still.
+    const [appointments, feedback, documents, reminders] = await Promise.all([
+        supabase
+            .from("appointments")
+            .select("status, booking_source, location_type, is_revisit, appointment_time, doctor:doctors(name)")
+            .eq("clinic_id", clinicId)
+            .gte("appointment_date", from)
+            .lte("appointment_date", to)
+            .limit(MAX_ROWS + 1),
+        feedbackSummary(supabase, clinicId, from, to),
+        documentSummary(supabase, clinicId, from, to),
+        reminderSummary(supabase, clinicId, from, to)
+    ]);
+
+    const { data, error } = appointments;
 
     if (error) {
         debug("summary", "Appointment read failed", { clinicId, error: error.message });
@@ -110,12 +119,6 @@ export async function buildSummary(
     }
 
     const seen = completed + noShow;
-
-    const [feedback, documents, reminders] = await Promise.all([
-        feedbackSummary(supabase, clinicId, from, to),
-        documentSummary(supabase, clinicId, from, to),
-        reminderSummary(supabase, clinicId, from, to)
-    ]);
 
     return {
         from,

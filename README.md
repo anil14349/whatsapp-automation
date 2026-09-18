@@ -557,8 +557,6 @@ landing/                           ← marketing website (Vercel / Replit)
 marketing/                         ← brochure, one-pager, offboarding docs
 scripts/
   sync-monolith-from-src.js        ← copies archive into monolith; guarded against dropping functions
-  verify-menu-flows.mjs            ← static checks for interactive menu wiring
-  verify-flow-coverage.mjs         ← static checks that every session state is reachable
 README.md                          ← this file
 ```
 

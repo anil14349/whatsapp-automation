@@ -55,9 +55,9 @@ so **the 24-hour-window fallback in `sendProactive` has never actually run in
 production**. Until one is approved, every clinic-initiated message is relying
 on the recipient having messaged us in the last 24 hours.
 
-`patient_document` additionally needs **deleting and recreating** — it was
-registered with no Document header, and a pending template cannot be edited.
-Sending it as-is will fail.
+`patient_document` was registered with no Document header, which would have made
+every report send fail. It was deleted and recreated with one on 2026-09-18, so
+it is now correct — but, like the rest, still waiting on Meta.
 
 A ready-made proof once anything is approved: `918886436111` is outside the
 window and returns `131047`, so a single `sendProactive` to it exercises the
@@ -78,15 +78,15 @@ fields empty.
 
 ---
 
-## 4. Two verification gates check nothing that runs
+## 4. Two verification gates check nothing that runs — DONE
 
 `verify:menus` and `verify:coverage` both read the legacy Apps Script monolith,
-which is no longer production. They pass regardless of the state of the edge
-functions. Two of the ten green ticks in `npm run verify` are decorative;
-`verify:supabase-menus` is the one that tests live menus.
+which is no longer production, so they passed regardless of the state of the
+edge functions. Two of the ten green ticks in `npm run verify` were decorative.
 
-Either point them at the edge functions or delete them — a gate that cannot
-fail is worse than no gate, because it is counted.
+Both were deleted on 2026-09-18 rather than repointed: `verify:supabase-menus`
+already tests the live menus, so they would only have duplicated it. A gate that
+cannot fail is worse than no gate, because it is counted.
 
 ---
 

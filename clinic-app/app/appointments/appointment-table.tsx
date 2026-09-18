@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import {
     editAppointment,
     loadSlots,
@@ -70,8 +71,8 @@ function clockTime(time: string): string {
 /**
  * The actions the desk needs occasionally, folded away.
  *
- * Closes on any outside click, because a menu left open over the next row is
- * worse than one that closes too eagerly.
+ * Rendered into the body rather than the row: the table is clipped to its
+ * rounded corners, which swallowed the menu whole.
  */
 function RowMenu({
     open,
@@ -82,18 +83,43 @@ function RowMenu({
     onToggle: () => void;
     children: React.ReactNode;
 }) {
+    const button = useRef<HTMLButtonElement>(null);
+    const [at, setAt] = useState<{ top: number; right: number } | null>(null);
+
     useEffect(() => {
-        if (!open) return;
+        if (!open) {
+            setAt(null);
+            return;
+        }
+
+        const place = () => {
+            const box = button.current?.getBoundingClientRect();
+            if (box) setAt({ top: box.bottom + 6, right: window.innerWidth - box.right });
+        };
+
+        place();
 
         const close = () => onToggle();
         window.addEventListener("click", close);
-        return () => window.removeEventListener("click", close);
+        // Following the button on scroll is not worth it; closing is honest.
+        window.addEventListener("scroll", close, true);
+        window.addEventListener("resize", close);
+
+        return () => {
+            window.removeEventListener("click", close);
+            window.removeEventListener("scroll", close, true);
+            window.removeEventListener("resize", close);
+        };
     }, [open, onToggle]);
 
     return (
-        <div className="relative" onClick={(e) => e.stopPropagation()}>
+        <>
             <button
-                onClick={onToggle}
+                ref={button}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onToggle();
+                }}
                 aria-label="More actions"
                 aria-expanded={open}
                 className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold leading-none text-slate-500 transition hover:border-slate-300 hover:bg-slate-50"
@@ -101,12 +127,19 @@ function RowMenu({
                 •••
             </button>
 
-            {open && (
-                <div className="absolute right-0 top-8 z-20 w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
-                    {children}
-                </div>
-            )}
-        </div>
+            {open &&
+                at &&
+                createPortal(
+                    <div
+                        style={{ position: "fixed", top: at.top, right: at.right }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="z-50 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+                    >
+                        {children}
+                    </div>,
+                    document.body
+                )}
+        </>
     );
 }
 
