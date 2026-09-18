@@ -14,6 +14,12 @@
     --brand-700: #094e49;
 }
 
+/* Hold the scrollbar's space on every page, or the header shifts sideways when
+   you move from a short screen to one that scrolls. */
+html {
+    scrollbar-gutter: stable;
+}
+
 body {
     @apply bg-slate-50 text-slate-900 antialiased;
 }

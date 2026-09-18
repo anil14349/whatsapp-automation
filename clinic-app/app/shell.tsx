@@ -2,8 +2,8 @@ import Link from "next/link";
 import { callAsUser, type PortalSession } from "@/lib/portal";
 import { roleLabel } from "@/lib/labels";
 import { brandShades, readableOn } from "@/lib/theme";
-import { SignOutButton } from "./appointments/sign-out";
-import { PortalNav } from "./portal-nav";
+import { PortalNav, PortalNavMenu } from "./portal-nav";
+import { UserMenu } from "./user-menu";
 
 export interface Branding {
     name: string;
@@ -36,6 +36,15 @@ const LINKS = [
 ];
 
 /**
+ * The header and footer keep this width whatever the page asks for.
+ *
+ * They used to take the page's own `width`, so Settings and Services - which
+ * hold their forms to a narrower column - had a visibly narrower header than
+ * every other screen.
+ */
+const CHROME_WIDTH = "max-w-5xl";
+
+/**
  * The frame every portal page sits in.
  *
  * Header and footer were previously a bare row of links inside each page, so
@@ -54,31 +63,33 @@ export function PortalShell({
     children: React.ReactNode;
 }) {
     const canManage = session.role === "CLINIC_OWNER" || session.role === "ADMIN";
+    const links = LINKS.filter((link) => canManage || !link.managersOnly).map((link) => ({
+        href: link.href,
+        label: link.label
+    }));
     const shades = brandShades(branding.brandColour);
     const year = new Date().getFullYear();
 
     return (
         <div style={shades as React.CSSProperties} className="flex min-h-screen flex-col">
             <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur">
-                <div className={`mx-auto flex ${width} flex-wrap items-center gap-4 px-6 py-3`}>
-                    <Link href="/appointments" className="flex items-center gap-2.5">
+                <div className={`mx-auto flex ${CHROME_WIDTH} h-16 items-center gap-6 px-6`}>
+                    <Link href="/appointments" className="flex min-w-0 items-center gap-2.5">
                         <ClinicMark branding={branding} />
-                        <span className="text-sm font-semibold text-slate-900">
+                        <span className="truncate text-sm font-semibold text-slate-900">
                             {branding.name}
                         </span>
                     </Link>
 
-                    <PortalNav
-                        links={LINKS.filter((link) => canManage || !link.managersOnly).map(
-                            (link) => ({ href: link.href, label: link.label })
-                        )}
-                    />
+                    <PortalNav links={links} />
 
-                    <div className="ml-auto flex items-center gap-3">
-                        <span className="hidden text-sm text-slate-500 sm:inline">
-                            {session.name} · {roleLabel(session.role)}
-                        </span>
-                        <SignOutButton />
+                    <div className="ml-auto flex shrink-0 items-center gap-2">
+                        <UserMenu
+                            name={session.name}
+                            role={roleLabel(session.role)}
+                            canManage={canManage}
+                        />
+                        <PortalNavMenu links={links} />
                     </div>
                 </div>
             </header>
@@ -87,7 +98,7 @@ export function PortalShell({
 
             <footer className="border-t border-slate-200 bg-white">
                 <div
-                    className={`mx-auto flex ${width} flex-wrap items-center justify-between gap-2 px-6 py-4 text-xs text-slate-400`}
+                    className={`mx-auto flex ${CHROME_WIDTH} flex-wrap items-center justify-between gap-2 px-6 py-4 text-xs text-slate-400`}
                 >
                     <span>
                         © {year} {branding.name}
