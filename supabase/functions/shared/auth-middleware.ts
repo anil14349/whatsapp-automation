@@ -154,9 +154,17 @@ export async function withAuth(
       return forbiddenResponse(`This endpoint requires role: ${roles}`);
     }
 
-    // Checked per request, not just at login, so deactivating a clinic does not
-    // wait for its staff's tokens to expire. A platform ADMIN has no clinic.
-    if (user.clinicId && !(await isClinicActive(user.clinicId))) {
+    // Both are checked per request, not just at login, so deactivating a
+    // clinic or an account does not wait for the token to expire. They are
+    // two separate queries and were awaited one after the other, which put a
+    // pair of round trips in front of every single request.
+    const [clinicActive, accountActive] = await Promise.all([
+      user.clinicId ? isClinicActive(user.clinicId) : Promise.resolve(true),
+      isAccountActive(user)
+    ]);
+
+    // A platform ADMIN has no clinic.
+    if (!clinicActive) {
       debug("authMiddleware", "Request from a deactivated clinic", {
         clinicId: user.clinicId,
         role: user.role
@@ -166,7 +174,7 @@ export async function withAuth(
 
     // Same reasoning one level down: deactivating or deleting someone used to
     // stop them signing in again while their current token kept full access.
-    if (!(await isAccountActive(user))) {
+    if (!accountActive) {
       debug("authMiddleware", "Request from a deactivated account", {
         userId: user.userId,
         role: user.role
