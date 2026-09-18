@@ -152,6 +152,20 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                         hint="Time you need before this can be booked"
                                         onSave={(v) => save(s.serviceTypeId, { minNoticeHours: v ?? 0 })}
                                     />
+                                    <TimeField
+                                        label="Runs from"
+                                        value={s.availableFrom}
+                                        disabled={busy}
+                                        hint="Blank follows the clinic's opening hours"
+                                        onSave={(v) => save(s.serviceTypeId, { availableFrom: v })}
+                                    />
+                                    <TimeField
+                                        label="Runs until"
+                                        value={s.availableTo}
+                                        disabled={busy}
+                                        hint="Blank follows the clinic's closing time"
+                                        onSave={(v) => save(s.serviceTypeId, { availableTo: v })}
+                                    />
 
                                     {s.isOwn ? (
                                         <div className="sm:col-span-2 flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-3">
@@ -283,6 +297,45 @@ function NumberField({
                 onBlur={() => {
                     const next = draft.trim() === "" ? null : Number(draft);
                     if (next !== value) onSave(next);
+                }}
+                className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm disabled:bg-slate-50"
+            />
+            {hint && <span className="block text-xs text-slate-500">{hint}</span>}
+        </label>
+    );
+}
+
+/**
+ * The hours a service itself runs, which can be narrower than the building's.
+ *
+ * Empty means follow the premises, which is what most services want. Saved on
+ * change rather than blur: a time input has no half-typed state.
+ */
+function TimeField({
+    label,
+    value,
+    disabled,
+    hint,
+    onSave
+}: {
+    label: string;
+    value: string | null;
+    disabled: boolean;
+    hint?: string;
+    onSave: (value: string | null) => void;
+}) {
+    const [draft, setDraft] = useState(value ?? "");
+
+    return (
+        <label className="space-y-1 text-sm">
+            <span className="block text-xs font-medium text-slate-600">{label}</span>
+            <input
+                type="time"
+                value={draft}
+                disabled={disabled}
+                onChange={(e) => {
+                    setDraft(e.target.value);
+                    onSave(e.target.value === "" ? null : e.target.value);
                 }}
                 className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm disabled:bg-slate-50"
             />

@@ -16,7 +16,7 @@ out to have no callers at all — see [Dead settings](#dead-settings) below.
 | When the premises are open | `clinic_hours.opening_time` / `closing_time` / `is_active` | Settings → Opening hours | everything |
 | When a doctor works | `doctor_available_hours`, `doctor_home_visit_hours` | Staff → doctor | doctor services only |
 | How much notice a booking needs | `clinic_services.min_booking_window_hours` | Services → **Least notice (hours)** | doctor-free services only |
-| What time of day a service runs | `clinic_services.available_from` / `available_to` | SQL only | doctor-free services only |
+| What time of day a service runs | `clinic_services.available_from` / `available_to` | Services → **Runs from / Runs until** | doctor-free services only |
 
 Plus one that is not about time of day:
 
@@ -49,8 +49,9 @@ hours. Once Wellsun's real opening times were set, Sample Collection offered
 twenty past eleven at night. The migration sets `DIAGNOSTIC` and `IMAGING`
 services to 07:00–19:00, which takes that Monday to 72 slots ending 18:50.
 
-**There is no portal field for these yet.** Changing them is an `UPDATE`
-against `clinic_services`. See [Backlog](../BACKLOG.md).
+**Set on the Services page as "Runs from" and "Runs until".** Leaving either
+blank follows the premises hours. A start on or after the end is refused rather
+than stored, since it would offer nothing at all.
 
 ---
 

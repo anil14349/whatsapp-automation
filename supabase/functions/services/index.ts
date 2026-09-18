@@ -34,6 +34,8 @@ interface UpdateRequest {
   durationMinutes?: unknown;
   concurrentCapacity?: unknown;
   minNoticeHours?: unknown;
+  availableFrom?: unknown;
+  availableTo?: unknown;
   displayOrder?: unknown;
 }
 
@@ -67,7 +69,7 @@ async function listServices(
     supabase
       .from("clinic_services")
       .select(
-        "service_type_id, is_enabled, offered_at_clinic, offered_at_home, requires_doctor, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, display_name"
+        "service_type_id, is_enabled, offered_at_clinic, offered_at_home, requires_doctor, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, display_name, available_from, available_to, min_booking_window_hours"
       )
       .eq("clinic_id", clinicId)
   ]);
@@ -107,6 +109,9 @@ async function listServices(
       durationMinutes: row?.duration_minutes ?? null,
       concurrentCapacity: row?.concurrent_capacity ?? 1,
       minNoticeHours: row?.min_booking_window_hours ?? 0,
+      // NULL means the service follows the premises hours.
+      availableFrom: row?.available_from ? String(row.available_from).slice(0, 5) : null,
+      availableTo: row?.available_to ? String(row.available_to).slice(0, 5) : null,
       displayOrder: row?.display_order ?? 0,
       defaults: {
         clinicPrice: type.default_clinic_price,
@@ -245,6 +250,38 @@ async function updateService(
       return { status: 400, payload: { error: "concurrentCapacity must be at least 1" } };
     }
     patch.concurrent_capacity = capacity;
+  }
+
+  // Empty clears the window back to the premises hours, which is what most
+  // services want; a half-set window would silently apply only one end.
+  const window: Record<string, string | null> = {};
+
+  for (const [key, column] of [
+    ["availableFrom", "available_from"],
+    ["availableTo", "available_to"]
+  ] as const) {
+    const raw = body[key];
+
+    if (raw === undefined) continue;
+
+    const value = typeof raw === "string" ? raw.trim() : "";
+
+    if (value !== "" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) {
+      return { status: 400, payload: { error: `${key} must look like 07:00` } };
+    }
+
+    window[column] = value === "" ? null : value;
+  }
+
+  if (Object.keys(window).length > 0) {
+    const from = window.available_from ?? (existing?.available_from ? String(existing.available_from).slice(0, 5) : null);
+    const to = window.available_to ?? (existing?.available_to ? String(existing.available_to).slice(0, 5) : null);
+
+    if (from !== null && to !== null && from >= to) {
+      return { status: 400, payload: { error: "The service must close after it opens" } };
+    }
+
+    Object.assign(patch, window);
   }
 
   if (duration !== undefined && duration !== null && duration <= 0) {

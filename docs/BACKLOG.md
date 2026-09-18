@@ -85,22 +85,7 @@ deliberately left unset until there is a real one to publish.
 
 ---
 
-## 4. A service's time-of-day window can only be set in SQL
-
-`clinic_services.available_from` and `available_to` decide what hours a
-doctor-free service runs, and there is no field for them on the Services page.
-Changing them means an `UPDATE`, which puts them out of reach of the people who
-actually know when the lab opens.
-
-They are honoured in full by the slot generator — see
-[Scheduling rules](./REFERENCE/SCHEDULING_RULES.md). This is a missing input,
-not missing behaviour. "Least notice (hours)" next to it on the same card shows
-the shape the pair should take; both are nullable, so the field has to
-distinguish empty from zero.
-
----
-
-## 5. Consultations ignore the per-service scheduling settings
+## 4. Consultations ignore the per-service scheduling settings
 
 The two slot paths are separate code. `getAvailableSlots`, which serves
 anything with a doctor, reads no `clinic_services` column, so
@@ -118,7 +103,7 @@ carried down to it.
 
 ---
 
-## 6. `max_booking_window_days` is declared and never read
+## 5. `max_booking_window_days` is declared and never read
 
 Present in `002_multi_clinic_architecture.sql` with a default of 30, and typed
 in `multi-clinic-types.ts`. No query references it, so **how far ahead a patient
@@ -130,7 +115,7 @@ set before they were deleted. Either wire it or drop it.
 
 ---
 
-## 7. Home collection asks for latitude and longitude
+## 6. Home collection asks for latitude and longitude
 
 Settings → Home collection asks a clinic administrator for `17.5255` and
 `78.2721`. The field accepts a pasted Google Maps pair and splits it, which is
