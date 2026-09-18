@@ -288,20 +288,28 @@ export class WaitlistHandler {
                 isEn
                     ? `🎉 Good news!\n\n` +
                       `A slot has become available that you were waiting for.\n\n` +
-                      `📅 Date: ${date}\n` +
+                      `📅 ${date}\n` +
                       timeLine +
-                      `\nWould you like to book this appointment?\n\n` +
-                      `Send "Hi" to start booking.`
+                      `\nTap below to book it.`
                     : `🎉 खुशखबरी!\n\n` +
                       `जिस स्लॉट का आप इंतजार कर रहे थे वह खाली हो गया है।\n\n` +
-                      `📅 तारीख: ${date}\n` +
+                      `📅 ${date}\n` +
                       timeLine +
-                      `\nक्या आप यह नियुक्ति बुक करना चाहेंगे?\n\n` +
-                      `बुकिंग शुरू करने के लिए "Hi" भेजें।`,
+                      `\nबुक करने के लिए नीचे दबाएं।`,
                 {
                     key: "waitlist_slot_available",
                     language: patient?.preferred_language ?? "EN",
                     parameters: [date, !time || time === "ANY" ? "any time" : time]
+                },
+                {
+                    // It used to say 'Send "Hi" to start booking', which works
+                    // but asks someone to type a password to their own slot.
+                    buttons: [
+                        {
+                            id: BUTTON_IDS.PATIENT_MENU.BOOK,
+                            title: isEn ? "Book" : "बुक करें"
+                        }
+                    ]
                 }
             );
 

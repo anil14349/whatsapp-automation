@@ -12,6 +12,7 @@
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppClient } from "./whatsapp-client.ts";
+import { BUTTON_IDS } from "./button-ids.ts";
 import { getClinicRouteById } from "./clinic-routing.ts";
 import { getClinicTimezone, todayInTimezone } from "./clinic-slots.ts";
 import { sendProactive } from "./proactive.ts";
@@ -132,6 +133,19 @@ export async function notifyDelay(
                 doctorName,
                 String(minutes),
                 expected
+            ]
+        }, {
+            // Being told the doctor is late is exactly when someone decides
+            // they cannot wait, so the way out is offered with it.
+            buttons: [
+                {
+                    id: BUTTON_IDS.PATIENT_MENU.RESCHEDULE,
+                    title: hindi ? "समय बदलें" : "Reschedule"
+                },
+                {
+                    id: BUTTON_IDS.PATIENT_MENU.CANCEL,
+                    title: hindi ? "रद्द करें" : "Cancel"
+                }
             ]
         });
 

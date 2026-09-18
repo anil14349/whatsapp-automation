@@ -46,6 +46,7 @@
  *      🕐 {{3}}
  *
  *      Please arrive on time."
+ *     Two QUICK REPLY buttons: "Cancel" and "Reschedule".
  *
  *   {{2}} is "Dr. Akilesh" or "Sample Collection", from reminderSubject(), on
  *   a line with no label. No one label fits both: an appointment is "with" a
@@ -54,11 +55,17 @@
  *
  *   home_collection_reminder   {{1}} patient  {{2}} date  {{3}} time window
  *     "Hi {{1}}, our technician will visit for your sample collection on
- *      {{2}} during {{3}}. Reply to this message to change the time."
+ *      {{2}} during {{3}}. Please keep your phone nearby."
+ *
+ *     NOTHING SENDS THIS TODAY. Its only writer is the home collection handler,
+ *     which patients no longer reach: a home sample collection is booked as an
+ *     ordinary appointment and gets appointment_reminder_24h instead. Register
+ *     it only if the collector flow is revived.
  *
  *   appointment_delay          {{1}} patient  {{2}} doctor  {{3}} minutes  {{4}} new time
  *     "Hi {{1}}, {{2}} is running about {{3}} minutes late. Your appointment
  *      is now expected around {{4}}. Sorry for the wait."
+ *     Two QUICK REPLY buttons: "Reschedule" and "Cancel".
  *
  *   staff_credential           {{1}} name  {{2}} clinic  {{3}} PIN or password
  *     "Hello {{1}}, a new sign-in code for {{2}} has been issued for you:
@@ -66,7 +73,8 @@
  *
  *   waitlist_slot_available    {{1}} date  {{2}} time
  *     "Good news — a slot you were waiting for on {{1}} at {{2}} has become
- *      free. Reply to this message to book it."
+ *      free. Tap below to book it."
+ *     One QUICK REPLY button: "Book".
  *
  *   staff_new_booking          {{1}} patient  {{2}} date  {{3}} time
  *     "New booking for {{1}} on {{2}} at {{3}}. No reply is needed."
@@ -75,6 +83,11 @@
  *     Header set to a document, body:
  *     "Hi {{1}}, your {{2}} from the clinic is attached. Reply to this message
  *      if you have any questions."
+ *
+ *   A quick reply's label is what arrives, so every label above is a word
+ *   menuIdForKeyword() maps to a menu id: Cancel, Reschedule, Book. Adding a
+ *   button with any other wording gives the patient something that does
+ *   nothing when tapped.
  *
  * Until a template is approved the fallback cannot fire, and a send outside the
  * window returns template_unavailable rather than being retried. That is

@@ -157,6 +157,7 @@ export async function processMessage(
 function menuIdForKeyword(message: string): string | null {
     const cancel = ["cancel", "cancel appointment", "रद्द", "रद्द करें"];
     const reschedule = ["reschedule", "postpone", "change time", "बदलें", "समय बदलें", "स्थगित"];
+    const book = ["book", "book now", "book appointment", "बुक", "बुक करें"];
 
     if (cancel.includes(message)) {
         return BUTTON_IDS.PATIENT_MENU.CANCEL;
@@ -164,6 +165,10 @@ function menuIdForKeyword(message: string): string | null {
 
     if (reschedule.includes(message)) {
         return BUTTON_IDS.PATIENT_MENU.RESCHEDULE;
+    }
+
+    if (book.includes(message)) {
+        return BUTTON_IDS.PATIENT_MENU.BOOK;
     }
 
     return null;

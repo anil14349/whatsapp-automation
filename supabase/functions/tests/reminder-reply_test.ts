@@ -133,3 +133,16 @@ Deno.test("the Reschedule label reaches the reschedule flow", async () => {
 
     assertEquals(session()?.state, "RESCHEDULE_DATE");
 });
+
+Deno.test("the waitlist Book label starts a booking", async () => {
+    // The waitlist offer used to say 'Send "Hi" to start booking'. It now
+    // carries a Book button, whose label is what arrives when tapped.
+    // Which step comes first depends on how many services the clinic offers,
+    // so this asserts only that a booking began.
+    const { send, session } = build();
+
+    await send("Book");
+
+    const state = session()?.state ?? "";
+    assert(/^(BOOK_|SERVICE_SELECT)/.test(state), `booking did not start: ${state}`);
+});

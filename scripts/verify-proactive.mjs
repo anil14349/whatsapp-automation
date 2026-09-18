@@ -110,6 +110,35 @@ function checkTemplateBodies() {
 }
 
 checkTemplateBodies();
+checkQuickReplyLabels();
+
+/**
+ * Every quick reply label must be a word the bot maps to a menu.
+ *
+ * A template quick reply arrives carrying the button's own label, so a label
+ * menuIdForKeyword() does not know gives the patient a button that Meta has
+ * approved, that looks real, and that does nothing when tapped.
+ */
+function checkQuickReplyLabels() {
+    const doc = readFileSync(join(root, "shared/proactive.ts"), "utf8");
+    const header = doc.slice(0, doc.indexOf("*/"));
+    const processor = readFileSync(join(root, "shared/message-processor.ts"), "utf8");
+
+    const known = new Set(
+        [...processor.matchAll(/"([a-z \u0900-\u097F]+)"/g)].map((m) => m[1].toLowerCase())
+    );
+
+    for (const match of header.matchAll(/QUICK REPLY buttons?:([^\n]*)/g)) {
+        for (const label of match[1].matchAll(/"([^"]+)"/g)) {
+            if (!known.has(label[1].toLowerCase())) {
+                problems.push(
+                    `quick reply "${label[1]}" is not a word menuIdForKeyword maps, ` +
+                    `so tapping it would do nothing`
+                );
+            }
+        }
+    }
+}
 
 for (const relative of PROACTIVE_FILES) {
     const text = readFileSync(join(root, relative), "utf8");

@@ -118,19 +118,21 @@ async function sendReminder(
         );
 
         // The same ids the template's quick replies carry, so a tap lands in
-        // the same place whichever path delivered the reminder.
-        const actions = reminder.reminder_type === "24_HOUR"
-            ? [
-                {
-                    id: BUTTON_IDS.PATIENT_MENU.CANCEL,
-                    title: details.preferredLanguage === "HI" ? "रद्द करें" : "Cancel"
-                },
-                {
-                    id: BUTTON_IDS.PATIENT_MENU.RESCHEDULE,
-                    title: details.preferredLanguage === "HI" ? "समय बदलें" : "Reschedule"
-                }
-            ]
-            : undefined;
+        // the same place whichever path delivered the reminder. An hour before
+        // is when a patient realises they cannot make it, so it is offered
+        // there too rather than leaving them to simply not turn up.
+        const language = details.preferredLanguage === "HI" ? "HI" : "EN";
+
+        const actions = [
+            {
+                id: BUTTON_IDS.PATIENT_MENU.CANCEL,
+                title: language === "HI" ? "रद्द करें" : "Cancel"
+            },
+            {
+                id: BUTTON_IDS.PATIENT_MENU.RESCHEDULE,
+                title: language === "HI" ? "समय बदलें" : "Reschedule"
+            }
+        ];
 
         // A reminder is by definition sent long after the patient last wrote,
         // so free-form alone was rejected outside the 24 hour window and the
@@ -157,7 +159,7 @@ async function sendReminder(
                         formatClockTime(details.appointmentTime || "")
                     ]
             },
-            actions ? { buttons: actions } : {}
+            { buttons: actions }
         );
 
         if (!outcome.delivered) {
