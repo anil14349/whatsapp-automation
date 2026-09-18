@@ -9,7 +9,7 @@ const CATEGORIES = ["CONSULTATION", "DIAGNOSTIC", "IMAGING", "VACCINE", "OTHER"]
 export function AddServiceForm({ title, summary }: { title: string; summary: string }) {
     const [state, action, pending] = useActionState<ServiceState, FormData>(createService, {});
     const [open, setOpen] = useState(false);
-    const showAdded = useAutoDismiss(state.success);
+    const showAdded = useAutoDismiss(state);
 
     // Adding a service is occasional; the list is what the page is for.
     useEffect(() => {

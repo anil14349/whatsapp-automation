@@ -13,7 +13,7 @@ out to have no callers at all — see [Dead settings](#dead-settings) below.
 
 | What it limits | Column | Set from | Applies to |
 |---|---|---|---|
-| When the premises are open | `clinic_hours.opening_time` / `closing_time` / `is_active` | Settings → Hours | everything |
+| When the premises are open | `clinic_hours.opening_time` / `closing_time` / `is_active` | Settings → Opening hours | everything |
 | When a doctor works | `doctor_available_hours`, `doctor_home_visit_hours` | Staff → doctor | doctor services only |
 | How much notice a booking needs | `clinic_services.min_booking_window_hours` | Services → **Least notice (hours)** | doctor-free services only |
 | What time of day a service runs | `clinic_services.available_from` / `available_to` | SQL only | doctor-free services only |

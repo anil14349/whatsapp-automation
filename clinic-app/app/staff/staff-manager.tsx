@@ -13,6 +13,7 @@ import {
 } from "./actions";
 import { STAFF_LABELS } from "@/lib/labels";
 import { PhoneField } from "@/components/phone-field";
+import { RowMenu, MENU_ITEM, MENU_DANGER } from "@/components/row-menu";
 import { displayPhone } from "@/lib/phone";
 import { DoctorSchedulePanel } from "./doctor-schedule-panel";
 import { useAutoDismiss, useNotice } from "@/lib/use-notice";
@@ -98,6 +99,7 @@ export function StaffManager({
     const [editing, setEditing] = useState<StaffMember | null>(null);
     const [removing, setRemoving] = useState<StaffMember | null>(null);
     const [scheduling, setScheduling] = useState<StaffMember | null>(null);
+    const [menu, setMenu] = useState<string | null>(null);
     const [adding, setAdding] = useState(false);
     const [copied, setCopied] = useState<string | null>(null);
     const [busy, startAction] = useTransition();
@@ -112,7 +114,7 @@ export function StaffManager({
     // useActionState holds its result until the next submit, so "added" sat
     // above the list for the rest of the session. A credential is exempt: it
     // cannot be shown again, so it must not disappear while being copied.
-    const showAdded = useAutoDismiss(state.credential ? undefined : state.success);
+    const showAdded = useAutoDismiss(state.credential ? undefined : state);
     const formNotice: StaffState =
         state.error || state.credential || showAdded ? state : {};
 
@@ -451,7 +453,7 @@ export function StaffManager({
                                             </span>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <div className="flex flex-wrap justify-end gap-2">
+                                            <div className="flex flex-wrap items-center justify-end gap-2">
                                                 {tab === "doctor" && (
                                                     <button
                                                         disabled={busy}
@@ -476,33 +478,53 @@ export function StaffManager({
                                                 >
                                                     Edit
                                                 </button>
-                                                {tab !== "collector" && (
+
+                                                {/* Reset, deactivate and remove are occasional and
+                                                    two of them are hard to undo; five buttons on
+                                                    every row made the routine two harder to find. */}
+                                                <RowMenu
+                                                    open={menu === member.id}
+                                                    onToggle={() =>
+                                                        setMenu(menu === member.id ? null : member.id)
+                                                    }
+                                                >
+                                                    {tab !== "collector" && (
+                                                        <button
+                                                            disabled={busy}
+                                                            onClick={() => {
+                                                                setMenu(null);
+                                                                run(() =>
+                                                                    resetStaffCredential(tab, member.id)
+                                                                );
+                                                            }}
+                                                            className={MENU_ITEM}
+                                                        >
+                                                            Reset {tab === "doctor" ? "PIN" : "password"}
+                                                        </button>
+                                                    )}
                                                     <button
                                                         disabled={busy}
-                                                        onClick={() =>
-                                                            run(() => resetStaffCredential(tab, member.id))
-                                                        }
-                                                        className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
+                                                        onClick={() => {
+                                                            setMenu(null);
+                                                            run(() =>
+                                                                setStaffActive(tab, member.id, !activeNow)
+                                                            );
+                                                        }}
+                                                        className={MENU_ITEM}
                                                     >
-                                                        Reset {tab === "doctor" ? "PIN" : "password"}
+                                                        {activeNow ? "Deactivate" : "Reactivate"}
                                                     </button>
-                                                )}
-                                                <button
-                                                    disabled={busy}
-                                                    onClick={() =>
-                                                        run(() => setStaffActive(tab, member.id, !activeNow))
-                                                    }
-                                                    className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs hover:border-slate-300 disabled:opacity-50"
-                                                >
-                                                    {activeNow ? "Deactivate" : "Reactivate"}
-                                                </button>
-                                                <button
-                                                    disabled={busy}
-                                                    onClick={() => setRemoving(member)}
-                                                    className="rounded-lg border border-red-200 px-2.5 py-1 text-xs text-red-700 hover:border-red-300 disabled:opacity-50"
-                                                >
-                                                    Remove
-                                                </button>
+                                                    <button
+                                                        disabled={busy}
+                                                        onClick={() => {
+                                                            setMenu(null);
+                                                            setRemoving(member);
+                                                        }}
+                                                        className={MENU_DANGER}
+                                                    >
+                                                        Remove {STAFF_LABELS[tab].singular.toLowerCase()}
+                                                    </button>
+                                                </RowMenu>
                                             </div>
                                         </td>
                                     </tr>

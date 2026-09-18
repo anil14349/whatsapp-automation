@@ -8,6 +8,40 @@ export function OpeningHours({ hours }: { hours: DayHours[] }) {
     const [notice, setNotice] = useNotice<SettingsState>({});
     const [busy, start] = useTransition();
 
+    const open = hours.filter((d) => !d.closed);
+    const [source, setSource] = useState<number | null>(null);
+    const from = hours.find((d) => d.dayOfWeek === (source ?? open[0]?.dayOfWeek)) ?? null;
+
+    function copy() {
+        if (!from || from.closed) return;
+
+        const targets = open.filter((d) => d.dayOfWeek !== from.dayOfWeek);
+
+        start(async () => {
+            for (const day of targets) {
+                const result = await saveDay(
+                    day.dayOfWeek,
+                    from.openTime ?? "09:00",
+                    from.closeTime ?? "18:00",
+                    false
+                );
+
+                // Stop at the first refusal rather than reporting a success
+                // that only some of the days got.
+                if (result.error) {
+                    setNotice(result);
+                    return;
+                }
+            }
+
+            setNotice({
+                success: `${from.label} hours copied to ${targets.length} other day${
+                    targets.length === 1 ? "" : "s"
+                }.`
+            });
+        });
+    }
+
     return (
         <section className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
             <h2 className="mb-1 text-sm font-semibold">Opening hours</h2>
@@ -20,17 +54,53 @@ export function OpeningHours({ hours }: { hours: DayHours[] }) {
             <div className="space-y-2">
                 {hours.map((day) => (
                     <DayRow
-                        key={day.dayOfWeek}
+                        // Remounted when the saved values change, or a day altered
+                        // by the copy below would keep showing what it held before.
+                        key={`${day.dayOfWeek}:${day.openTime}:${day.closeTime}:${day.closed}`}
                         day={day}
                         disabled={busy}
-                        onSave={(open, close, closed) =>
+                        onSave={(openTime, closeTime, closed) =>
                             start(async () =>
-                                setNotice(await saveDay(day.dayOfWeek, open, close, closed))
+                                setNotice(await saveDay(day.dayOfWeek, openTime, closeTime, closed))
                             )
                         }
                     />
                 ))}
             </div>
+
+            {/* Most clinics keep one set of hours for most of the week, and
+                typing them seven times is where the mistakes come from. */}
+            {open.length > 1 && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+                    <label className="text-xs text-slate-500" htmlFor="copy-hours-from">
+                        Copy
+                    </label>
+                    <select
+                        id="copy-hours-from"
+                        value={from?.dayOfWeek ?? ""}
+                        disabled={busy}
+                        onChange={(e) => setSource(Number(e.target.value))}
+                        className="rounded-lg border border-slate-200 px-2 py-1 text-sm"
+                    >
+                        {open.map((day) => (
+                            <option key={day.dayOfWeek} value={day.dayOfWeek}>
+                                {day.label}
+                            </option>
+                        ))}
+                    </select>
+                    <span className="text-xs text-slate-500">
+                        to the other {open.length - 1} open day
+                        {open.length - 1 === 1 ? "" : "s"}. Closed days stay closed.
+                    </span>
+                    <button
+                        disabled={busy}
+                        onClick={copy}
+                        className="ml-auto rounded-lg border border-slate-200 px-3 py-1 text-sm hover:border-slate-300 disabled:opacity-50"
+                    >
+                        Apply
+                    </button>
+                </div>
+            )}
         </section>
     );
 }

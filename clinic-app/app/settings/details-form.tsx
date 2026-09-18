@@ -34,20 +34,21 @@ function Section({
     children: React.ReactNode;
 }) {
     const [state, action, pending] = useActionState<SettingsState, FormData>(saveDetails, {});
-    const showSaved = useAutoDismiss(state.success);
+    const showSaved = useAutoDismiss(state);
 
     return (
-        // React resets an uncontrolled form once the action returns, back to the
-        // values it mounted with, so a saved change appeared to have been
-        // thrown away. Keying on the saved data remounts it with the new ones.
-        <form
-            key={JSON.stringify(clinic)}
-            action={action}
-            className="rounded-xl bg-white p-4 ring-1 ring-slate-200"
-        >
+        <form action={action} className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
             <h2 className="text-sm font-semibold">{title}</h2>
             {description && <p className="mt-1 mb-3 text-xs text-slate-500">{description}</p>}
-            <div className={description ? "" : "mt-3"}>{children}</div>
+
+            {/* React resets an uncontrolled form once the action returns, back to
+                the values it mounted with, so a saved change appeared to have
+                been thrown away. Keying the fields alone remounts them with the
+                saved values while the form keeps the "Saved." it just produced -
+                keying the form threw that away exactly when it was earned. */}
+            <div key={JSON.stringify(clinic)} className={description ? "" : "mt-3"}>
+                {children}
+            </div>
 
             {state.error && (
                 <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
@@ -176,7 +177,7 @@ export function AfterHoursForm({ clinic }: { clinic: ClinicDetails }) {
 
 export function AddClosureForm() {
     const [state, action, pending] = useActionState<SettingsState, FormData>(addClosure, {});
-    const showAdded = useAutoDismiss(state.success, 8000);
+    const showAdded = useAutoDismiss(state, 8000);
 
     return (
         <form action={action} className="mb-3 flex flex-wrap items-end gap-3">

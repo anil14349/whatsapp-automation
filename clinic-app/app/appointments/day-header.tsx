@@ -141,32 +141,48 @@ function SearchBox({ term }: { term: string }) {
     }
 
     return (
-        <form onSubmit={submit} className="flex items-center gap-1">
+        // The separate Search button was a second thing that looked like a
+        // primary action, next to Running late and Book walk-in. Enter submits.
+        <form onSubmit={submit} className="relative">
+            <svg
+                viewBox="0 0 20 20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                aria-hidden="true"
+                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"
+            >
+                <circle cx="9" cy="9" r="5.5" />
+                <path d="m13.5 13.5 3.5 3.5" strokeLinecap="round" />
+            </svg>
+
             <input
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
                 placeholder="Name or number"
                 aria-label="Search appointments by patient name or number"
-                className="w-44 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-brand-500"
+                className={`w-52 rounded-lg border border-slate-200 py-2 pl-8 text-sm outline-none focus:border-brand-500 ${
+                    term ? "pr-8" : "pr-3"
+                }`}
             />
-            <button
-                type="submit"
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm hover:border-slate-300"
-            >
-                Search
-            </button>
+
             {term && (
                 <button
                     type="button"
+                    aria-label="Clear search"
                     onClick={() => {
                         setValue("");
                         router.push("/appointments");
                     }}
-                    className="rounded-lg px-2 py-2 text-sm text-slate-500 hover:text-slate-700"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-sm leading-none text-slate-500 hover:text-slate-700"
                 >
-                    Clear
+                    ×
                 </button>
             )}
+
+            <button type="submit" className="sr-only">
+                Search
+            </button>
         </form>
     );
 }

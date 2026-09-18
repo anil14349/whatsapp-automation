@@ -56,12 +56,17 @@ export function useNotice<T extends Notice>(initial: T): [T, (next: T) => void] 
  *
  * useActionState keeps its result until the next submit, so a confirmation from
  * a form sits there indefinitely too. Returns whether it should still be shown.
+ *
+ * Takes the whole result rather than the message inside it. Keyed on the text,
+ * a second identical "Saved." was the same dependency as the first, so the
+ * effect never re-ran and the confirmation never came back - saving twice in a
+ * row acknowledged only the first.
  */
-export function useAutoDismiss(message: string | undefined, ms = 4000): boolean {
+export function useAutoDismiss(result: { success?: string } | undefined, ms = 4000): boolean {
     const [visible, setVisible] = useState(false);
 
     useEffect(() => {
-        if (!message) {
+        if (!result?.success) {
             setVisible(false);
             return;
         }
@@ -71,7 +76,7 @@ export function useAutoDismiss(message: string | undefined, ms = 4000): boolean 
         const timer = setTimeout(() => setVisible(false), ms);
 
         return () => clearTimeout(timer);
-    }, [message, ms]);
+    }, [result, ms]);
 
     return visible;
 }

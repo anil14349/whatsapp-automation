@@ -47,7 +47,7 @@ export function DocumentPanel({
 }) {
     const [state, action, pending] = useActionState<BookingState, FormData>(sendDocument, {});
     const [sent, setSent] = useState<SentDocument[] | null>(null);
-    const showSent = useAutoDismiss(state.success);
+    const showSent = useAutoDismiss(state);
 
     useEffect(() => {
         let live = true;

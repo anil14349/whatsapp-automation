@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { createPortal } from "react-dom";
+import { useState, useTransition } from "react";
 import {
     editAppointment,
     loadSlots,
@@ -11,6 +10,7 @@ import {
     type ServiceOption
 } from "./actions";
 import { PhoneField } from "@/components/phone-field";
+import { RowMenu, MENU_ITEM, MENU_DANGER } from "@/components/row-menu";
 import { DocumentPanel } from "./document-panel";
 import { displayPhone } from "@/lib/phone";
 import { useNotice } from "@/lib/use-notice";
@@ -58,9 +58,8 @@ const BUTTON = {
     plain: "rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50",
     good: "rounded-lg border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 transition hover:border-green-300 hover:bg-green-100 disabled:opacity-50",
     quiet: "rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-50",
-    danger: "w-full rounded-lg px-3 py-1.5 text-left text-xs font-medium text-red-600 transition hover:bg-red-50 disabled:opacity-50",
-    menuItem:
-        "w-full rounded-lg px-3 py-1.5 text-left text-xs font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+    danger: MENU_DANGER,
+    menuItem: MENU_ITEM
 };
 
 /** Postgres hands back "10:00:00" and the clock on the wall does not. */
@@ -74,75 +73,6 @@ function clockTime(time: string): string {
  * Rendered into the body rather than the row: the table is clipped to its
  * rounded corners, which swallowed the menu whole.
  */
-function RowMenu({
-    open,
-    onToggle,
-    children
-}: {
-    open: boolean;
-    onToggle: () => void;
-    children: React.ReactNode;
-}) {
-    const button = useRef<HTMLButtonElement>(null);
-    const [at, setAt] = useState<{ top: number; right: number } | null>(null);
-
-    useEffect(() => {
-        if (!open) {
-            setAt(null);
-            return;
-        }
-
-        const place = () => {
-            const box = button.current?.getBoundingClientRect();
-            if (box) setAt({ top: box.bottom + 6, right: window.innerWidth - box.right });
-        };
-
-        place();
-
-        const close = () => onToggle();
-        window.addEventListener("click", close);
-        // Following the button on scroll is not worth it; closing is honest.
-        window.addEventListener("scroll", close, true);
-        window.addEventListener("resize", close);
-
-        return () => {
-            window.removeEventListener("click", close);
-            window.removeEventListener("scroll", close, true);
-            window.removeEventListener("resize", close);
-        };
-    }, [open, onToggle]);
-
-    return (
-        <>
-            <button
-                ref={button}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onToggle();
-                }}
-                aria-label="More actions"
-                aria-expanded={open}
-                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-semibold leading-none text-slate-500 transition hover:border-slate-300 hover:bg-slate-50"
-            >
-                •••
-            </button>
-
-            {open &&
-                at &&
-                createPortal(
-                    <div
-                        style={{ position: "fixed", top: at.top, right: at.right }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="z-50 w-52 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
-                    >
-                        {children}
-                    </div>,
-                    document.body
-                )}
-        </>
-    );
-}
-
 export function AppointmentTable({
     rows,
     date,

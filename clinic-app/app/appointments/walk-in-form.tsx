@@ -26,7 +26,7 @@ export function WalkInForm({
     const [state, action, pending] = useActionState(bookWalkIn, INITIAL);
     // The form stays open to book several in a row, so without this the last
     // confirmation sits under the fields while the next one is typed.
-    const showBooked = useAutoDismiss(state.success);
+    const showBooked = useAutoDismiss(state);
 
     const [doctorId, setDoctorId] = useState(doctors[0]?.id ?? "");
     const [slots, setSlots] = useState<string[]>([]);
