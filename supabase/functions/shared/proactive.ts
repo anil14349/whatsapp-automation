@@ -95,9 +95,9 @@
  *   staff_new_booking          {{1}} patient  {{2}} date  {{3}} time
  *     "A new booking for {{1}} on {{2}} at {{3}} has been received."
  *
- *     Phrased in the passive so the sentence ends on words. "Booking received
- *     for {{1}} on {{2}} at {{3}}" reads better and Meta refuses it, because a
- *     body may not end on a variable.
+ *     Passive so the sentence ends on words. The active form, opening with
+ *     "Booking received for", puts the time last, and Meta refuses a body
+ *     that ends on a variable.
  *
  *   patient_document           header: DOCUMENT   {{1}} patient  {{2}} what it is
  *     Header set to a document, body:
