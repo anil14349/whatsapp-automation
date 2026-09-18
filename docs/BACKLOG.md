@@ -68,16 +68,20 @@ whole fallback, with `whatsapp_log.metadata` showing the delivery status.
 
 ---
 
-## 3. Clinic contact details are still seed data
+## 3. Clinic phone and email are still seed data
 
-`clinics` for Wellsun still holds `123 Medical Street`, `info@abc-clinic.com`
-and `911112345678`, and `logo_url` is null. These are printed on **every
-booking confirmation**, so patients are being given a wrong address and an
-email on a domain we do not own.
+`clinics` for Wellsun now holds the real address and coordinates — APR Praveen's
+Luxuria, Patancheru, Hyderabad, at 17.5255 / 78.2721 — but **`phone` is still
+`911112345678` and `email` is still `info@abc-clinic.com`**, a domain nobody
+owns. Both are printed on **every booking confirmation**, so patients are being
+given a number that does not ring and an address to write to that does not
+exist.
 
-This is also why the WhatsApp business profile has no address, email or
-picture — publishing placeholder data to Meta would be worse than leaving the
-fields empty.
+`logo_url` is still null, so the portal and WhatsApp show initials rather than a
+logo.
+
+The WhatsApp business profile carries the real address. Its email is
+deliberately left unset until there is a real one to publish.
 
 ---
 
