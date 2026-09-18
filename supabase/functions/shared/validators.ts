@@ -107,19 +107,23 @@ export function isValidISODate(dateString: string): boolean {
 }
 
 /**
- * Validate booking date is within allowed range (today to max 7 days from today)
+ * Validate booking date is within allowed range (today to maxDays from today)
  * Returns: { valid: boolean, error?: string }
  * Error messages:
  * - "past" if date is in the past
- * - "too_far" if date is more than 7 days in the future
+ * - "too_far" if date is beyond the clinic's window
  *
  * `today` is the clinic's own date. Without it the window is measured against
  * the server's UTC day, so a patient in Asia/Kolkata messaging after midnight
  * could book a date their clinic had already finished.
+ *
+ * `maxDays` comes from the service. It defaults to a week because that is what
+ * this enforced for everyone while `max_booking_window_days` sat unread.
  */
 export function isValidBookingDate(
     dateString: string,
-    today?: string
+    today?: string,
+    maxDays = 7
 ): { valid: boolean; error?: string } {
     // Validate ISO format first
     if (!isValidISODate(dateString)) {
@@ -145,7 +149,8 @@ export function isValidBookingDate(
         return { valid: false, error: "past" };
     }
 
-    const maxUtc = todayUtc + 7 * 24 * 60 * 60 * 1000;
+    const window = Number.isFinite(maxDays) && maxDays > 0 ? Math.floor(maxDays) : 7;
+    const maxUtc = todayUtc + window * 24 * 60 * 60 * 1000;
 
     if (bookingUtc > maxUtc) {
         return { valid: false, error: "too_far" };
@@ -157,7 +162,11 @@ export function isValidBookingDate(
 /**
  * Format booking date validation error message for user display
  */
-export function formatBookingDateErrorMessage(error: string, language: string = "EN"): string {
+export function formatBookingDateErrorMessage(
+    error: string,
+    language: string = "EN",
+    maxDays = 7
+): string {
     if (error === "past") {
         return language === "EN"
             ? "❌ Cannot book appointments in the past. Please select a future date."
@@ -166,8 +175,8 @@ export function formatBookingDateErrorMessage(error: string, language: string = 
 
     if (error === "too_far") {
         return language === "EN"
-            ? "❌ Appointments can only be booked up to 7 days in advance. Please select an earlier date."
-            : "❌ नियुक्तियों को केवल 7 दिन पहले बुक किया जा सकता है। कृपया पहली तारीख चुनें।";
+            ? `❌ Appointments can only be booked up to ${maxDays} days in advance. Please select an earlier date.`
+            : `❌ नियुक्तियों को केवल ${maxDays} दिन पहले बुक किया जा सकता है। कृपया पहली तारीख चुनें।`;
     }
 
     if (error === "invalid_format") {

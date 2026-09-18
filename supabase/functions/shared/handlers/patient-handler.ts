@@ -988,11 +988,16 @@ export class PatientFlowHandler {
                 selectedDate = addDays(today, 1);
             } else if (buttonId === BUTTON_IDS.DATE_SELECT.OTHER) {
                 // Ask for custom date
+                const aheadDays = await this.bookingWindowDays(
+                    clinicId,
+                    session.data?.serviceTypeId
+                );
+
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
-                        : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप 7 दिन पहले तक बुक कर सकते हैं)"
+                        ? `📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to ${aheadDays} days in advance)`
+                        : `📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप ${aheadDays} दिन पहले तक बुक कर सकते हैं)`
                 );
                 // Carry the rest of the payload over. Rebuilding it here dropped
                 // serviceTypeId, so a doctor-free service reached the custom date
@@ -1065,18 +1070,19 @@ export class PatientFlowHandler {
         } else if (/^\d{4}-\d{2}-\d{2}$/.test(buttonId)) {
             // Custom date input - validate format and range
             const clinicToday = todayInTimezone(await getClinicTimezone(this.supabase, clinicId));
-            const dateValidation = isValidBookingDate(buttonId, clinicToday);
+            const aheadDays = await this.bookingWindowDays(clinicId, session.data?.serviceTypeId);
+            const dateValidation = isValidBookingDate(buttonId, clinicToday, aheadDays);
 
             if (!dateValidation.valid) {
-                const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", language);
+                const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", language, aheadDays);
                 await this.whatsappClient.sendTextMessage(phone, errorMsg);
 
                 // Prompt to retry
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
-                        : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप 7 दिन पहले तक बुक कर सकते हैं)"
+                        ? `📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to ${aheadDays} days in advance)`
+                        : `📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप ${aheadDays} दिन पहले तक बुक कर सकते हैं)`
                 );
                 return;
             }
@@ -1115,6 +1121,23 @@ export class PatientFlowHandler {
     }
 
     /**
+     * How far ahead this booking may go.
+     *
+     * `clinic_services.max_booking_window_days` existed from the first
+     * multi-clinic migration and was read by nothing; a week was hardcoded in
+     * four places instead. A service with nothing set keeps that week.
+     */
+    private async bookingWindowDays(clinicId: string, serviceTypeId?: string): Promise<number> {
+        if (!serviceTypeId) {
+            return 7;
+        }
+
+        const service = await getServiceById(this.supabase, clinicId, serviceTypeId);
+
+        return service && service.maxAheadDays > 0 ? service.maxAheadDays : 7;
+    }
+
+    /**
      * BOOK_DATE_CUSTOM - Handle custom date input (intermediate state)
      * Validates date format and range, then routes to time selection
      */
@@ -1131,18 +1154,19 @@ export class PatientFlowHandler {
 
         // Validate date format and range
         const clinicToday = todayInTimezone(await getClinicTimezone(this.supabase, clinicId));
-        const dateValidation = isValidBookingDate(dateString, clinicToday);
+        const aheadDays = await this.bookingWindowDays(clinicId, session.data?.serviceTypeId);
+        const dateValidation = isValidBookingDate(dateString, clinicToday, aheadDays);
 
         if (!dateValidation.valid) {
-            const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", language);
+            const errorMsg = formatBookingDateErrorMessage(dateValidation.error || "invalid_format", language, aheadDays);
             await this.whatsappClient.sendTextMessage(phone, errorMsg);
 
             // Prompt to retry
             await this.whatsappClient.sendTextMessage(
                 phone,
                 language === "EN"
-                    ? "📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to 7 days in advance)"
-                    : "📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप 7 दिन पहले तक बुक कर सकते हैं)"
+                    ? `📅 Please enter your preferred date (YYYY-MM-DD):\n\n(You can book up to ${aheadDays} days in advance)`
+                    : `📅 कृपया अपनी पसंदीदा तारीख दर्ज करें (YYYY-MM-DD):\n\n(आप ${aheadDays} दिन पहले तक बुक कर सकते हैं)`
             );
             return;
         }
@@ -1825,25 +1849,38 @@ export class PatientFlowHandler {
             } else if (newDate === BUTTON_IDS.DATE_SELECT.TOMORROW) {
                 newDate = addDays(today, 1);
             } else {
+                const aheadDays = await this.bookingWindowDays(
+                    session.clinic_id,
+                    session.data?.serviceTypeId
+                );
+
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "📅 Please enter the new date (YYYY-MM-DD):\n\n(Up to 7 days ahead)"
-                        : "📅 कृपया नई तारीख दर्ज करें (YYYY-MM-DD):\n\n(7 दिन आगे तक)"
+                        ? `📅 Please enter the new date (YYYY-MM-DD):\n\n(Up to ${aheadDays} days ahead)`
+                        : `📅 कृपया नई तारीख दर्ज करें (YYYY-MM-DD):\n\n(${aheadDays} दिन आगे तक)`
                 );
                 return;
             }
         }
 
-        // Reschedule must honour the same 0-7 day window as a new booking.
+        // Reschedule must honour the same window as a new booking.
         const rescheduleToday = todayInTimezone(
             await getClinicTimezone(this.supabase, session.clinic_id)
         );
-        const rescheduleWindow = isValidBookingDate(newDate, rescheduleToday);
+        const rescheduleAhead = await this.bookingWindowDays(
+            session.clinic_id,
+            session.data?.serviceTypeId
+        );
+        const rescheduleWindow = isValidBookingDate(newDate, rescheduleToday, rescheduleAhead);
         if (!rescheduleWindow.valid) {
             await this.whatsappClient.sendTextMessage(
                 phone,
-                formatBookingDateErrorMessage(rescheduleWindow.error || "invalid_format", language)
+                formatBookingDateErrorMessage(
+                    rescheduleWindow.error || "invalid_format",
+                    language,
+                    rescheduleAhead
+                )
             );
             return;
         }

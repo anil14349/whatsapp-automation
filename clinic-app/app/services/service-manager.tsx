@@ -152,6 +152,14 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                         hint="Time you need before this can be booked"
                                         onSave={(v) => save(s.serviceTypeId, { minNoticeHours: v ?? 0 })}
                                     />
+                                    <NumberField
+                                        label="Book up to (days ahead)"
+                                        value={s.maxAheadDays || null}
+                                        placeholder="7"
+                                        disabled={busy}
+                                        hint="How far in advance patients may book"
+                                        onSave={(v) => save(s.serviceTypeId, { maxAheadDays: v ?? 7 })}
+                                    />
                                     <TimeField
                                         label="Runs from"
                                         value={s.availableFrom}

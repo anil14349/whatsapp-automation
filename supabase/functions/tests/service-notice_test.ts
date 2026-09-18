@@ -52,7 +52,8 @@ function service(minNoticeHours: number): ClinicService {
         displayOrder: 0,
         availableFrom: null,
         availableTo: null,
-        minNoticeHours
+        minNoticeHours,
+        maxAheadDays: 0
     };
 }
 

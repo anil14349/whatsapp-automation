@@ -28,6 +28,8 @@ export interface ClinicService {
     availableTo: string | null;
     /** How much warning the clinic needs before this can be booked. */
     minNoticeHours: number;
+    /** How far ahead it may be booked. Zero means the built-in default. */
+    maxAheadDays: number;
 }
 
 export type ServiceChannel = "clinic" | "home";
@@ -86,7 +88,8 @@ function toService(row: Record<string, any>): ClinicService | null {
         displayOrder: row.display_order ?? 0,
         availableFrom: row.available_from ? String(row.available_from).slice(0, 5) : null,
         availableTo: row.available_to ? String(row.available_to).slice(0, 5) : null,
-        minNoticeHours: Number(row.min_booking_window_hours ?? 0) || 0
+        minNoticeHours: Number(row.min_booking_window_hours ?? 0) || 0,
+        maxAheadDays: Number(row.max_booking_window_days ?? 0) || 0
     };
 }
 
@@ -143,7 +146,7 @@ export async function getEnabledServices(
             supabase
                 .from("clinic_services")
                 .select(
-                    "service_type_id, requires_doctor, offered_at_clinic, offered_at_home, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, display_name, available_from, available_to, min_booking_window_hours, " +
+                    "service_type_id, requires_doctor, offered_at_clinic, offered_at_home, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, display_name, available_from, available_to, min_booking_window_hours, max_booking_window_days, " +
                     "service_type:service_types(code, name, category, default_clinic_price, default_home_price, default_duration_minutes, is_active)"
                 )
                 .eq("clinic_id", clinicId)

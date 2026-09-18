@@ -98,6 +98,7 @@ Removed, and named here so they are not re-added:
 
 Both read like working configuration. Setting either one did nothing at all.
 
-Still declared and still unread: `clinic_services.max_booking_window_days`,
-present in `002` and in `multi-clinic-types.ts`, referenced by no query. How
-far ahead a patient may book is currently unlimited.
+`clinic_services.max_booking_window_days` was the same shape — present since
+`002`, read by nothing, while a week was hardcoded in four places. It is now
+**Book up to (days ahead)** on the Services page. A service left unset keeps
+the week that was enforced before, so nothing moved by being wired.

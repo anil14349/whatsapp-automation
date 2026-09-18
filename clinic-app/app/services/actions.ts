@@ -112,6 +112,7 @@ export async function updateService(
         durationMinutes: number | null;
         concurrentCapacity: number;
         minNoticeHours: number;
+        maxAheadDays: number;
         availableFrom: string | null;
         availableTo: string | null;
     }>

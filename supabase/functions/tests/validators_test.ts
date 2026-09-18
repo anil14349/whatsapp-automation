@@ -9,6 +9,7 @@ import { assertEquals } from "std/testing/asserts.ts";
 import {
     extractInboundMessage,
     isValidBookingDate,
+    formatBookingDateErrorMessage,
     isValidISODate,
     isValidTimeString,
     isValidPatientName,
@@ -107,6 +108,51 @@ Deno.test("the booking window follows the clinic's day, not the server's", () =>
 Deno.test("a clinic day that is not a real date is ignored", () => {
     // Falls back to the server's day rather than accepting anything.
     assertEquals(isValidBookingDate("2099-01-01", "not-a-date").valid, false);
+});
+
+// max_booking_window_days sat unread since the first multi-clinic migration
+// while a week was hardcoded, so a clinic that set 30 still got 7.
+Deno.test("a service may open its booking window further than a week", () => {
+    const clinicToday = "2026-09-16";
+
+    assertEquals(isValidBookingDate("2026-09-24", clinicToday, 30).valid, true);
+    assertEquals(isValidBookingDate("2026-10-16", clinicToday, 30).valid, true);
+    assertEquals(isValidBookingDate("2026-10-17", clinicToday, 30).error, "too_far");
+});
+
+Deno.test("a service may close it tighter than a week", () => {
+    const clinicToday = "2026-09-16";
+
+    assertEquals(isValidBookingDate("2026-09-17", clinicToday, 1).valid, true);
+    assertEquals(isValidBookingDate("2026-09-18", clinicToday, 1).error, "too_far");
+});
+
+Deno.test("an unset window is a week, which is what it enforced before", () => {
+    const clinicToday = "2026-09-16";
+
+    for (const unset of [0, undefined, NaN, -5]) {
+        assertEquals(
+            isValidBookingDate("2026-09-23", clinicToday, unset as number).valid,
+            true,
+            `${unset} should fall back to a week`
+        );
+        assertEquals(
+            isValidBookingDate("2026-09-24", clinicToday, unset as number).error,
+            "too_far",
+            `${unset} should fall back to a week`
+        );
+    }
+});
+
+Deno.test("the refusal quotes the window the patient was actually given", () => {
+    assertEquals(
+        formatBookingDateErrorMessage("too_far", "EN", 30).includes("30 days"),
+        true
+    );
+    assertEquals(
+        formatBookingDateErrorMessage("too_far", "EN").includes("7 days"),
+        true
+    );
 });
 
 Deno.test("ISO date validation", () => {

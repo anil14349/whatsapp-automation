@@ -103,19 +103,7 @@ carried down to it.
 
 ---
 
-## 5. `max_booking_window_days` is declared and never read
-
-Present in `002_multi_clinic_architecture.sql` with a default of 30, and typed
-in `multi-clinic-types.ts`. No query references it, so **how far ahead a patient
-can book is unlimited** — the flow offers whatever the date picker reaches.
-
-It reads like working configuration, which is the same trap that
-`HOME_COLLECTION_MIN_LEAD_HOURS` and `MAX_COLLECTIONS_PER_COLLECTOR_PER_DAY`
-set before they were deleted. Either wire it or drop it.
-
----
-
-## 6. Home collection asks for latitude and longitude
+## 5. Home collection asks for latitude and longitude
 
 Settings → Home collection asks a clinic administrator for `17.5255` and
 `78.2721`. The field accepts a pasted Google Maps pair and splits it, which is

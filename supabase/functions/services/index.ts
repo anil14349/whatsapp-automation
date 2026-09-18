@@ -34,6 +34,7 @@ interface UpdateRequest {
   durationMinutes?: unknown;
   concurrentCapacity?: unknown;
   minNoticeHours?: unknown;
+  maxAheadDays?: unknown;
   availableFrom?: unknown;
   availableTo?: unknown;
   displayOrder?: unknown;
@@ -69,7 +70,7 @@ async function listServices(
     supabase
       .from("clinic_services")
       .select(
-        "service_type_id, is_enabled, offered_at_clinic, offered_at_home, requires_doctor, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, display_name, available_from, available_to, min_booking_window_hours"
+        "service_type_id, is_enabled, offered_at_clinic, offered_at_home, requires_doctor, clinic_price, home_price, duration_minutes, concurrent_capacity, display_order, display_name, available_from, available_to, min_booking_window_hours, max_booking_window_days"
       )
       .eq("clinic_id", clinicId)
   ]);
@@ -109,6 +110,7 @@ async function listServices(
       durationMinutes: row?.duration_minutes ?? null,
       concurrentCapacity: row?.concurrent_capacity ?? 1,
       minNoticeHours: row?.min_booking_window_hours ?? 0,
+      maxAheadDays: row?.max_booking_window_days ?? 0,
       // NULL means the service follows the premises hours.
       availableFrom: row?.available_from ? String(row.available_from).slice(0, 5) : null,
       availableTo: row?.available_to ? String(row.available_to).slice(0, 5) : null,
@@ -243,6 +245,18 @@ async function updateService(
     }
 
     patch.min_booking_window_hours = notice ?? 0;
+  }
+
+  const ahead = asNumberOrNull(body.maxAheadDays);
+
+  if (ahead !== undefined) {
+    // A year ahead is already absurd for a clinic appointment, and the slot
+    // generator walks day by day.
+    if (ahead !== null && (ahead < 1 || ahead > 365)) {
+      return { status: 400, payload: { error: "maxAheadDays must be between 1 and 365" } };
+    }
+
+    patch.max_booking_window_days = ahead ?? 7;
   }
 
   if (capacity !== undefined) {
