@@ -210,8 +210,28 @@ export async function sendProactive(
          * would otherwise sit there in plain text for as long as the row does.
          */
         logAs?: string;
+        /**
+         * Skip the free-form attempt entirely. Meta accepts an interactive or
+         * document message outside the window and only reports 131047 later, on
+         * the status webhook, so the catch below never sees it. Once that has
+         * happened for a recipient, trying free-form again only loses another
+         * message; the caller sets this on the retry.
+         */
+        forceTemplate?: boolean;
     } = {}
 ): Promise<ProactiveResult> {
+    if (options.forceTemplate) {
+        if (!template) {
+            debug("proactive", "Free-form already failed and there is no template", { phone });
+
+            return { delivered: false, reason: "outside_window", retryable: false };
+        }
+
+        debug("proactive", "Going straight to the template", { phone });
+
+        return await sendTemplate(client, phone, template);
+    }
+
     try {
         let messageId: string;
 

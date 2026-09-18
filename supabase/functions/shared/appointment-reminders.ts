@@ -347,6 +347,9 @@ export async function rescheduleAppointmentReminders(
           message_id: null,
           error_message: null,
           attempts: 0,
+          // The patient may well have written to us since, reopening the window,
+          // so the move starts again with the friendlier free-form message.
+          force_template: false,
           updated_at: new Date().toISOString()
         })
         .eq("appointment_id", appointmentId)

@@ -159,7 +159,7 @@ async function sendReminder(
                         formatClockTime(details.appointmentTime || "")
                     ]
             },
-            { buttons: actions }
+            { buttons: actions, forceTemplate: reminder.force_template === true }
         );
 
         if (!outcome.delivered) {

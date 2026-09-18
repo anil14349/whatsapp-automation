@@ -547,6 +547,9 @@ export interface AppointmentReminder {
   
   attempts: number;
   max_attempts: number;
+
+  /** Free-form already failed for this recipient; send the template directly. */
+  force_template?: boolean;
   
   created_at: string;
   updated_at: string;

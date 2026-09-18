@@ -11,6 +11,7 @@ import {
 } from "../shared/clinic-routing.ts";
 import { isSignatureValid, signatureHeaderName } from "../shared/webhook-signature.ts";
 import { redactCredentials } from "../shared/inbound-redaction.ts";
+import { recordReminderDelivery } from "../shared/delivery-status.ts";
 
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -135,7 +136,10 @@ async function isRequestSigned(
  * `failed` is the one that matters: a number outside the app's tester list, or
  * not on WhatsApp at all, is accepted at send time and only reported here.
  */
-async function recordDeliveryStatuses(statuses: any[] | undefined): Promise<void> {
+async function recordDeliveryStatuses(
+    statuses: any[] | undefined,
+    clinicId: string
+): Promise<void> {
     if (!Array.isArray(statuses) || statuses.length === 0) {
         return;
     }
@@ -175,6 +179,21 @@ async function recordDeliveryStatuses(statuses: any[] | undefined): Promise<void
         }
 
         await recordDocumentDelivery(id, String(status.status || ""), errors);
+
+        const reminder = await recordReminderDelivery(
+            supabase,
+            clinicId,
+            id,
+            String(status.status || ""),
+            errors
+        );
+
+        if (reminder.found) {
+            console.error("A reminder was not delivered", {
+                id,
+                retryAsTemplate: reminder.retrying
+            });
+        }
     }
 }
 
@@ -270,7 +289,7 @@ async function handleInboundMessage(req: Request) {
         // Delivery reports arrive here. They were discarded, which is why a
         // message id from Meta looked like proof of delivery: an undelivered
         // message and a read one were indistinguishable afterwards.
-        await recordDeliveryStatuses(value.statuses);
+        await recordDeliveryStatuses(value.statuses, tokenClinicId);
         return new Response("EVENT_RECEIVED", { status: 200 });
     }
 
