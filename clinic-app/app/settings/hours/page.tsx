@@ -19,10 +19,6 @@ export default async function HoursSettingsPage() {
             )}
 
             <OpeningHours hours={data.hours} />
-
-            <p className="text-xs text-slate-500">
-                Open {openDays} day{openDays === 1 ? "" : "s"} a week.
-            </p>
         </>
     );
 }

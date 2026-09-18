@@ -36,10 +36,15 @@ export function SettingsNav() {
     const pathname = usePathname();
 
     return (
-        <nav aria-label="Settings sections" className="w-52 shrink-0 space-y-5">
+        // Sticky below the 64px header: a long section should scroll without
+        // taking the way out of it off the screen.
+        <nav
+            aria-label="Settings sections"
+            className="sticky top-20 w-52 shrink-0 space-y-5 self-start"
+        >
             {GROUPS.map((group) => (
                 <div key={group.title}>
-                    <h2 className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                    <h2 className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                         {group.title}
                     </h2>
                     <ul className="space-y-0.5">

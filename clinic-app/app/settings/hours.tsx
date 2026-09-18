@@ -44,10 +44,15 @@ export function OpeningHours({ hours }: { hours: DayHours[] }) {
 
     return (
         <section className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
-            <h2 className="mb-1 text-sm font-semibold">Opening hours</h2>
-            <p className="mb-3 text-xs text-slate-500">
-                These decide every time the bot offers a patient.
-            </p>
+            <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-sm font-semibold">Opening hours</h2>
+                <span className="text-xs text-slate-500">
+                    {open.length === 0
+                        ? "Closed every day"
+                        : `Open ${open.length} day${open.length === 1 ? "" : "s"} a week`}
+                </span>
+            </div>
+            <p className="mb-3 text-xs text-slate-500">Set when patients can book appointments.</p>
 
             <Notice state={notice} />
 
@@ -97,7 +102,7 @@ export function OpeningHours({ hours }: { hours: DayHours[] }) {
                         onClick={copy}
                         className="ml-auto rounded-lg border border-slate-200 px-3 py-1 text-sm hover:border-slate-300 disabled:opacity-50"
                     >
-                        Apply
+                        Copy hours
                     </button>
                 </div>
             )}
