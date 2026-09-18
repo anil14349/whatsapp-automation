@@ -15,7 +15,24 @@ import { parseCoordinates } from "@/lib/coords";
 import { useAutoDismiss } from "@/lib/use-notice";
 import { PhoneField } from "@/components/phone-field";
 
-export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
+/**
+ * One section, one form, one Save.
+ *
+ * Settings was a single form covering everything from the clinic's name to the
+ * out-of-hours reply, so every save rewrote every field and the page could only
+ * ever be one long scroll.
+ */
+function Section({
+    clinic,
+    title,
+    description,
+    children
+}: {
+    clinic: ClinicDetails;
+    title: string;
+    description?: string;
+    children: React.ReactNode;
+}) {
     const [state, action, pending] = useActionState<SettingsState, FormData>(saveDetails, {});
     const showSaved = useAutoDismiss(state.success);
 
@@ -28,8 +45,39 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
             action={action}
             className="rounded-xl bg-white p-4 ring-1 ring-slate-200"
         >
-            <h2 className="mb-3 text-sm font-semibold">Clinic details</h2>
+            <h2 className="text-sm font-semibold">{title}</h2>
+            {description && <p className="mt-1 mb-3 text-xs text-slate-500">{description}</p>}
+            <div className={description ? "" : "mt-3"}>{children}</div>
 
+            {state.error && (
+                <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                    {state.error}
+                </p>
+            )}
+            {state.success && showSaved && (
+                <p
+                    className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700"
+                    role="status"
+                >
+                    {state.success}
+                </p>
+            )}
+
+            <div className="mt-4 flex justify-end">
+                <button
+                    disabled={pending}
+                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
+                >
+                    {pending ? "Saving…" : "Save changes"}
+                </button>
+            </div>
+        </form>
+    );
+}
+
+export function GeneralForm({ clinic }: { clinic: ClinicDetails }) {
+    return (
+        <Section clinic={clinic} title="Clinic details">
             <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Name" name="name" defaultValue={clinic.name} required />
                 <PhoneField name="phone" label="Phone" defaultValue={clinic.phone ?? ""} />
@@ -42,81 +90,87 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
 
                 <TimezoneField value={clinic.timezone} />
             </div>
+        </Section>
+    );
+}
 
-            <div className="mt-4 border-t border-slate-100 pt-4">
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Appearance
-                </h3>
-                <BrandingFields logoUrl={clinic.logoUrl} brandColour={clinic.brandColour} />
+export function BrandingForm({ clinic }: { clinic: ClinicDetails }) {
+    return (
+        <Section
+            clinic={clinic}
+            title="Appearance"
+            description="The logo and colour patients and staff see at the top of every page."
+        >
+            <BrandingFields logoUrl={clinic.logoUrl} brandColour={clinic.brandColour} />
+        </Section>
+    );
+}
+
+export function BookingRulesForm({ clinic }: { clinic: ClinicDetails }) {
+    return (
+        <Section clinic={clinic} title="Booking rules">
+            <label className="space-y-1">
+                <span className="block text-xs font-medium text-slate-600">
+                    Revisit window (days)
+                </span>
+                <input
+                    name="revisitWindowDays"
+                    type="number"
+                    min={0}
+                    max={365}
+                    defaultValue={clinic.revisitWindowDays}
+                    className="w-32 rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
+                />
+                <span className="block text-xs text-slate-500">
+                    A patient returning to the same doctor within this many days is marked a
+                    revisit. Zero switches it off.
+                </span>
+            </label>
+        </Section>
+    );
+}
+
+export function HomeCollectionForm({ clinic }: { clinic: ClinicDetails }) {
+    return (
+        <Section
+            clinic={clinic}
+            title="Home sample collection"
+            description="Where the clinic is, and how far it will send someone."
+        >
+            <HomeCollectionFields clinic={clinic} />
+        </Section>
+    );
+}
+
+export function AfterHoursForm({ clinic }: { clinic: ClinicDetails }) {
+    return (
+        <Section
+            clinic={clinic}
+            title="Out of hours"
+            description="What a patient gets when they message outside opening hours."
+        >
+            {/* An unticked checkbox sends nothing, which is indistinguishable
+                from a field belonging to another section. */}
+            <input type="hidden" name="afterHoursSection" value="1" />
+
+            <label className="flex items-center gap-2 text-sm">
+                <input
+                    type="checkbox"
+                    name="afterHoursReply"
+                    defaultChecked={clinic.afterHoursReply}
+                    className="h-4 w-4 rounded border-slate-300"
+                />
+                <span>Reply automatically when a patient messages out of hours</span>
+            </label>
+
+            <div className="mt-2">
+                <Field
+                    label="Out of hours message"
+                    name="afterHoursMessage"
+                    defaultValue={clinic.afterHoursMessage ?? ""}
+                />
             </div>
-
-            <div className="mt-4 border-t border-slate-100 pt-4">
-                <label className="space-y-1">
-                    <span className="block text-xs font-medium text-slate-600">
-                        Revisit window (days)
-                    </span>
-                    <input
-                        name="revisitWindowDays"
-                        type="number"
-                        min={0}
-                        max={365}
-                        defaultValue={clinic.revisitWindowDays}
-                        className="w-32 rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
-                    />
-                    <span className="block text-xs text-slate-500">
-                        A patient returning to the same doctor within this many days is marked a
-                        revisit. Zero switches it off.
-                    </span>
-                </label>
-            </div>
-
-            <div className="mt-4 border-t border-slate-100 pt-4">
-                <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    Home sample collection
-                </h3>
-                <HomeCollectionFields clinic={clinic} />
-            </div>
-
-            <div className="mt-4 border-t border-slate-100 pt-4">
-                <label className="flex items-center gap-2 text-sm">
-                    <input
-                        type="checkbox"
-                        name="afterHoursReply"
-                        defaultChecked={clinic.afterHoursReply}
-                        className="h-4 w-4 rounded border-slate-300"
-                    />
-                    <span>Reply automatically when a patient messages out of hours</span>
-                </label>
-
-                <div className="mt-2">
-                    <Field
-                        label="Out of hours message"
-                        name="afterHoursMessage"
-                        defaultValue={clinic.afterHoursMessage ?? ""}
-                    />
-                </div>
-            </div>
-
-            {state.error && (
-                <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
-                    {state.error}
-                </p>
-            )}
-            {state.success && showSaved && (
-                <p className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
-                    {state.success}
-                </p>
-            )}
-
-            <div className="mt-4 flex justify-end">
-                <button
-                    disabled={pending}
-                    className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
-                >
-                    {pending ? "Saving…" : "Save details"}
-                </button>
-            </div>
-        </form>
+        </Section>
     );
 }
 

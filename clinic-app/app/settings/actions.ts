@@ -43,25 +43,53 @@ export interface Holiday {
     holiday_name: string;
 }
 
+const TEXT_FIELDS = [
+    "name",
+    "phone",
+    "email",
+    "address",
+    "city",
+    "timezone",
+    "afterHoursMessage",
+    "brandColour",
+    "latitude",
+    "longitude",
+    "homeCollectionRadiusKm"
+];
+
+/**
+ * Only what the form actually carried is sent.
+ *
+ * Settings is several forms now, one per section, and the edge function writes
+ * any key it is given. Reading a field the current form does not have yields
+ * "" - which reaches the server as a real value and blanks the column. One
+ * save on the Branding page would have emptied the clinic's phone and address.
+ */
 export async function saveDetails(
     _previous: SettingsState,
     formData: FormData
 ): Promise<SettingsState> {
-    const body: Record<string, unknown> = {
-        name: String(formData.get("name") ?? "").trim(),
-        phone: String(formData.get("phone") ?? "").trim(),
-        email: String(formData.get("email") ?? "").trim(),
-        address: String(formData.get("address") ?? "").trim(),
-        city: String(formData.get("city") ?? "").trim(),
-        timezone: String(formData.get("timezone") ?? "").trim(),
-        afterHoursMessage: String(formData.get("afterHoursMessage") ?? "").trim(),
-        afterHoursReply: formData.get("afterHoursReply") === "on",
-        revisitWindowDays: Number(formData.get("revisitWindowDays") ?? 0),
-        brandColour: String(formData.get("brandColour") ?? "").trim(),
-        latitude: String(formData.get("latitude") ?? "").trim(),
-        longitude: String(formData.get("longitude") ?? "").trim(),
-        homeCollectionRadiusKm: String(formData.get("homeCollectionRadiusKm") ?? "").trim()
-    };
+    const body: Record<string, unknown> = {};
+
+    for (const field of TEXT_FIELDS) {
+        if (formData.has(field)) {
+            body[field] = String(formData.get(field) ?? "").trim();
+        }
+    }
+
+    if (formData.has("revisitWindowDays")) {
+        body.revisitWindowDays = Number(formData.get("revisitWindowDays") ?? 0);
+    }
+
+    // An unticked checkbox is absent from the payload exactly like a field from
+    // another section, so the section that owns it announces itself.
+    if (formData.has("afterHoursSection")) {
+        body.afterHoursReply = formData.get("afterHoursReply") === "on";
+    }
+
+    if (Object.keys(body).length === 0) {
+        return { error: "Nothing to save." };
+    }
 
     const result = await callAsUser("clinic-settings", { method: "PATCH", body });
 
@@ -69,7 +97,7 @@ export async function saveDetails(
         return { error: result.data?.error ?? "Could not save." };
     }
 
-    revalidatePath("/settings");
+    revalidatePath("/settings", "layout");
 
     return { success: "Saved." };
 }
@@ -107,7 +135,7 @@ export async function uploadLogo(form: FormData): Promise<SettingsState> {
         return { error: result.data?.error ?? "Could not upload the logo." };
     }
 
-    revalidatePath("/settings");
+    revalidatePath("/settings", "layout");
     revalidatePath("/", "layout");
 
     return { success: "Logo updated.", logoUrl: result.data?.logoUrl ?? null };
@@ -120,7 +148,7 @@ export async function removeLogo(): Promise<SettingsState> {
         return { error: result.data?.error ?? "Could not remove the logo." };
     }
 
-    revalidatePath("/settings");
+    revalidatePath("/settings", "layout");
     revalidatePath("/", "layout");
 
     return { success: "Logo removed.", logoUrl: null };
@@ -141,7 +169,7 @@ export async function saveDay(
         return { error: result.data?.error ?? "Could not save the hours." };
     }
 
-    revalidatePath("/settings");
+    revalidatePath("/settings", "layout");
 
     return { success: "Hours saved." };
 }
@@ -166,7 +194,7 @@ export async function addClosure(
         return { error: result.data?.error ?? "Could not add the closure." };
     }
 
-    revalidatePath("/settings");
+    revalidatePath("/settings", "layout");
 
     const booked = result.data?.existingAppointments ?? 0;
 
@@ -189,7 +217,7 @@ export async function removeClosure(holidayId: string): Promise<SettingsState> {
         return { error: result.data?.error ?? "Could not remove the closure." };
     }
 
-    revalidatePath("/settings");
+    revalidatePath("/settings", "layout");
 
     return { success: "Closure removed." };
 }
