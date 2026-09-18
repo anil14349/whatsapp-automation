@@ -4,6 +4,9 @@ Every document in `docs/`, grouped by what you are trying to do. Links here are
 checked against the files that exist — if one is dead, it is a bug in this
 page.
 
+**[Backlog](./BACKLOG.md)** — the gaps we know about and have accepted for now,
+and why. Read it before assuming something is finished.
+
 ---
 
 ## Deploying
