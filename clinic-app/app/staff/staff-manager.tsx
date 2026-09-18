@@ -375,8 +375,11 @@ export function StaffManager({
                 </div>
 
                 <p className="mt-3 text-xs text-slate-500">
-                    A credential is generated and sent to them. {active.needs} is required so they
-                    can be reached.
+                    {/* Home visit staff are recognised by their number alone; no
+                        credential is created for them, so do not promise one. */}
+                    {tab === "collector"
+                        ? "They are recognised by their WhatsApp number alone, which is why it is required. No password or PIN is created for home visit staff."
+                        : `A credential is generated and sent to them. ${active.needs} is required so they can be reached.`}
                 </p>
 
                 <div className="mt-4 flex justify-end">

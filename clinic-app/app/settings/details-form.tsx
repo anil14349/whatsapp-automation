@@ -20,7 +20,14 @@ export function DetailsForm({ clinic }: { clinic: ClinicDetails }) {
     const showSaved = useAutoDismiss(state.success);
 
     return (
-        <form action={action} className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
+        // React resets an uncontrolled form once the action returns, back to the
+        // values it mounted with, so a saved change appeared to have been
+        // thrown away. Keying on the saved data remounts it with the new ones.
+        <form
+            key={JSON.stringify(clinic)}
+            action={action}
+            className="rounded-xl bg-white p-4 ring-1 ring-slate-200"
+        >
             <h2 className="mb-3 text-sm font-semibold">Clinic details</h2>
 
             <div className="grid gap-3 sm:grid-cols-2">
