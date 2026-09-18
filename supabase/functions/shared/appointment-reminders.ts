@@ -10,12 +10,15 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import * as types from "./multi-clinic-types.ts";
 import { debug } from "./logger.ts";
 import { clinicInstant, getClinicTimezone } from "./clinic-slots.ts";
+import { formatClockTime, formatLongDate } from "./appointment-format.ts";
 
 /**
- * Who or what the appointment is with, as a bare label.
+ * Who or what the appointment is with.
  *
  * A sample collection has no doctor. The fallback used to be the literal
- * string "Dr.", which the template then prefixed again: "Dr. Dr.".
+ * string "Dr.", which the template then prefixed again: "Dr. Dr.". It is
+ * shown under a neutral "For:" label for the same reason — "Doctor: Sample
+ * Collection" is the same fault wearing a different hat.
  */
 export function reminderSubject(
   doctorName: string | undefined,
@@ -28,31 +31,7 @@ export function reminderSubject(
     return hi ? `डॉ. ${doctorName}` : `Dr. ${doctorName}`;
   }
 
-  return serviceName || (hi ? "अपॉइंटमेंट" : "your appointment");
-}
-
-/**
- * The same thing as a noun phrase, for dropping into a sentence.
- *
- * "an appointment with Dr. Akilesh" reads correctly; "an appointment with
- * Sample Collection" does not, so a service takes the adjective position.
- */
-export function reminderPhrase(
-  doctorName: string | undefined,
-  serviceName: string | undefined,
-  language: string
-): string {
-  const hi = language === "HI";
-
-  if (doctorName) {
-    return hi ? `डॉ. ${doctorName} के साथ अपॉइंटमेंट` : `an appointment with Dr. ${doctorName}`;
-  }
-
-  if (serviceName) {
-    return hi ? `${serviceName} अपॉइंटमेंट` : `a ${serviceName} appointment`;
-  }
-
-  return hi ? "अपॉइंटमेंट" : "an appointment";
+  return serviceName || (hi ? "अपॉइंटमेंट" : "Appointment");
 }
 
 export function formatReminderMessage(
@@ -62,21 +41,22 @@ export function formatReminderMessage(
 
   const hi = language === "HI";
   const subject = reminderSubject(doctorName, serviceName, language);
-  const phrase = reminderPhrase(doctorName, serviceName, language);
+  const when = formatClockTime(appointmentTime);
+  const day = formatLongDate(appointmentDate, language);
 
   if (hi) {
     if (reminderType === "24_HOUR") {
-      return `👋 नमस्ते ${patientName}!\n\n📅 याद दिला रहे हैं: कल ${appointmentTime} बजे आपकी ${phrase} है।\n\nकुछ बदलना हो तो नीचे दिए गए बटन दबाएं।`;
+      return `👋 नमस्ते ${patientName}!\n\nआपकी कल की विज़िट की याद:\n\n🩺 किसके लिए: ${subject}\n📅 तारीख: ${day}\n🕐 समय: ${when}\n\nकुछ बदलना हो तो नीचे दिए गए बटन दबाएं।`;
     }
 
-    return `⏰ ${patientName}, आपकी अपॉइंटमेंट 1 घंटे में है!\n\n🩺 ${subject}\n⏰ समय: ${appointmentTime}\n📅 तारीख: ${appointmentDate}\n\nकृपया समय पर पहुंचें। धन्यवाद!`;
+    return `⏰ ${patientName}, आपकी अपॉइंटमेंट लगभग 1 घंटे में है।\n\n🩺 किसके लिए: ${subject}\n🕐 समय: ${when}\n\nकृपया समय पर पहुंचें। धन्यवाद!`;
   }
 
   if (reminderType === "24_HOUR") {
-    return `👋 Hi ${patientName}!\n\n📅 Reminder: You have ${phrase} tomorrow at ${appointmentTime}.\n\nUse the buttons below if you need to change anything.`;
+    return `👋 Hi ${patientName}!\n\nA reminder for your visit tomorrow:\n\n🩺 For: ${subject}\n📅 Date: ${day}\n🕐 Time: ${when}\n\nUse the buttons below if you need to change anything.`;
   }
 
-  return `⏰ ${patientName}, your appointment is in 1 hour!\n\n🩺 ${subject}\n⏰ Time: ${appointmentTime}\n📅 Date: ${appointmentDate}\n\nPlease arrive on time. Thank you!`;
+  return `⏰ ${patientName}, your visit is in about an hour.\n\n🩺 For: ${subject}\n🕐 Time: ${when}\n\nPlease arrive on time. Thank you!`;
 }
 
 /**

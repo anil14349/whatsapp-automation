@@ -5,6 +5,7 @@ import { BUTTON_IDS, isValidPatientMenuButton, isValidConfirmationButton, isVali
 import { knownPatientNames, MAX_REMEMBERED_NAMES } from "../patient-names.ts";
 import { asLocationType, isHomeVisit, LOCATION_CLINIC, LOCATION_HOME } from "../location-type.ts";
 import { checkServiceArea } from "../geo.ts";
+import { formatClockTime, formatLongDate } from "../appointment-format.ts";
 import {
     getEnabledServices,
     getServiceById,
@@ -2478,36 +2479,14 @@ export class PatientFlowHandler {
 
     /**
      * "Friday, 18 September" — the weekday is what a patient checks against.
-     *
-     * Formatted in UTC because the input is a bare date; reading it in a zone
-     * behind UTC would show the day before.
      */
     private formatLongDate(dateString: string, language: string): string {
-        try {
-            return new Intl.DateTimeFormat(language === "EN" ? "en-IN" : "hi-IN", {
-                weekday: "long",
-                day: "numeric",
-                month: "long",
-                timeZone: "UTC"
-            }).format(new Date(`${dateString}T00:00:00Z`));
-        } catch {
-            return dateString;
-        }
+        return formatLongDate(dateString, language);
     }
 
     /** 24 hour times are what the database holds; "11:30 am" is what people read. */
     private formatClockTime(time: string): string {
-        const match = /^(\d{1,2}):(\d{2})$/.exec(time ?? "");
-
-        if (!match) {
-            return time;
-        }
-
-        const hour = Number(match[1]);
-        const suffix = hour < 12 ? "am" : "pm";
-        const twelve = hour % 12 === 0 ? 12 : hour % 12;
-
-        return `${twelve}:${match[2]} ${suffix}`;
+        return formatClockTime(time);
     }
 
     /**

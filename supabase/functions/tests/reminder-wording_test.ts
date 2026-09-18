@@ -11,7 +11,7 @@
  */
 
 import { assert, assertEquals, assertStringIncludes } from "std/testing/asserts.ts";
-import { formatReminderMessage, reminderPhrase, reminderSubject } from "../shared/appointment-reminders.ts";
+import { formatReminderMessage, reminderSubject } from "../shared/appointment-reminders.ts";
 
 Deno.env.set("SUPABASE_URL", "http://localhost:54321");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-key");
@@ -27,18 +27,30 @@ const BASE = {
 Deno.test("a doctor is titled once, not twice", () => {
     const said = formatReminderMessage({ ...BASE, doctorName: "Akilesh" });
 
-    assertStringIncludes(said, "an appointment with Dr. Akilesh tomorrow");
+    assertStringIncludes(said, "For: Dr. Akilesh");
     assert(!/Dr\.\s*Dr\./.test(said), said);
 });
 
-Deno.test("a service takes the adjective position, not 'with'", () => {
-    // "an appointment with Sample Collection" is not English.
+Deno.test("a service is not labelled as a doctor", () => {
+    // "Doctor: Sample Collection" is the same fault as "Dr. Dr.", so the label
+    // has to work with or without one.
     const said = formatReminderMessage({ ...BASE, serviceName: "Sample Collection" });
 
-    assertStringIncludes(said, "a Sample Collection appointment tomorrow");
-    assert(!/with Sample Collection/i.test(said), said);
+    assertStringIncludes(said, "For: Sample Collection");
+    assert(!/Doctor:/i.test(said), said);
     assert(!/Dr\./.test(said), said);
     assert(!/undefined/i.test(said), said);
+});
+
+Deno.test("the date and time are shown as a patient reads them", () => {
+    // The scheduler used to pass the raw column values, so a reminder said
+    // "2026-09-19" and "10:00" where the confirmation said "Saturday, 19
+    // September" and "10:00 am" for the same booking.
+    const said = formatReminderMessage({ ...BASE, doctorName: "Akilesh" });
+
+    assertStringIncludes(said, "10:00 am");
+    assertStringIncludes(said, "September");
+    assert(!said.includes("2026-09-19"), said);
 });
 
 Deno.test("the reminder does not ask for typed words, the buttons carry that", () => {
@@ -60,15 +72,15 @@ Deno.test("the hour-before reminder follows the same rule", () => {
         serviceName: "Sample Collection"
     });
 
-    assertStringIncludes(withDoctor, "Dr. Akilesh");
-    assertStringIncludes(without, "Sample Collection");
+    assertStringIncludes(withDoctor, "For: Dr. Akilesh");
+    assertStringIncludes(without, "For: Sample Collection");
     assert(!/Dr\./.test(without), without);
 });
 
 Deno.test("neither a doctor nor a service still reads as a sentence", () => {
     const said = formatReminderMessage(BASE);
 
-    assertStringIncludes(said, "You have an appointment tomorrow");
+    assertStringIncludes(said, "For: Appointment");
     assert(!/undefined|null/i.test(said), said);
 });
 
@@ -79,15 +91,15 @@ Deno.test("Hindi titles the doctor in Hindi", () => {
     assert(!/Dr\./.test(said), said);
 });
 
-Deno.test("the template parameter carries the same phrase as the message", () => {
-    // The template body reads "you have {{2}}", so the parameter must be the
-    // whole phrase. These two drifted once already.
-    assertEquals(reminderPhrase("Akilesh", "Consultation", "EN"), "an appointment with Dr. Akilesh");
-    assertEquals(reminderPhrase(undefined, "Sample Collection", "EN"), "a Sample Collection appointment");
-    assertEquals(reminderPhrase(undefined, undefined, "EN"), "an appointment");
+Deno.test("the template parameter is the same name the message shows", () => {
+    // The template puts {{2}} under its own "For:" label, so the parameter is
+    // the plain name. These two drifted once already.
+    assertEquals(reminderSubject("Akilesh", "Consultation", "EN"), "Dr. Akilesh");
+    assertEquals(reminderSubject(undefined, "Sample Collection", "EN"), "Sample Collection");
+    assertEquals(reminderSubject(undefined, undefined, "EN"), "Appointment");
 
     const said = formatReminderMessage({ ...BASE, serviceName: "Sample Collection" });
-    assertStringIncludes(said, reminderPhrase(undefined, "Sample Collection", "EN"));
+    assertStringIncludes(said, reminderSubject(undefined, "Sample Collection", "EN"));
 });
 
 Deno.test("the hour-before label stays short, since it is not in a sentence", () => {

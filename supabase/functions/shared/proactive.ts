@@ -23,9 +23,14 @@
  * closes on words. That is why two of them carry a closing sentence that adds
  * little - it is there to satisfy the validator.
  *
- *   appointment_reminder_24h   {{1}} patient  {{2}} phrase  {{3}} date  {{4}} time
- *     "Hi {{1}}, a reminder that you have {{2}} tomorrow, {{3}} at {{4}}. Use
- *      the buttons below if you need to change anything."
+ *   appointment_reminder_24h   {{1}} patient  {{2}} doctor or service  {{3}} date  {{4}} time
+ *     "Hi {{1}}, a reminder for your visit tomorrow.
+ *
+ *      For: {{2}}
+ *      Date: {{3}}
+ *      Time: {{4}}
+ *
+ *      Use the buttons below if you need to change anything."
  *     Two QUICK REPLY buttons: "Cancel" and "Reschedule".
  *
  *     A quick reply arrives as message type "button" carrying the button's
@@ -34,14 +39,18 @@
  *     the same two as reply buttons, so a tap lands in the same place whether
  *     the window was open or not.
  *
- *   appointment_reminder_1h    {{1}} patient  {{2}} phrase  {{3}} time
- *     "Hi {{1}}, you have {{2}} at {{3}}, about an hour from now. Reply to
- *      this message if you are running late."
+ *   appointment_reminder_1h    {{1}} patient  {{2}} doctor or service  {{3}} time
+ *     "Hi {{1}}, your visit is in about an hour.
  *
- *   {{2}} is a whole phrase - "an appointment with Dr. Akilesh" or "a Sample
- *   Collection appointment" - because a service does not read correctly after
- *   "with". Build it with reminderPhrase() so the template and the free-form
- *   message cannot drift apart.
+ *      For: {{2}}
+ *      Time: {{3}}
+ *
+ *      Please arrive on time."
+ *
+ *   {{2}} is "Dr. Akilesh" or "Sample Collection", from reminderSubject(). The
+ *   label is "For:" rather than "Doctor:" because a sample collection has no
+ *   doctor, and "Doctor: Sample Collection" is the same fault that produced
+ *   "Dr. Dr." on a real handset.
  *
  *   home_collection_reminder   {{1}} patient  {{2}} date  {{3}} time window
  *     "Hi {{1}}, our technician will visit for your sample collection on

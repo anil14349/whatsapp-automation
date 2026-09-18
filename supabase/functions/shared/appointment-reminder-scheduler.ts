@@ -16,10 +16,11 @@ import {
     markReminderAsFailed,
     getAppointmentDetailsForReminder,
     formatReminderMessage,
-    reminderPhrase
+    reminderSubject
 } from "./appointment-reminders.ts";
 import { sendProactive } from "./proactive.ts";
 import { BUTTON_IDS } from "./button-ids.ts";
+import { formatClockTime, formatLongDate } from "./appointment-format.ts";
 import { debug, recordAuditEvent } from "./logger.ts";
 
 interface SchedulerConfig {
@@ -108,9 +109,9 @@ async function sendReminder(
             language: (details.preferredLanguage || "EN") as "EN" | "HI"
         });
 
-        // The template body reads "you have {{2}}", so the parameter carries
-        // the whole phrase; it must match what the free-form message says.
-        const subject = reminderPhrase(
+        // The template shows these under their own labels, so the parameter is
+        // the plain name and must read correctly with no doctor.
+        const subject = reminderSubject(
             details.doctorName,
             details.serviceName,
             details.preferredLanguage || "EN"
@@ -147,13 +148,13 @@ async function sendReminder(
                     ? [
                         details.patientName || "Patient",
                         subject,
-                        details.appointmentTime || ""
+                        formatClockTime(details.appointmentTime || "")
                     ]
                     : [
                         details.patientName || "Patient",
                         subject,
-                        details.appointmentDate || "",
-                        details.appointmentTime || ""
+                        formatLongDate(details.appointmentDate || "", details.preferredLanguage || "EN"),
+                        formatClockTime(details.appointmentTime || "")
                     ]
             },
             actions ? { buttons: actions } : {}
