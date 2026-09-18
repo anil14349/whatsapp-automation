@@ -16,7 +16,6 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppClient } from "../shared/whatsapp-client.ts";
 import { runReminderScheduler } from "../shared/appointment-reminder-scheduler.ts";
-import { runHomeCollectionReminderScheduler } from "../shared/home-collection-reminder-scheduler.ts";
 import { FeedbackHandler } from "../shared/handlers/feedback-handler.ts";
 import { getActiveClinicRoutes } from "../shared/clinic-routing.ts";
 import { debug } from "../shared/logger.ts";
@@ -24,7 +23,6 @@ import { debug } from "../shared/logger.ts";
 interface ClinicRunResult {
     success: boolean;
     appointment_reminders: unknown;
-    home_collection_reminders: unknown;
     appointments_auto_completed: number;
     feedback_surveys_sent: number;
     feedback_surveys_deferred: number;
@@ -42,11 +40,6 @@ async function processClinic(
     clinicIds: string[]
 ): Promise<ClinicRunResult> {
     const appointmentResult = await runReminderScheduler(supabase, whatsappClient, {
-        clinicIds,
-        maxConcurrent: 5
-    });
-
-    const homeCollectionResult = await runHomeCollectionReminderScheduler(supabase, whatsappClient, {
         clinicIds,
         maxConcurrent: 5
     });
@@ -132,15 +125,14 @@ async function processClinic(
     }
 
     return {
-        success: appointmentResult.success && homeCollectionResult.success,
+        success: appointmentResult.success,
         appointment_reminders: appointmentResult,
-        home_collection_reminders: homeCollectionResult,
         appointments_auto_completed: completed?.length || 0,
         feedback_surveys_sent: surveysSent,
         feedback_surveys_deferred: surveysDeferred,
-        reminders_sent: appointmentResult.reminders_sent + homeCollectionResult.reminders_sent,
-        reminders_failed: appointmentResult.reminders_failed + homeCollectionResult.reminders_failed,
-        error_count: (appointmentResult.errors?.length || 0) + (homeCollectionResult.errors?.length || 0)
+        reminders_sent: appointmentResult.reminders_sent,
+        reminders_failed: appointmentResult.reminders_failed,
+        error_count: appointmentResult.errors?.length || 0
     };
 }
 

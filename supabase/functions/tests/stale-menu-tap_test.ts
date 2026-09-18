@@ -1,12 +1,11 @@
 /**
- * Tapping an older menu button while the bot is waiting for an address.
+ * Tapping an older menu button while the bot is waiting for a location.
  *
  * WhatsApp leaves every button tappable forever, so scrolling up and tapping
- * "More Options" is ordinary behaviour, not misuse. The patient handler has
- * honoured menu ids from any state for exactly that reason — but routing to
- * the home collection flow happens first, by state, so that guard was never
- * reached. The button's internal id was taken as the street address and read
- * back: `Address: "menu_more"`. Seen on a real handset.
+ * "More Options" is ordinary behaviour, not misuse. It was once taken as the
+ * street address and read back: `Address: "menu_more"`, seen on a real
+ * handset. The flow that did that is gone, but the same tap still arrives
+ * while BOOK_ADDRESS waits for a pin, so the guard still has to hold.
  */
 
 import { assert, assertEquals } from "std/testing/asserts.ts";
@@ -27,7 +26,7 @@ function build(state: string) {
             phone: PATIENT_PHONE,
             clinic_id: CLINIC_A,
             state,
-            data: { language: "EN" },
+            data: { language: "EN", locationType: "HOME" },
             role: "PATIENT"
         }
     ];
@@ -52,39 +51,44 @@ function build(state: string) {
     return { supabase, wa, send, session, said };
 }
 
-Deno.test("a menu button tapped while an address is being asked for is not the address", async () => {
-    const { send, session, said } = build("LOCATION_SELECT");
+Deno.test("a menu button tapped while a location is being asked for is not the address", async () => {
+    const { send, session, said } = build("BOOK_ADDRESS");
 
     await send(BUTTON_IDS.PATIENT_MENU.MORE);
 
-    assertEquals(session()?.data?.address, undefined);
+    assertEquals(session()?.data?.serviceAddress, undefined);
     assert(!said().includes("menu_more"), `the id was read back to the patient:\n${said()}`);
 });
 
-Deno.test("the same tap while confirming an address does not overwrite it either", async () => {
-    const { send, session, said } = build("LOCATION_VERIFY");
+Deno.test("the tap reaches the menu rather than being swallowed", async () => {
+    const { send, session } = build("BOOK_ADDRESS");
 
-    await send(BUTTON_IDS.PATIENT_MENU.BOOK);
+    await send(BUTTON_IDS.PATIENT_MENU.MORE);
 
-    assert(session()?.data?.address !== BUTTON_IDS.PATIENT_MENU.BOOK);
-    assert(!said().includes("menu_book"), `the id was read back to the patient:\n${said()}`);
+    assertEquals(session()?.state, "MAIN_MENU");
 });
 
-Deno.test("a real address is still accepted and read back", async () => {
-    const { send, session, said } = build("LOCATION_SELECT");
+Deno.test("a menu id typed as text is not stored as somebody's address", async () => {
+    const { send, session } = build("BOOK_ADDRESS");
+
+    await send("menu_more", "text");
+
+    assertEquals(session()?.data?.serviceAddress, undefined);
+});
+
+Deno.test("a typed address is refused rather than stored", async () => {
+    const { send, session } = build("BOOK_ADDRESS");
 
     await send("12 Nehru Road, Connaught Place", "text");
 
-    assertEquals(session()?.state, "LOCATION_VERIFY");
-    assertEquals(session()?.data?.address, "12 Nehru Road, Connaught Place");
-    assert(said().includes("12 Nehru Road"));
+    assertEquals(session()?.state, "BOOK_ADDRESS");
+    assertEquals(session()?.data?.serviceAddress, undefined);
 });
 
-Deno.test("an address that merely looks like an id is still treated as typed text", async () => {
-    const { send, session } = build("LOCATION_SELECT");
+Deno.test("the landmark step does accept text, the pin having been taken already", async () => {
+    const { send, session } = build("BOOK_ADDRESS_DETAIL");
 
-    // Not interactive, so it is what the patient typed, whatever it says.
-    await send("menu_more", "text");
+    await send("Flat 3B, above the chemist", "text");
 
-    assertEquals(session()?.data?.address, "menu_more");
+    assertEquals(session()?.data?.serviceAddress, "Flat 3B, above the chemist");
 });

@@ -53,15 +53,6 @@
  *   doctor but "for" a sample collection, and "Doctor: Sample Collection" is
  *   the same fault that produced "Dr. Dr." on a real handset.
  *
- *   home_collection_reminder   {{1}} patient  {{2}} date  {{3}} time window
- *     "Hi {{1}}, our technician will visit for your sample collection on
- *      {{2}} during {{3}}. Please keep your phone nearby."
- *
- *     NOTHING SENDS THIS TODAY. Its only writer is the home collection handler,
- *     which patients no longer reach: a home sample collection is booked as an
- *     ordinary appointment and gets appointment_reminder_24h instead. Register
- *     it only if the collector flow is revived.
- *
  *   appointment_delay          {{1}} patient  {{2}} doctor  {{3}} minutes  {{4}} new time
  *     "Hi {{1}}, {{2}} is running about {{3}} minutes late. Your appointment
  *      is now expected around {{4}}. Sorry for the wait."
@@ -130,7 +121,6 @@ import { debug } from "./logger.ts";
 export type TemplateKey =
     | "appointment_reminder_24h"
     | "appointment_reminder_1h"
-    | "home_collection_reminder"
     | "appointment_delay"
     | "staff_credential"
     | "waitlist_slot_available"

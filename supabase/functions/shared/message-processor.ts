@@ -5,23 +5,12 @@ import { ProcessMessageContext, WhatsAppSession, ExtractedMessage } from "./type
 import { info, debug } from "./logger.ts";
 import { PatientFlowHandler } from "./handlers/patient-handler.ts";
 import { DoctorFlowHandler } from "./handlers/doctor-handler.ts";
-import { HomeCollectionHandler } from "./handlers/home-collection-handler.ts";
+import { CollectorFlowHandler } from "./handlers/collector-handler.ts";
 import { getRoleByPhoneForClinic } from "./staff-directory.ts";
 import { getClinicConfig, isClinicOpen, getAfterHoursMessage } from "./clinic-config.ts";
 import { sendLanguagePrompt } from "./languages.ts";
 import { sendPinPrompt } from "./doctor-auth.ts";
-import { BUTTON_IDS, isValidPatientMenuButton, isServiceButton } from "./button-ids.ts";
-
-// These states belong to the home-collection flow whoever is in them.
-const HOME_COLLECTION_STATES = new Set([
-    "LOCATION_SELECT",
-    "LOCATION_VERIFY",
-    "REQUEST_DATE",
-    "REQUEST_DATE_CUSTOM",
-    "REQUEST_TIME_WINDOW",
-    "REQUEST_CONFIRM",
-    "REQUEST_TRACKING"
-]);
+import { BUTTON_IDS } from "./button-ids.ts";
 
 /**
  * Main message processing pipeline
@@ -73,36 +62,6 @@ export async function processMessage(
         return;
     }
 
-    // Route by role
-    const dispatchReply =
-        messageText.trim().startsWith(BUTTON_IDS.HOME_COLLECTION_MENU.CONFIRM + ":") ||
-        messageText.trim().startsWith(BUTTON_IDS.HOME_COLLECTION_MENU.REJECT + ":");
-
-    // Dispatch replies arrive unprompted, and patients can be mid collection request.
-    if (dispatchReply || HOME_COLLECTION_STATES.has(session.state)) {
-        // The patient handler already honours a menu id tapped from an older
-        // message, but routing by state got here first, so a tap on "More
-        // Options" while being asked for an address was stored AS the address.
-        const tappedMenu =
-            messageType === "interactive" &&
-            (isValidPatientMenuButton(messageText.trim()) || isServiceButton(messageText.trim()));
-
-        if (!tappedMenu || session.role === "HOME_COLLECTION_PERSON") {
-            await handleHomeCollectionMessage(
-                supabase,
-                whatsappClient,
-                senderPhone,
-                senderName,
-                messageText,
-                normalizedMessage,
-                session,
-                context.latitude,
-                context.longitude
-            );
-            return;
-        }
-    }
-
     if (session.role === "DOCTOR") {
         await handleDoctorMessage(
             supabase,
@@ -114,17 +73,10 @@ export async function processMessage(
             session
         );
     } else if (session.role === "HOME_COLLECTION_PERSON") {
-        await handleHomeCollectionMessage(
-            supabase,
-            whatsappClient,
-            senderPhone,
-            senderName,
-            messageText,
-            normalizedMessage,
-            session,
-            context.latitude,
-            context.longitude
-        );
+        await new CollectorFlowHandler(supabase, whatsappClient).handle(session, {
+            type: messageType as any,
+            text: messageText
+        });
     } else {
         // Patient or default
         //
@@ -250,7 +202,7 @@ async function getOrCreateSession(
             role === "DOCTOR"
                 ? "DOCTOR_LOGIN"
                 : role === "HOME_COLLECTION_PERSON"
-                  ? "LOCATION_SELECT"
+                  ? "COLLECTOR_MENU"
                   : "LANGUAGE_SELECT";
 
         const { data: newSession } = await supabase
@@ -350,19 +302,14 @@ async function handleGreeting(
         // Don't reset session for doctors, keep DOCTOR_LOGIN state
         await sendPinPrompt(supabase, whatsappClient, phone, clinicId, language);
     } else if (session.role === "HOME_COLLECTION_PERSON") {
-        // For sample collectors, reset to location selection
         await updateSession(supabase, phone, session.clinic_id, {
-            state: "LOCATION_SELECT",
+            state: "COLLECTOR_MENU",
             data: {}
         });
 
-        const language = session.data?.language || "EN";
-        await whatsappClient.sendTextMessage(
-            phone,
-            language === "EN"
-                ? "📍 Please share your location to register for home sample collection:\n\n• Attach your GPS location, or\n• Type your address"
-                : "📍 होम सैंपल कलेक्शन के लिए कृपया अपना स्थान साझा करें:\n\n• GPS स्थान साझा करें, या\n• अपना पता लिखें",
-            supabase
+        await new CollectorFlowHandler(supabase, whatsappClient).handle(
+            { ...session, state: "COLLECTOR_MENU", data: {} },
+            { type: "text", text: "" }
         );
     } else {
         // Returning patients keep the language they chose last time.
@@ -438,50 +385,6 @@ async function handleDoctorMessage(
         await handler.handle(session, message);
     } catch (error) {
         debug("handleDoctorMessage", "Error in doctor flow", {
-            error: error instanceof Error ? error.message : String(error)
-        });
-
-        await whatsappClient.sendTextMessage(
-            phone,
-            "Sorry, an error occurred. Please try again later.",
-            supabase
-        );
-    }
-}
-
-/**
- * Handle home collection messages
- * Routes to HomeCollectionHandler for blood collection requests
- */
-async function handleHomeCollectionMessage(
-    supabase: SupabaseClient,
-    whatsappClient: WhatsAppClient,
-    phone: string,
-    name: string,
-    text: string,
-    normalizedMessage: string,
-    session: WhatsAppSession,
-    latitude?: number,
-    longitude?: number
-): Promise<void> {
-    debug("handleHomeCollectionMessage", `Collector message from ${phone}`);
-
-    try {
-        // Dropping these here left the handler's GPS branch unreachable, so a
-        // shared location pin fell through to "please share your location" and
-        // asked again however many times it was sent.
-        const message: ExtractedMessage = {
-            type: latitude !== undefined && longitude !== undefined ? "location" : "text",
-            text: text,
-            latitude,
-            longitude
-        };
-
-        // Route to home collection handler
-        const handler = new HomeCollectionHandler(supabase, whatsappClient);
-        await handler.handle(session, message);
-    } catch (error) {
-        debug("handleHomeCollectionMessage", "Error in home collection flow", {
             error: error instanceof Error ? error.message : String(error)
         });
 

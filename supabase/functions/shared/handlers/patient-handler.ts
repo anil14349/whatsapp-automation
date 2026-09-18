@@ -5,6 +5,7 @@ import { BUTTON_IDS, isValidPatientMenuButton, isValidConfirmationButton, isVali
 import { knownPatientNames, MAX_REMEMBERED_NAMES } from "../patient-names.ts";
 import { asLocationType, isHomeVisit, LOCATION_CLINIC, LOCATION_HOME } from "../location-type.ts";
 import { checkServiceArea } from "../geo.ts";
+import { getCollectorsForClinic } from "../staff-directory.ts";
 import { formatClockTime, formatLongDate } from "../appointment-format.ts";
 import {
     getEnabledServices,
@@ -1578,6 +1579,10 @@ export class PatientFlowHandler {
                     session.data
                 );
 
+                if (isHomeVisit(session.data?.locationType)) {
+                    await this.notifyCollectorsOfHomeVisit(clinicId, session.data);
+                }
+
                 return;
             } catch (error) {
                 // Someone claimed the slot between selection and insert.
@@ -2350,6 +2355,48 @@ export class PatientFlowHandler {
         } catch (error) {
             debug("patientFlow", "Could not notify doctor of new booking", {
                 doctorId,
+                error: error instanceof Error ? error.message : String(error)
+            });
+        }
+    }
+
+    /**
+     * Tell the collectors a home visit has been booked.
+     *
+     * Nothing told them at all: the old flow dispatched from a table the
+     * patient path no longer writes, so a home collection was booked and no
+     * collector ever heard. Best effort, like the doctor's copy.
+     */
+    private async notifyCollectorsOfHomeVisit(
+        clinicId: string,
+        data: Record<string, any> | undefined
+    ): Promise<void> {
+        try {
+            const collectors = await getCollectorsForClinic(this.supabase, clinicId);
+
+            if (collectors.length === 0) {
+                debug("patientFlow", "Home visit booked with no collector to tell", { clinicId });
+                return;
+            }
+
+            const bookedFor = String(data?.patientName || "A patient");
+            const bookedOn = formatLongDate(String(data?.selectedDate ?? ""), "EN");
+            const bookedAt = formatClockTime(String(data?.selectedTime ?? ""));
+
+            for (const collector of collectors) {
+                await sendProactive(
+                    this.whatsappClient,
+                    collector.phone,
+                    `🏠 New home visit for ${bookedFor} on ${bookedOn} at ${bookedAt} has been received.`,
+                    {
+                        key: "staff_new_booking",
+                        parameters: [bookedFor, bookedOn, bookedAt]
+                    }
+                );
+            }
+        } catch (error) {
+            debug("patientFlow", "Could not notify collectors", {
+                clinicId,
                 error: error instanceof Error ? error.message : String(error)
             });
         }

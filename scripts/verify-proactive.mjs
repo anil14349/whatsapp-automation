@@ -20,7 +20,6 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..", "supabase", "fu
 /** Whole modules that exist only to send something the clinic initiated. */
 const PROACTIVE_FILES = [
     "shared/appointment-reminder-scheduler.ts",
-    "shared/home-collection-reminder-scheduler.ts",
     "shared/delay-notice.ts",
     "shared/credential-delivery.ts"
 ];
