@@ -44,7 +44,7 @@ export function SettingsNav() {
         >
             {GROUPS.map((group) => (
                 <div key={group.title}>
-                    <h2 className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+                    <h2 className="mb-1.5 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
                         {group.title}
                     </h2>
                     <ul className="space-y-0.5">

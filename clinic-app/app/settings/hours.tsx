@@ -45,7 +45,7 @@ export function OpeningHours({ hours }: { hours: DayHours[] }) {
     return (
         <section className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
             <div className="mb-1 flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="text-sm font-semibold">Opening hours</h2>
+                <h2 className="text-base font-semibold">Opening hours</h2>
                 <span className="text-xs text-slate-500">
                     {open.length === 0
                         ? "Closed every day"
