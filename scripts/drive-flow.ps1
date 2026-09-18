@@ -1,5 +1,11 @@
 # Drives the live webhook with correctly signed payloads, for manual testing.
 # Not part of any gate; safe to delete.
+#
+# This books REAL appointments against the LIVE database, on a real patient's
+# number. A run once left a confirmed booking behind, which then sent that
+# patient two reminders for a service they had never asked for - and blocked
+# their own booking, because only one can be active at a time. So the run
+# cancels whatever it created before it exits.
 
 $ErrorActionPreference = "Stop"
 
@@ -15,6 +21,12 @@ $srv = @("--ssl-revoke-best-effort", "-H", "apikey: $key", "-H", "Authorization:
 $secret = ((& curl.exe -s @srv "$rest/clinics?id=eq.$clinic&select=whatsapp_app_secret") | ConvertFrom-Json)[0].whatsapp_app_secret
 
 $PATIENT = "919700060850"
+
+function Appointments() {
+    return (& curl.exe -s @srv "$rest/appointments?patient_phone=eq.$PATIENT&status=eq.CONFIRMED&select=id") | ConvertFrom-Json
+}
+
+$before = @(Appointments | ForEach-Object { $_.id })
 
 function Send-Hook([string] $from, [string] $inner) {
     $mid = "wamid.t" + [guid]::NewGuid().ToString("N").Substring(0, 14)
@@ -83,3 +95,28 @@ Show "gave a name"
 
 Send-Hook $PATIENT (Tap "confirm_yes") | Out-Null
 Show "confirmed"
+
+# Anything this run booked is test data on a real patient's number. Leaving it
+# confirmed sends them reminders and blocks their own booking.
+$created = @(Appointments | ForEach-Object { $_.id } | Where-Object { $before -notcontains $_ })
+
+if ($created.Count -eq 0) {
+    "`nnothing was booked, so nothing to undo"
+}
+else {
+    $f = [IO.Path]::GetTempFileName()
+
+    foreach ($id in $created) {
+        [IO.File]::WriteAllText($f, '{"status":"CANCELLED"}')
+        & curl.exe -s @srv -H "Content-Type: application/json" -X PATCH --data-binary "@$f" `
+            "$rest/appointments?id=eq.$id" | Out-Null
+
+        [IO.File]::WriteAllText($f, '{"status":"SKIPPED"}')
+        & curl.exe -s @srv -H "Content-Type: application/json" -X PATCH --data-binary "@$f" `
+            "$rest/appointment_reminders?appointment_id=eq.$id&status=eq.PENDING" | Out-Null
+
+        "`ncleaned up $id (cancelled, reminders skipped)"
+    }
+
+    Remove-Item $f
+}
