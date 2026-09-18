@@ -15,6 +15,9 @@
  *       "status": "CONFIRMED",
  *       "patient": { "id": "pat-uuid", "name": "John", "phone": "+91..." },
  *       "doctor": { "id": "doc-uuid", "name": "Dr. Jane" },
+ *       "serviceType": { "code": "CONSULTATION", "name": "Doctor Consultation" },
+ *       "tokenNumber": 1,
+ *       "isRevisit": false,
  *       "notes": "Consultation",
  *       "completedAt": null
  *     }
@@ -41,6 +44,9 @@ interface AppointmentRow {
   patient_phone: string;
   doctor_id: string;
   doctor: { name: string } | null;
+  service_type: { code: string; name: string } | null;
+  token_number: number | null;
+  is_revisit: boolean | null;
   notes: string;
   completed_at: string | null;
   created_at: string;
@@ -69,6 +75,8 @@ async function fetchDoctorAppointments(
         doctor_id,
         doctor:doctors(name),
         service_type:service_types(code, name),
+        token_number,
+        is_revisit,
         booking_source,
         notes,
         completed_at,
@@ -151,6 +159,11 @@ function formatAppointment(row: AppointmentRow) {
       id: row.doctor_id,
       name: row.doctor?.name ?? null
     },
+    serviceType: row.service_type
+      ? { code: row.service_type.code, name: row.service_type.name }
+      : null,
+    tokenNumber: row.token_number ?? null,
+    isRevisit: row.is_revisit === true,
     notes: row.notes,
     completedAt: row.completed_at,
     createdAt: row.created_at

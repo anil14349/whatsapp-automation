@@ -73,11 +73,12 @@ export default async function AppointmentsPage({
             doctorId: a.doctor?.id ?? a.doctor_id ?? null,
             doctorName: a.doctor?.name ?? null,
             serviceTypeId: a.service_type_id ?? null,
-            serviceName: a.service_type?.name ?? null,
+            // The two endpoints name these differently.
+            serviceName: a.service_type?.name ?? a.serviceType?.name ?? null,
             notes: a.notes ?? "",
             bookingSource: a.booking_source ?? null,
-            isRevisit: a.is_revisit === true,
-            token: a.token_number ?? null,
+            isRevisit: a.is_revisit === true || a.isRevisit === true,
+            token: a.token_number ?? a.tokenNumber ?? null,
             status: a.status
         }))
         : [];
