@@ -85,6 +85,51 @@ deliberately left unset until there is a real one to publish.
 
 ---
 
+## 4. A service's time-of-day window can only be set in SQL
+
+`clinic_services.available_from` and `available_to` decide what hours a
+doctor-free service runs, and there is no field for them on the Services page.
+Changing them means an `UPDATE`, which puts them out of reach of the people who
+actually know when the lab opens.
+
+They are honoured in full by the slot generator — see
+[Scheduling rules](./REFERENCE/SCHEDULING_RULES.md). This is a missing input,
+not missing behaviour. "Least notice (hours)" next to it on the same card shows
+the shape the pair should take; both are nullable, so the field has to
+distinguish empty from zero.
+
+---
+
+## 5. Consultations ignore the per-service scheduling settings
+
+The two slot paths are separate code. `getAvailableSlots`, which serves
+anything with a doctor, reads no `clinic_services` column, so
+`min_booking_window_hours` and the availability window apply to doctor-free
+services only.
+
+**The failure mode is silence.** Setting "Least notice" to 8 on Consultation is
+accepted by the portal, displays afterwards as 8, and changes nothing about
+what patients are offered. That has already been done once and reverted.
+
+The fix is to read the service row in `getAvailableSlots` and apply the same
+two limits after the doctor's hours are clipped to the clinic's. The awkward
+part is that path takes a doctor id, not a service id, so the service has to be
+carried down to it.
+
+---
+
+## 6. `max_booking_window_days` is declared and never read
+
+Present in `002_multi_clinic_architecture.sql` with a default of 30, and typed
+in `multi-clinic-types.ts`. No query references it, so **how far ahead a patient
+can book is unlimited** — the flow offers whatever the date picker reaches.
+
+It reads like working configuration, which is the same trap that
+`HOME_COLLECTION_MIN_LEAD_HOURS` and `MAX_COLLECTIONS_PER_COLLECTOR_PER_DAY`
+set before they were deleted. Either wire it or drop it.
+
+---
+
 ## 4. Two verification gates check nothing that runs — DONE
 
 `verify:menus` and `verify:coverage` both read the legacy Apps Script monolith,

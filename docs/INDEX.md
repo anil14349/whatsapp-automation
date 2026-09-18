@@ -82,6 +82,7 @@ npm run verify:schema   # every column reference against the live database
 ## Reference
 
 - [API Documentation](./REFERENCE/API_DOCUMENTATION.md) — endpoints and payloads
+- [**Scheduling rules**](./REFERENCE/SCHEDULING_RULES.md) — the four settings that decide whether a slot is offered, and which of the two booking paths reads each one
 - [Business Logic Review](./REFERENCE/BUSINESS_LOGIC_REVIEW.md)
 - [Dependencies](./REFERENCE/DEPENDENCIES.md)
 - [Deployment Readiness](./REFERENCE/DEPLOYMENT_READY.md)

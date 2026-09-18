@@ -43,8 +43,6 @@ Set as Supabase secrets, not files. `npx supabase secrets list --project-ref <re
 | `DEFAULT_CLINIC_ID` | yes | Used when a number matches no clinic |
 | `ALLOWED_ORIGINS` | yes | Comma separated. **Must list the portal's real origin** or the browser is blocked. |
 | `SCHEDULER_AUTH_TOKEN` | yes | Shared with the cron job |
-| `HOME_COLLECTION_MIN_LEAD_HOURS` | no | Default 2 |
-| `MAX_COLLECTIONS_PER_COLLECTOR_PER_DAY` | no | Default 8 |
 | `RESEND_API_KEY` | no | Email delivery. Unset means credentials are shown to the admin instead. |
 | `EMAIL_FROM`, `PORTAL_BASE_URL` | no | Only with Resend |
 | `ALLOW_SHARED_DOCTOR_PIN` | no | Leave unset. `true` re-enables a shared PIN. |
@@ -59,6 +57,14 @@ npx supabase secrets set JWT_SECRET=<value> --project-ref <ref>
 
 `secrets list` shows a plain unsalted SHA-256 of each value, so a low-entropy
 secret there is recoverable from the listing itself. Use random values.
+
+**`HOME_COLLECTION_MIN_LEAD_HOURS` and `MAX_COLLECTIONS_PER_COLLECTOR_PER_DAY`
+were removed.** They were listed here as working configuration and had no
+callers — setting either one did nothing. Both limits are per clinic now:
+`clinic_services.min_booking_window_hours` and
+`sample_collectors.max_collections_per_day`, both editable in the portal. If
+they are still set on a project, delete them; they are misleading, not
+harmful. See [Scheduling rules](../REFERENCE/SCHEDULING_RULES.md).
 
 ## Deploying
 

@@ -86,6 +86,33 @@ curl.exe -s -X POST -H "Authorization: Bearer <SCHEDULER_AUTH_TOKEN>" `
     "https://<ref>.supabase.co/functions/v1/scheduled-reminders"
 ```
 
+## `SENT` does not mean delivered
+
+The scheduler sends a reminder as an interactive message with Cancel and
+Reschedule buttons. Meta accepts that call, returns a message id, and reports
+`131047` **afterwards**, on the status webhook — the patient last wrote to us
+more than 24 hours ago, which is true of almost every reminder. The row was
+marked `SENT` the moment the id came back, so nothing retried and nobody knew.
+
+Two pieces close that gap, both from
+`036`-era work (`035_reminder_force_template.sql`):
+
+- The status webhook matches Meta's message id back to the reminder through
+  `appointment_reminders_by_message` and calls `recordReminderDelivery` in
+  [delivery-status.ts](../../supabase/functions/shared/delivery-status.ts).
+- A late failure puts the row back to `PENDING` with `force_template = TRUE`,
+  and the next scheduler pass sends the approved template rather than repeating
+  the same doomed free-form message.
+
+So a reminder can legitimately go `PENDING → SENT → PENDING → SENT`, and a row
+sitting at `FAILED` with a `132001` is telling you the **template is not
+approved**, not that the scheduler is broken.
+
+Counting sent reminders therefore means counting `SENT` **and** `DELIVERED`.
+The owner's summary read zero for a working day because it counted only the
+first, and the "Not delivered" tile exists to make the failures visible rather
+than letting them read as silence.
+
 ## Things that have bitten before
 
 **`CLINIC_IDS` is an optional filter, not a list of clinics to serve.** While it

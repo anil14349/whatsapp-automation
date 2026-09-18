@@ -5,7 +5,7 @@ and nothing else can repair a missing column at run time.
 
 ## What is deployed
 
-- `supabase/migrations/*.sql` â€” 29 files, applied in filename order.
+- `supabase/migrations/*.sql` — 36 files, applied in filename order.
 - One storage bucket, `patient-documents`.
 - One storage bucket, `clinic-logos`.
 - One storage bucket, `appointment-calendar`.
