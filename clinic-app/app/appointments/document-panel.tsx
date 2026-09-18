@@ -12,6 +12,24 @@ const KINDS = [
 ];
 
 /**
+ * WhatsApp accepts a message first and says whether it arrived afterwards, so
+ * "sent" here deliberately stops short of claiming the patient has it.
+ */
+const DELIVERY_WORDS: Record<string, string> = {
+    PENDING: "sending",
+    SENT: "sent, not confirmed",
+    DELIVERED: "delivered",
+    FAILED: "not delivered"
+};
+
+const DELIVERY_STYLES: Record<string, string> = {
+    PENDING: "bg-slate-100 text-slate-600",
+    SENT: "bg-amber-50 text-amber-800",
+    DELIVERED: "bg-emerald-50 text-emerald-700",
+    FAILED: "bg-red-50 text-red-700"
+};
+
+/**
  * Send a patient their result, and show what has already gone.
  *
  * The history matters more than it looks: a report that WhatsApp refused is
@@ -124,13 +142,9 @@ export function DocumentPanel({
                     {sent.map((doc) => (
                         <li key={doc.id} className="flex items-center gap-2 text-xs">
                             <span
-                                className={`rounded px-1.5 py-0.5 font-medium ${
-                                    doc.status === "SENT"
-                                        ? "bg-emerald-50 text-emerald-700"
-                                        : "bg-red-50 text-red-700"
-                                }`}
+                                className={`rounded px-1.5 py-0.5 font-medium ${DELIVERY_STYLES[doc.status] ?? "bg-slate-100 text-slate-600"}`}
                             >
-                                {doc.status === "SENT" ? "sent" : "not sent"}
+                                {DELIVERY_WORDS[doc.status] ?? doc.status.toLowerCase()}
                             </span>
                             <span className="text-slate-700">{doc.file_name}</span>
                             <span className="text-slate-400">

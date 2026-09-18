@@ -62,7 +62,8 @@ export async function sendDocument(
         return { error: result.data.error ?? "Saved, but WhatsApp would not accept it." };
     }
 
-    return { success: "Sent." };
+    // WhatsApp confirms delivery afterwards, so this cannot promise it arrived.
+    return { success: "Sent to WhatsApp. The list below shows when it arrives." };
 }
 
 export async function loadSlots(doctorId: string, date: string): Promise<string[]> {

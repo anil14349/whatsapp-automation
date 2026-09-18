@@ -173,6 +173,45 @@ async function recordDeliveryStatuses(statuses: any[] | undefined): Promise<void
         if (error) {
             console.error("Could not record delivery status", { id, error: error.message });
         }
+
+        await recordDocumentDelivery(id, String(status.status || ""), errors);
+    }
+}
+
+/**
+ * Carry the same verdict onto a document, if this message was one.
+ *
+ * A report was marked SENT the moment Meta accepted it, so the desk was told
+ * the patient had it. Meta reports the real outcome only here.
+ */
+async function recordDocumentDelivery(
+    messageId: string,
+    deliveryStatus: string,
+    errors: Array<{ code?: number; title?: string; detail?: string }> | undefined
+): Promise<void> {
+    if (deliveryStatus !== "failed" && deliveryStatus !== "delivered" && deliveryStatus !== "read") {
+        return;
+    }
+
+    const failed = deliveryStatus === "failed";
+
+    const { error } = await supabase
+        .from("patient_documents")
+        .update({
+            status: failed ? "FAILED" : "DELIVERED",
+            error_message: failed
+                ? errors?.map((e) => e.detail ?? e.title).filter(Boolean).join("; ") ||
+                  "WhatsApp could not deliver it"
+                : null,
+            updated_at: new Date().toISOString()
+        })
+        .eq("message_id", messageId)
+        // `read` can arrive after `delivered`; neither should reopen a failure
+        // the desk has already been shown.
+        .in("status", failed ? ["PENDING", "SENT", "DELIVERED"] : ["PENDING", "SENT"]);
+
+    if (error) {
+        console.error("Could not update document delivery", { messageId, error: error.message });
     }
 }
 
