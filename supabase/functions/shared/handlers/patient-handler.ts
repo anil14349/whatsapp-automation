@@ -2330,17 +2330,18 @@ export class PatientFlowHandler {
                 return;
             }
 
+            const bookedFor = String(data?.patientName || "A patient");
+            // The doctor's own language is not held anywhere, so English.
+            const bookedOn = formatLongDate(String(data?.selectedDate ?? ""), "EN");
+            const bookedAt = formatClockTime(String(data?.selectedTime ?? ""));
+
             await sendProactive(
                 this.whatsappClient,
                 doctor.phone,
-                `📅 New booking\n\n${data?.patientName || "A patient"} — ${data?.selectedDate} at ${data?.selectedTime}\n\nNo reply is needed.`,
+                `📅 New booking for ${bookedFor} on ${bookedOn} at ${bookedAt}, now in your schedule.`,
                 {
                     key: "staff_new_booking",
-                    parameters: [
-                        String(data?.patientName || "A patient"),
-                        String(data?.selectedDate ?? ""),
-                        String(data?.selectedTime ?? "")
-                    ]
+                    parameters: [bookedFor, bookedOn, bookedAt]
                 }
             );
         } catch (error) {

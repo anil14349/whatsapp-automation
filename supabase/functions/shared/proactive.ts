@@ -93,7 +93,11 @@
  *     the one message they must not miss is this one.
  *
  *   staff_new_booking          {{1}} patient  {{2}} date  {{3}} time
- *     "New booking for {{1}} on {{2}} at {{3}}. No reply is needed."
+ *     "New booking for {{1}} on {{2}} at {{3}}, now in your schedule."
+ *
+ *     The tail is there because Meta refuses a body ending on a variable, so
+ *     it may as well say something: the doctor's question on reading this is
+ *     whether they need to do anything.
  *
  *   patient_document           header: DOCUMENT   {{1}} patient  {{2}} what it is
  *     Header set to a document, body:
