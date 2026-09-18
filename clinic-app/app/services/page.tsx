@@ -23,7 +23,7 @@ export default async function ServicesPage() {
         redirect("/appointments");
     }
 
-    const result = await callAsUser("services");
+    const [result, branding] = await Promise.all([callAsUser("services"), loadBranding()]);
 
     if (result.status === 401) {
         redirect("/login");
@@ -31,7 +31,6 @@ export default async function ServicesPage() {
 
     const services: ServiceRow[] = result.ok ? (result.data.services ?? []) : [];
     const offered = services.filter((s) => s.isEnabled).length;
-    const branding = await loadBranding();
 
     return (
         <PortalShell session={session} branding={branding} width="max-w-4xl">

@@ -24,13 +24,14 @@ export default async function SettingsPage() {
         redirect("/appointments");
     }
 
-    const result = await callAsUser("clinic-settings");
+    const [result, branding] = await Promise.all([
+        callAsUser("clinic-settings"),
+        loadBranding()
+    ]);
 
     if (result.status === 401) {
         redirect("/login");
     }
-
-    const branding = await loadBranding();
 
     if (!result.ok) {
         return (

@@ -69,13 +69,15 @@ export default async function SummaryPage({
     const asked = (await searchParams).range;
     const range: Range = asked === "today" || asked === "month" ? asked : "week";
 
-    const result = await callAsUser(`clinic-summary?range=${range}`);
+    const [result, branding] = await Promise.all([
+        callAsUser(`clinic-summary?range=${range}`),
+        loadBranding()
+    ]);
 
     if (result.status === 401) {
         redirect("/login");
     }
 
-    const branding = await loadBranding();
     const summary: Summary | null = result.ok ? result.data?.summary ?? null : null;
 
     return (

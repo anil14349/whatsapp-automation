@@ -59,9 +59,23 @@ export default async function AppointmentsPage({
             ? `?date=${chosenDate}`
             : "";
 
-    const result = isDoctor
-        ? await callAsUser(`doctors-appointments${chosenDate ? `?date=${chosenDate}` : ""}`)
-        : await callAsUser(`receptionists-appointments${query}`);
+    const canBook = session.role === "RECEPTIONIST" || session.role === "CLINIC_OWNER";
+
+    // All four were awaited one after another, and each edge function call
+    // costs the best part of a second, so the page sat for four of them before
+    // rendering. None depends on the others.
+    const [result, doctorList, serviceList, branding] = await Promise.all([
+        isDoctor
+            ? callAsUser(`doctors-appointments${chosenDate ? `?date=${chosenDate}` : ""}`)
+            : callAsUser(`receptionists-appointments${query}`),
+        canBook
+            ? callAsUser("receptionists-appointments?resource=doctors")
+            : Promise.resolve(null),
+        canBook
+            ? callAsUser("receptionists-appointments?resource=services")
+            : Promise.resolve(null),
+        loadBranding()
+    ]);
 
     if (result.status === 401) {
         redirect("/login");
@@ -69,17 +83,9 @@ export default async function AppointmentsPage({
 
     const date = chosenDate ?? result.data?.date ?? "";
 
-    const canBook = session.role === "RECEPTIONIST" || session.role === "CLINIC_OWNER";
+    const doctors: DoctorOption[] = doctorList?.data?.doctors ?? [];
 
-    const doctors: DoctorOption[] = canBook
-        ? (await callAsUser("receptionists-appointments?resource=doctors")).data?.doctors ?? []
-        : [];
-
-    const services: ServiceOption[] = canBook
-        ? (await callAsUser("receptionists-appointments?resource=services")).data?.services ?? []
-        : [];
-
-    const branding = await loadBranding();
+    const services: ServiceOption[] = serviceList?.data?.services ?? [];
 
     const rows: AppointmentRow[] = result.ok
         ? (result.data.appointments ?? []).map((a: any) => ({

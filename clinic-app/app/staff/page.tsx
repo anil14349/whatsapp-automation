@@ -29,13 +29,12 @@ export default async function StaffPage() {
         redirect("/appointments");
     }
 
-    const [doctor, receptionist, collector] = await Promise.all([
+    const [doctor, receptionist, collector, branding] = await Promise.all([
         load("doctor"),
         load("receptionist"),
-        load("collector")
+        load("collector"),
+        loadBranding()
     ]);
-
-    const branding = await loadBranding();
 
     return (
         <PortalShell session={session} branding={branding}>
