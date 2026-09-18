@@ -24,7 +24,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withAuth, successResponse, errorResponse, badRequestResponse } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
-import { debug } from "../shared/logger.ts";
+import { debug, recordAuditEvent } from "../shared/logger.ts";
 import { withCors } from "../shared/cors.ts";
 import { skipAppointmentReminders } from "../shared/appointment-reminders.ts";
 
@@ -95,6 +95,8 @@ async function getAppointment(
 async function updateAppointmentStatus(
   supabase: SupabaseClient,
   appointmentId: string,
+  clinicId: string,
+  doctorId: string,
   status: "COMPLETED" | "NO_SHOW",
   notes?: string
 ): Promise<{ id: string; status: string; completed_at: string; updated_at: string } | null> {
@@ -115,6 +117,11 @@ async function updateAppointmentStatus(
       .from("appointments")
       .update(updateData)
       .eq("id", appointmentId)
+      // The ownership check above read the row; these repeat it on the write,
+      // so nothing can move between the two.
+      .eq("clinic_id", clinicId)
+      .eq("doctor_id", doctorId)
+      .eq("status", "CONFIRMED")
       .select("id, status, completed_at, updated_at")
       .single();
 
@@ -212,10 +219,19 @@ async function handleUpdateStatus(
       return badRequestResponse(`Cannot update appointment already marked as ${appointment.status}`);
     }
 
+    // Same answer as the front desk gives. Without this a doctor holding a page
+    // opened before the desk cancelled could mark the patient seen, and the
+    // record would say a cancelled visit happened.
+    if (appointment.status !== "CONFIRMED") {
+      return badRequestResponse("Cannot change a cancelled appointment");
+    }
+
     // Update appointment status
     const updated = await updateAppointmentStatus(
       supabase,
       appointmentId,
+      user.clinicId,
+      user.userId,
       updateReq.status,
       updateReq.notes
     );
@@ -223,6 +239,18 @@ async function handleUpdateStatus(
     if (!updated) {
       return errorResponse("Failed to update appointment", 500);
     }
+
+    // The front desk's own status change is audited; a doctor marking somebody
+    // seen was not, so the clinical half of the record had no author.
+    await recordAuditEvent(
+      supabase,
+      "appointment_status_changed",
+      `doctor:${user.userId}`,
+      "appointment",
+      appointmentId,
+      { status: appointment.status },
+      { status: updateReq.status }
+    );
 
     debug("doctorUpdateStatus", "Appointment status updated", {
       appointmentId,
