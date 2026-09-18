@@ -374,6 +374,7 @@ async function handleInboundMessage(req: Request) {
 
         await logWhatsAppMessage(supabase, {
             direction: "INBOUND",
+            clinic_id: clinic.clinicId,
             phone: senderPhone,
             name: senderName,
             status: messageType,
@@ -433,6 +434,7 @@ async function handleInboundMessage(req: Request) {
         // Log error
         await logWhatsAppMessage(supabase, {
             direction: "WEBHOOK",
+            clinic_id: clinic.clinicId,
             phone: senderPhone,
             status: "ERROR",
             message: reason
