@@ -93,11 +93,11 @@
  *     the one message they must not miss is this one.
  *
  *   staff_new_booking          {{1}} patient  {{2}} date  {{3}} time
- *     "New booking for {{1}} on {{2}} at {{3}}, now in your schedule."
+ *     "A new booking for {{1}} on {{2}} at {{3}} has been received."
  *
- *     The tail is there because Meta refuses a body ending on a variable, so
- *     it may as well say something: the doctor's question on reading this is
- *     whether they need to do anything.
+ *     Phrased in the passive so the sentence ends on words. "Booking received
+ *     for {{1}} on {{2}} at {{3}}" reads better and Meta refuses it, because a
+ *     body may not end on a variable.
  *
  *   patient_document           header: DOCUMENT   {{1}} patient  {{2}} what it is
  *     Header set to a document, body:

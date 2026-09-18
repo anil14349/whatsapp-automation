@@ -2338,7 +2338,7 @@ export class PatientFlowHandler {
             await sendProactive(
                 this.whatsappClient,
                 doctor.phone,
-                `📅 New booking for ${bookedFor} on ${bookedOn} at ${bookedAt}, now in your schedule.`,
+                `📅 A new booking for ${bookedFor} on ${bookedOn} at ${bookedAt} has been received.`,
                 {
                     key: "staff_new_booking",
                     parameters: [bookedFor, bookedOn, bookedAt]
