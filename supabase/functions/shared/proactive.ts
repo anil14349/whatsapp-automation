@@ -93,7 +93,7 @@
  *     the one message they must not miss is this one.
  *
  *   staff_new_booking          {{1}} patient  {{2}} date  {{3}} time
- *     "A new booking for {{1}} on {{2}} at {{3}} has been received."
+ *     "New booking for {{1}} on {{2}} at {{3}} has been received."
  *
  *     Passive so the sentence ends on words. The active form, opening with
  *     "Booking received for", puts the time last, and Meta refuses a body
