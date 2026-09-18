@@ -1,11 +1,16 @@
 # Drives the live webhook with correctly signed payloads, for manual testing.
 # Not part of any gate; safe to delete.
 #
-# This books REAL appointments against the LIVE database, on a real patient's
-# number. A run once left a confirmed booking behind, which then sent that
-# patient two reminders for a service they had never asked for - and blocked
-# their own booking, because only one can be active at a time. So the run
-# cancels whatever it created before it exits.
+# This books REAL appointments against the LIVE database. It used to name a real
+# patient's number in the script itself; a run once left a confirmed booking
+# behind, which then sent that patient two reminders for a service they had
+# never asked for - and blocked their own booking, because only one can be
+# active at a time. The number is now a parameter defaulting to the test
+# handset, and the run cancels whatever it created before it exits.
+
+param(
+    [string] $Phone = "919052452905"
+)
 
 $ErrorActionPreference = "Stop"
 
@@ -20,7 +25,7 @@ $srv = @("--ssl-revoke-best-effort", "-H", "apikey: $key", "-H", "Authorization:
 
 $secret = ((& curl.exe -s @srv "$rest/clinics?id=eq.$clinic&select=whatsapp_app_secret") | ConvertFrom-Json)[0].whatsapp_app_secret
 
-$PATIENT = "919700060850"
+$PATIENT = $Phone
 
 function Appointments() {
     return (& curl.exe -s @srv "$rest/appointments?patient_phone=eq.$PATIENT&status=eq.CONFIRMED&select=id") | ConvertFrom-Json
@@ -67,7 +72,17 @@ function Show([string] $label) {
     "{0,-34} -> {1} {2}" -f $label, $s.state, ($extra -join " ")
 }
 
-"--- home collection, pin required ---"
+# A number the bot has never heard from is asked to pick a language first, and
+# every tap before that choice lands on the language prompt rather than the
+# menu - which reads exactly like a broken flow.
+"--- start a conversation ---"
+Send-Hook $PATIENT (Text "hi") | Out-Null
+Show "said hi"
+
+Send-Hook $PATIENT (Tap "lang_en") | Out-Null
+Show "chose English"
+
+"`n--- home collection, pin required ---"
 Send-Hook $PATIENT (Tap "menu_home_collection") | Out-Null
 Show "tapped Home Collection"
 
@@ -77,7 +92,10 @@ Show "typed a full address"
 Send-Hook $PATIENT (Pin 13.0827 80.2707) | Out-Null
 Show "shared a pin in Chennai"
 
-Send-Hook $PATIENT (Pin 28.6304 77.2177) | Out-Null
+# Isnapur, a couple of kilometres from the clinic in Patancheru. The clinic
+# moved from Delhi, so the pin this script used to send is now 1,500 km away
+# and would be refused - which would have looked like the flow was broken.
+Send-Hook $PATIENT (Pin 17.5389 78.2614) | Out-Null
 Show "shared a pin nearby"
 
 Send-Hook $PATIENT (Text "Flat 3B, above the chemist") | Out-Null
