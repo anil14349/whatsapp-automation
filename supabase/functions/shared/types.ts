@@ -9,12 +9,17 @@
 export interface WhatsAppMessage {
     id: string;
     from: string;
-    type: "text" | "interactive" | "location" | "image" | "document";
+    type: "text" | "interactive" | "location" | "image" | "document" | "button";
     text?: { body: string };
     interactive?: {
         type: "button_reply" | "list_reply";
         button_reply?: { id: string; title: string };
         list_reply?: { id: string; title: string };
+    };
+    /** A quick reply on a template arrives here, not under `interactive`. */
+    button?: {
+        payload?: string;
+        text?: string;
     };
     location?: {
         latitude: number;

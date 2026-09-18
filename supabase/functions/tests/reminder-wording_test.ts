@@ -41,11 +41,11 @@ Deno.test("a service takes the adjective position, not 'with'", () => {
     assert(!/undefined/i.test(said), said);
 });
 
-Deno.test("the reminder says how to act, in words the bot accepts", () => {
+Deno.test("the reminder does not ask for typed words, the buttons carry that", () => {
     const said = formatReminderMessage({ ...BASE, serviceName: "Sample Collection" });
 
-    assertStringIncludes(said, "Reply CANCEL");
-    assertStringIncludes(said, "RESCHEDULE");
+    assert(!/Reply CANCEL/i.test(said), said);
+    assert(!/RESCHEDULE/i.test(said), said);
 });
 
 Deno.test("the hour-before reminder follows the same rule", () => {

@@ -115,3 +115,21 @@ Deno.test("a doctor typing cancel is not sent to the patient flow", async () => 
 
     assertEquals(session()?.state, "DOCTOR_MENU");
 });
+
+Deno.test("the template's quick reply labels are words the bot understands", async () => {
+    // A template quick reply arrives carrying the button's own label, so
+    // "Cancel" has to reach the cancel flow exactly as a typed word would.
+    const { send, session } = build();
+
+    await send("Cancel");
+
+    assertEquals(session()?.state, "CANCEL_CONFIRM");
+});
+
+Deno.test("the Reschedule label reaches the reschedule flow", async () => {
+    const { send, session } = build();
+
+    await send("Reschedule");
+
+    assertEquals(session()?.state, "RESCHEDULE_DATE");
+});

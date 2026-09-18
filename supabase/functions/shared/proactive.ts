@@ -20,8 +20,14 @@
  * marketing), in English and Hindi under the same name.
  *
  *   appointment_reminder_24h   {{1}} patient  {{2}} phrase  {{3}} date  {{4}} time
- *     "Hi {{1}}, a reminder that you have {{2}} tomorrow, {{3}} at {{4}}.
- *      Reply CANCEL to cancel, or RESCHEDULE to change the time."
+ *     "Hi {{1}}, a reminder that you have {{2}} tomorrow, {{3}} at {{4}}."
+ *     Two QUICK REPLY buttons: "Cancel" and "Reschedule".
+ *
+ *     A quick reply arrives as message type "button" carrying the button's
+ *     TEXT, not as an interactive reply, so the labels must match the words
+ *     menuIdForKeyword() knows. The free-form version of this reminder sends
+ *     the same two as reply buttons, so a tap lands in the same place whether
+ *     the window was open or not.
  *
  *   appointment_reminder_1h    {{1}} patient  {{2}} phrase  {{3}} time
  *     "Hi {{1}}, you have {{2}} at {{3}}, about an hour from now. Reply to
@@ -149,6 +155,11 @@ export async function sendProactive(
         /** Sent instead of the plain text when the window is still open. */
         document?: { link: string; filename: string };
         /**
+         * Reply buttons, to match the template's quick replies. Their ids must
+         * be the same, so a tap lands identically whichever path delivered it.
+         */
+        buttons?: Array<{ id: string; title: string }>;
+        /**
          * Recorded in `whatsapp_log` in place of the body. A staff credential
          * would otherwise sit there in plain text for as long as the row does.
          */
@@ -156,14 +167,24 @@ export async function sendProactive(
     } = {}
 ): Promise<ProactiveResult> {
     try {
-        const messageId = options.document
-            ? await client.sendDocumentMessage(
+        let messageId: string;
+
+        if (options.document) {
+            messageId = await client.sendDocumentMessage(
                 phone,
                 options.document.link,
                 options.document.filename,
                 freeform
-            )
-            : await client.sendTextMessage(phone, freeform, undefined, options.logAs);
+            );
+        } else if (options.buttons && options.buttons.length > 0) {
+            messageId = await client.sendInteractiveButtonMessage(
+                phone,
+                freeform,
+                options.buttons.slice(0, 3)
+            );
+        } else {
+            messageId = await client.sendTextMessage(phone, freeform, undefined, options.logAs);
+        }
 
         return { delivered: true, messageId, via: "text", retryable: false };
     } catch (error) {

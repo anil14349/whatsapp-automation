@@ -37,6 +37,13 @@ export function extractInboundMessage(message: WhatsAppMessage): ExtractedMessag
             }
             break;
 
+        // A quick reply on a TEMPLATE, which Meta sends as its own type rather
+        // than as an interactive reply. Without this it fell to the default
+        // below and the tap arrived as an empty message.
+        case "button":
+            result.text = message.button?.payload || message.button?.text || "";
+            break;
+
         case "location":
             if (message.location) {
                 result.latitude = message.location.latitude;

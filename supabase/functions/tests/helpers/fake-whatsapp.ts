@@ -28,7 +28,14 @@ export interface SentMessage {
 export class FakeWhatsAppClient extends WhatsAppClient {
     readonly sent: SentMessage[] = [];
 
-    /** Set to make the next free-form send fail the way Meta would. */
+    /**
+     * Set to make the next free-form send fail the way Meta would.
+     *
+     * Applies to buttons, lists and documents as well as plain text: the 24
+     * hour window governs every free-form send, and only a template escapes
+     * it. Honouring it on text alone let a reminder that had switched to
+     * buttons appear to deliver, with the template fallback never running.
+     */
     textError: WhatsAppApiError | null = null;
 
     /** Set to make a template send fail, e.g. one that is not registered. */
@@ -52,6 +59,10 @@ export class FakeWhatsAppClient extends WhatsAppClient {
         body: string,
         buttons: Array<{ id: string; title: string }>
     ): Promise<string> {
+        if (this.textError) {
+            throw this.textError;
+        }
+
         if (buttons.length > 3) {
             throw new Error("Interactive button messages support max 3 buttons");
         }
@@ -77,6 +88,10 @@ export class FakeWhatsAppClient extends WhatsAppClient {
             rows: Array<{ id: string; title: string; description?: string }>;
         }>
     ): Promise<string> {
+        if (this.textError) {
+            throw this.textError;
+        }
+
         const totalRows = sections.reduce((count, s) => count + s.rows.length, 0);
 
         if (totalRows === 0) {
@@ -115,6 +130,10 @@ export class FakeWhatsAppClient extends WhatsAppClient {
         filename: string,
         caption?: string
     ): Promise<string> {
+        if (this.textError) {
+            throw this.textError;
+        }
+
         this.sent.push({ to, type: "document", body: caption ?? filename, link, filename });
         return `fake_document_${this.sent.length}`;
     }

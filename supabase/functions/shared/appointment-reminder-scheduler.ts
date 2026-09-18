@@ -19,6 +19,7 @@ import {
     reminderPhrase
 } from "./appointment-reminders.ts";
 import { sendProactive } from "./proactive.ts";
+import { BUTTON_IDS } from "./button-ids.ts";
 import { debug, recordAuditEvent } from "./logger.ts";
 
 interface SchedulerConfig {
@@ -115,6 +116,21 @@ async function sendReminder(
             details.preferredLanguage || "EN"
         );
 
+        // The same ids the template's quick replies carry, so a tap lands in
+        // the same place whichever path delivered the reminder.
+        const actions = reminder.reminder_type === "24_HOUR"
+            ? [
+                {
+                    id: BUTTON_IDS.PATIENT_MENU.CANCEL,
+                    title: details.preferredLanguage === "HI" ? "रद्द करें" : "Cancel"
+                },
+                {
+                    id: BUTTON_IDS.PATIENT_MENU.RESCHEDULE,
+                    title: details.preferredLanguage === "HI" ? "समय बदलें" : "Reschedule"
+                }
+            ]
+            : undefined;
+
         // A reminder is by definition sent long after the patient last wrote,
         // so free-form alone was rejected outside the 24 hour window and the
         // patient heard nothing. The template carries it when that happens.
@@ -139,7 +155,8 @@ async function sendReminder(
                         details.appointmentDate || "",
                         details.appointmentTime || ""
                     ]
-            }
+            },
+            actions ? { buttons: actions } : {}
         );
 
         if (!outcome.delivered) {

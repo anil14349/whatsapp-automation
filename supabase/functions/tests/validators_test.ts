@@ -7,6 +7,7 @@
 
 import { assertEquals } from "std/testing/asserts.ts";
 import {
+    extractInboundMessage,
     isValidBookingDate,
     isValidISODate,
     isValidTimeString,
@@ -18,6 +19,31 @@ import {
     canCancelAppointmentStatus,
     isTerminalAppointmentStatus
 } from "../shared/validators.ts";
+
+Deno.test("a quick reply on a template is not an interactive reply", () => {
+    // Meta sends a template's quick reply as its own message type. It used to
+    // fall to the default branch and arrive as an empty message, so the button
+    // would have been approved, tapped, and done nothing.
+    const extracted = extractInboundMessage({
+        id: "wamid.1",
+        from: "919000000001",
+        type: "button",
+        button: { payload: "Cancel", text: "Cancel" }
+    } as any);
+
+    assertEquals(extracted.text, "Cancel");
+});
+
+Deno.test("a quick reply with no payload falls back to its label", () => {
+    const extracted = extractInboundMessage({
+        id: "wamid.2",
+        from: "919000000001",
+        type: "button",
+        button: { text: "Reschedule" }
+    } as any);
+
+    assertEquals(extracted.text, "Reschedule");
+});
 
 // Local days, not UTC ones. toISOString() shifts to UTC, so between local
 // midnight and UTC midnight this drifted a day and the suite failed nightly.
