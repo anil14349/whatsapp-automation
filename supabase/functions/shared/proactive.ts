@@ -71,6 +71,15 @@
  *     "Hello {{1}}, a new sign-in code for {{2}} has been issued for you:
  *      {{3}}. Please sign in and change it straight away."
  *
+ *     CONSIDER NOT REGISTERING THIS ONE. Meta classes a message carrying a
+ *     sign-in code as AUTHENTICATION, whose templates take fixed body text and
+ *     a copy-code button rather than wording of our own. More to the point, a
+ *     template parameter is a password handed to Meta to keep: sendProactive
+ *     logs this one as a note precisely so it does not sit in whatsapp_log,
+ *     and a template undoes that outside our own database. Unregistered, the
+ *     send falls back to email and then to showing the credential to the admin
+ *     who created the account, which is where it came from anyway.
+ *
  *   waitlist_slot_available    {{1}} date  {{2}} time
  *     "The slot you were waiting for on {{1}} at {{2}} is now free. Tap below
  *      to book it."
