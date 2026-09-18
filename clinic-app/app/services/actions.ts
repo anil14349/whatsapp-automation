@@ -24,6 +24,7 @@ export interface ServiceRow {
     homePrice: number | null;
     durationMinutes: number | null;
     concurrentCapacity: number;
+    minNoticeHours: number;
     displayOrder: number;
     defaults: {
         clinicPrice: number | null;
@@ -108,6 +109,7 @@ export async function updateService(
         homePrice: number | null;
         durationMinutes: number | null;
         concurrentCapacity: number;
+        minNoticeHours: number;
     }>
 ): Promise<ServiceState> {
     const result = await callAsUser("services", {

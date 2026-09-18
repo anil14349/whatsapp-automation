@@ -144,6 +144,14 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                         hint="Decides how slots are spaced"
                                         onSave={(v) => save(s.serviceTypeId, { durationMinutes: v })}
                                     />
+                                    <NumberField
+                                        label="Least notice (hours)"
+                                        value={s.minNoticeHours}
+                                        placeholder="0"
+                                        disabled={busy}
+                                        hint="Time you need before this can be booked"
+                                        onSave={(v) => save(s.serviceTypeId, { minNoticeHours: v ?? 0 })}
+                                    />
 
                                     {s.isOwn ? (
                                         <div className="sm:col-span-2 flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-3">

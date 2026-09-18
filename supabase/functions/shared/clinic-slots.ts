@@ -202,6 +202,15 @@ export async function clinicOpenState(
     };
 }
 
+/** The calendar day after a YYYY-MM-DD, without touching timezones again. */
+function nextDay(date: string): string {
+    const at = new Date(`${date}T00:00:00Z`);
+
+    at.setUTCDate(at.getUTCDate() + 1);
+
+    return at.toISOString().slice(0, 10);
+}
+
 function minutesNowIn(timezone: string): { today: string; minutes: number } {    const parts = new Intl.DateTimeFormat("en-GB", {
         timeZone: timezone,
         year: "numeric",
@@ -310,6 +319,10 @@ export async function getClinicServiceSlots(
     const { today, minutes: nowMinutes } = minutesNowIn(hours.timezone);
     const isToday = date === today;
 
+    // Eight hours' notice at 10pm rules out most of tomorrow morning too, so
+    // the day after today has to be checked as well.
+    const isTomorrow = date === nextDay(today);
+
     const step = service.durationMinutes > 0 ? service.durationMinutes : 30;
 
     // A lab keeps shorter hours than the building it sits in, so the service's
@@ -325,10 +338,20 @@ export async function getClinicServiceSlots(
 
     const slots: string[] = [];
 
+    // A collector has to be sent out, or a sample kit made ready, so a clinic
+    // can ask for warning. `min_booking_window_hours` held that number and was
+    // read by nothing, so a home visit could be booked for twenty minutes'
+    // time. Only bites today and, near midnight, tomorrow morning.
+    const earliest = isToday
+        ? nowMinutes + service.minNoticeHours * 60
+        : isTomorrow
+          ? nowMinutes + service.minNoticeHours * 60 - 24 * 60
+          : -1;
+
     // The whole appointment must fit before closing, so step past the last
     // start that would overrun.
     for (let time = open; time + step <= close; time += step) {
-        if (isToday && time <= nowMinutes) {
+        if (time <= earliest) {
             continue;
         }
 

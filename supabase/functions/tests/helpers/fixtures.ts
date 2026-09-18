@@ -17,15 +17,37 @@ export const DOCTOR_B = "dddddddd-0000-0000-0000-00000000000b";
 export const PATIENT_PHONE = "919000000001";
 export const DOCTOR_PHONE = "919000000009";
 
+/**
+ * Dates as the fixture clinic sees them.
+ *
+ * These used to return the UTC date while the seeded clinics are in
+ * Asia/Kolkata, so from 18:30 UTC - when it is already tomorrow in India -
+ * anything comparing against `todayInTimezone()` looked at the wrong day and
+ * the collector tests failed on the clock rather than on the code.
+ */
+const FIXTURE_TIMEZONE = "Asia/Kolkata";
+
+function dateInFixtureZone(offsetDays: number): string {
+    const at = new Date();
+
+    at.setUTCDate(at.getUTCDate() + offsetDays);
+
+    // en-CA formats as YYYY-MM-DD.
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone: FIXTURE_TIMEZONE,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+    }).format(at);
+}
+
 /** A date far enough ahead to stay inside the 7-day booking window. */
 export function tomorrow(): string {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().split("T")[0];
+    return dateInFixtureZone(1);
 }
 
 export function today(): string {
-    return new Date().toISOString().split("T")[0];
+    return dateInFixtureZone(0);
 }
 
 export interface FixtureOptions {

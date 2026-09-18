@@ -64,6 +64,7 @@ function labService(overrides: Partial<ClinicService> = {}): ClinicService {
         displayOrder: 0,
         availableFrom: null,
         availableTo: null,
+        minNoticeHours: 0,
         ...overrides
     };
 }

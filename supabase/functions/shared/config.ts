@@ -4,23 +4,13 @@
  * Roles are NOT here: who is a doctor or a collector is per clinic and lives
  * in the database. Phone lists in env granted staff access globally and were
  * a second, unmaintained way in.
+ *
+ * The same argument retired HOME_COLLECTION_MIN_LEAD_HOURS and
+ * MAX_COLLECTIONS_PER_COLLECTOR_PER_DAY. Both were per-clinic policy sitting
+ * in a deployment-wide variable, both had no callers left, and both already
+ * had a per-clinic home: `clinic_services.min_booking_window_hours` and
+ * `sample_collectors.max_collections_per_day`.
  */
-
-/**
- * Minimum notice before a home collection window can be offered today
- */
-export function getHomeCollectionMinLeadHours(): number {
-    const hours = Number(Deno.env.get("HOME_COLLECTION_MIN_LEAD_HOURS") || "2");
-    return isFinite(hours) && hours >= 0 ? hours : 2;
-}
-
-/**
- * How many collections a single collector can take in one day
- */
-export function getMaxCollectionsPerCollectorPerDay(): number {
-    const limit = Number(Deno.env.get("MAX_COLLECTIONS_PER_COLLECTOR_PER_DAY") || "8");
-    return isFinite(limit) && limit > 0 ? Math.floor(limit) : 8;
-}
 
 /**
  * PIN AUTHENTICATION CONFIGURATION

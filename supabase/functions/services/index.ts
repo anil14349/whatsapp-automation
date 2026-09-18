@@ -32,6 +32,7 @@ interface UpdateRequest {
   homePrice?: unknown;
   durationMinutes?: unknown;
   concurrentCapacity?: unknown;
+  minNoticeHours?: unknown;
   displayOrder?: unknown;
 }
 
@@ -104,6 +105,7 @@ async function listServices(
       homePrice: row?.home_price ?? null,
       durationMinutes: row?.duration_minutes ?? null,
       concurrentCapacity: row?.concurrent_capacity ?? 1,
+      minNoticeHours: row?.min_booking_window_hours ?? 0,
       displayOrder: row?.display_order ?? 0,
       defaults: {
         clinicPrice: type.default_clinic_price,
@@ -220,6 +222,7 @@ async function updateService(
   const homePrice = asNumberOrNull(body.homePrice);
   const duration = asNumberOrNull(body.durationMinutes);
   const capacity = asNumberOrNull(body.concurrentCapacity);
+  const notice = asNumberOrNull(body.minNoticeHours);
   const order = asNumberOrNull(body.displayOrder);
 
   if (clinicPrice !== undefined) patch.clinic_price = clinicPrice;
@@ -227,6 +230,14 @@ async function updateService(
   if (duration !== undefined) patch.duration_minutes = duration;
   if (order !== undefined) patch.display_order = order;
   if (patchDisplayName !== undefined) patch.display_name = patchDisplayName;
+
+  if (notice !== undefined) {
+    if (notice !== null && notice < 0) {
+      return { status: 400, payload: { error: "minNoticeHours cannot be negative" } };
+    }
+
+    patch.min_booking_window_hours = notice ?? 0;
+  }
 
   if (capacity !== undefined) {
     if (capacity === null || capacity < 1) {
