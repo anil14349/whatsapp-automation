@@ -107,7 +107,7 @@ Deno.test("choosing home asks where to come", async () => {
 
     assertEquals(current()?.state, "BOOK_ADDRESS");
     assertEquals(current()?.data?.locationType, LOCATION_HOME);
-    assert(/Where should the doctor come/i.test(said()), said());
+    assert(/share your location/i.test(said()), said());
 });
 
 Deno.test("typing instead of tapping re-asks rather than guessing", async () => {
@@ -178,6 +178,22 @@ Deno.test("a typed address is refused, however complete it looks", async () => {
     assertEquals(current()?.state, "BOOK_ADDRESS");
     assertEquals(current()?.data?.serviceAddress, undefined);
     assert(/share your location/i.test(said()), said());
+    assert(/typed address cannot be used/i.test(said()), said());
+});
+
+Deno.test("the first ask does not answer a question nobody asked", async () => {
+    // Explaining why typing will not work, before anyone has typed, is noise.
+    const { send, said } = build();
+
+    await send(
+        "BOOK_LOCATION",
+        { language: "EN", serviceName: "Sample Collection", requiresDoctor: false },
+        tap(BUTTON_IDS.LOCATION_TYPE.HOME)
+    );
+
+    assert(/share your location/i.test(said()), said());
+    assert(!/typed address/i.test(said()), said());
+    assert(!/type your address/i.test(said()), `it still invites typing:\n${said()}`);
 });
 
 Deno.test("a typed address cannot smuggle in a patient we do not travel to", async () => {

@@ -215,13 +215,14 @@ Deno.test("home collection books an appointment, not an orphan request", async (
     assertEquals(current()?.data?.locationType, "HOME");
 });
 
-Deno.test("home collection asks for a pin and says why", async () => {
+Deno.test("home collection asks for a pin", async () => {
     const { send, said } = build();
 
     await send("MAIN_MENU", { language: "EN" }, tap(BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION));
 
     assert(/share your location/i.test(said()), said());
-    assert(/typed address cannot be used/i.test(said()), said());
+    // Why typing will not work is for someone who has typed, not for the ask.
+    assert(!/typed address/i.test(said()), said());
 });
 
 Deno.test("home collection never asks the patient where they want it", async () => {

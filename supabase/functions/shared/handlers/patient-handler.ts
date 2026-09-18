@@ -434,22 +434,29 @@ export class PatientFlowHandler {
     /**
      * Ask for a shared pin.
      *
-     * Says why a typed address is refused, because otherwise this reads as the
-     * bot failing to understand a perfectly good address.
+     * The reason a typed address is refused is only worth saying to someone
+     * who has just typed one; up front it answers a question nobody asked.
      */
     private async askForLocation(
         phone: string,
         language: string,
-        serviceName?: string
+        serviceName?: string,
+        afterTyping = false
     ): Promise<void> {
         const en = language === "EN";
         const lead = serviceName ? `${serviceName}\n\n` : "";
 
+        const why = afterTyping
+            ? en
+                ? "\n\nWe measure the pin against the area we travel to, so a typed address cannot be used."
+                : "\n\nहम पिन से दूरी मापते हैं, इसलिए लिखा हुआ पता काम नहीं करेगा।"
+            : "";
+
         await this.whatsappClient.sendTextMessage(
             phone,
             en
-                ? `${lead}📍 Please share your location so we know where to come.\n\nTap ➕ (or 📎) → Location → Send your current location.\n\nWe measure that pin against the area we travel to, so a typed address cannot be used.`
-                : `${lead}📍 कृपया अपना स्थान साझा करें ताकि हमें पता चले कि कहाँ आना है।\n\n➕ (या 📎) → Location → Send your current location दबाएँ।\n\nहम उसी पिन से दूरी मापते हैं, इसलिए लिखा हुआ पता काम नहीं करेगा।`
+                ? `${lead}📍 Please share your location so we know where to come.\n\nTap ➕ (or 📎) → Location → Send your current location.${why}`
+                : `${lead}📍 कृपया अपना स्थान साझा करें ताकि हमें पता चले कि कहाँ आना है।\n\n➕ (या 📎) → Location → Send your current location दबाएँ।${why}`
         );
     }
 
@@ -618,12 +625,7 @@ export class PatientFlowHandler {
                 locationType: LOCATION_HOME
             });
 
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                language === "EN"
-                    ? "📍 Where should the doctor come?\n\nShare your location, or type your address."
-                    : "📍 डॉक्टर कहाँ आएँ?\n\nअपना स्थान साझा करें, या अपना पता लिखें।"
-            );
+            await this.askForLocation(phone, language, session.data?.serviceName);
             return;
         }
 
@@ -667,7 +669,8 @@ export class PatientFlowHandler {
         const en = language === "EN";
 
         if (!message.latitude || !message.longitude) {
-            await this.askForLocation(phone, language, session.data?.serviceName);
+            const typed = Boolean((message.text || "").trim());
+            await this.askForLocation(phone, language, session.data?.serviceName, typed);
             return;
         }
 
