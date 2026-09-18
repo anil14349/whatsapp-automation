@@ -18,8 +18,11 @@ Set-Location (Join-Path $PSScriptRoot "..")
 
 $key = (Select-String -Path .env.local -Pattern '^SU_SERVICE_ROLE_KEY=(.+)$').Matches[0].Groups[1].Value.Trim()
 $wt = (Select-String -Path .env.local -Pattern '^WHATSAPP_WEBHOOK_POST_TOKEN=(.+)$').Matches[0].Groups[1].Value.Trim()
-$rest = "https://xovsbwwuftpvnpktwkse.supabase.co/rest/v1"
-$hook = "https://xovsbwwuftpvnpktwkse.supabase.co/functions/v1/webhook"
+# Read the project from .env.local rather than naming it here, so this follows
+# the app when it moves rather than quietly driving the old one.
+$base = (Select-String -Path .env.local -Pattern '^SU_URL=(.+)$').Matches[0].Groups[1].Value.Trim().TrimEnd('/')
+$rest = "$base/rest/v1"
+$hook = "$base/functions/v1/webhook"
 $clinic = "402ae46c-56ed-40b0-a4b0-df63d6b43acc"
 $srv = @("--ssl-revoke-best-effort", "-H", "apikey: $key", "-H", "Authorization: Bearer $key")
 
