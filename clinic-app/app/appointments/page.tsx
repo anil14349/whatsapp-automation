@@ -13,6 +13,24 @@ import type { DoctorOption } from "./walk-in-form";
 import { AppointmentTable, type AppointmentRow } from "./appointment-table";
 import type { ServiceOption } from "./actions";
 
+/**
+ * A cancelled visit is not a booking. Counting it as one made a day of three
+ * cancellations read "3 booked", and the summary page already leaves them out.
+ */
+function daySummary(rows: AppointmentRow[]): string {
+    const cancelled = rows.filter((r) => r.status === "CANCELLED").length;
+    const booked = rows.length - cancelled;
+    const toBeSeen = rows.filter((r) => r.status === "CONFIRMED").length;
+
+    const parts = [`${booked} booked`, `${toBeSeen} still to be seen`];
+
+    if (cancelled > 0) {
+        parts.push(`${cancelled} cancelled`);
+    }
+
+    return parts.join(" · ");
+}
+
 export default async function AppointmentsPage({
     searchParams
 }: {
@@ -102,7 +120,7 @@ export default async function AppointmentsPage({
                     searching
                         ? `${rows.length} found${rows.length === 50 ? " (showing the 50 most recent)" : ""}`
                         : canBook
-                            ? `${rows.length} booked · ${rows.filter((r) => r.status === "CONFIRMED").length} still to be seen`
+                            ? daySummary(rows)
                             : undefined
                 }
             />

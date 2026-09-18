@@ -13,6 +13,7 @@ import { PhoneField } from "@/components/phone-field";
 import { DocumentPanel } from "./document-panel";
 import { displayPhone } from "@/lib/phone";
 import { useNotice } from "@/lib/use-notice";
+import { statusLabel } from "@/lib/labels";
 
 export interface AppointmentRow {
     id: string;
@@ -283,7 +284,7 @@ export function AppointmentTable({
                                                 STATUS_STYLES[row.status] ?? "bg-slate-100 text-slate-600"
                                             }`}
                                         >
-                                            {row.status}
+                                            {statusLabel(row.status)}
                                         </span>
                                     </td>
                                     {canEdit && (

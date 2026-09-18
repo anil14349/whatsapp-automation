@@ -22,3 +22,20 @@ export const STAFF_LABELS = {
     receptionist: { plural: "Receptionists", singular: "Receptionist" },
     collector: { plural: "Home Visit Staff", singular: "Home visit staff" }
 } as const;
+
+/**
+ * The same words the summary uses, so a day and its totals agree.
+ *
+ * The table printed the raw enum, so a row read NO_SHOW while the summary
+ * called the same thing "Did not turn up".
+ */
+export const STATUS_LABELS: Record<string, string> = {
+    CONFIRMED: "Booked",
+    COMPLETED: "Seen",
+    NO_SHOW: "Did not turn up",
+    CANCELLED: "Cancelled"
+};
+
+export function statusLabel(status: string): string {
+    return STATUS_LABELS[status] ?? status.toLowerCase().replace(/_/g, " ");
+}
