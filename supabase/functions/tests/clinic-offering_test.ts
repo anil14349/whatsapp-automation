@@ -203,6 +203,32 @@ Deno.test("the menu drops home collection only when nothing is offered at home",
     );
 });
 
+Deno.test("a clinic with the switch on but no location does not offer home visits", async () => {
+    // 002 defaults enable_home_collection to true, and the portal guard only
+    // refuses to turn it *on* — it never revisits a row that is already on. A
+    // clinic seeded by SQL therefore starts switched on with nothing to
+    // measure a pin against, and would accept an address any distance away.
+    const { send, buttonIds } = build({
+        latitude: null as any,
+        longitude: null as any
+    });
+
+    await send("MAIN_MENU", { language: "EN" }, textMessage("something unrecognised"));
+
+    assert(
+        !buttonIds().includes(BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION),
+        "a clinic that cannot measure a distance offered to visit someone's house"
+    );
+});
+
+Deno.test("a radius of zero is not a service area", async () => {
+    const { send, buttonIds } = build({ home_collection_radius_km: 0 as any });
+
+    await send("MAIN_MENU", { language: "EN" }, textMessage("something unrecognised"));
+
+    assert(!buttonIds().includes(BUTTON_IDS.PATIENT_MENU.HOME_COLLECTION));
+});
+
 Deno.test("home collection books an appointment, not an orphan request", async () => {
     // It used to enter LOCATION_SELECT, a parallel flow writing to
     // home_collection_requests - a table no portal screen reads.

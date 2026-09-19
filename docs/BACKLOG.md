@@ -84,17 +84,20 @@ cannot fail is worse than no gate, because it is counted.
 
 ## 5. Smaller open items
 
-- `FEEDBACK_SAMPLING_RATE` is seeded at `0.30` by `001` and typed in
-  `types.ts`, and is read by nothing: every completed appointment gets a
-  survey, not three in ten. Same shape as `HOME_COLLECTION_MIN_LEAD_HOURS`
-  before it was deleted — a setting that looks live and is not. Either sample
-  or drop the row.
-- A clinic switched on **before** the readiness guard existed can still have
-  `enable_home_collection` true with no coordinates, because the guard refuses
-  to *turn it on* and does not revisit rows already on. `002` defaults the
-  column to true, so any clinic row created outside the portal starts that way.
-  Such a clinic accepts a location pin from any distance. Wellsun is not
-  affected; a second clinic seeded by SQL would be.
+- `FEEDBACK_SAMPLING_RATE` and `COST_OPTIMIZATION_SKIP_24H_REMINDER` were
+  seeded by `001`, typed in `types.ts`, and read by nothing — every completed
+  appointment got a survey, and the 24-hour reminder could not be switched
+  off. Both deleted on 2026-09-19 by `039` rather than honoured: sampling is a
+  decision about how often to contact patients and nobody has made it. **Done.**
+- A clinic switched on **before** the readiness guard existed could have
+  `enable_home_collection` true with no coordinates, and would accept a pin any
+  distance away because there was nothing to measure from. Fixed on 2026-09-19:
+  `getEnabledServices` now requires a latitude, a longitude and a radius above
+  zero before it will offer anything at the patient's home, so a clinic seeded
+  by SQL keeps its counter appointments and is not asked to visit a house it
+  cannot locate. The distance check itself is unchanged and still permissive —
+  see the convention note; this decides whether to *offer*, not whether to
+  accept. **Done.**
 - `ALLOWED_ORIGINS` is still `http://localhost:3001`, and that is harmless:
   `withCors` only omits the allow header, it never refuses a request, and the
   portal calls the functions from the Next server where CORS does not apply.

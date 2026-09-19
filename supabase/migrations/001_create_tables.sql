@@ -263,9 +263,7 @@ INSERT INTO app_settings (key, value, data_type, description) VALUES
     ('CLINIC_CLOSE_TIME', '18:00', 'string', 'Clinic closing time'),
     ('CLINIC_WORKING_DAYS', 'Mon,Tue,Wed,Thu,Fri,Sat', 'string', 'Comma-separated working days'),
     ('AUTO_COMPLETE_PAST_APPOINTMENTS', 'false', 'boolean', 'Auto-complete past appointments'),
-    ('AUTO_COMPLETE_HOURS_AFTER', '4', 'integer', 'Hours after appointment to auto-complete'),
-    ('FEEDBACK_SAMPLING_RATE', '0.30', 'number', 'Fraction of users to survey (0-1)'),
-    ('COST_OPTIMIZATION_SKIP_24H_REMINDER', 'false', 'boolean', 'Skip 24-hour reminders to save API calls')
+    ('AUTO_COMPLETE_HOURS_AFTER', '4', 'integer', 'Hours after appointment to auto-complete')
 ON CONFLICT (key) DO NOTHING;
 
 -- ============================================================

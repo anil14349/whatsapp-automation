@@ -121,14 +121,24 @@ function allowedByMasterSwitch(
     return true;
 }
 
+/** Anything at the patient's home needs a point and a distance to judge it by. */
+function canMeasureDistance(clinic: Record<string, any> | null | undefined): boolean {
+    const num = (value: unknown) => (value === null || value === undefined ? NaN : Number(value));
+
+    const lat = num(clinic?.latitude);
+    const lon = num(clinic?.longitude);
+    const radius = num(clinic?.home_collection_radius_km);
+
+    return Number.isFinite(lat) && Number.isFinite(lon) && Number.isFinite(radius) && radius > 0;
+}
+
 /**
  * Services this clinic offers, in display order.
  *
  * `channel` narrows to what can be done in the clinic or at the patient's home.
  * Without a channel the master switches cannot be applied, so callers that
  * intend to show something to a patient should always pass one.
- */
-export async function getEnabledServices(
+ */export async function getEnabledServices(
     supabase: SupabaseClient,
     clinicId: string,
     channel?: ServiceChannel
@@ -155,7 +165,7 @@ export async function getEnabledServices(
             supabase
                 .from("clinics")
                 .select(
-                    "enable_doctor_consultations, enable_diagnostic_center, enable_home_collection, enable_doctor_home_visits"
+                    "enable_doctor_consultations, enable_diagnostic_center, enable_home_collection, enable_doctor_home_visits, latitude, longitude, home_collection_radius_km"
                 )
                 .eq("id", clinicId)
                 .maybeSingle()
@@ -171,12 +181,27 @@ export async function getEnabledServices(
 
         const flags = clinicResult.data;
 
+        // The portal refuses to switch home collection on until the clinic has
+        // a location and a radius, but 002 defaults the column to true, so a
+        // clinic row created outside the portal starts on with neither. Every
+        // pin it is sent is then accepted however far away it is, because
+        // there is nothing to measure from. Not offering the service is the
+        // honest answer: the clinic keeps its counter appointments, and nobody
+        // is promised a visit that cannot be checked.
+        const canReach = canMeasureDistance(flags);
+
+        if (flags?.enable_home_collection === true && !canReach) {
+            debug("clinicServices", "Home collection is on but unusable, so it is not offered", {
+                clinicId
+            });
+        }
+
         // A missing clinic row must not silently open everything up.
         master = {
             consultations: flags?.enable_doctor_consultations !== false,
             diagnostics: flags?.enable_diagnostic_center !== false,
-            homeCollection: flags?.enable_home_collection === true,
-            doctorHomeVisits: flags?.enable_doctor_home_visits === true
+            homeCollection: flags?.enable_home_collection === true && canReach,
+            doctorHomeVisits: flags?.enable_doctor_home_visits === true && canReach
         };
 
         services = (servicesResult.data ?? [])

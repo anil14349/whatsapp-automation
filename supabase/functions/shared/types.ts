@@ -176,8 +176,6 @@ export interface AppSettings {
     CLINIC_WORKING_DAYS: string[];
     AUTO_COMPLETE_PAST_APPOINTMENTS: boolean;
     AUTO_COMPLETE_HOURS_AFTER: number;
-    FEEDBACK_SAMPLING_RATE: number;
-    COST_OPTIMIZATION_SKIP_24H_REMINDER: boolean;
 }
 
 export interface ClinicConfig {
