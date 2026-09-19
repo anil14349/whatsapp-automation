@@ -128,7 +128,26 @@ async function readSchedule(
     };
   });
 
-  return { hours, leaves: leaves ?? [] };
+  // Standing breaks only. A break taken on one day is the doctor's business
+  // for that afternoon, not part of the schedule somebody is editing.
+  const { data: breakRows } = await supabase
+    .from("doctor_breaks")
+    .select("id, day_of_week, start_time, end_time, reason")
+    .eq("clinic_id", clinicId)
+    .eq("doctor_id", doctorId)
+    .not("day_of_week", "is", null)
+    .order("start_time", { ascending: true });
+
+  const breaks = (breakRows ?? []).map((row: Record<string, any>) => ({
+    id: row.id,
+    dayOfWeek: Number(row.day_of_week),
+    label: DAY_LABELS[Number(row.day_of_week)],
+    startTime: String(row.start_time).slice(0, 5),
+    endTime: String(row.end_time).slice(0, 5),
+    reason: row.reason ?? null
+  }));
+
+  return { hours, leaves: leaves ?? [], breaks };
 }
 
 async function setHours(
@@ -386,6 +405,88 @@ async function cancelLeave(
   return { status: 200, payload: { leaveId, cancelled: true } };
 }
 
+async function addBreak(
+  supabase: SupabaseClient,
+  clinicId: string,
+  actor: string,
+  body: Record<string, any>
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  const doctorId = body.doctorId;
+  const day = Number(body.dayOfWeek);
+  const start = String(body.startTime ?? "").trim();
+  const end = String(body.endTime ?? "").trim();
+
+  if (!Number.isInteger(day) || day < 1 || day > 7) {
+    return { status: 400, payload: { error: "dayOfWeek must be 1 (Monday) to 7 (Sunday)" } };
+  }
+
+  if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) {
+    return { status: 400, payload: { error: "startTime and endTime must be HH:MM" } };
+  }
+
+  if (end <= start) {
+    return { status: 400, payload: { error: "The break has to end after it starts" } };
+  }
+
+  const { data, error } = await supabase
+    .from("doctor_breaks")
+    .insert({
+      clinic_id: clinicId,
+      doctor_id: doctorId,
+      day_of_week: day,
+      start_time: start,
+      end_time: end,
+      reason: String(body.reason ?? "").trim() || null
+    })
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { status: 500, payload: { error: `Failed to add the break: ${error.message}` } };
+  }
+
+  await recordAuditEvent(supabase, "doctor_break_added", actor, "doctor", doctorId, undefined, {
+    dayOfWeek: day,
+    startTime: start,
+    endTime: end
+  });
+
+  return { status: 200, payload: { breakId: data?.id ?? null, dayOfWeek: day, startTime: start, endTime: end } };
+}
+
+async function removeBreak(
+  supabase: SupabaseClient,
+  clinicId: string,
+  actor: string,
+  doctorId: string,
+  breakId: string
+): Promise<{ status: number; payload: Record<string, unknown> }> {
+  if (!breakId) {
+    return { status: 400, payload: { error: "breakId is required" } };
+  }
+
+  const { data, error } = await supabase
+    .from("doctor_breaks")
+    .delete()
+    .eq("id", breakId)
+    .eq("clinic_id", clinicId)
+    .eq("doctor_id", doctorId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    return { status: 500, payload: { error: `Failed to remove the break: ${error.message}` } };
+  }
+
+  if (!data) {
+    return { status: 404, payload: { error: "That break was not found for this doctor" } };
+  }
+
+  await recordAuditEvent(supabase, "doctor_break_removed", actor, "doctor", doctorId, { breakId }, {});
+
+  return { status: 200, payload: { breakId, removed: true } };
+}
+
 async function handleRequest(user: TokenPayload, req: Request): Promise<Response> {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -417,6 +518,7 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
   }
 
   const actor = `${user.role.toLowerCase()}:${user.email}`;
+  const resource = url.searchParams.get("resource") ?? body.resource;
 
   if (req.method === "GET") {
     const schedule = await readSchedule(supabase, clinicId, doctorId);
@@ -425,17 +527,27 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
   }
 
   const result =
-    req.method === "PATCH"
-      ? await setHours(supabase, clinicId, actor, { ...body, doctorId })
-      : req.method === "POST"
-        ? await addLeave(supabase, clinicId, actor, { ...body, doctorId })
-        : await cancelLeave(
+    resource === "break"
+      ? req.method === "POST"
+        ? await addBreak(supabase, clinicId, actor, { ...body, doctorId })
+        : await removeBreak(
             supabase,
             clinicId,
             actor,
             doctorId,
-            url.searchParams.get("leaveId") ?? body.leaveId
-          );
+            url.searchParams.get("breakId") ?? body.breakId
+          )
+      : req.method === "PATCH"
+        ? await setHours(supabase, clinicId, actor, { ...body, doctorId })
+        : req.method === "POST"
+          ? await addLeave(supabase, clinicId, actor, { ...body, doctorId })
+          : await cancelLeave(
+              supabase,
+              clinicId,
+              actor,
+              doctorId,
+              url.searchParams.get("leaveId") ?? body.leaveId
+            );
 
   debug("doctorSchedule", `${req.method} ${doctorId}`, {
     clinicId,

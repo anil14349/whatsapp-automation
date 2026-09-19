@@ -241,9 +241,19 @@ export interface DoctorLeave {
     reason: string | null;
 }
 
+export interface DoctorBreak {
+    id: string;
+    dayOfWeek: number;
+    label: string;
+    startTime: string;
+    endTime: string;
+    reason: string | null;
+}
+
 export interface DoctorSchedule {
     hours: DoctorDay[];
     leaves: DoctorLeave[];
+    breaks: DoctorBreak[];
     error?: string;
 }
 
@@ -251,10 +261,19 @@ export async function loadDoctorSchedule(doctorId: string): Promise<DoctorSchedu
     const result = await callAsUser(`doctor-schedule?doctorId=${encodeURIComponent(doctorId)}`);
 
     if (!result.ok) {
-        return { hours: [], leaves: [], error: result.data?.error ?? "Could not load the schedule." };
+        return {
+            hours: [],
+            leaves: [],
+            breaks: [],
+            error: result.data?.error ?? "Could not load the schedule."
+        };
     }
 
-    return { hours: result.data.hours ?? [], leaves: result.data.leaves ?? [] };
+    return {
+        hours: result.data.hours ?? [],
+        leaves: result.data.leaves ?? [],
+        breaks: result.data.breaks ?? []
+    };
 }
 
 export async function saveDoctorHours(
@@ -342,4 +361,49 @@ export async function cancelDoctorLeave(
     revalidatePath("/staff");
 
     return { success: "Leave cancelled." };
+}
+
+export async function addDoctorBreak(
+    doctorId: string,
+    dayOfWeek: number,
+    startTime: string,
+    endTime: string,
+    reason: string
+): Promise<StaffState> {
+    const denied = await requireManager();
+    if (denied) return { error: denied };
+
+    const result = await callAsUser("doctor-schedule?resource=break", {
+        method: "POST",
+        body: { doctorId, dayOfWeek, startTime, endTime, reason, resource: "break" }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not add the break." };
+    }
+
+    revalidatePath("/staff");
+
+    return { success: "Break added. Those times are no longer offered to patients." };
+}
+
+export async function removeDoctorBreak(
+    doctorId: string,
+    breakId: string
+): Promise<StaffState> {
+    const denied = await requireManager();
+    if (denied) return { error: denied };
+
+    const result = await callAsUser("doctor-schedule?resource=break", {
+        method: "DELETE",
+        body: { doctorId, breakId, resource: "break" }
+    });
+
+    if (!result.ok) {
+        return { error: result.data?.error ?? "Could not remove the break." };
+    }
+
+    revalidatePath("/staff");
+
+    return { success: "Break removed." };
 }

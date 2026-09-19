@@ -2,10 +2,13 @@
 
 import { useEffect, useState, useTransition } from "react";
 import {
+    addDoctorBreak,
     addDoctorLeave,
     cancelDoctorLeave,
     loadDoctorSchedule,
+    removeDoctorBreak,
     saveDoctorHours,
+    type DoctorBreak,
     type DoctorDay,
     type DoctorLeave,
     type StaffState
@@ -29,6 +32,7 @@ export function DoctorSchedulePanel({
 }) {
     const [hours, setHours] = useState<DoctorDay[]>([]);
     const [leaves, setLeaves] = useState<DoctorLeave[]>([]);
+    const [breaks, setBreaks] = useState<DoctorBreak[]>([]);
     const [notice, setNotice] = useNotice<StaffState>({});
     const [loading, setLoading] = useState(true);
     const [mode, setMode] = useState<"consulting" | "visiting">("consulting");
@@ -38,11 +42,17 @@ export function DoctorSchedulePanel({
     const [to, setTo] = useState("");
     const [reason, setReason] = useState("");
 
+    const [breakDay, setBreakDay] = useState(1);
+    const [breakFrom, setBreakFrom] = useState("13:00");
+    const [breakTo, setBreakTo] = useState("14:00");
+    const [breakReason, setBreakReason] = useState("Lunch");
+
     function refresh() {
         start(async () => {
             const result = await loadDoctorSchedule(doctorId);
             setHours(result.hours);
             setLeaves(result.leaves);
+            setBreaks(result.breaks);
             if (result.error) setNotice({ error: result.error });
             setLoading(false);
         });
@@ -127,6 +137,119 @@ export function DoctorSchedulePanel({
                     </div>
                 </>
             )}
+
+            <div className="mt-5 border-t border-slate-100 pt-4">
+                <h3 className="mb-1 text-sm font-semibold">Breaks</h3>
+                <p className="mb-3 text-xs text-slate-500">
+                    Lunch, or any time this doctor is here but not seeing patients. These
+                    times are never offered to patients. Entered per day, so a short
+                    Saturday can differ from a Tuesday.
+                </p>
+
+                <div className="mb-3 flex flex-wrap items-end gap-2">
+                    <label className="text-xs text-slate-600">
+                        Day
+                        <select
+                            value={breakDay}
+                            onChange={(e) => setBreakDay(Number(e.target.value))}
+                            className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        >
+                            {hours.map((day) => (
+                                <option key={day.dayOfWeek} value={day.dayOfWeek}>
+                                    {day.label}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+
+                    <label className="text-xs text-slate-600">
+                        From
+                        <input
+                            type="time"
+                            value={breakFrom}
+                            onChange={(e) => setBreakFrom(e.target.value)}
+                            className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm tabular-nums"
+                        />
+                    </label>
+
+                    <label className="text-xs text-slate-600">
+                        Until
+                        <input
+                            type="time"
+                            value={breakTo}
+                            onChange={(e) => setBreakTo(e.target.value)}
+                            className="mt-1 block rounded-lg border border-slate-300 px-2 py-1.5 text-sm tabular-nums"
+                        />
+                    </label>
+
+                    <label className="text-xs text-slate-600">
+                        What for
+                        <input
+                            value={breakReason}
+                            onChange={(e) => setBreakReason(e.target.value)}
+                            placeholder="Lunch"
+                            className="mt-1 block w-32 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+                        />
+                    </label>
+
+                    <button
+                        disabled={busy}
+                        onClick={() =>
+                            start(async () => {
+                                setNotice(
+                                    await addDoctorBreak(
+                                        doctorId,
+                                        breakDay,
+                                        breakFrom,
+                                        breakTo,
+                                        breakReason
+                                    )
+                                );
+                                refresh();
+                            })
+                        }
+                        className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60"
+                    >
+                        Add break
+                    </button>
+                </div>
+
+                {breaks.length === 0 ? (
+                    <p className="text-sm text-slate-500">
+                        No breaks. Every hour this doctor works is bookable.
+                    </p>
+                ) : (
+                    <ul className="space-y-1.5">
+                        {breaks.map((entry) => (
+                            <li
+                                key={entry.id}
+                                className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 text-sm"
+                            >
+                                <span>
+                                    <span className="font-medium tabular-nums">
+                                        {entry.label} {entry.startTime}–{entry.endTime}
+                                    </span>
+                                    {entry.reason && (
+                                        <span className="ml-2 text-slate-500">{entry.reason}</span>
+                                    )}
+                                </span>
+                                <button
+                                    disabled={busy}
+                                    onClick={() =>
+                                        start(async () => {
+                                            setNotice(await removeDoctorBreak(doctorId, entry.id));
+                                            refresh();
+                                        })
+                                    }
+                                    className="text-sm text-slate-500 hover:text-slate-900"
+                                >
+                                    Remove
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
 
             <div className="mt-5 border-t border-slate-100 pt-4">
                 <h3 className="mb-1 text-sm font-semibold">Leave</h3>
