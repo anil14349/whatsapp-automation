@@ -26,6 +26,7 @@ export interface StaffMember {
     specialization?: string | null;
     qualifications?: string | null;
     photoUrl?: string | null;
+    takesOnlineAppointments?: boolean;
     is_active?: boolean;
     status?: string;
     max_collections_per_day?: number;
@@ -432,6 +433,12 @@ export function StaffManager({
                                                             {member.qualifications}
                                                         </div>
                                                     )}
+                                                    {tab === "doctor" &&
+                                                        member.takesOnlineAppointments === false && (
+                                                            <div className="mt-1 inline-block rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+                                                                Walk-ins only
+                                                            </div>
+                                                        )}
                                                 </div>
                                             </div>
                                         </td>
@@ -557,6 +564,7 @@ function EditStaffPanel({
     const [specialization, setSpecialization] = useState(member.specialization ?? "");
     const [qualifications, setQualifications] = useState(member.qualifications ?? "");
     const [photoUrl, setPhotoUrl] = useState(member.photoUrl ?? "");
+    const [takesOnline, setTakesOnline] = useState(member.takesOnlineAppointments !== false);
     const [maxPerDay, setMaxPerDay] = useState(member.max_collections_per_day ?? 8);
 
     return (
@@ -648,6 +656,27 @@ function EditStaffPanel({
                     </div>
                 )}
 
+                {type === "doctor" && (
+                    <div className="space-y-1 sm:col-span-2">
+                        <span className="text-xs font-medium text-slate-600">Bookings</span>
+                        <label className="flex items-start gap-2 rounded-lg border border-slate-200 px-3 py-2">
+                            <input
+                                type="checkbox"
+                                checked={takesOnline}
+                                onChange={(e) => setTakesOnline(e.target.checked)}
+                                className="mt-0.5"
+                            />
+                            <span className="text-sm text-slate-700">
+                                Takes appointments on WhatsApp
+                                <span className="block text-xs text-slate-500">
+                                    Untick for a walk-ins-only doctor. They stay bookable at the
+                                    front desk, but patients will not be offered them on WhatsApp.
+                                </span>
+                            </span>
+                        </label>
+                    </div>
+                )}
+
                 {type === "collector" && (
                     <label className="space-y-1">
                         <span className="text-xs font-medium text-slate-600">
@@ -672,7 +701,14 @@ function EditStaffPanel({
                             name,
                             phone,
                             email,
-                            ...(type === "doctor" ? { specialization, qualifications, photoUrl } : {}),
+                            ...(type === "doctor"
+                                ? {
+                                      specialization,
+                                      qualifications,
+                                      photoUrl,
+                                      takesOnlineAppointments: takesOnline
+                                  }
+                                : {}),
                             ...(type === "collector" ? { maxCollectionsPerDay: maxPerDay } : {})
                         })
                     }

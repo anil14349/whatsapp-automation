@@ -57,6 +57,7 @@ interface UpdateStaffRequest {
   specialization?: string;
   qualifications?: string;
   photoUrl?: string;
+  takesOnlineAppointments?: boolean;
   maxCollectionsPerDay?: number;
 }
 
@@ -182,7 +183,7 @@ async function listStaff(
   type: StaffType
 ) {
   const columns: Record<StaffType, string> = {
-    doctor: "id, name, phone, email, specialization, qualifications, photo_url, is_active, availability_status",
+    doctor: "id, name, phone, email, specialization, qualifications, photo_url, is_active, availability_status, takes_online_appointments",
     receptionist: "id, name, phone, email, status",
     collector: "id, name, phone, email, is_active, max_collections_per_day"
   };
@@ -719,6 +720,10 @@ async function editStaff(
 
   if (body.qualifications !== undefined && body.type === "doctor") {
     patch.qualifications = body.qualifications.trim().slice(0, 160) || null;
+  }
+
+  if (body.takesOnlineAppointments !== undefined && body.type === "doctor") {
+    patch.takes_online_appointments = body.takesOnlineAppointments === true;
   }
 
   if (body.photoUrl !== undefined && body.type === "doctor") {

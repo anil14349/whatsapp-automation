@@ -14,7 +14,8 @@ async function load(type: StaffType): Promise<StaffMember[]> {
     // The table is snake_case and the component is not.
     return (result.data.staff ?? []).map((row: any) => ({
         ...row,
-        photoUrl: row.photo_url ?? null
+        photoUrl: row.photo_url ?? null,
+        takesOnlineAppointments: row.takes_online_appointments !== false
     }));
 }
 

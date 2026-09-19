@@ -926,7 +926,10 @@ export class PatientFlowHandler {
         }
 
         // Accept the list row id, a raw id, or the position shown in the list.
-        const doctors = await this.supabaseClient.getDoctors(clinicId);
+        // Must be the same list showDoctorList offered: the position is resolved
+        // against it, so filtering one and not the other books a different
+        // doctor than the one tapped.
+        const doctors = await this.supabaseClient.getBookableDoctors(clinicId);
         const doctorId = reply.startsWith("doctor_") ? reply.substring(7) : reply;
 
         let doctor = doctors.find((d) => d.id === doctorId);
@@ -2241,14 +2244,14 @@ export class PatientFlowHandler {
         page = 0
     ): Promise<void> {
         try {
-            const doctors = await this.supabaseClient.getDoctors(clinicId);
+            const doctors = await this.supabaseClient.getBookableDoctors(clinicId);
 
             if (!doctors || doctors.length === 0) {
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     language === "EN"
-                        ? "❌ No doctors available at the moment."
-                        : "❌ इस समय कोई डॉक्टर उपलब्ध नहीं है।",
+                        ? "❌ No doctors are taking appointments at the moment. Please call the clinic or come in."
+                        : "❌ इस समय कोई डॉक्टर अपॉइंटमेंट नहीं ले रहे हैं। कृपया क्लिनिक पर कॉल करें या सीधे आएं।",
                     this.supabase
                 );
                 return;
@@ -2265,38 +2268,23 @@ export class PatientFlowHandler {
                 return;
             }
 
-            const availableStatuses = ["AVAILABLE", "IN_CONSULTATION"];
-
+            // Everyone on this list is bookable, so the status that used to be
+            // printed on each row would read "Available" every time. What a
+            // patient is actually choosing between is the qualification.
+            //
+            // The status also used to guarantee the description was never
+            // empty. It no longer does, so a doctor with neither a
+            // specialisation nor a qualification omits the field rather than
+            // sending WhatsApp an empty string.
             const rows = pageDoctors.map((doc: any) => {
-                const available = availableStatuses.includes(doc.availability_status);
-
-                const statusLabel = available
-                    ? language === "EN"
-                        ? "Available"
-                        : "उपलब्ध"
-                    : doc.availability_status === "ON_BREAK"
-                      ? language === "EN"
-                          ? "On break"
-                          : "ब्रेक पर"
-                      : doc.availability_status === "BUSY"
-                        ? language === "EN"
-                            ? "Busy"
-                            : "व्यस्त"
-                        : language === "EN"
-                          ? "Offline"
-                          : "ऑफलाइन";
-
-                // A patient choosing between names has little to choose on, so
-                // the qualification goes in front of the availability: it is
-                // what they are actually weighing up.
-                const detail = [doc.specialization, doc.qualifications, statusLabel]
+                const detail = [doc.specialization, doc.qualifications]
                     .filter((part: unknown) => typeof part === "string" && part.trim() !== "")
                     .join(" · ");
 
                 return {
                     id: `doctor_${doc.id}`,
-                    title: this.truncate(`${available ? "✅" : "⚠️"} Dr. ${doc.name}`, 24),
-                    description: this.truncate(detail, 72)
+                    title: this.truncate(`Dr. ${doc.name}`, 24),
+                    ...(detail ? { description: this.truncate(detail, 72) } : {})
                 };
             });
 

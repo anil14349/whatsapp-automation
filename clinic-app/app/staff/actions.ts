@@ -176,6 +176,7 @@ export interface StaffEdit {
     specialization?: string;
     qualifications?: string;
     photoUrl?: string;
+    takesOnlineAppointments?: boolean;
     maxCollectionsPerDay?: number;
 }
 

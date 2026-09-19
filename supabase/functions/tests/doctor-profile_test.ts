@@ -6,6 +6,10 @@
  * too, and it was not there — nor anywhere in the schema. `license_number` and
  * `years_experience` have existed all along and nothing reads either; neither
  * is what a patient wants.
+ *
+ * The availability that used to sit on each row has since gone: the list only
+ * offers doctors who can actually be booked, so it read "Available" every
+ * time. bookable-doctors_test.ts covers who reaches the list at all.
  */
 
 import { assert, assertEquals } from "std/testing/asserts.ts";
@@ -69,7 +73,10 @@ Deno.test("the qualification is offered alongside the specialisation", async () 
 
     assert(/MBBS, MD \(General Medicine\)/.test(shown), `qualification missing: ${shown}`);
     assert(/General Physician/.test(shown), shown);
-    assert(/Available/.test(shown), "availability must survive the addition");
+
+    // Printed on every row once the list became bookable-only, so it carried
+    // no information and just crowded out the qualification.
+    assert(!/Available/.test(shown), `availability is no longer worth a row: ${shown}`);
 });
 
 Deno.test("a doctor with no qualification recorded reads normally", async () => {
@@ -84,19 +91,30 @@ Deno.test("a doctor with no qualification recorded reads normally", async () => 
     const shown = descriptions()[0] ?? "";
 
     // No stray separator where the missing part would have been.
-    assertEquals(shown, "General Physician · Available");
+    assertEquals(shown, "General Physician");
 });
 
-Deno.test("a doctor with neither still shows their availability", async () => {
-    const { show, descriptions } = build({
+Deno.test("a doctor with nothing to say about them carries no description", async () => {
+    // The availability label used to guarantee this was never empty. It is
+    // gone, so the field has to be dropped rather than sent as "" — and the
+    // name still has to identify them.
+    const { show, wa } = build({
         specialization: null,
         qualifications: null,
-        availability_status: "ON_BREAK"
+        availability_status: "AVAILABLE"
     });
 
     await show();
 
-    assertEquals(descriptions()[0], "On break");
+    const row = wa.sent
+        .filter((m) => m.type === "list")
+        .flatMap((m) => m.sections ?? [])
+        .flatMap((s) => s.rows)
+        .find((r: any) => r.id.startsWith("doctor_"));
+
+    assert(row, "the doctor was not listed at all");
+    assertEquals((row as any).description, undefined);
+    assert(/A Sharma/.test((row as any).title), `the name is missing: ${(row as any).title}`);
 });
 
 Deno.test("a long qualification cannot break WhatsApp's row limit", async () => {

@@ -64,6 +64,30 @@ export class MultiClinicSupabaseClient {
     return data || [];
   }
 
+  /**
+   * Doctors a patient can actually be offered.
+   *
+   * Two reasons to leave one out, and both end the same way if they are not
+   * applied here: the patient picks a name, every date comes back with nothing,
+   * and they give up. getAvailableSlots returns [] for the whole day unless the
+   * status is AVAILABLE or IN_CONSULTATION, so BUSY and ON_BREAK are as
+   * unbookable as OFFLINE — excluding only OFFLINE would leave the same dead
+   * end wearing a different label.
+   *
+   * The front desk keeps its own list and is unaffected: a walk-in doctor is
+   * still booked at the counter.
+   */
+  async getBookableDoctors(clinicId: string): Promise<types.Doctor[]> {
+    const doctors = await this.getDoctors(clinicId);
+    const bookable = ["AVAILABLE", "IN_CONSULTATION"];
+
+    return doctors.filter(
+      (doctor) =>
+        (doctor as { takes_online_appointments?: boolean }).takes_online_appointments !== false &&
+        bookable.includes(doctor.availability_status)
+    );
+  }
+
   async getDoctorById(
     clinicId: string,
     doctorId: string
