@@ -35,22 +35,27 @@ export interface AppointmentRow {
 }
 
 /**
- * Blue means booked, green seen, slate did not turn up. Teal is never used
- * here: it belongs to the product and its primary actions, not to what is
- * happening to a patient.
+ * Blue means still to happen, green seen, slate did not turn up, red called
+ * off. Teal is never used here: it belongs to the product and its primary
+ * actions, not to what is happening to a patient.
+ *
+ * Cancelled and Did not turn up were both grey and a shade apart, which made
+ * two quite different outcomes hard to tell apart down a column.
  */
 const STATUS_STYLES: Record<string, string> = {
     CONFIRMED: "bg-blue-50 text-blue-700",
+    RESCHEDULED: "bg-blue-50 text-blue-700",
     COMPLETED: "bg-green-50 text-green-700",
     NO_SHOW: "bg-slate-100 text-slate-600",
-    CANCELLED: "bg-slate-50 text-slate-500"
+    CANCELLED: "bg-red-50 text-red-700"
 };
 
 const STATUS_DOTS: Record<string, string> = {
     CONFIRMED: "bg-blue-600",
+    RESCHEDULED: "bg-blue-600",
     COMPLETED: "bg-green-600",
     NO_SHOW: "bg-slate-500",
-    CANCELLED: "bg-slate-300"
+    CANCELLED: "bg-red-600"
 };
 
 /**

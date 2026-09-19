@@ -31,6 +31,10 @@ export const STAFF_LABELS = {
  */
 export const STATUS_LABELS: Record<string, string> = {
     CONFIRMED: "Booked",
+    // Declared in the schema and read by the booking guards, but nothing
+    // writes it: rescheduling moves the date and leaves the status alone. Named
+    // here so it cannot arrive as a lower-case "rescheduled" among Title Case.
+    RESCHEDULED: "Moved",
     COMPLETED: "Seen",
     NO_SHOW: "Did not turn up",
     CANCELLED: "Cancelled"
