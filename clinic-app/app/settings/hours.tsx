@@ -100,7 +100,7 @@ export function OpeningHours({ hours }: { hours: DayHours[] }) {
                     <button
                         disabled={busy}
                         onClick={copy}
-                        className="ml-auto rounded-lg border border-slate-200 px-3 py-1 text-sm hover:border-slate-300 disabled:opacity-50"
+                        className="ml-auto rounded-lg bg-brand-500 px-3 py-1 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
                     >
                         Copy hours
                     </button>

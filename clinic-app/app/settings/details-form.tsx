@@ -203,7 +203,7 @@ export function AddClosureForm() {
 
             <button
                 disabled={pending}
-                className="ml-auto rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-slate-300 disabled:opacity-60"
+                className="ml-auto rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-60"
             >
                 {pending ? "Adding…" : "Add closure"}
             </button>
@@ -280,7 +280,7 @@ function BrandingFields({
                         disabled={busy}
                         onChange={(e) => choose(e.target.files?.[0])}
                         aria-label="Logo image"
-                        className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-brand-700"
+                        className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand-500 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-brand-600"
                     />
                     {logo && (
                         <button
