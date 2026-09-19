@@ -99,9 +99,11 @@ pager waits for a keypress that never arrives and the command appears to hang.
 Accurate as of 2026-09-19. Checked against the live database, not remembered.
 
 - `clinics.phone` and `clinics.email` now hold the clinic's own details,
-  `919010224287` and `drappointmentlite@gmail.com`. The phone is printed on
-  every booking confirmation and in the after-hours reply, so the seed value it
-  replaced was telling patients to ring a number that does not exist.
+  `919010221481` and `drappointmentlite@gmail.com`. The phone is the number the
+  clinic publishes on its own website, and replaced `919010224287` on
+  2026-09-19. It is printed on every booking confirmation and in the
+  after-hours reply, so the seed value it replaced was telling patients to ring
+  a number that does not exist.
   `logo_url` is still null, so the portal and WhatsApp show initials.
 - One collector, `Ravi (test collector)`, has no PIN set. He will be asked to
   choose one on first contact, which is the designed behaviour, but the name

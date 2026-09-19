@@ -1566,13 +1566,17 @@ export class PatientFlowHandler {
                       (session.data?.serviceAddress ? ` — ${session.data.serviceAddress}` : "")
                     : clinicAddress || (isEn ? "At the clinic" : "क्लिनिक में");
 
+                // This receipt carries no buttons, so it has to name the words
+                // menuIdForKeyword accepts. "Message us here" was true but
+                // useless: anything other than an exact keyword lands on the
+                // main menu, which hides cancelling behind "More Options".
                 const callUs = config.clinic_phone
                     ? isEn
-                        ? `\n\nTo change or cancel, message us here or call +${config.clinic_phone}.`
-                        : `\n\nबदलने या रद्द करने के लिए यहाँ संदेश भेजें या +${config.clinic_phone} पर कॉल करें।`
+                        ? `\n\nTo change or cancel, reply CANCEL or RESCHEDULE, or call +${config.clinic_phone}.`
+                        : `\n\nबदलने या रद्द करने के लिए CANCEL या RESCHEDULE भेजें, या +${config.clinic_phone} पर कॉल करें।`
                     : isEn
-                      ? "\n\nTo change or cancel, just message us here."
-                      : "\n\nबदलने या रद्द करने के लिए यहाँ संदेश भेजें।";
+                      ? "\n\nTo change or cancel, reply CANCEL or RESCHEDULE."
+                      : "\n\nबदलने या रद्द करने के लिए CANCEL या RESCHEDULE भेजें।";
 
                 // A service with no doctor has no name to print, and printing
                 // one anyway produced "Dr. undefined" on a real confirmation.

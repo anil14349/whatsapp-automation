@@ -13,6 +13,7 @@ import { FakeWhatsAppClient } from "./helpers/fake-whatsapp.ts";
 import { seed, session, tap, CLINIC_A, DOCTOR_A, PATIENT_PHONE } from "./helpers/fixtures.ts";
 import { BUTTON_IDS } from "../shared/button-ids.ts";
 import { buildIcs, calendarFileName } from "../shared/appointment-calendar.ts";
+import { processMessage } from "../shared/message-processor.ts";
 
 Deno.env.set("SUPABASE_URL", "http://localhost:54321");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-key");
@@ -155,6 +156,52 @@ Deno.test("the confirmation carries no buttons, being a receipt", async () => {
     const confirmation = wa.sent.find((m) => m.body.includes("confirmed"));
 
     assertEquals(confirmation?.type, "text");
+});
+
+Deno.test("every word the confirmation tells the patient to send is one the bot acts on", async () => {
+    // The receipt carries no buttons, so the words are the whole interface.
+    // It used to say only "message us here", which is true but useless:
+    // anything that is not an exact keyword lands on the main menu, where
+    // cancelling is hidden behind "More Options". Naming words creates the
+    // opposite risk, copy promising a word menuIdForKeyword does not accept.
+    const { supabase, wa, confirm } = bookingAt();
+
+    await confirm(BOOKING);
+
+    const confirmation = wa.sent.find((m) => m.body.includes("confirmed"))?.body ?? "";
+    const promised = [...confirmation.matchAll(/\b[A-Z]{4,}\b/g)].map((m) => m[0]);
+
+    assert(promised.length > 0, `the confirmation names no word to send:\n${confirmation}`);
+
+    for (const word of promised) {
+        supabase.store.whatsapp_sessions = [
+            {
+                phone: PATIENT_PHONE,
+                clinic_id: CLINIC_A,
+                state: "MAIN_MENU",
+                data: { language: "EN" },
+                role: "PATIENT"
+            }
+        ];
+
+        await processMessage(supabase as any, new FakeWhatsAppClient() as any, {
+            messageId: crypto.randomUUID(),
+            senderPhone: PATIENT_PHONE,
+            senderName: "Anil",
+            messageText: word,
+            messageType: "text",
+            clinicId: CLINIC_A
+        });
+
+        const state = supabase
+            .rows("whatsapp_sessions")
+            .find((s: any) => s.phone === PATIENT_PHONE)?.state;
+
+        assert(
+            state !== "MAIN_MENU",
+            `the confirmation says to send "${word}", but it lands back on the main menu`
+        );
+    }
 });
 
 Deno.test("a service with no doctor is named, not called Dr. undefined", async () => {

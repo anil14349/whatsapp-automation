@@ -30,7 +30,7 @@ whole fallback, with `whatsapp_log.metadata` showing the delivery status.
 
 `clinics` for Wellsun holds the real address and coordinates — APR Praveen's
 Luxuria, Patancheru, Hyderabad, at 17.5255 / 78.2721 — and since 2026-09-19 the
-real contact details too: `919010224287` and `drappointmentlite@gmail.com`,
+real contact details too: `919010221481` and `drappointmentlite@gmail.com`,
 set through the settings endpoint rather than straight into the table so the
 change carries an audit entry.
 
