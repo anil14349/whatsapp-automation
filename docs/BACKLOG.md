@@ -112,6 +112,14 @@ cannot fail is worse than no gate, because it is counted.
   cannot locate. The distance check itself is unchanged and still permissive —
   see the convention note; this decides whether to *offer*, not whether to
   accept. **Done.**
+- `message_dedup` had an `expires_at`, an index on it, and a comment claiming
+  it "prevents table from growing indefinitely" — and nothing had ever deleted
+  a row, so the table grew by one per inbound message forever. A `pg_cron` job
+  added by `041` now sweeps expired rows hourly, in the database rather than
+  through an edge function: there is nothing to decide and no message to send.
+  Verified by running it every minute against a seeded expired row and an
+  unexpired control — `DELETE 1`, then `DELETE 0`, control survived — because
+  a scheduled job reporting success is not evidence it did anything. **Done.**
 - `ALLOWED_ORIGINS` is still `http://localhost:3001`, and that is harmless:
   `withCors` only omits the allow header, it never refuses a request, and the
   portal calls the functions from the Next server where CORS does not apply.
