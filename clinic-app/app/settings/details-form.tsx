@@ -100,9 +100,16 @@ export function BrandingForm({ clinic }: { clinic: ClinicDetails }) {
         <Section
             clinic={clinic}
             title="Appearance"
-            description="The logo and colour patients and staff see at the top of every page."
+            // Not "and patients": the logo is read from clinics.logo_url by the
+            // portal header alone. WhatsApp messages carry no image, and the
+            // profile picture patients see is set in Meta, not here.
+            description="Your clinic's logo and primary colour, as staff see them across the portal."
         >
-            <BrandingFields logoUrl={clinic.logoUrl} brandColour={clinic.brandColour} />
+            <BrandingFields
+                logoUrl={clinic.logoUrl}
+                brandColour={clinic.brandColour}
+                clinicName={clinic.name}
+            />
         </Section>
     );
 }
@@ -234,10 +241,12 @@ export function AddClosureForm() {
  */
 function BrandingFields({
     logoUrl,
-    brandColour
+    brandColour,
+    clinicName
 }: {
     logoUrl: string | null;
     brandColour: string | null;
+    clinicName: string;
 }) {
     const [logo, setLogo] = useState(logoUrl ?? "");
     const [colour, setColour] = useState(brandColour ?? "");
@@ -247,6 +256,14 @@ function BrandingFields({
 
     const valid = /^#[0-9a-f]{6}$/i.test(colour);
     const preview = valid ? colour : "#0f766e";
+
+    // The same rule the header uses, so the preview is not a flattering lie.
+    const initials = clinicName
+        .split(/\s+/)
+        .filter((word) => /[a-z0-9]/i.test(word))
+        .slice(0, 2)
+        .map((word) => word[0]?.toUpperCase())
+        .join("");
 
     function choose(file: File | undefined) {
         if (!file) return;
@@ -268,102 +285,178 @@ function BrandingFields({
         });
     }
 
+    function remove() {
+        startLogo(async () => {
+            const result = await removeLogo();
+            setLogoNotice(result);
+            if (result.logoUrl !== undefined) setLogo("");
+        });
+    }
+
     return (
-        <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1 sm:col-span-2">
-                <span className="block text-xs font-medium text-slate-600">Logo</span>
-                <div className="flex flex-wrap items-center gap-3">
-                    <input
-                        ref={fileRef}
-                        type="file"
-                        accept="image/png,image/jpeg,image/webp"
-                        disabled={busy}
-                        onChange={(e) => choose(e.target.files?.[0])}
-                        aria-label="Logo image"
-                        className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-brand-500 file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-white hover:file:bg-brand-600"
-                    />
-                    {logo && (
-                        <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() =>
-                                startLogo(async () => {
-                                    const result = await removeLogo();
-                                    setLogoNotice(result);
-                                    if (result.logoUrl !== undefined) setLogo("");
-                                })
-                            }
-                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:border-slate-300"
-                        >
-                            Remove
-                        </button>
-                    )}
-                    {busy && <span className="text-xs text-slate-500">Working…</span>}
-                </div>
-                <span className="block text-xs text-slate-500">
-                    PNG, JPEG or WebP, up to 2 MB. Leave it empty to show the clinic&apos;s
-                    initials instead. Saved as soon as you choose a file.
-                </span>
-                {logoNotice.error && (
-                    <span className="block text-xs text-red-700" role="alert">
-                        {logoNotice.error}
-                    </span>
-                )}
-                {logoNotice.success && !logoNotice.error && (
-                    <span className="block text-xs text-emerald-700" role="status">
-                        {logoNotice.success}
-                    </span>
-                )}
-            </div>
+        <div className="max-w-3xl space-y-6">
+            <input
+                ref={fileRef}
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                disabled={busy}
+                onChange={(e) => choose(e.target.files?.[0])}
+                aria-label="Logo image"
+                className="hidden"
+            />
 
-            <label className="space-y-1">
-                <span className="block text-xs font-medium text-slate-600">Colour</span>
-                <div className="flex items-center gap-2">
-                    <input
-                        type="color"
-                        value={preview}
-                        onChange={(e) => setColour(e.target.value)}
-                        aria-label="Pick a colour"
-                        className="h-9 w-12 cursor-pointer rounded border border-slate-200"
-                    />
-                    <input
-                        name="brandColour"
-                        value={colour}
-                        onChange={(e) => setColour(e.target.value)}
-                        placeholder="#0f766e"
-                        className="w-32 rounded-lg border border-slate-200 px-3 py-1.5 text-sm"
-                    />
-                </div>
-                {colour && !valid && (
-                    <span className="block text-xs text-amber-700">
-                        Needs to look like #0f766e
-                    </span>
-                )}
-            </label>
+            <section className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Brand logo
+                </h3>
 
-            <div className="space-y-1">
-                <span className="block text-xs font-medium text-slate-600">Preview</span>
-                <div className="flex items-center gap-2 rounded-lg border border-slate-200 p-2">
-                    {logo ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={logo} alt="" className="h-8 w-8 rounded-lg object-contain" />
-                    ) : (
-                        <span
-                            className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold"
-                            style={{ backgroundColor: preview, color: readableOn(preview) }}
-                        >
-                            CL
-                        </span>
-                    )}
+                {logo ? (
+                    <div className="flex flex-wrap items-start gap-4">
+                        <div className="flex h-20 w-20 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-2">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={logo} alt="" className="max-h-full max-w-full object-contain" />
+                        </div>
+                        <div className="space-y-2">
+                            <p className="text-sm font-medium text-slate-700">Current logo</p>
+                            <p className="text-xs text-slate-500">
+                                PNG, JPEG or WebP · up to 2 MB
+                            </p>
+                            <div className="flex items-center gap-4 pt-1">
+                                <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={() => fileRef.current?.click()}
+                                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-400 disabled:opacity-50"
+                                >
+                                    Replace logo
+                                </button>
+                                <button
+                                    type="button"
+                                    disabled={busy}
+                                    onClick={remove}
+                                    className="text-sm text-slate-500 hover:text-red-700 disabled:opacity-50"
+                                >
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
                     <button
                         type="button"
-                        className="rounded-lg px-3 py-1.5 text-sm font-medium"
-                        style={{ backgroundColor: preview, color: readableOn(preview) }}
+                        disabled={busy}
+                        onClick={() => fileRef.current?.click()}
+                        className="flex w-full flex-col items-center gap-1 rounded-xl border-2 border-dashed border-slate-200 px-6 py-8 hover:border-brand-400 disabled:opacity-50"
                     >
-                        Button
+                        <span className="text-sm font-medium text-slate-700">
+                            Upload clinic logo
+                        </span>
+                        <span className="text-xs text-slate-500">
+                            PNG, JPEG or WebP · up to 2 MB
+                        </span>
+                        <span className="mt-2 rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white">
+                            Browse
+                        </span>
+                        <span className="mt-1 text-xs text-slate-500">
+                            Without one, the header shows the clinic&apos;s initials.
+                        </span>
                     </button>
+                )}
+
+                {busy && <p className="text-xs text-slate-500">Working…</p>}
+                {logoNotice.error && (
+                    <p className="text-xs text-red-700" role="alert">
+                        {logoNotice.error}
+                    </p>
+                )}
+                {logoNotice.success && !logoNotice.error && (
+                    <p className="text-xs text-emerald-700" role="status">
+                        {logoNotice.success}
+                    </p>
+                )}
+                <p className="text-xs text-slate-500">Saved as soon as you choose a file.</p>
+            </section>
+
+            <hr className="border-slate-100" />
+
+            <section className="space-y-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Brand colour
+                </h3>
+
+                <label className="block space-y-1">
+                    <span className="block text-xs font-medium text-slate-600">Primary colour</span>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="color"
+                            value={preview}
+                            onChange={(e) => setColour(e.target.value)}
+                            aria-label="Pick a colour"
+                            className="h-9 w-12 cursor-pointer rounded border border-slate-200"
+                        />
+                        <input
+                            name="brandColour"
+                            value={colour}
+                            onChange={(e) => setColour(e.target.value)}
+                            placeholder="#0f766e"
+                            spellCheck={false}
+                            className="w-32 rounded-lg border border-slate-200 px-3 py-1.5 font-mono text-sm"
+                        />
+                    </div>
+                    {colour && !valid && (
+                        <span className="block text-xs text-amber-700">
+                            Needs to look like #0f766e
+                        </span>
+                    )}
+                    {!colour && (
+                        // The empty box reads as disabled otherwise, which is
+                        // what it was mistaken for.
+                        <span className="block text-xs text-slate-500">
+                            Not set, so the portal uses its default teal.
+                        </span>
+                    )}
+                </label>
+
+                <div className="space-y-1">
+                    <span className="block text-xs font-medium text-slate-600">Preview</span>
+                    <div className="overflow-hidden rounded-xl border border-slate-200">
+                        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                            <div className="flex items-center gap-2">
+                                {logo ? (
+                                    // eslint-disable-next-line @next/next/no-img-element
+                                    <img
+                                        src={logo}
+                                        alt=""
+                                        className="h-8 w-8 rounded-lg object-contain"
+                                    />
+                                ) : (
+                                    <span
+                                        className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold"
+                                        style={{
+                                            backgroundColor: preview,
+                                            color: readableOn(preview)
+                                        }}
+                                    >
+                                        {initials}
+                                    </span>
+                                )}
+                                <span className="text-sm font-medium text-slate-900">
+                                    {clinicName}
+                                </span>
+                            </div>
+                            <span
+                                className="rounded-lg px-3 py-1.5 text-sm font-medium"
+                                style={{ backgroundColor: preview, color: readableOn(preview) }}
+                            >
+                                Book appointment
+                            </span>
+                        </div>
+                        <div className="px-4 py-3 text-xs text-slate-500">
+                            This is the header staff see on every page of the portal.
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </section>
         </div>
     );
 }
