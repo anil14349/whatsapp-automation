@@ -53,11 +53,16 @@ const STATUS_DOTS: Record<string, string> = {
     CANCELLED: "bg-slate-300"
 };
 
-/** Neutral by default; colour is spent only where it means something. */
+/**
+ * Neutral by default; colour is spent only where it means something.
+ *
+ * nowrap because the actions column is the first to be squeezed, and "Send
+ * report" broke across two lines long before the window got genuinely small.
+ */
 const BUTTON = {
-    plain: "rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50",
-    good: "rounded-lg border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 transition hover:border-green-300 hover:bg-green-100 disabled:opacity-50",
-    quiet: "rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-50",
+    plain: "whitespace-nowrap rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50",
+    good: "whitespace-nowrap rounded-lg border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 transition hover:border-green-300 hover:bg-green-100 disabled:opacity-50",
+    quiet: "whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-100 disabled:opacity-50",
     danger: MENU_DANGER,
     menuItem: MENU_ITEM
 };
@@ -315,7 +320,7 @@ export function AppointmentTable({
                 />
             )}
 
-            <div className="overflow-hidden rounded-xl bg-white ring-1 ring-slate-200">
+            <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-slate-200">
                 {counts.home > 0 && counts.clinic > 0 && (
                     /* Home visits and clinic visits are different work. Only
                        offered when the day actually holds both. */

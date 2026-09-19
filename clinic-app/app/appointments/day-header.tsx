@@ -7,6 +7,15 @@ import { WalkInForm, type DoctorOption } from "./walk-in-form";
 import { useNotice } from "@/lib/use-notice";
 
 /**
+ * One height for everything on the toolbar row.
+ *
+ * Each control had its own padding, so the search box came out 38px, the date
+ * stepper 42 and the walk-in button 36. Centred against each other, nothing
+ * shared a top or a bottom edge.
+ */
+const TOOLBAR_HEIGHT = "h-10";
+
+/**
  * The day's controls in one line.
  *
  * The date, the walk-in button and the delay button were three stacked rows
@@ -59,7 +68,7 @@ export function DayHeader({
                                     setDelay(!delay);
                                     setWalkIn(false);
                                 }}
-                                className="rounded-lg border border-amber-400 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800 transition hover:bg-amber-100"
+                                className={`${TOOLBAR_HEIGHT} rounded-lg border border-amber-400 bg-amber-50 px-3 text-sm font-medium text-amber-800 transition hover:bg-amber-100`}
                             >
                                 Running late
                             </button>
@@ -70,7 +79,7 @@ export function DayHeader({
                                     setWalkIn(!walkIn);
                                     setDelay(false);
                                 }}
-                                className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
+                                className={`${TOOLBAR_HEIGHT} rounded-lg bg-brand-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600`}
                             >
                                 Book walk-in
                             </button>
@@ -161,7 +170,7 @@ function SearchBox({ term }: { term: string }) {
                 onChange={(e) => setValue(e.target.value)}
                 placeholder="Name or number"
                 aria-label="Search appointments by patient name or number"
-                className={`w-52 rounded-lg border border-slate-200 py-2 pl-8 text-sm outline-none focus:border-brand-500 ${
+                className={`${TOOLBAR_HEIGHT} w-52 rounded-lg border border-slate-200 pl-8 text-sm outline-none focus:border-brand-500 ${
                     term ? "pr-8" : "pr-3"
                 }`}
             />
@@ -200,7 +209,9 @@ function DateNav({ date }: { date: string }) {
     }
 
     return (
-        <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white p-1">
+        <div
+            className={`${TOOLBAR_HEIGHT} flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-1`}
+        >
             <button
                 onClick={() => go(shift(date, -1))}
                 aria-label="Previous day"
