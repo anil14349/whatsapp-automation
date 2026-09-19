@@ -297,6 +297,18 @@ async function createAppointment(
       debug("receptionistAppointments", "Error creating appointment", {
         error: error.message
       });
+
+      // idx_appointments_doctor_slot_unique is what actually stops two people
+      // taking one slot. Without this the front desk saw the raw constraint
+      // name, because the portal only translates a 409.
+      if (error.code === "23505") {
+        return {
+          success: false,
+          conflict: true,
+          error: "That slot was just taken. Pick another time."
+        };
+      }
+
       return {
         success: false,
         error: `Failed to create appointment: ${error.message}`
@@ -918,6 +930,13 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
       const result = await createAppointment(supabase, clinicId, validation.data!);
 
       if (!result.success) {
+        if ((result as { conflict?: boolean }).conflict) {
+          return new Response(JSON.stringify({ error: result.error }), {
+            status: 409,
+            headers: { "Content-Type": "application/json" }
+          });
+        }
+
         return badRequestResponse(result.error);
       }
 

@@ -70,7 +70,7 @@ export async function cancelAppointment(
             };
         }
 
-        const { error: updateError } = await supabase
+        const { data: updated, error: updateError } = await supabase
             .from("appointments")
             .update({
                 status: "CANCELLED",
@@ -78,9 +78,22 @@ export async function cancelAppointment(
                 updated_at: new Date().toISOString()
             })
             .eq("id", appointmentId)
-            .eq("clinic_id", clinicId);
+            .eq("clinic_id", clinicId)
+            // The same two the read above refused, repeated on the write: the
+            // row can be completed by the doctor between the check and here.
+            .neq("status", "CANCELLED")
+            .neq("status", "COMPLETED")
+            .select("id");
 
         if (updateError) throw updateError;
+
+        if (!updated || updated.length === 0) {
+            return {
+                success: false,
+                message: "That appointment changed while you were cancelling it",
+                error: "Invalid appointment status"
+            };
+        }
 
         // Here rather than in the callers: the WhatsApp flow remembered to do
         // this and the portal did not, so cancelling at the desk still left the

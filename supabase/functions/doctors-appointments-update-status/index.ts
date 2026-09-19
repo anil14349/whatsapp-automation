@@ -102,12 +102,14 @@ async function updateAppointmentStatus(
   notes?: string
 ): Promise<{ id: string; status: string; completed_at: string; updated_at: string } | null> {
   try {
-    const completed_at = new Date().toISOString();
+    const now = new Date().toISOString();
 
+    // A patient who never arrived was never completed. The front desk endpoint
+    // already only stamps this for COMPLETED; the Summary counts both.
     let updateData: Record<string, unknown> = {
       status,
-      completed_at,
-      updated_at: completed_at
+      completed_at: status === "COMPLETED" ? now : null,
+      updated_at: now
     };
 
     if (notes) {
