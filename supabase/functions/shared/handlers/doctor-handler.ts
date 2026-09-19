@@ -15,6 +15,7 @@ import {
 import { hashPassword, validatePinStrength } from "../bcrypt-password.ts";
 import { getClinicTimezone, todayInTimezone } from "../clinic-slots.ts";
 import { scheduleNextUpNotice } from "../consultation-queue.ts";
+import { takeBreak, toMinutes } from "../doctor-breaks.ts";
 
 /**
  * Doctor Flow Handler - Manages doctor portal interactions
@@ -105,6 +106,10 @@ export class DoctorFlowHandler {
 
                 case "DOCTOR_LEAVE":
                     await this.handleLeave(phone, message, session);
+                    break;
+
+                case "DOCTOR_BREAK":
+                    await this.handleBreak(phone, message, session);
                     break;
 
                 case "DOCTOR_LEAVE_CONFIRM":
@@ -309,6 +314,22 @@ export class DoctorFlowHandler {
                 await this.showStatusMenu(phone, session);
                 break;
 
+            case BUTTON_IDS.DOCTOR_MENU.BREAK:
+                await this.updateSession(phone, "DOCTOR_BREAK", {
+                    doctorId: session.data?.doctorId,
+                    doctorName: session.data?.doctorName,
+                    clinicId: session.data?.clinicId ?? session.clinic_id,
+                    authenticated: true
+                });
+                await this.whatsappClient.sendTextMessage(
+                    phone,
+                    "☕ When are you stepping out today?\n\nReply with the times, e.g. 15:00-15:45\n\n" +
+                        "Anyone already booked in that window is moved to your next free slot and told. " +
+                        "Anyone who cannot be moved or reached is listed back to you.",
+                    this.supabase
+                );
+                break;
+
             case BUTTON_IDS.DOCTOR_MENU.MY_LEAVES:
                 await this.updateSession(phone, "DOCTOR_MY_LEAVES", {
                     doctorId: session.data?.doctorId,
@@ -346,7 +367,6 @@ export class DoctorFlowHandler {
             case BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS:
                 await this.showTodayAppointments(phone, session.data?.doctorId);
                 break;
-
             case BUTTON_IDS.DOCTOR_MENU.MARK_STATUS:
                 await this.updateSession(phone, "DOCTOR_MARK_STATUS", {
                     doctorId: session.data?.doctorId,
@@ -367,6 +387,104 @@ export class DoctorFlowHandler {
             default:
                 await this.showMenu(phone);
         }
+    }
+
+    /**
+     * DOCTOR_BREAK - step out for a window today.
+     *
+     * Reported back in full rather than as a count: the doctor is the only
+     * person who can act on somebody who could not be moved, and "2 patients
+     * affected" tells them nothing about who to find.
+     */
+    private async handleBreak(
+        phone: string,
+        message: ExtractedMessage,
+        session: WhatsAppSession
+    ): Promise<void> {
+        if (session.state !== "DOCTOR_BREAK") {
+            await this.showMenu(phone);
+            return;
+        }
+
+        const reply = (message.text || "").trim();
+        const clinicId = session.data?.clinicId ?? session.clinic_id;
+        const doctorId = session.data?.doctorId;
+
+        const match = /^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/.exec(reply);
+
+        if (!match) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "⚠️ Please send the times as HH:MM-HH:MM, for example 15:00-15:45.",
+                this.supabase
+            );
+            return;
+        }
+
+        const pad = (t: string) => (t.length === 4 ? `0${t}` : t);
+        const start = pad(match[1]);
+        const end = pad(match[2]);
+
+        if (toMinutes(end) <= toMinutes(start)) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "⚠️ The end time has to be after the start time.",
+                this.supabase
+            );
+            return;
+        }
+
+        const timezone = await getClinicTimezone(this.supabase, clinicId);
+        const today = todayInTimezone(timezone);
+
+        const outcome = await takeBreak(this.supabase, clinicId, doctorId, today, start, end, "Break");
+
+        if (!outcome.recorded) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                "❌ Could not record that break. Please try again.",
+                this.supabase
+            );
+            return;
+        }
+
+        const lines = [`☕ Break noted: ${start} to ${end} today. Nobody can book into it.`];
+
+        if (outcome.moved.length > 0) {
+            lines.push(
+                "",
+                "Moved and told:",
+                ...outcome.moved.map((m) => `• ${m.patientName} ${m.from} → ${m.to}`)
+            );
+        }
+
+        if (outcome.stranded.length > 0) {
+            lines.push(
+                "",
+                "⚠️ Still booked in that window — please call them:",
+                ...outcome.stranded.map(
+                    (s) =>
+                        `• ${s.patientName} at ${s.at} (${
+                            s.why === "no_slot" ? "no free slot left today" : "could not be messaged"
+                        })`
+                )
+            );
+        }
+
+        if (outcome.moved.length === 0 && outcome.stranded.length === 0) {
+            lines.push("", "Nobody was booked in that window.");
+        }
+
+        await this.whatsappClient.sendTextMessage(phone, lines.join("\n"), this.supabase);
+
+        await this.updateSession(phone, "DOCTOR_MENU", {
+            doctorId,
+            doctorName: session.data?.doctorName,
+            clinicId,
+            authenticated: true
+        });
+
+        await this.showMenu(phone);
     }
 
     /**
@@ -714,6 +832,7 @@ export class DoctorFlowHandler {
             { id: BUTTON_IDS.DOCTOR_MENU.APPOINTMENTS, title: "📋 Appointments", description: "View today's appointments" },
             { id: BUTTON_IDS.DOCTOR_MENU.MARK_STATUS, title: "✅ Mark Status", description: "Update an appointment status" },
             { id: BUTTON_IDS.DOCTOR_MENU.SET_STATUS, title: "🟢 My Availability", description: "Available, busy, on break or offline" },
+            { id: BUTTON_IDS.DOCTOR_MENU.BREAK, title: "☕ Take a Break", description: "Step out for a while today" },
             { id: BUTTON_IDS.DOCTOR_MENU.AVAILABILITY, title: "📅 Consulting Hours", description: "Set your hours for a day" },
             { id: BUTTON_IDS.DOCTOR_MENU.LEAVE, title: "🗓️ Apply for Leave", description: "Block a date range" },
             { id: BUTTON_IDS.DOCTOR_MENU.MY_LEAVES, title: "📖 My Leaves", description: "View or cancel upcoming leave" },

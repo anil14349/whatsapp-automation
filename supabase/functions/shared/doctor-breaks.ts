@@ -99,6 +99,10 @@ export function isDuringBreak(time: string, breaks: DoctorBreak[]): boolean {
 }
 
 export interface BreakOutcome {
+    /** The write succeeded. Not the same as having an id: that is a database
+     *  default, and a caller reading it as success is one stub away from
+     *  reporting a failure that did not happen. */
+    recorded: boolean;
     breakId: string | null;
     /** Appointments moved, with where they went. */
     moved: Array<{ appointmentId: string; patientName: string; from: string; to: string }>;
@@ -121,7 +125,7 @@ export async function takeBreak(
     endTime: string,
     reason?: string
 ): Promise<BreakOutcome> {
-    const outcome: BreakOutcome = { breakId: null, moved: [], stranded: [] };
+    const outcome: BreakOutcome = { recorded: false, breakId: null, moved: [], stranded: [] };
 
     if (toMinutes(endTime) <= toMinutes(startTime)) {
         return outcome;
@@ -145,6 +149,7 @@ export async function takeBreak(
         return outcome;
     }
 
+    outcome.recorded = true;
     outcome.breakId = created?.id ?? null;
 
     const { data: affected } = await supabase
@@ -204,23 +209,28 @@ export async function takeBreak(
 
     const { data: hours } = await supabase
         .from("doctor_operating_hours")
-        .select("closing_time")
+        .select("opening_time, closing_time")
         .eq("clinic_id", clinicId)
         .eq("doctor_id", doctorId)
         .eq("day_of_week", isoDayOfWeek(date))
         .maybeSingle();
 
+    const opening = hours?.opening_time ? toMinutes(String(hours.opening_time)) : 0;
     const closing = hours?.closing_time ? toMinutes(String(hours.closing_time)) : 24 * 60;
 
     for (const row of affected) {
         const was = String(row.appointment_time).slice(0, 5);
         const name = String(row.patient_name ?? "Patient");
 
-        // The first free half hour after the break that is not itself a break
-        // and not already somebody else's.
+        // Slots run every half hour from the doctor's opening time, so the
+        // replacement has to sit on that grid. Starting at the end of the
+        // break instead gave people appointments at 15:45 — a time the
+        // booking flow would never offer, and that nothing else lines up with.
         let replacement: string | null = null;
 
-        for (let t = toMinutes(endTime); t + 30 <= closing; t += 30) {
+        for (let t = opening; t + 30 <= closing; t += 30) {
+            if (t < toMinutes(endTime)) continue;
+
             const candidate = toClock(t);
 
             if (!taken.has(candidate) && !isDuringBreak(candidate, breaks)) {

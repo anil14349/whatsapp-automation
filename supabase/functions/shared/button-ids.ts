@@ -36,6 +36,7 @@ export const BUTTON_IDS = {
     // Doctor menu
     DOCTOR_MENU: {
         AVAILABILITY: "doctor_availability",
+        BREAK: "doctor_break",
         LEAVE: "doctor_leave",
         MY_LEAVES: "doctor_my_leaves",
         APPOINTMENTS: "doctor_appointments",

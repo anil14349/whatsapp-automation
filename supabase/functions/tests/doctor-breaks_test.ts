@@ -243,6 +243,25 @@ Deno.test("the replacement is not inside lunch", async () => {
     );
 });
 
+Deno.test("the replacement lands on a slot the clinic actually offers", async () => {
+    // A break ending at 15:45 must not produce a 15:45 appointment: slots run
+    // every half hour from opening, so that is a time nobody could book and
+    // nothing else lines up with. It did exactly that until a test disagreed.
+    const supabase = build([appointment("APT_1", "15:00")]);
+    const calls = stubGraph(() => ({ ok: true }));
+
+    try {
+        await takeBreak(supabase as any, CLINIC_A, DOCTOR_A, DAY, "15:00", "15:45");
+    } finally {
+        restoreFetch();
+    }
+
+    const moved = supabase.rows("appointments")[0].appointment_time;
+
+    assertEquals(moved, "16:00", "the patient was put on a time that is not a slot");
+    assertEquals(toMinutes(moved) % 30, 0, "off the half-hour grid");
+});
+
 Deno.test("a cancelled appointment inside the break is left alone", async () => {
     const supabase = build([appointment("APT_1", "15:00", { status: "CANCELLED" })]);
     const calls = stubGraph(() => ({ ok: true }));
@@ -278,7 +297,7 @@ Deno.test("a break that ends before it starts does nothing at all", async () => 
 
     const outcome = await takeBreak(supabase as any, CLINIC_A, DOCTOR_A, DAY, "15:30", "15:00");
 
-    assertEquals(outcome.breakId, null);
+    assertEquals(outcome.recorded, false);
     assertEquals(supabase.rows("doctor_breaks").length, 0, "a backwards break was recorded");
 });
 
