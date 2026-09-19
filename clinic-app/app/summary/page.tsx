@@ -139,7 +139,7 @@ export default async function SummaryPage({
                         <Stat label="Booked" value={summary.booked} />
                         <Stat label="Seen" value={summary.completed} />
                         <Stat
-                            label="Did not turn up"
+                            label="No-show"
                             value={summary.noShow}
                             note={
                                 summary.noShowRate === null

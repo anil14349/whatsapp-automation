@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import {
     editAppointment,
     loadSlots,
@@ -12,6 +12,7 @@ import {
 import { PhoneField } from "@/components/phone-field";
 import { RowMenu, MENU_ITEM, MENU_DANGER } from "@/components/row-menu";
 import { DocumentPanel } from "./document-panel";
+import { useAppointmentFilters } from "./filters";
 import { displayPhone } from "@/lib/phone";
 import { useNotice } from "@/lib/use-notice";
 import { statusLabel } from "@/lib/labels";
@@ -35,16 +36,17 @@ export interface AppointmentRow {
 }
 
 /**
- * Blue means still to happen, green seen, slate did not turn up, red called
- * off. Teal is never used here: it belongs to the product and its primary
- * actions, not to what is happening to a patient.
+ * Blue means still to happen, violet moved, green seen, slate did not turn up,
+ * red called off. Teal is never used here: it belongs to the product and its
+ * primary actions, not to what is happening to a patient.
  *
- * Cancelled and Did not turn up were both grey and a shade apart, which made
- * two quite different outcomes hard to tell apart down a column.
+ * Moved shared blue with Booked, which hid the one status the desk most needs
+ * to notice. Cancelled and No-show were both grey and a shade apart, which
+ * made two quite different outcomes hard to tell apart down a column.
  */
 const STATUS_STYLES: Record<string, string> = {
     CONFIRMED: "bg-blue-50 text-blue-700",
-    RESCHEDULED: "bg-blue-50 text-blue-700",
+    RESCHEDULED: "bg-violet-50 text-violet-700",
     COMPLETED: "bg-green-50 text-green-700",
     NO_SHOW: "bg-slate-100 text-slate-600",
     CANCELLED: "bg-red-50 text-red-700"
@@ -52,7 +54,7 @@ const STATUS_STYLES: Record<string, string> = {
 
 const STATUS_DOTS: Record<string, string> = {
     CONFIRMED: "bg-blue-600",
-    RESCHEDULED: "bg-blue-600",
+    RESCHEDULED: "bg-violet-600",
     COMPLETED: "bg-green-600",
     NO_SHOW: "bg-slate-500",
     CANCELLED: "bg-red-600"
@@ -60,6 +62,8 @@ const STATUS_DOTS: Record<string, string> = {
 
 /** Still ahead of the clinic: the booking guards treat these two alike. */
 const WAITING = ["CONFIRMED", "RESCHEDULED"];
+
+const PAGE_SIZE = 25;
 
 /**
  * Neutral by default; colour is spent only where it means something.
@@ -113,31 +117,31 @@ export function AppointmentTable({
     const [sending, setSending] = useState<AppointmentRow | null>(null);
     const [slots, setSlots] = useState<string[]>([]);
     const [newDate, setNewDate] = useState(date);
-    const [place, setPlace] = useState<"ALL" | "CLINIC" | "HOME">("ALL");
-    const [state, setState] = useState<"ALL" | "WAITING" | "SEEN">("ALL");
+    const { state, place } = useAppointmentFilters();
+    const [page, setPage] = useState(1);
     const [menu, setMenu] = useState<string | null>(null);
     const [confirmRated, setConfirmRated] = useState<AppointmentRow | null>(null);
 
-    const counts = {
-        home: rows.filter((r) => r.locationType === "HOME").length,
-        clinic: rows.filter((r) => r.locationType !== "HOME").length,
-        waiting: rows.filter((r) => WAITING.includes(r.status)).length,
-        seen: rows.filter((r) => r.status === "COMPLETED").length
-    };
+    // Changing a filter otherwise leaves the reader on whichever page they had
+    // reached, which is rarely the start of the list they just asked for.
+    useEffect(() => setPage(1), [state, place]);
 
     const byPlace =
         place === "ALL"
             ? rows
             : rows.filter((r) => (place === "HOME" ? r.locationType === "HOME" : r.locationType !== "HOME"));
 
-    // Who is still to be seen is the question the desk asks all day, and it was
-    // answerable only by reading down the status column.
-    const shown =
+    const matching =
         state === "ALL"
             ? byPlace
             : byPlace.filter((r) =>
                   state === "WAITING" ? WAITING.includes(r.status) : r.status === "COMPLETED"
               );
+
+    // A filter can leave fewer pages than the one being read.
+    const pages = Math.max(1, Math.ceil(matching.length / PAGE_SIZE));
+    const current = Math.min(page, pages);
+    const shown = matching.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
 
     function run(fn: () => Promise<BookingState>) {
         start(async () => setNotice(await fn()));
@@ -340,56 +344,7 @@ export function AppointmentTable({
                 />
             )}
 
-            <div className="flex flex-wrap gap-1">
-                {(
-                    [
-                        ["ALL", "All", rows.length],
-                        ["WAITING", "Waiting", counts.waiting],
-                        ["SEEN", "Seen", counts.seen]
-                    ] as const
-                ).map(([value, label, count]) => (
-                    <button
-                        key={value}
-                        onClick={() => setState(value)}
-                        className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
-                            state === value
-                                ? "bg-white text-slate-900 ring-1 ring-slate-200"
-                                : "text-slate-500 hover:text-slate-900"
-                        }`}
-                    >
-                        {label}{" "}
-                        <span className="tabular-nums text-slate-400">{count}</span>
-                    </button>
-                ))}
-            </div>
-
             <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-slate-200">
-                {counts.home > 0 && counts.clinic > 0 && (
-                    /* Home visits and clinic visits are different work. Only
-                       offered when the day actually holds both. */
-                    <div className="flex gap-1 border-b border-slate-200 bg-slate-50 px-3 py-2">
-                        {(
-                            [
-                                ["ALL", `All ${rows.length}`],
-                                ["CLINIC", `At the clinic ${counts.clinic}`],
-                                ["HOME", `Home visits ${counts.home}`]
-                            ] as const
-                        ).map(([value, label]) => (
-                            <button
-                                key={value}
-                                onClick={() => setPlace(value)}
-                                className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
-                                    place === value
-                                        ? "bg-white text-slate-900 ring-1 ring-slate-200"
-                                        : "text-slate-500 hover:text-slate-900"
-                                }`}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </div>
-                )}
-
                 <table className="w-full text-left text-sm">
                     <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
                         <tr>
@@ -453,7 +408,7 @@ export function AppointmentTable({
                                             returning within the clinic's free window. */}
                                         {row.isRevisit && (
                                             <span className="mt-1 inline-block rounded-full bg-violet-50 px-2 py-0.5 text-xs font-medium text-violet-700">
-                                                revisit
+                                                Revisit
                                             </span>
                                         )}
                                     </td>
@@ -466,18 +421,23 @@ export function AppointmentTable({
                                                 and its primary actions, not to a fact about a visit. */}
                                             {row.locationType === "HOME" && (
                                                 <span className="font-medium text-slate-600">
-                                                    at home
+                                                    At home
                                                 </span>
                                             )}
                                             {/* A walk-in has had no confirmation message, unlike
                                                 a patient who booked themselves. */}
-                                            {row.bookingSource === "WALK_IN" && <span>walk-in</span>}
+                                            {row.bookingSource === "WALK_IN" && <span>Walk-in</span>}
                                         </div>
                                     </td>
                                     {showDoctor && (
                                         <td className="whitespace-nowrap px-4 py-2.5 text-slate-600">
                                             {row.doctorName ?? (
-                                                <span className="text-slate-500">no doctor needed</span>
+                                                <>
+                                                    <div>—</div>
+                                                    <div className="text-xs text-slate-500">
+                                                        No doctor needed
+                                                    </div>
+                                                </>
                                             )}
                                         </td>
                                     )}
@@ -514,7 +474,7 @@ export function AppointmentTable({
                                                         }
                                                         className={BUTTON.good}
                                                     >
-                                                        Visited
+                                                        Mark seen
                                                     </button>
                                                 )}
                                                 {row.status !== "CANCELLED" && (
@@ -583,7 +543,7 @@ export function AppointmentTable({
                                                                     }}
                                                                     className={BUTTON.menuItem}
                                                                 >
-                                                                    Did not turn up
+                                                                    Mark as no-show
                                                                 </button>
                                                                 <button
                                                                     disabled={busy}
@@ -621,7 +581,7 @@ export function AppointmentTable({
                                                             }
                                                             className={BUTTON.good}
                                                         >
-                                                            Visited
+                                                            Mark seen
                                                         </button>
                                                         <button
                                                             disabled={busy}
@@ -644,6 +604,52 @@ export function AppointmentTable({
                         })}
                     </tbody>
                 </table>
+
+                {/* How much of the day is on screen. A filtered list otherwise
+                    ends without saying whether anything was left out. */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 px-4 py-2.5 text-sm text-slate-500">
+                    <span>
+                        Showing {shown.length} of {matching.length}{" "}
+                        {matching.length === 1 ? "appointment" : "appointments"}
+                    </span>
+
+                    {pages > 1 && (
+                        <div className="flex items-center gap-1">
+                            <button
+                                onClick={() => setPage(current - 1)}
+                                disabled={current === 1}
+                                aria-label="Previous page"
+                                className="rounded-lg border border-slate-200 px-2 py-1 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 disabled:opacity-40"
+                            >
+                                ‹
+                            </button>
+
+                            {Array.from({ length: pages }, (_, i) => i + 1).map((n) => (
+                                <button
+                                    key={n}
+                                    onClick={() => setPage(n)}
+                                    aria-current={n === current ? "page" : undefined}
+                                    className={`min-w-8 rounded-lg px-2 py-1 text-sm font-medium tabular-nums transition ${
+                                        n === current
+                                            ? "bg-brand-500 text-white"
+                                            : "border border-slate-200 text-slate-600 hover:border-slate-300 hover:text-slate-900"
+                                    }`}
+                                >
+                                    {n}
+                                </button>
+                            ))}
+
+                            <button
+                                onClick={() => setPage(current + 1)}
+                                disabled={current === pages}
+                                aria-label="Next page"
+                                className="rounded-lg border border-slate-200 px-2 py-1 text-slate-500 transition hover:border-slate-300 hover:text-slate-900 disabled:opacity-40"
+                            >
+                                ›
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );

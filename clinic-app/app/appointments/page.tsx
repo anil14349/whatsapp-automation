@@ -9,6 +9,7 @@ import { redirect } from "next/navigation";
 import { callAsUser, readSession } from "@/lib/portal";
 import { PortalShell, loadBranding } from "@/app/shell";
 import { DayHeader } from "./day-header";
+import { AppointmentFilters } from "./filters";
 import type { DoctorOption } from "./walk-in-form";
 import { AppointmentTable, type AppointmentRow } from "./appointment-table";
 import type { ServiceOption } from "./actions";
@@ -140,6 +141,7 @@ export default async function AppointmentsPage({
 
     return (
         <PortalShell session={session} branding={branding}>
+            <AppointmentFilters>
             <DayHeader
                 date={date}
                 doctors={doctors}
@@ -147,6 +149,19 @@ export default async function AppointmentsPage({
                 canSearch={!isDoctor}
                 term={term}
                 searching={searching}
+                counts={
+                    rows.length > 0
+                        ? {
+                              all: rows.length,
+                              waiting: rows.filter(
+                                  (r) => r.status === "CONFIRMED" || r.status === "RESCHEDULED"
+                              ).length,
+                              seen: rows.filter((r) => r.status === "COMPLETED").length,
+                              clinic: rows.filter((r) => r.locationType !== "HOME").length,
+                              home: rows.filter((r) => r.locationType === "HOME").length
+                          }
+                        : undefined
+                }
                 summary={
                     searching
                         ? `${rows.length} found${rows.length === 50 ? " (showing the 50 most recent)" : ""}`
@@ -182,6 +197,7 @@ export default async function AppointmentsPage({
                     showDate={searching}
                 />
             )}
+            </AppointmentFilters>
         </PortalShell>
     );
 }

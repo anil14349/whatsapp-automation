@@ -27,7 +27,7 @@ export const STAFF_LABELS = {
  * The same words the summary uses, so a day and its totals agree.
  *
  * The table printed the raw enum, so a row read NO_SHOW while the summary
- * called the same thing "Did not turn up".
+ * called the same thing something else.
  */
 export const STATUS_LABELS: Record<string, string> = {
     CONFIRMED: "Booked",
@@ -36,7 +36,7 @@ export const STATUS_LABELS: Record<string, string> = {
     // here so it cannot arrive as a lower-case "rescheduled" among Title Case.
     RESCHEDULED: "Moved",
     COMPLETED: "Seen",
-    NO_SHOW: "Did not turn up",
+    NO_SHOW: "No-show",
     CANCELLED: "Cancelled"
 };
 
