@@ -11,6 +11,7 @@ import * as types from "./multi-clinic-types.ts";
 import { addDays, getClinicHoursForDay, getClinicTimezone, todayInTimezone } from "./clinic-slots.ts";
 import { getServiceById } from "./clinic-services.ts";
 import { checkRevisit } from "./revisit.ts";
+import { getDoctorBreaks, isDuringBreak } from "./doctor-breaks.ts";
 
 export class MultiClinicSupabaseClient {
   private supabase: SupabaseClient;
@@ -607,12 +608,17 @@ export class MultiClinicSupabaseClient {
         ? minutesNow + noticeMinutes - 24 * 60
         : -1;
 
+    // Lunch, and any unplanned break taken today.
+    const breaks = await getDoctorBreaks(this.supabase, clinicId, doctorId, date);
+
     for (let time = startTime; time < endTime; time += 30) {
       if (time <= earliest) continue;
 
       const hour = Math.floor(time / 60);
       const min = time % 60;
       const timeStr = `${hour.toString().padStart(2, "0")}:${min.toString().padStart(2, "0")}`;
+
+      if (isDuringBreak(timeStr, breaks)) continue;
 
       // Check if slot is booked
       const isBooked = appointments.some((apt) => apt.appointment_time === timeStr);
