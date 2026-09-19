@@ -17,6 +17,7 @@ and why. Read it before assuming something is finished.
 
 **Start here.** Six modules, in the order they have to be deployed:
 
+- [**Which project is live**](./DEPLOYMENT/LIVE_PROJECT.md) — the live project is still *named* `migration-replay-scratch`; read this before touching either project
 - [**Deployment index**](./DEPLOYMENT/README.md) — the order, shared prerequisites, and the gate to run first
 - [Module 1 — Database](./DEPLOYMENT/MODULE_1_DATABASE.md) — migrations, storage bucket, first admin
 - [Module 2 — Edge functions](./DEPLOYMENT/MODULE_2_EDGE_FUNCTIONS.md) — all 19, their secrets, and the `--no-verify-jwt` trap

@@ -152,6 +152,9 @@ entry.
 
 - Supabase project region matters: the clinic is in India and the project is in
   Mumbai (`ap-south-1`). An earlier Tokyo project is kept only as a rollback.
+  The live project is still *named* `migration-replay-scratch` — renaming is
+  dashboard-only. [docs/DEPLOYMENT/LIVE_PROJECT.md](../docs/DEPLOYMENT/LIVE_PROJECT.md)
+  says which ref is which and how to roll back.
 - The portal needs `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `DEFAULT_CLINIC_ID` and
   `PORTAL_SESSION_SECRET`, all server-side. None takes a `NEXT_PUBLIC_` prefix:
   the browser never talks to Supabase directly, and the session cookie is

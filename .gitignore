@@ -35,8 +35,10 @@ Thumbs.db
 # Misc
 .cache/
 *.pid
-supabase/.temp/*
-supabase/supabase/.temp/*
+# Anchored patterns only matched the root, so a `supabase link` run from
+# clinic-app committed a .temp pointing at the retired Tokyo project. Match
+# it at any depth.
+**/supabase/.temp/
 test-webhook-result.txt
 webhook-test.txt
 
