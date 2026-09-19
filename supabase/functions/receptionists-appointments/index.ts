@@ -43,7 +43,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { withAuth, successResponse, errorResponse, badRequestResponse } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
 import { debug, recordAuditEvent } from "../shared/logger.ts";
-import { cancelAppointment, rescheduleAppointment } from "../shared/appointments.ts";
+import { cancelAppointment, rescheduleAppointment, hasPatientRated } from "../shared/appointments.ts";
 import MultiClinicSupabaseClient from "../shared/multi-clinic-supabase-client.ts";
 import { withCors } from "../shared/cors.ts";
 import { createAppointmentReminders, skipAppointmentReminders, rescheduleAppointmentReminders } from "../shared/appointment-reminders.ts";
@@ -461,6 +461,21 @@ async function updateAppointment(
 
   if (existing.status === "CANCELLED") {
     return { status: 400, payload: { error: "Cannot change a cancelled appointment" } };
+  }
+
+  // Reopening is for a mis-tap. Once the patient has answered the survey the
+  // visit demonstrably happened, and putting it back to CONFIRMED returns it
+  // to the cancel and reschedule lists — a patient was offered to cancel a
+  // consultation they had already rated.
+  if (status === "CONFIRMED" && existing.status !== "CONFIRMED") {
+    if (await hasPatientRated(supabase, clinicId, body.id)) {
+      return {
+        status: 409,
+        payload: {
+          error: "The patient has already rated this visit, so it cannot be reopened."
+        }
+      };
+    }
   }
 
   const now = new Date().toISOString();

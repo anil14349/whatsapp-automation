@@ -31,6 +31,29 @@ export interface AppointmentResponse {
 }
 
 /**
+ * Whether the patient has already rated this visit.
+ *
+ * Reopening a finished appointment is for a mis-tap, but once the patient has
+ * answered the survey the visit demonstrably happened. A survey that was only
+ * sent does not count — they may never have been seen.
+ */
+export async function hasPatientRated(
+    supabase: SupabaseClient,
+    clinicId: string,
+    appointmentId: string
+): Promise<boolean> {
+    const { data } = await supabase
+        .from("feedback")
+        .select("rating")
+        .eq("clinic_id", clinicId)
+        .eq("appointment_id", appointmentId)
+        .not("rating", "is", null)
+        .maybeSingle();
+
+    return Boolean(data);
+}
+
+/**
  * Cancel an appointment
  */
 export async function cancelAppointment(

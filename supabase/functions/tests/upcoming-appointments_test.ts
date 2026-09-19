@@ -13,6 +13,7 @@ import { fakeSupabase } from "./helpers/fake-supabase.ts";
 import { seed, CLINIC_A, DOCTOR_A, PATIENT_PHONE } from "./helpers/fixtures.ts";
 import { clearClinicTimezoneCache } from "../shared/clinic-slots.ts";
 import { MultiClinicSupabaseClient } from "../shared/multi-clinic-supabase-client.ts";
+import { hasPatientRated } from "../shared/appointments.ts";
 
 Deno.env.set("SUPABASE_URL", "http://localhost:54321");
 Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-key");
@@ -113,4 +114,59 @@ Deno.test("the history view still shows everything", async () => {
 
     assertEquals(all.length, 3);
     assert(all.some((a: any) => a.status === "COMPLETED"), "history lost the completed visit");
+});
+
+Deno.test("a rated visit cannot be reopened", async () => {
+    // How the completed appointment got back into the cancel list: the doctor
+    // marked it seen, the patient rated it 5/5, and two minutes later it was
+    // reopened from the portal, which returns it to CONFIRMED.
+    const { supabase } = build(["COMPLETED"]);
+
+    supabase.store.feedback = [
+        {
+            id: "fb-1",
+            clinic_id: CLINIC_A,
+            appointment_id: "APT_COMPLETED_0",
+            patient_phone: PATIENT_PHONE,
+            rating: 5,
+            status: "RATED"
+        }
+    ];
+
+    assertEquals(await hasPatientRated(supabase as any, CLINIC_A, "APT_COMPLETED_0"), true);
+});
+
+Deno.test("a survey that was only sent does not block reopening", async () => {
+    // Nobody answered, so the clinic may still have marked the wrong row.
+    const { supabase } = build(["COMPLETED"]);
+
+    supabase.store.feedback = [
+        {
+            id: "fb-1",
+            clinic_id: CLINIC_A,
+            appointment_id: "APT_COMPLETED_0",
+            patient_phone: PATIENT_PHONE,
+            rating: null,
+            status: "PENDING"
+        }
+    ];
+
+    assertEquals(await hasPatientRated(supabase as any, CLINIC_A, "APT_COMPLETED_0"), false);
+});
+
+Deno.test("another clinic's feedback does not block reopening", async () => {
+    const { supabase } = build(["COMPLETED"]);
+
+    supabase.store.feedback = [
+        {
+            id: "fb-1",
+            clinic_id: "other-clinic",
+            appointment_id: "APT_COMPLETED_0",
+            patient_phone: PATIENT_PHONE,
+            rating: 5,
+            status: "RATED"
+        }
+    ];
+
+    assertEquals(await hasPatientRated(supabase as any, CLINIC_A, "APT_COMPLETED_0"), false);
 });
