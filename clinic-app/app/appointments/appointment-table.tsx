@@ -58,6 +58,9 @@ const STATUS_DOTS: Record<string, string> = {
     CANCELLED: "bg-red-600"
 };
 
+/** Still ahead of the clinic: the booking guards treat these two alike. */
+const WAITING = ["CONFIRMED", "RESCHEDULED"];
+
 /**
  * Neutral by default; colour is spent only where it means something.
  *
@@ -118,7 +121,7 @@ export function AppointmentTable({
     const counts = {
         home: rows.filter((r) => r.locationType === "HOME").length,
         clinic: rows.filter((r) => r.locationType !== "HOME").length,
-        waiting: rows.filter((r) => r.status === "CONFIRMED").length,
+        waiting: rows.filter((r) => WAITING.includes(r.status)).length,
         seen: rows.filter((r) => r.status === "COMPLETED").length
     };
 
@@ -133,7 +136,7 @@ export function AppointmentTable({
         state === "ALL"
             ? byPlace
             : byPlace.filter((r) =>
-                  state === "WAITING" ? r.status === "CONFIRMED" : r.status === "COMPLETED"
+                  state === "WAITING" ? WAITING.includes(r.status) : r.status === "COMPLETED"
               );
 
     function run(fn: () => Promise<BookingState>) {
@@ -415,7 +418,7 @@ export function AppointmentTable({
                             </tr>
                         )}
                         {shown.map((row) => {
-                            const open = row.status === "CONFIRMED";
+                            const open = WAITING.includes(row.status);
 
                             return (
                                 <tr key={row.id}>
@@ -480,7 +483,7 @@ export function AppointmentTable({
                                     )}
                                     <td className="px-4 py-2.5">
                                         <span
-                                            className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${
+                                            className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-1 text-xs font-medium ${
                                                 STATUS_STYLES[row.status] ?? "bg-slate-100 text-slate-600"
                                             }`}
                                         >

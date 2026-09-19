@@ -20,7 +20,11 @@ import type { ServiceOption } from "./actions";
 function daySummary(rows: AppointmentRow[]): string {
     const cancelled = rows.filter((r) => r.status === "CANCELLED").length;
     const booked = rows.length - cancelled;
-    const toBeSeen = rows.filter((r) => r.status === "CONFIRMED").length;
+    // A moved appointment is still ahead of the clinic, which is how the
+    // booking guards already treat it.
+    const toBeSeen = rows.filter(
+        (r) => r.status === "CONFIRMED" || r.status === "RESCHEDULED"
+    ).length;
 
     const parts = [`${booked} booked`, `${toBeSeen} still to be seen`];
 
