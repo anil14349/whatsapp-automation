@@ -61,9 +61,13 @@ INSERT INTO appointments (
 -- The survey sweep messages any COMPLETED appointment from the last 7 days
 -- that has no feedback row, every minute until it sends. A row here is what
 -- stops the sample patient being written to.
+--
+-- Dated with its own appointment and left without a comment on purpose: at
+-- today's date it joined the real ratings on the Summary, and a made-up
+-- remark appeared under "What patients said".
 INSERT INTO feedback (id, clinic_id, appointment_id, patient_phone, rating, comments, status, submitted_at)
 VALUES (gen_random_uuid(), '402ae46c-56ed-40b0-a4b0-df63d6b43acc',
-        'APT_SAMPLE_SEEN', '910000000002', 5, 'Sample row: blocks the survey sweep.',
-        'COMPLETE', now());
+        'APT_SAMPLE_SEEN', '910000000002', 5, NULL,
+        'COMPLETE', '2026-09-22 09:45:00+00');
 
 COMMIT;
