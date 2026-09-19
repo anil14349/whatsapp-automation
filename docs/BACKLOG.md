@@ -153,8 +153,9 @@ cannot fail is worse than no gate, because it is counted.
   signature, one without falls back to the query token.
 - The WhatsApp number's `code_verification_status` reads `EXPIRED`. Never
   investigated; unclear what it affects.
-- Display name is still `Dr Appointment`. `name_status` is
-  `AVAILABLE_WITHOUT_REVIEW`, so it can be changed with no Meta review.
+- Display name was `Dr Appointment` and was changed on 2026-09-18.
+  `name_status` is `AVAILABLE_WITHOUT_REVIEW`, so it can be changed again with
+  no Meta review. **Done.**
 - `staff_credential` was deliberately **not** registered as a template: Meta
   would classify it Authentication, and the parameter would hand a one-time
   password to Meta. Fallback to email or returning it to the admin works.

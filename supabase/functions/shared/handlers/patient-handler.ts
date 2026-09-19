@@ -1033,18 +1033,14 @@ export class PatientFlowHandler {
                 
                 if (!doctorAvailable) {
                     const doctorStatus = await this.supabaseClient.getDoctorAvailabilityStatus(clinicId, doctorId);
-                    const statusMessage = 
-                        doctorStatus === 'ON_BREAK'
-                            ? (language === "EN" ? "Dr. is currently on break" : "डॉ. वर्तमान में ब्रेक पर हैं")
-                            : doctorStatus === 'BUSY'
-                            ? (language === "EN" ? "Dr. is currently busy" : "डॉ. वर्तमान में व्यस्त हैं")
-                            : (language === "EN" ? "Dr. is not available" : "डॉ. उपलब्ध नहीं हैं");
-                    
+
                     await this.whatsappClient.sendTextMessage(
                         phone,
-                        language === "EN"
-                            ? `❌ ${statusMessage}. Please try another doctor or date.`
-                            : `❌ ${statusMessage}। कृपया किसी अन्य डॉक्टर या तारीख को आजमाएं।`
+                        this.doctorUnavailableMessage(
+                            language,
+                            doctorStatus,
+                            session.data?.selectedDoctorName
+                        )
                     );
                 } else {
                     await this.offerWaitlist(
@@ -1189,18 +1185,14 @@ export class PatientFlowHandler {
             
             if (!doctorAvailable) {
                 const doctorStatus = await this.supabaseClient.getDoctorAvailabilityStatus(clinicId, doctorId);
-                const statusMessage = 
-                    doctorStatus === 'ON_BREAK'
-                        ? (language === "EN" ? "Dr. is currently on break" : "डॉ. वर्तमान में ब्रेक पर हैं")
-                        : doctorStatus === 'BUSY'
-                        ? (language === "EN" ? "Dr. is currently busy" : "डॉ. वर्तमान में व्यस्त हैं")
-                        : (language === "EN" ? "Dr. is not available" : "डॉ. उपलब्ध नहीं हैं");
-                
+
                 await this.whatsappClient.sendTextMessage(
                     phone,
-                    language === "EN"
-                        ? `❌ ${statusMessage}. Please try another doctor or date.`
-                        : `❌ ${statusMessage}। कृपया किसी अन्य डॉक्टर या तारीख को आजमाएं।`
+                    this.doctorUnavailableMessage(
+                        language,
+                        doctorStatus,
+                        session.data?.selectedDoctorName
+                    )
                 );
             } else {
                 await this.offerWaitlist(
@@ -2815,18 +2807,113 @@ export class PatientFlowHandler {
 
     }
 
+    /**
+     * Why a doctor has no times, said with their name in it.
+     *
+     * The wording was a fixed string beginning "Dr. is", so it reached real
+     * patients as a sentence with a hole in it. Same failure as "Dr. undefined"
+     * on the confirmation: if there is no name to print, do not print the
+     * title either.
+     */
+    private doctorUnavailableMessage(
+        language: string,
+        status: string | null | undefined,
+        doctorName?: string | null
+    ): string {
+        const en = language === "EN";
+        const who = doctorName ? (en ? `Dr. ${doctorName}` : `डॉ. ${doctorName}`) : "";
+
+        const subject = who || (en ? "That doctor" : "वह डॉक्टर");
+
+        const reason =
+            status === "ON_BREAK"
+                ? en ? `${subject} is on a break` : `${subject} ब्रेक पर हैं`
+                : status === "BUSY"
+                    ? en ? `${subject} is busy` : `${subject} व्यस्त हैं`
+                    : en ? `${subject} is not available` : `${subject} उपलब्ध नहीं हैं`;
+
+        return en
+            ? `❌ ${reason}. Please try another doctor or date.`
+            : `❌ ${reason}। कृपया किसी अन्य डॉक्टर या तारीख को आजमाएं।`;
+    }
+
+    /**
+     * The days that can actually be booked, as a list.
+     *
+     * This used to be three buttons — Today, Tomorrow, Other date — and "Other
+     * date" asked the patient to type YYYY-MM-DD. Typing a date format is the
+     * hardest thing the flow ever asked anyone to do: it rejects 22-09-2026,
+     * 22/09, and "next Monday", and a patient who wanted the day after
+     * tomorrow had to work out its date. The whole window is at most a week,
+     * which fits in one list, so there is nothing to type.
+     *
+     * The row id is the date itself, which handleBookDate already accepts as a
+     * typed reply, so the two paths stay one path.
+     */
     private async showDateMenu(phone: string, language: string, intro?: string): Promise<void> {
-        const question = language === "EN"
+        const en = language === "EN";
+        const question = en
             ? "When would you like your appointment?"
             : "कृपया अपनी नियुक्ति की तारीख चुनें।";
 
         const message = intro ? `${intro}\n\n${question}` : question;
 
-        await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
-            { id: BUTTON_IDS.DATE_SELECT.TODAY, title: language === "EN" ? "Today" : "आज" },
-            { id: BUTTON_IDS.DATE_SELECT.TOMORROW, title: language === "EN" ? "Tomorrow" : "कल" },
-            { id: BUTTON_IDS.DATE_SELECT.OTHER, title: language === "EN" ? "Other date" : "अन्य तारीख" }
-        ]);
+        const timezone = await getClinicTimezone(this.supabase, this.clinicId);
+        const today = todayInTimezone(timezone);
+        const aheadDays = await this.bookingWindowDays(this.clinicId);
+
+        // Ten rows is Meta's limit, and one is kept back for typing a date
+        // beyond the list when a service allows booking further out.
+        const listed = Math.min(aheadDays + 1, 9);
+
+        const rows: Array<{ id: string; title: string; description?: string }> = [];
+
+        for (let i = 0; i < listed; i++) {
+            const date = addDays(today, i);
+            const when = new Date(`${date}T00:00:00`);
+
+            const weekday = new Intl.DateTimeFormat(en ? "en-GB" : "hi-IN", {
+                weekday: "short",
+                day: "numeric",
+                month: "short"
+            }).format(when);
+
+            const title = i === 0
+                ? (en ? `Today · ${weekday}` : `आज · ${weekday}`)
+                : i === 1
+                    ? (en ? `Tomorrow · ${weekday}` : `कल · ${weekday}`)
+                    : weekday;
+
+            rows.push({ id: date, title: title.slice(0, 24) });
+        }
+
+        if (aheadDays + 1 > listed) {
+            rows.push({
+                id: BUTTON_IDS.DATE_SELECT.OTHER,
+                title: en ? "Another date" : "अन्य तारीख",
+                description: en ? `Up to ${aheadDays} days ahead` : `${aheadDays} दिन तक`
+            });
+        }
+
+        try {
+            await this.whatsappClient.sendInteractiveListMessage(
+                phone,
+                message,
+                en ? "Pick a day" : "दिन चुनें",
+                [{ title: en ? "Available days" : "उपलब्ध दिन", rows }],
+                this.supabase
+            );
+        } catch (error) {
+            debug("patientFlow", "Date list failed, falling back to buttons", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+
+            await this.whatsappClient.sendInteractiveButtonMessage(phone, message, [
+                { id: BUTTON_IDS.DATE_SELECT.TODAY, title: en ? "Today" : "आज" },
+                { id: BUTTON_IDS.DATE_SELECT.TOMORROW, title: en ? "Tomorrow" : "कल" },
+                { id: BUTTON_IDS.DATE_SELECT.OTHER, title: en ? "Other date" : "अन्य तारीख" }
+            ]);
+        }
     }
 
     private async showAvailableSlots(

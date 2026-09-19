@@ -12,15 +12,12 @@ them actively misleads.
 |---|---|
 | Ref | `tedircrxgkktxzhlgolt` |
 | Region | `ap-south-1`, Mumbai |
-| Name in the dashboard | **`migration-replay-scratch`** |
 
-**That name is wrong and cannot be fixed from here.** Renaming a Supabase
-project is a dashboard-only action; there is no CLI or API for it. It was
-created to rehearse the move and became production when the rehearsal
-succeeded, which is a good outcome with an embarrassing label. Anyone who
-opens the dashboard, reads "scratch", and treats the project as disposable
-will delete the clinic's live data. Until somebody renames it, this page is
-the correction.
+It was called `migration-replay-scratch` until 2026-09-19 — created to rehearse
+the move, and left with the rehearsal's name once the rehearsal became
+production. Renamed since. Always identify it by the ref rather than the name:
+the ref is what every deploy and connection string carries, and it is the only
+thing that cannot quietly change.
 
 Mumbai is not cosmetic. The clinic is in Hyderabad, and the round trip to the
 previous region was adding latency to every webhook — WhatsApp waits for the
@@ -109,12 +106,6 @@ Accurate as of 2026-09-19. Checked against the live database, not remembered.
 - One collector, `Ravi (test collector)`, has no PIN set. He will be asked to
   choose one on first contact, which is the designed behaviour, but the name
   says what the account is for.
-- `Test Doctor (delete me)`, `testdoctor@wellsun.test`, exists for portal
-  sign-in. It is `is_active = false` on purpose: `doctors-auth-login` does not
-  check that column so the portal accepts it, while `getDoctors` does, so no
-  patient is offered them. The WhatsApp doctor flow *does* check it and will
-  refuse the account until it is switched on.
-  `DELETE FROM doctors WHERE email = 'testdoctor@wellsun.test';` removes it.
 - `appointments` is **empty**. The three cancelled cutover proofs were deleted
   on 2026-09-19; their six reminders went with them on the cascade, and the
   four tables that can hold an `appointment_id` were each checked for orphans
