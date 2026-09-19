@@ -20,6 +20,7 @@ import {
     getClinicClosure,
     getClinicServiceSlots,
     getClinicTimezone,
+    getOpenDays,
     todayInTimezone
 } from "../clinic-slots.ts";
 import {
@@ -2952,37 +2953,57 @@ export class PatientFlowHandler {
         const today = todayInTimezone(timezone);
         const aheadDays = await this.bookingWindowDays(this.clinicId);
 
-        const rows: Array<{ id: string; title: string; description?: string }> = [];
+        const candidates: string[] = [];
+
+        for (let offset = 0; offset <= aheadDays; offset++) {
+            const date = addDays(today, offset);
+
+            if (date !== exclude) {
+                candidates.push(date);
+            }
+        }
+
+        // A closed day was offered, accepted, and then refused with "the clinic
+        // is closed" - a round trip to say what the list already knew.
+        const open = await getOpenDays(this.supabase, this.clinicId, candidates);
+
+        if (open.length === 0) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                en
+                    ? "The clinic has no open days in the booking window. Please try again later."
+                    : "बुकिंग अवधि में क्लिनिक का कोई खुला दिन नहीं है। कृपया बाद में पुनः प्रयास करें।",
+                this.supabase
+            );
+            return;
+        }
 
         // Ten rows is Meta's limit, and one is kept back for typing a date
         // beyond the list when a service allows booking further out.
-        let offset = 0;
+        const listed = open.slice(0, 9);
+        const tomorrow = addDays(today, 1);
 
-        for (; offset <= aheadDays && rows.length < 9; offset++) {
-            const date = addDays(today, offset);
+        const rows: Array<{ id: string; title: string; description?: string }> = listed.map(
+            (date) => {
+                const when = new Date(`${date}T00:00:00`);
 
-            if (date === exclude) {
-                continue;
+                const weekday = new Intl.DateTimeFormat(en ? "en-GB" : "hi-IN", {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short"
+                }).format(when);
+
+                const title = date === today
+                    ? (en ? `Today · ${weekday}` : `आज · ${weekday}`)
+                    : date === tomorrow
+                        ? (en ? `Tomorrow · ${weekday}` : `कल · ${weekday}`)
+                        : weekday;
+
+                return { id: date, title: title.slice(0, 24) };
             }
+        );
 
-            const when = new Date(`${date}T00:00:00`);
-
-            const weekday = new Intl.DateTimeFormat(en ? "en-GB" : "hi-IN", {
-                weekday: "short",
-                day: "numeric",
-                month: "short"
-            }).format(when);
-
-            const title = offset === 0
-                ? (en ? `Today · ${weekday}` : `आज · ${weekday}`)
-                : offset === 1
-                    ? (en ? `Tomorrow · ${weekday}` : `कल · ${weekday}`)
-                    : weekday;
-
-            rows.push({ id: date, title: title.slice(0, 24) });
-        }
-
-        if (offset <= aheadDays) {
+        if (open.length > listed.length) {
             rows.push({
                 id: BUTTON_IDS.DATE_SELECT.OTHER,
                 title: en ? "Another date" : "अन्य तारीख",

@@ -180,3 +180,58 @@ Deno.test("the offer names the day rather than printing the date", async () => {
 
     assert(!/\d{4}-\d{2}-\d{2}/.test(offer), `a raw date reached the patient:\n${offer}`);
 });
+
+Deno.test("a day the clinic is shut is not offered", async () => {
+    const shut = addDays(today(), 3);
+    const { supabase, tap, rowIds } = build(today());
+
+    supabase.store.clinic_holidays = [
+        { id: "HOL_1", clinic_id: CLINIC_A, holiday_date: shut, holiday_name: "Founder's Day" }
+    ];
+
+    await tap("waitlist_no");
+
+    assertEquals(
+        rowIds().includes(shut),
+        false,
+        `offered a day the clinic is closed: ${JSON.stringify(rowIds())}`
+    );
+    assert(rowIds().includes(addDays(today(), 2)), "it took the open days with it");
+});
+
+Deno.test("a weekday the clinic never opens is not offered", async () => {
+    const { supabase, tap, rowIds } = build(today());
+
+    // Monday is 1 here, as it is in the database.
+    supabase.store.clinic_operating_hours = [
+        {
+            clinic_id: CLINIC_A,
+            day_of_week: 1,
+            opening_time: "09:00",
+            closing_time: "18:00",
+            is_active: false
+        }
+    ];
+
+    await tap("waitlist_no");
+
+    const mondays = rowIds().filter((id) => new Date(`${id}T00:00:00Z`).getUTCDay() === 1);
+
+    assertEquals(mondays.length, 0, `offered a Monday the clinic is shut: ${JSON.stringify(rowIds())}`);
+});
+
+Deno.test("a clinic shut for the whole window says so rather than sending an empty list", async () => {
+    const { supabase, tap, sent, rowIds } = build(today());
+
+    supabase.store.clinic_holidays = Array.from({ length: 9 }, (_, i) => ({
+        id: `HOL_${i}`,
+        clinic_id: CLINIC_A,
+        holiday_date: addDays(today(), i),
+        holiday_name: "Shut"
+    }));
+
+    await tap("waitlist_no");
+
+    assertEquals(rowIds().length, 0, "Meta refuses a list with no rows");
+    assert(/no open days/i.test(sent()?.body ?? ""), `no explanation given:\n${sent()?.body}`);
+});

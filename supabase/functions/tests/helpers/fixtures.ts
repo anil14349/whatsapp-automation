@@ -69,7 +69,9 @@ export function seed(options: FixtureOptions = {}): SeedData {
                 timezone: "Asia/Kolkata",
                 open_time: "09:00",
                 close_time: "18:00",
-                working_days: [1, 2, 3, 4, 5, 6, 0],
+                // The day names the column actually holds; a numeric array
+                // matched nothing, so every day read as closed.
+                working_days: "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
                 enable_after_hours_reply: false,
                 whatsapp_phone_number_id: "PHONE_A",
                 whatsapp_access_token: "TOKEN_A",
@@ -83,7 +85,7 @@ export function seed(options: FixtureOptions = {}): SeedData {
                 timezone: "Asia/Kolkata",
                 open_time: "09:00",
                 close_time: "18:00",
-                working_days: [1, 2, 3, 4, 5, 6, 0],
+                working_days: "Mon,Tue,Wed,Thu,Fri,Sat,Sun",
                 enable_after_hours_reply: false,
                 whatsapp_phone_number_id: "PHONE_B",
                 whatsapp_access_token: "TOKEN_B",

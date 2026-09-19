@@ -288,6 +288,28 @@ export async function getClinicClosure(
 }
 
 /**
+ * Which of these dates the clinic actually opens on.
+ *
+ * Built on getClinicClosure rather than its own copy of the rules, so the days
+ * offered and the days accepted cannot drift apart. Asked in parallel because
+ * the list is at most a week and the patient is waiting on one reply.
+ *
+ * Deliberately not cached: opening hours are edited from the portal, unlike
+ * the timezone above.
+ */
+export async function getOpenDays(
+    supabase: SupabaseClient,
+    clinicId: string,
+    dates: string[]
+): Promise<string[]> {
+    const closures = await Promise.all(
+        dates.map((date) => getClinicClosure(supabase, clinicId, date))
+    );
+
+    return dates.filter((_, i) => closures[i] === null);
+}
+
+/**
  * Times a doctor-free service can still be booked on this date.
  */
 export async function getClinicServiceSlots(
