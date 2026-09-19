@@ -264,7 +264,7 @@ export async function getFallbackServiceTypeId(
     return data?.id ?? null;
 }
 
-export function formatPrice(amount: number | null, language: string): string {
+export function formatPrice(amount: number | null, _language: string): string {
     if (amount === null || Number.isNaN(amount)) {
         return "";
     }
@@ -272,5 +272,7 @@ export function formatPrice(amount: number | null, language: string): string {
     const rounded = Number(amount);
     const value = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2);
 
-    return language === "EN" ? `₹${value}` : `₹${value}`;
+    // The rupee symbol and Western digits are the same in both languages, so
+    // the parameter is kept only so callers need not know that.
+    return `₹${value}`;
 }

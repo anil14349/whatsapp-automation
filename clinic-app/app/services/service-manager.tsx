@@ -9,9 +9,23 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
     const [notice, setNotice] = useNotice<ServiceState>({});
     const [busy, start] = useTransition();
     const [editing, setEditing] = useState<string | null>(null);
+    const [confirming, setConfirming] = useState<ServiceRow | null>(null);
+
+    // The text fields hold a draft so a half-typed value is never sent, which
+    // leaves the draft on screen when the server refuses it — the box then
+    // shows a number the clinic does not have. Bumping this remounts them from
+    // the server's own answer, whether it was accepted or rejected.
+    const [revision, setRevision] = useState(0);
+
+    function run(action: () => Promise<ServiceState>) {
+        start(async () => {
+            setNotice(await action());
+            setRevision((n) => n + 1);
+        });
+    }
 
     function save(id: string, changes: Parameters<typeof updateService>[1]) {
-        start(async () => setNotice(await updateService(id, changes)));
+        run(() => updateService(id, changes));
     }
 
     return (
@@ -25,6 +39,34 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                 <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
                     {notice.success}
                 </p>
+            )}
+
+            {confirming && (
+                <div className="rounded-xl bg-white p-4 ring-1 ring-red-200">
+                    <p className="text-sm">
+                        Remove <strong>{confirming.name}</strong>? Switching it off instead takes it
+                        away from patients and keeps the service.
+                    </p>
+                    <div className="mt-3 flex justify-end gap-2">
+                        <button
+                            onClick={() => setConfirming(null)}
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-slate-300"
+                        >
+                            Keep
+                        </button>
+                        <button
+                            disabled={busy}
+                            onClick={() => {
+                                const target = confirming;
+                                setConfirming(null);
+                                run(() => removeService(target.serviceTypeId));
+                            }}
+                            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
+                        >
+                            Remove for good
+                        </button>
+                    </div>
+                </div>
             )}
 
             <div className="space-y-2">
@@ -79,16 +121,17 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                             </div>
 
                             {open && (
-                                <div className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2">
+                                <div
+                                    key={revision}
+                                    className="mt-4 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-2"
+                                >
                                     <div className="sm:col-span-2">
                                         <NameField
                                             value={s.name}
                                             catalogueName={s.isOwn ? null : s.catalogueName}
                                             disabled={busy}
                                             onSave={(next) =>
-                                                start(async () =>
-                                                    setNotice(await renameService(s.serviceTypeId, next))
-                                                )
+                                                run(() => renameService(s.serviceTypeId, next))
                                             }
                                         />
                                     </div>
@@ -154,6 +197,9 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                     />
                                     <NumberField
                                         label="Book up to (days ahead)"
+                                        // 0 is what the endpoint reports for a service the clinic
+                                        // has never configured, and it refuses to store anything
+                                        // outside 1-365, so it must read as blank rather than zero.
                                         value={s.maxAheadDays || null}
                                         placeholder="7"
                                         disabled={busy}
@@ -178,15 +224,11 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                     {s.isOwn ? (
                                         <div className="sm:col-span-2 flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 pt-3">
                                             <span className="text-xs text-slate-500">
-                                                Refused while patients are still booked for it
+                                                Cannot be removed while patients are booked for it
                                             </span>
                                             <button
                                                 disabled={busy}
-                                                onClick={() =>
-                                                    start(async () =>
-                                                        setNotice(await removeService(s.serviceTypeId))
-                                                    )
-                                                }
+                                                onClick={() => setConfirming(s)}
                                                 className="rounded-lg border border-red-200 px-3 py-1.5 text-sm text-red-700 hover:border-red-300 disabled:opacity-50"
                                             >
                                                 Remove this service
