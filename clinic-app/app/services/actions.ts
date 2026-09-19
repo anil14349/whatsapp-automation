@@ -27,6 +27,7 @@ export interface ServiceRow {
     minNoticeHours: number;
     availableFrom: string | null;
     availableTo: string | null;
+    maxAheadDays: number | null;
     displayOrder: number;
     defaults: {
         clinicPrice: number | null;

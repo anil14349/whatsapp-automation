@@ -31,6 +31,14 @@ const LOCATION_LABELS: Record<string, string> = {
     HOME: "Home visits"
 };
 
+interface PatientComment {
+    rating: number;
+    comment: string;
+    patientName: string | null;
+    doctorName: string | null;
+    on: string | null;
+}
+
 interface Summary {
     from: string;
     to: string;
@@ -45,7 +53,7 @@ interface Summary {
     byLocation: Record<string, number>;
     byDoctor: Array<{ name: string; count: number }>;
     busiestHours: Array<{ hour: string; count: number }>;
-    feedback: { rated: number; average: number | null };
+    feedback: { rated: number; average: number | null; comments?: PatientComment[] };
     documents: { sent: number; failed: number };
     reminders: { sent: number; failed: number };
     undelivered: number;
@@ -214,6 +222,8 @@ export default async function SummaryPage({
                         Returning patients in this period: {summary.revisits}. Cancelled:{" "}
                         {summary.cancelled}, which are left out of the figures above.
                     </p>
+
+                    <Comments comments={summary.feedback.comments ?? []} />
                 </div>
             )}
         </PortalShell>
@@ -261,6 +271,61 @@ function Panel({
         <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
             <h2 className="mb-3 text-sm font-semibold">{title}</h2>
             {children ?? <p className="text-sm text-slate-500">{empty}</p>}
+        </div>
+    );
+}
+
+/**
+ * What patients actually said.
+ *
+ * The average alone tells a clinic that something is wrong and nothing about
+ * what. These are the words they typed, so a complaint about one visit reaches
+ * somebody rather than sitting in a column nobody reads.
+ */
+function Comments({ comments }: { comments: PatientComment[] }) {
+    if (comments.length === 0) {
+        return null;
+    }
+
+    return (
+        <div className="rounded-xl bg-white p-4 ring-1 ring-slate-200">
+            <h2 className="mb-3 text-sm font-semibold">What patients said</h2>
+
+            <ul className="space-y-3">
+                {comments.map((entry, index) => (
+                    <li
+                        key={`${entry.on ?? index}-${index}`}
+                        className="border-b border-slate-100 pb-3 last:border-0 last:pb-0"
+                    >
+                        <div className="flex flex-wrap items-baseline gap-2">
+                            <span
+                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                    entry.rating <= 2
+                                        ? "bg-amber-50 text-amber-800"
+                                        : "bg-slate-100 text-slate-600"
+                                }`}
+                                aria-label={`${entry.rating} out of 5`}
+                            >
+                                {entry.rating}/5
+                            </span>
+                            <span className="text-sm font-medium text-slate-900">
+                                {entry.patientName ?? "A patient"}
+                            </span>
+                            {entry.doctorName && (
+                                <span className="text-xs text-slate-500">
+                                    saw {entry.doctorName}
+                                </span>
+                            )}
+                            {entry.on && (
+                                <span className="ml-auto text-xs text-slate-500 tabular-nums">
+                                    {entry.on.slice(0, 10)}
+                                </span>
+                            )}
+                        </div>
+                        <p className="mt-1 text-sm text-slate-700">{entry.comment}</p>
+                    </li>
+                ))}
+            </ul>
         </div>
     );
 }

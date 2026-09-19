@@ -21,6 +21,14 @@ import { asLocationType } from "./location-type.ts";
  */
 export const MAX_ROWS = 5000;
 
+export interface PatientComment {
+    rating: number;
+    comment: string;
+    patientName: string | null;
+    doctorName: string | null;
+    on: string | null;
+}
+
 export interface Summary {
     from: string;
     to: string;
@@ -35,7 +43,13 @@ export interface Summary {
     byLocation: Record<string, number>;
     byDoctor: Array<{ name: string; count: number }>;
     busiestHours: Array<{ hour: string; count: number }>;
-    feedback: { rated: number; average: number | null };
+    /**
+     * The average, and the words behind it.
+     *
+     * Only the average was returned, so a patient could be asked what they
+     * thought, have it stored, and no member of staff could ever read it.
+     */
+    feedback: { rated: number; average: number | null; comments: PatientComment[] };
     documents: { sent: number; failed: number };
     reminders: { sent: number; failed: number };
     /**
@@ -161,25 +175,40 @@ async function feedbackSummary(
     clinicId: string,
     from: string,
     to: string
-): Promise<{ rated: number; average: number | null }> {
+): Promise<{ rated: number; average: number | null; comments: PatientComment[] }> {
     const { data, error } = await supabase
         .from("feedback")
-        .select("rating")
+        .select("rating, comments, patient_name, doctor_name, submitted_at")
         .eq("clinic_id", clinicId)
         .not("rating", "is", null)
         .gte("submitted_at", `${from}T00:00:00`)
         .lte("submitted_at", `${to}T23:59:59`)
+        .order("submitted_at", { ascending: false })
         .limit(MAX_ROWS);
 
     if (error || !data || data.length === 0) {
-        return { rated: 0, average: null };
+        return { rated: 0, average: null, comments: [] };
     }
+
+    // A rating with no words still counts towards the average but has nothing
+    // to read, so only the ones that said something are listed.
+    const comments: PatientComment[] = data
+        .filter((row: Record<string, any>) => String(row.comments ?? "").trim() !== "")
+        .slice(0, 20)
+        .map((row: Record<string, any>) => ({
+            rating: Number(row.rating),
+            comment: String(row.comments).trim(),
+            patientName: row.patient_name ?? null,
+            doctorName: row.doctor_name ?? null,
+            on: row.submitted_at ?? null
+        }));
 
     const total = data.reduce((sum, row) => sum + Number(row.rating ?? 0), 0);
 
     return {
         rated: data.length,
-        average: Math.round((total / data.length) * 10) / 10
+        average: Math.round((total / data.length) * 10) / 10,
+        comments
     };
 }
 

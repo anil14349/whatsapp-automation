@@ -43,29 +43,30 @@ deliberately left unset until there is a real one to publish.
 
 ---
 
-## 3. Patients' comments are collected and never shown
+## 3. Patients' comments are collected and never shown — DONE
 
 After a completed appointment the bot asks for a rating out of five, then an
 optional comment in the patient's own words. Both are stored in `feedback`:
 `rating`, `comments`, `patient_name`, `doctor_name`, `status`.
 
-The portal shows **the average rating and nothing else** — one tile on Summary
-reading "Patient rating, from N patients". No screen reads `feedback.comments`.
+The portal used to show **the average rating and nothing else** — one tile on
+Summary reading "Patient rating, from N patients". No screen read
+`feedback.comments`. So the clinic asked a patient what they thought, kept the
+answer, and no member of staff could ever read it. That is worse than not
+asking: the patient believes they have been heard, and a complaint about a
+specific visit goes nowhere.
 
-So the clinic asks a patient what they thought, keeps the answer, and no
-member of staff can ever read it. That is worse than not asking: the patient
-believes they have been heard, and a complaint about a specific visit goes
-nowhere. The one thing feedback is for — finding out what went wrong — is the
-one thing the portal cannot do with it.
+Fixed on 2026-09-18. `feedbackSummary` now also returns the rows —
+`{ rated, average, comments[] }`, newest first, capped at 20 — and Summary
+renders a "What patients said" panel under the tiles: rating, the words, the
+patient, the doctor, the date. A rating of 1 or 2 is tinted amber so it is not
+read past. Ratings with no words still count towards the average but are not
+listed, because there is nothing to read; two tests cover exactly that, and
+that another clinic's feedback is never read.
 
-**The shape of the fix.** A list on Summary, or its own section: recent
-feedback newest first, showing the rating, the comment, the patient and the
-doctor. `summary.ts` already queries this table for the average, so the data
-path exists; it returns `{ rated, average }` and would need the rows too.
-
-Worth deciding at the same time: whether a low rating should be visible
-somewhere the desk will see it that day, rather than only in a list someone
-remembers to open.
+Still undecided, and deliberately left: whether a low rating should reach the
+desk the day it arrives rather than waiting in a panel someone remembers to
+open. The panel is the floor, not the ceiling.
 
 ---
 

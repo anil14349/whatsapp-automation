@@ -41,6 +41,56 @@ function store(appointments: Record<string, unknown>[], extra: Record<string, un
 const FROM = "2026-09-01";
 const TO = "2026-09-30";
 
+function rating(over: Record<string, unknown> = {}) {
+    return {
+        clinic_id: CLINIC_A,
+        rating: 5,
+        comments: "",
+        patient_name: "Asha",
+        doctor_name: "Dr Rao",
+        submitted_at: "2026-09-10T11:00:00",
+        ...over
+    };
+}
+
+Deno.test("a rating with no words counts but is not listed", async () => {
+    const summary = await buildSummary(
+        store([], {
+            feedback: [
+                rating({ rating: 5, comments: "" }),
+                rating({ rating: 1, comments: "   " }),
+                rating({ rating: 3, comments: "Waited an hour." })
+            ]
+        }) as any,
+        CLINIC_A,
+        FROM,
+        TO
+    );
+
+    assertEquals(summary?.feedback.rated, 3, "all three ratings count towards the average");
+    assertEquals(summary?.feedback.average, 3);
+    assertEquals(summary?.feedback.comments.length, 1, "only the one that said something");
+    assertEquals(summary?.feedback.comments[0].comment, "Waited an hour.");
+    assertEquals(summary?.feedback.comments[0].rating, 3);
+    assertEquals(summary?.feedback.comments[0].patientName, "Asha");
+});
+
+Deno.test("another clinic's feedback is not read", async () => {
+    const summary = await buildSummary(
+        store([], {
+            feedback: [
+                rating({ clinic_id: CLINIC_B, rating: 1, comments: "Not ours." })
+            ]
+        }) as any,
+        CLINIC_A,
+        FROM,
+        TO
+    );
+
+    assertEquals(summary?.feedback.rated, 0);
+    assertEquals(summary?.feedback.comments.length, 0);
+});
+
 Deno.test("each outcome is counted once", async () => {
     const summary = await buildSummary(
         store([
