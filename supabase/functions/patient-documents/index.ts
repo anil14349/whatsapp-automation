@@ -19,6 +19,7 @@ import {
   forbiddenResponse
 } from "../shared/auth-middleware.ts";
 import { TokenPayload } from "../shared/jwt-auth.ts";
+import { ownedAppointmentIds } from "../shared/document-access.ts";
 import { withCors } from "../shared/cors.ts";
 import { debug, recordAuditEvent } from "../shared/logger.ts";
 import {
@@ -40,7 +41,8 @@ async function list(
   supabase: SupabaseClient,
   clinicId: string,
   appointmentId: string | null,
-  phone: string | null
+  phone: string | null,
+  user: TokenPayload
 ): Promise<Response> {
   let query = supabase
     .from("patient_documents")
@@ -51,6 +53,26 @@ async function list(
     query = query.eq("appointment_id", appointmentId);
   } else if (phone) {
     query = query.eq("patient_phone", phone.replace(/\D/g, ""));
+  }
+
+  // Clinic scope alone let any doctor read another doctor's patient's reports
+  // by passing their number. The front desk keeps the whole clinic's view.
+  if (user.role === "DOCTOR") {
+    const ids = await ownedAppointmentIds(supabase, clinicId, user.userId, {
+      appointmentId,
+      phone
+    });
+
+    if (ids === null) {
+      debug("patientDocuments", "Ownership lookup failed", { clinicId });
+      return errorResponse("Failed to list documents", 500);
+    }
+
+    if (ids.length === 0) {
+      return successResponse({ documents: [] });
+    }
+
+    query = query.in("appointment_id", ids);
   }
 
   const { data, error } = await query.order("created_at", { ascending: false }).limit(50);
@@ -193,7 +215,8 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
       supabase,
       clinicId,
       url.searchParams.get("appointmentId"),
-      url.searchParams.get("phone")
+      url.searchParams.get("phone"),
+      user
     );
   }
 
