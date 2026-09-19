@@ -326,7 +326,7 @@ function BrandingFields({
                                     type="button"
                                     disabled={busy}
                                     onClick={() => fileRef.current?.click()}
-                                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-slate-400 disabled:opacity-50"
+                                    className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 hover:border-slate-300 disabled:opacity-50"
                                 >
                                     Replace logo
                                 </button>
