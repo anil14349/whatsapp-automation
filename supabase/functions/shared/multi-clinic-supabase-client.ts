@@ -465,7 +465,12 @@ export class MultiClinicSupabaseClient {
 
       query = query
         .gte("appointment_date", today)
-        .neq("status", "CANCELLED");
+        .neq("status", "CANCELLED")
+        // A visit that has already happened is not upcoming. Without these the
+        // afternoon's completed appointment was still offered for cancelling,
+        // on a real handset, minutes after the feedback survey for it.
+        .neq("status", "COMPLETED")
+        .neq("status", "NO_SHOW");
     }
 
     const { data, error } = await query.order("appointment_date", { ascending: true });

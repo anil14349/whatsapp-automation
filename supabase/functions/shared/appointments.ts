@@ -267,7 +267,7 @@ export async function rescheduleAppointment(
             };
         }
 
-        const { error: updateError } = await supabase
+        const { data: moved, error: updateError } = await supabase
             .from("appointments")
             .update({
                 appointment_date: newDate,
@@ -275,9 +275,22 @@ export async function rescheduleAppointment(
                 updated_at: new Date().toISOString()
             })
             .eq("id", appointmentId)
-            .eq("clinic_id", clinicId);
+            .eq("clinic_id", clinicId)
+            // The same two the read above refused, repeated on the write: the
+            // doctor can complete the visit between the check and here.
+            .neq("status", "CANCELLED")
+            .neq("status", "COMPLETED")
+            .select("id");
 
         if (updateError) throw updateError;
+
+        if (!moved || moved.length === 0) {
+            return {
+                success: false,
+                message: "That appointment changed while you were moving it",
+                error: "Invalid appointment status"
+            };
+        }
 
         // Reminders are scheduled off the appointment time, so moving one
         // without them leaves a reminder pointing at the old slot.
