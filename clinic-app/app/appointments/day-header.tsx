@@ -46,7 +46,11 @@ export function DayHeader({
 
     return (
         <>
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            {/* Three things, not one row of four: what the page is and its one
+                action, then the tools for finding a day. Running late sits with
+                the tools because it is an action the desk takes rarely, and as
+                a second solid button it read as a peer of Book walk-in. */}
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
                 <div>
                     <h1 className="text-xl font-semibold">
                         {searching ? "Search" : "Appointments"}
@@ -54,38 +58,36 @@ export function DayHeader({
                     {summary && <p className="text-sm text-slate-500">{summary}</p>}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                    {canSearch && <SearchBox term={term} />}
+                {!searching && canBook && doctors.length > 0 && (
+                    <button
+                        onClick={() => {
+                            setWalkIn(!walkIn);
+                            setDelay(false);
+                        }}
+                        className={`${TOOLBAR_HEIGHT} rounded-lg bg-brand-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600`}
+                    >
+                        Book walk-in
+                    </button>
+                )}
+            </div>
 
-                    {!searching && <DateNav date={date} />}
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+                {canSearch && <SearchBox term={term} />}
 
-                    {/* Both act on a single day, and a search has none: the
-                        walk-in form would post an empty date. */}
-                    {!searching && canBook && doctors.length > 0 && (
-                        <>
-                            <button
-                                onClick={() => {
-                                    setDelay(!delay);
-                                    setWalkIn(false);
-                                }}
-                                className={`${TOOLBAR_HEIGHT} rounded-lg border border-amber-400 bg-amber-50 px-3 text-sm font-medium text-amber-800 transition hover:bg-amber-100`}
-                            >
-                                Running late
-                            </button>
-                            {/* The one thing the desk does most, and the only solid
-                                teal on the screen. */}
-                            <button
-                                onClick={() => {
-                                    setWalkIn(!walkIn);
-                                    setDelay(false);
-                                }}
-                                className={`${TOOLBAR_HEIGHT} rounded-lg bg-brand-500 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600`}
-                            >
-                                Book walk-in
-                            </button>
-                        </>
-                    )}
-                </div>
+                {!searching && <DateNav date={date} />}
+
+                {/* Acts on a single day, and a search has none. */}
+                {!searching && canBook && doctors.length > 0 && (
+                    <button
+                        onClick={() => {
+                            setDelay(!delay);
+                            setWalkIn(false);
+                        }}
+                        className={`${TOOLBAR_HEIGHT} rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50`}
+                    >
+                        Running late
+                    </button>
+                )}
             </div>
 
             {notice.error && (

@@ -106,18 +106,30 @@ export function AppointmentTable({
     const [slots, setSlots] = useState<string[]>([]);
     const [newDate, setNewDate] = useState(date);
     const [place, setPlace] = useState<"ALL" | "CLINIC" | "HOME">("ALL");
+    const [state, setState] = useState<"ALL" | "WAITING" | "SEEN">("ALL");
     const [menu, setMenu] = useState<string | null>(null);
     const [confirmRated, setConfirmRated] = useState<AppointmentRow | null>(null);
 
     const counts = {
         home: rows.filter((r) => r.locationType === "HOME").length,
-        clinic: rows.filter((r) => r.locationType !== "HOME").length
+        clinic: rows.filter((r) => r.locationType !== "HOME").length,
+        waiting: rows.filter((r) => r.status === "CONFIRMED").length,
+        seen: rows.filter((r) => r.status === "COMPLETED").length
     };
 
-    const shown =
+    const byPlace =
         place === "ALL"
             ? rows
             : rows.filter((r) => (place === "HOME" ? r.locationType === "HOME" : r.locationType !== "HOME"));
+
+    // Who is still to be seen is the question the desk asks all day, and it was
+    // answerable only by reading down the status column.
+    const shown =
+        state === "ALL"
+            ? byPlace
+            : byPlace.filter((r) =>
+                  state === "WAITING" ? r.status === "CONFIRMED" : r.status === "COMPLETED"
+              );
 
     function run(fn: () => Promise<BookingState>) {
         start(async () => setNotice(await fn()));
@@ -320,6 +332,29 @@ export function AppointmentTable({
                 />
             )}
 
+            <div className="flex flex-wrap gap-1">
+                {(
+                    [
+                        ["ALL", "All", rows.length],
+                        ["WAITING", "Waiting", counts.waiting],
+                        ["SEEN", "Seen", counts.seen]
+                    ] as const
+                ).map(([value, label, count]) => (
+                    <button
+                        key={value}
+                        onClick={() => setState(value)}
+                        className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                            state === value
+                                ? "bg-white text-slate-900 ring-1 ring-slate-200"
+                                : "text-slate-500 hover:text-slate-900"
+                        }`}
+                    >
+                        {label}{" "}
+                        <span className="tabular-nums text-slate-400">{count}</span>
+                    </button>
+                ))}
+            </div>
+
             <div className="overflow-x-auto rounded-xl bg-white ring-1 ring-slate-200">
                 {counts.home > 0 && counts.clinic > 0 && (
                     /* Home visits and clinic visits are different work. Only
@@ -350,34 +385,44 @@ export function AppointmentTable({
                 <table className="w-full text-left text-sm">
                     <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
                         <tr>
-                            <th className="px-4 py-3 text-right">#</th>
-                            {showDate && <th className="px-4 py-3">Date</th>}
-                            <th className="px-4 py-3">Time</th>
-                            <th className="px-4 py-3">Patient</th>
-                            <th className="px-4 py-3">For</th>
-                            {showDoctor && <th className="px-4 py-3">Doctor</th>}
-                            <th className="px-4 py-3">Status</th>
-                            {(canEdit || isDoctor) && <th className="px-4 py-3 text-right">Actions</th>}
+                            {showDate && <th className="px-4 py-2.5">Date</th>}
+                            <th className="px-4 py-2.5">Time</th>
+                            <th className="px-4 py-2.5">Patient</th>
+                            <th className="px-4 py-2.5">For</th>
+                            {showDoctor && <th className="px-4 py-2.5">Doctor</th>}
+                            <th className="px-4 py-2.5">Status</th>
+                            {(canEdit || isDoctor) && <th className="px-4 py-2.5 text-right">Actions</th>}
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {shown.map((row, index) => {
+                        {shown.length === 0 && (
+                            /* A filter that matches nothing otherwise leaves a
+                               row of column headings and blank space under it,
+                               which reads as a page that failed to load. */
+                            <tr>
+                                <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">
+                                    {state === "WAITING"
+                                        ? "Everybody booked for this day has been seen."
+                                        : state === "SEEN"
+                                          ? "Nobody has been marked as seen yet."
+                                          : "Nothing to show with these filters."}
+                                </td>
+                            </tr>
+                        )}
+                        {shown.map((row) => {
                             const open = row.status === "CONFIRMED";
 
                             return (
                                 <tr key={row.id}>
-                                    <td className="px-4 py-3 text-right text-slate-500 tabular-nums">
-                                        {index + 1}
-                                    </td>
                                     {showDate && (
-                                        <td className="px-4 py-3 whitespace-nowrap text-slate-600 tabular-nums">
+                                        <td className="px-4 py-2.5 whitespace-nowrap text-slate-600 tabular-nums">
                                             {row.date}
                                         </td>
                                     )}
-                                    <td className="px-4 py-3 whitespace-nowrap text-base font-semibold text-slate-900 tabular-nums">
+                                    <td className="px-4 py-2.5 whitespace-nowrap text-base font-semibold text-slate-900 tabular-nums">
                                         {clockTime(row.time)}
                                     </td>
-                                    <td className="px-4 py-3">
+                                    <td className="px-4 py-2.5">
                                         <div className="flex items-center gap-2">
                                             <span className="font-medium text-slate-900">
                                                 {row.patientName}
@@ -385,7 +430,10 @@ export function AppointmentTable({
                                             {/* The clinic queue number, which only visits to
                                                 the clinic itself are given. */}
                                             {row.token !== null && (
-                                                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1.5 text-[11px] font-semibold text-white tabular-nums">
+                                                <span
+                                                    title="Queue token — the number the patient is told to show at reception"
+                                                    className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-900 px-1.5 text-[11px] font-semibold text-white tabular-nums"
+                                                >
                                                     {row.token}
                                                 </span>
                                             )}
@@ -401,8 +449,10 @@ export function AppointmentTable({
                                             </span>
                                         )}
                                     </td>
-                                    <td className="px-4 py-3">
-                                        <div className="text-slate-600">{row.serviceName ?? "—"}</div>
+                                    <td className="px-4 py-2.5">
+                                        <div className="whitespace-nowrap text-slate-600">
+                                            {row.serviceName ?? "—"}
+                                        </div>
                                         <div className="flex gap-1.5 text-xs text-slate-500">
                                             {/* Deliberately not teal: that belongs to the product
                                                 and its primary actions, not to a fact about a visit. */}
@@ -417,13 +467,13 @@ export function AppointmentTable({
                                         </div>
                                     </td>
                                     {showDoctor && (
-                                        <td className="px-4 py-3 text-slate-600">
+                                        <td className="whitespace-nowrap px-4 py-2.5 text-slate-600">
                                             {row.doctorName ?? (
                                                 <span className="text-slate-500">no doctor needed</span>
                                             )}
                                         </td>
                                     )}
-                                    <td className="px-4 py-3">
+                                    <td className="px-4 py-2.5">
                                         <span
                                             className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium ${
                                                 STATUS_STYLES[row.status] ?? "bg-slate-100 text-slate-600"
@@ -438,9 +488,11 @@ export function AppointmentTable({
                                         </span>
                                     </td>
                                     {canEdit && (
-                                        <td className="px-4 py-3">
+                                        <td className="px-4 py-2.5">
                                             {/* Only what the desk reaches for all day stays on
-                                                the row; six equal buttons read as noise. */}
+                                                the row; six equal buttons read as noise.
+                                                Reopen reverses a finished visit, so it sits in
+                                                the menu with the other exceptions. */}
                                             <div className="flex items-center justify-end gap-1.5">
                                                 {open && (
                                                     <button
@@ -457,17 +509,6 @@ export function AppointmentTable({
                                                         Visited
                                                     </button>
                                                 )}
-                                                {!open && row.status !== "CANCELLED" && (
-                                                    <button
-                                                        disabled={busy}
-                                                        onClick={() => reopen(row)}
-                                                        className={BUTTON.plain}
-                                                    >
-                                                        Reopen
-                                                    </button>
-                                                )}
-                                                {/* A result can follow a visit that was completed
-                                                    days ago, so this is not tied to the open state. */}
                                                 {row.status !== "CANCELLED" && (
                                                     <button
                                                         disabled={busy}
@@ -496,6 +537,18 @@ export function AppointmentTable({
                                                         >
                                                             Edit details
                                                         </button>
+                                                        {!open && (
+                                                            <button
+                                                                disabled={busy}
+                                                                onClick={() => {
+                                                                    setMenu(null);
+                                                                    reopen(row);
+                                                                }}
+                                                                className={BUTTON.menuItem}
+                                                            >
+                                                                Reopen appointment
+                                                            </button>
+                                                        )}
                                                         {open && (
                                                             <>
                                                                 <button

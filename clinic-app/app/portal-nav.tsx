@@ -25,7 +25,7 @@ export function PortalNav({ links }: { links: NavLink[] }) {
     const isActive = useIsActive();
 
     return (
-        <nav className="hidden h-16 items-center lg:flex">
+        <nav className="hidden h-16 items-center md:flex">
             {links.map((link) => {
                 const active = isActive(link.href);
 
@@ -66,7 +66,7 @@ export function PortalNavMenu({ links }: { links: NavLink[] }) {
     const { open, setOpen, ref } = useDismissable();
 
     return (
-        <div ref={ref} className="relative lg:hidden">
+        <div ref={ref} className="relative md:hidden">
             <button
                 type="button"
                 onClick={() => setOpen(!open)}
