@@ -120,6 +120,15 @@ cannot fail is worse than no gate, because it is counted.
   Verified by running it every minute against a seeded expired row and an
   unexpired control — `DELETE 1`, then `DELETE 0`, control survived — because
   a scheduled job reporting success is not evidence it did anything. **Done.**
+- The delivery-status loop in `webhook` awaits one status at a time, and a
+  performance review proposed parallelising it on the premise of ten statuses
+  per webhook. Measured instead, from `metadata.at` on 171 recorded statuses:
+  **159 webhooks carried one status and six carried two. The largest batch
+  ever seen is 2.** Parallelising a loop that runs once, occasionally twice,
+  buys a single round trip at the cost of changing the code that records
+  whether a patient got their reminder. **Not doing it**, and recorded here so
+  the next reader does not re-derive it. Revisit if volume grows by an order
+  of magnitude.
 - `ALLOWED_ORIGINS` is still `http://localhost:3001`, and that is harmless:
   `withCors` only omits the allow header, it never refuses a request, and the
   portal calls the functions from the Next server where CORS does not apply.
