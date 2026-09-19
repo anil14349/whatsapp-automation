@@ -1475,7 +1475,7 @@ export class PatientFlowHandler {
                         language,
                         language === "EN"
                             ? `You already have an appointment on ${when}. To change or cancel it, tap ➕ More Options.`
-                            : `आपकी पहले से ${when} पर एक अपॉइंटमेंट है। उसे बदलने या रद्द करने के लिए ➕ अन्य विकल्प चुनें।`
+                            : `आपकी पहले से ${when} पर एक नियुक्ति है। उसे बदलने या रद्द करने के लिए ➕ अन्य विकल्प चुनें।`
                     );
                     return;
                 }
@@ -1575,11 +1575,9 @@ export class PatientFlowHandler {
                       (session.data?.serviceAddress ? ` — ${session.data.serviceAddress}` : "")
                     : clinicAddress || (isEn ? "At the clinic" : "क्लिनिक में");
 
-                // A receipt, not a question: no buttons and nothing to type.
-                // The number is here so a patient who needs the clinic does
-                // not have to go looking for it, not as an invitation to
-                // cancel moments after booking.
-                const callUs = config.clinic_phone ? `\n\n📞 +${config.clinic_phone}` : "";
+                // Part of the detail block, not a prompt: a patient who needs
+                // the clinic should not have to go looking for the number.
+                const callUs = config.clinic_phone ? `\n📞 +${config.clinic_phone}` : "";
 
                 // A service with no doctor has no name to print, and printing
                 // one anyway produced "Dr. undefined" on a real confirmation.
@@ -1588,16 +1586,22 @@ export class PatientFlowHandler {
                     ? `👨‍⚕️ Dr. ${doctorName}`
                     : `🩺 ${session.data?.serviceName ?? (isEn ? "Appointment" : "नियुक्ति")}`;
 
-                const confirmation = [
-                    isEn ? "✅ Your appointment is confirmed" : "✅ आपकी नियुक्ति की पुष्टि हो गई है",
-                    "",
-                    config.clinic_name,
-                    "",
-                    whoOrWhat,
-                    `📅 ${this.formatLongDate(session.data?.selectedDate, language)}`,
-                    `🕐 ${this.formatClockTime(session.data?.selectedTime)}`,
-                    `📍 ${where}`
-                ].join("\n") + tokenLine + revisitLine + callUs;
+                // The outcome closes the receipt rather than opening it, so the
+                // clinic and the details sit where a patient re-reading them
+                // will look first.
+                const confirmation =
+                    [
+                        config.clinic_name,
+                        "",
+                        whoOrWhat,
+                        `📅 ${this.formatLongDate(session.data?.selectedDate, language)}`,
+                        `🕐 ${this.formatClockTime(session.data?.selectedTime)}`,
+                        `📍 ${where}`
+                    ].join("\n") +
+                    tokenLine +
+                    revisitLine +
+                    callUs +
+                    (isEn ? "\n\n✅ Appointment confirmed" : "\n\n✅ नियुक्ति की पुष्टि हो गई");
 
                 // No buttons: this is a receipt, not a question. Asking "what
                 // would you like to do?" of someone who has just finished is
