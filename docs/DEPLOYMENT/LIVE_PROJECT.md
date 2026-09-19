@@ -99,7 +99,7 @@ pager waits for a keypress that never arrives and the command appears to hang.
 
 ## What is still seed data
 
-Accurate as of 2026-09-18. Checked against the live database, not remembered.
+Accurate as of 2026-09-19. Checked against the live database, not remembered.
 
 - `clinics.phone` is `911112345678` and `clinics.email` is
   `info@abc-clinic.com` — both from the original seed, both still wrong. They
@@ -107,6 +107,12 @@ Accurate as of 2026-09-18. Checked against the live database, not remembered.
 - One collector, `Ravi (test collector)`, has no PIN set. He will be asked to
   choose one on first contact, which is the designed behaviour, but the name
   says what the account is for.
-- Three `CANCELLED` appointments remain from cutover proofs: `Anil`,
-  `Mumbai reminder test`, `Cutover proof`. They are cancelled, so they affect
-  no count on Summary, which deliberately excludes cancellations.
+- `appointments` is **empty**. The three cancelled cutover proofs were deleted
+  on 2026-09-19; their six reminders went with them on the cascade, and the
+  four tables that can hold an `appointment_id` were each checked for orphans
+  afterwards. `feedback.appointment_id` has **no foreign key**, so it is the
+  one that has to be checked by hand — a cascade will not clear it.
+- Four `patients` rows and four `whatsapp_sessions` remain, from booking flows
+  that were started and not finished. They are harmless: a session expires,
+  and a patient row with no appointments is just a phone number the bot has
+  seen before.
