@@ -155,11 +155,14 @@ export class FeedbackHandler {
             rating
         }, session.clinic_id);
 
+        // "Would you like to add a comment?" offered only No thanks, because
+        // saying yes means typing and a button cannot do that. Asked on a real
+        // handset, the question had no answer but the negative one.
         await this.whatsappClient.sendInteractiveButtonMessage(
             phone,
             isEn
-                ? `Thank you for rating us ${rating}/5!\n\nWould you like to add a comment?`
-                : `${rating}/5 रेटिंग देने के लिए धन्यवाद!\n\nक्या आप कोई टिप्पणी जोड़ना चाहेंगे?`,
+                ? `Thank you for rating us ${rating}/5!\n\nIf you would like to add a comment, type it here. Otherwise tap No thanks.`
+                : `${rating}/5 रेटिंग देने के लिए धन्यवाद!\n\nकोई टिप्पणी जोड़नी हो तो यहाँ लिखें, वरना "नहीं, धन्यवाद" चुनें।`,
             [{ id: FEEDBACK_SKIP_ID, title: isEn ? "No thanks" : "नहीं, धन्यवाद" }],
             this.supabase
         );
