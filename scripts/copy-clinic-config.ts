@@ -9,7 +9,7 @@
  * Upserts on the primary key, so it can be run twice.
  *
  * Usage:
- *   deno run --allow-env --allow-net --allow-read scripts/copy-clinic-config.ts <targetRef> <targetServiceKey>
+ *   deno run --allow-env --allow-net --allow-read scripts/copy-clinic-config.ts <targetRef> <targetServiceKey> [--yes]
  */
 
 /** FK order: a doctor's hours need the doctor, a service needs the clinic. */
@@ -27,10 +27,12 @@ const TABLES = [
     "receptionists"
 ];
 
-const [targetRef, targetKey] = Deno.args;
+const positional = Deno.args.filter((arg) => !arg.startsWith("--"));
+const assumeYes = Deno.args.includes("--yes");
+const [targetRef, targetKey] = positional;
 
 if (!targetRef || !targetKey) {
-    console.error("usage: copy-clinic-config.ts <targetRef> <targetServiceKey>");
+    console.error("usage: copy-clinic-config.ts <targetRef> <targetServiceKey> [--yes]");
     Deno.exit(1);
 }
 
@@ -48,6 +50,45 @@ function headers(key: string, extra: Record<string, string> = {}) {
     return { apikey: key, Authorization: `Bearer ${key}`, ...extra };
 }
 
+// Read everything before destroying anything. The target is cleared outright,
+// so a source that answers halfway would otherwise leave it empty with nothing
+// to put back.
+const staged: Record<string, unknown[]> = {};
+
+for (const table of TABLES) {
+    const read = await fetch(`${source.url}/rest/v1/${table}?select=*`, {
+        headers: headers(source.key)
+    });
+
+    if (!read.ok) {
+        console.error(`${table.padEnd(26)} FAILED ${read.status} reading source - nothing changed`);
+        Deno.exit(1);
+    }
+
+    const rows = await read.json();
+
+    if (!Array.isArray(rows)) {
+        console.error(`${table.padEnd(26)} unexpected answer from source - nothing changed`);
+        Deno.exit(1);
+    }
+
+    staged[table] = rows;
+    console.log(`${table.padEnd(26)} read ${rows.length}`);
+}
+
+// Retyping the ref, rather than "yes", is what catches the real mistake here:
+// a target that is a valid project but not the intended one.
+if (!assumeYes) {
+    console.log(`\nThis DELETES every row in those tables on ${target.url} and replaces them.`);
+
+    if (prompt(`Retype the target ref (${targetRef}) to continue:`) !== targetRef) {
+        console.error("Stopped. Nothing changed.");
+        Deno.exit(1);
+    }
+}
+
+console.log("");
+
 /**
  * The migrations seed their own DEFAULT_CLINIC and service catalogue, whose ids
  * differ from the source. Keeping the source ids matters - DEFAULT_CLINIC_ID,
@@ -60,26 +101,27 @@ for (const table of [...TABLES].reverse()) {
         headers: headers(target.key, { Prefer: "return=representation" })
     });
 
-    const removed = wipe.ok ? ((await wipe.json()) as unknown[]).length : 0;
+    if (!wipe.ok) {
+        console.error(
+            `${table.padEnd(26)} FAILED ${wipe.status} clearing target - stopping part-way, ` +
+                `the target is now incomplete and the copy has not run`
+        );
+        Deno.exit(1);
+    }
 
-    console.log(`${table.padEnd(26)} cleared ${removed}${wipe.ok ? "" : ` (${wipe.status})`}`);
+    const removed = ((await wipe.json()) as unknown[]).length;
+
+    console.log(`${table.padEnd(26)} cleared ${removed}`);
 }
 
 console.log("");
 
+const failed: string[] = [];
+
 for (const table of TABLES) {
-    const read = await fetch(`${source.url}/rest/v1/${table}?select=*`, {
-        headers: headers(source.key)
-    });
+    const rows = staged[table];
 
-    if (!read.ok) {
-        console.log(`${table.padEnd(26)} skipped (${read.status} reading source)`);
-        continue;
-    }
-
-    const rows = await read.json();
-
-    if (!Array.isArray(rows) || rows.length === 0) {
+    if (rows.length === 0) {
         console.log(`${table.padEnd(26)} nothing to copy`);
         continue;
     }
@@ -97,8 +139,18 @@ for (const table of TABLES) {
 
     if (!write.ok) {
         console.log(`${table.padEnd(26)} FAILED ${write.status}: ${body.slice(0, 200)}`);
+        failed.push(table);
         continue;
     }
 
     console.log(`${table.padEnd(26)} copied ${rows.length}`);
 }
+
+if (failed.length > 0) {
+    // Exiting 0 here used to report success for a half-copied project.
+    console.error(`\n${failed.length} table(s) did not copy: ${failed.join(", ")}`);
+    console.error("The target is incomplete. Fix the cause and run again.");
+    Deno.exit(1);
+}
+
+console.log("\nDone.");
