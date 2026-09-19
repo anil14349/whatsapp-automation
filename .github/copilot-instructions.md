@@ -34,6 +34,20 @@ npm run typecheck     # edge functions only, much faster
 `Select-String` or `Select-Object` loses the exit code, and a green-looking tail
 has hidden a failure here before.
 
+A whole conversation against the live webhook, asserted and cleaned up:
+
+```powershell
+.\scripts\flow.ps1 -Scenario home-collection
+```
+
+It signs the payloads the way Meta does, so it exercises the real function.
+Two things to know: forging an inbound message does **not** open a 24-hour
+window at Meta, so replies to that number fail `131047` today but could be
+delivered once a template is approved — which is why it defaults to the test
+handset rather than inventing a number. And a patient may hold only one
+confirmed appointment, so the script refuses to start if the number already
+has one rather than reporting nine confusing failures.
+
 Deploying an edge function:
 
 ```powershell

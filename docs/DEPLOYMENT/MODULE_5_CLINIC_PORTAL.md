@@ -45,8 +45,10 @@ the same artefact can be promoted from staging to production unchanged.
 
 The browser never talks to Supabase directly. Every call is proxied through
 Next route handlers, so the portal JWT sits in an httpOnly cookie that scripts
-cannot read, and CORS does not apply to the browser at all — but
-`ALLOWED_ORIGINS` on the edge functions must still list this portal's origin.
+cannot read — and because those calls come from the Next server, they carry no
+`Origin` header and CORS never applies. `ALLOWED_ORIGINS` on the edge functions
+therefore does **not** need this portal's origin; it only governs callers that
+are actual browsers, of which there are none today.
 
 ## Running it locally
 

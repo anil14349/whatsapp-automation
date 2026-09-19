@@ -94,8 +94,11 @@ cannot fail is worse than no gate, because it is counted.
   column to true, so any clinic row created outside the portal starts that way.
   Such a clinic accepts a location pin from any distance. Wellsun is not
   affected; a second clinic seeded by SQL would be.
-- `ALLOWED_ORIGINS` is still `http://localhost:3001`; the portal will break in
-  the browser the moment it gets a real domain.
+- `ALLOWED_ORIGINS` is still `http://localhost:3001`, and that is harmless:
+  `withCors` only omits the allow header, it never refuses a request, and the
+  portal calls the functions from the Next server where CORS does not apply.
+  It would matter the day something calls an edge function **from a browser** —
+  nothing does today.
 - `WHATSAPP_REQUIRE_SIGNATURE` is not enforced globally. Enforcement currently
   follows the data: a clinic with `whatsapp_app_secret` set requires a
   signature, one without falls back to the query token.
