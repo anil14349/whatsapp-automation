@@ -81,6 +81,7 @@ async function getDoctorDetails(supabase: SupabaseClient, identifier: string, cl
       id,
       name,
       email,
+      is_active,
       clinic:clinics(id, name)
     `)
     .eq(looksLikePhone ? "phone" : "email", looksLikePhone ? digits : identifier.toLowerCase())
@@ -98,6 +99,7 @@ async function getDoctorDetails(supabase: SupabaseClient, identifier: string, cl
     id: string;
     name: string;
     email: string;
+    is_active: boolean;
     clinic: { id: string; name: string };
   };
 }
@@ -133,6 +135,16 @@ export async function handleDoctorLogin(req: Request): Promise<Response> {
     if (!doctor) {
       debug("doctorLogin", "Doctor not found", { email: body.email });
       return badRequestResponse("Invalid email or clinic");
+    }
+
+    // Said here because every other doctor endpoint already refuses a
+    // deactivated account. Issuing a token anyway sent them to a portal that
+    // 401'd on its first call and bounced them back to this screen with
+    // nothing written on it, over and over, with no way to tell that signing
+    // in had in fact worked.
+    if (doctor.is_active === false) {
+      debug("doctorLogin", "Deactivated account", { doctorId: doctor.id });
+      return badRequestResponse("This account is no longer active. Ask the clinic to re-enable it.");
     }
 
     // Check rate limiting (prevent brute force)
