@@ -47,6 +47,7 @@ import { cancelAppointment, rescheduleAppointment } from "../shared/appointments
 import MultiClinicSupabaseClient from "../shared/multi-clinic-supabase-client.ts";
 import { withCors } from "../shared/cors.ts";
 import { createAppointmentReminders, skipAppointmentReminders, rescheduleAppointmentReminders } from "../shared/appointment-reminders.ts";
+import { readConsultationQueue, scheduleNextUpNotice } from "../shared/consultation-queue.ts";
 import { getEnabledServices, getServiceById } from "../shared/clinic-services.ts";
 import { getClinicTimezone, todayInTimezone } from "../shared/clinic-slots.ts";
 import { MIN_SEARCH_LENGTH, searchAppointments } from "../shared/appointment-search.ts";
@@ -437,7 +438,7 @@ async function updateAppointment(
 
   const { data: existing } = await supabase
     .from("appointments")
-    .select("id, status, appointment_date, appointment_time")
+    .select("id, status, appointment_date, appointment_time, doctor_id")
     .eq("id", body.id)
     .eq("clinic_id", clinicId)
     .maybeSingle();
@@ -471,6 +472,10 @@ async function updateAppointment(
   // Someone already seen should not later be told their visit is in an hour.
   if (status === "COMPLETED" || status === "NO_SHOW") {
     await skipAppointmentReminders(supabase, body.id);
+
+    // The queue has moved up by one. Whoever is now at the front is told after
+    // a pause, so reopening a mis-tap gets there first.
+    scheduleNextUpNotice(supabase, clinicId, existing.doctor_id ?? null);
   }
 
   // And reopening puts them back, or the visit runs with no reminder at all.
@@ -743,8 +748,7 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
 
       // Correcting a booking may mean changing what it is for, and the services
       // endpoint is owner-only.
-      if (resource === "services") {
-        const services = await getEnabledServices(supabase, clinicId);
+      if (resource === "services") {        const services = await getEnabledServices(supabase, clinicId);
 
         return successResponse({
           services: services.map((s) => ({
@@ -753,6 +757,16 @@ async function handleRequest(user: TokenPayload, req: Request): Promise<Response
             requiresDoctor: s.requiresDoctor
           }))
         });
+      }
+
+      if (resource === "queue") {
+        const queue = await readConsultationQueue(
+          supabase,
+          clinicId,
+          dateParam ?? undefined
+        );
+
+        return successResponse(queue);
       }
 
       if (resource === "slots") {

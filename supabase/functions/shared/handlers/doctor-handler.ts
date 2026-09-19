@@ -14,6 +14,7 @@ import {
 } from "../doctor-auth.ts";
 import { hashPassword, validatePinStrength } from "../bcrypt-password.ts";
 import { getClinicTimezone, todayInTimezone } from "../clinic-slots.ts";
+import { scheduleNextUpNotice } from "../consultation-queue.ts";
 
 /**
  * Doctor Flow Handler - Manages doctor portal interactions
@@ -1423,6 +1424,15 @@ export class DoctorFlowHandler {
                 appointmentId,
                 newStatus,
                 newStatus === "NO_SHOW" ? "Doctor marked as no-show" : undefined
+            );
+
+            // The queue has moved up by one. Whoever is now at the front is
+            // told after a pause, so a mis-tap corrected at the menu gets
+            // there first.
+            scheduleNextUpNotice(
+                this.supabase,
+                clinicId,
+                session.data?.doctorId ?? null
             );
 
             const statusText = newStatus === "COMPLETED" ? "Completed ✅" : "No-Show ❌";

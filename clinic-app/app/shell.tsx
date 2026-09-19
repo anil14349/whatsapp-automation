@@ -28,11 +28,12 @@ export async function loadBranding(): Promise<Branding> {
 }
 
 const LINKS = [
-    { href: "/appointments", label: "Appointments", managersOnly: false },
-    { href: "/summary", label: "Summary", managersOnly: true },
-    { href: "/staff", label: "Staff", managersOnly: true },
-    { href: "/services", label: "Services", managersOnly: true },
-    { href: "/settings", label: "Settings", managersOnly: true }
+    { href: "/appointments", label: "Appointments", managersOnly: false, deskOnly: false },
+    { href: "/queue", label: "Queue", managersOnly: false, deskOnly: true },
+    { href: "/summary", label: "Summary", managersOnly: true, deskOnly: false },
+    { href: "/staff", label: "Staff", managersOnly: true, deskOnly: false },
+    { href: "/services", label: "Services", managersOnly: true, deskOnly: false },
+    { href: "/settings", label: "Settings", managersOnly: true, deskOnly: false }
 ];
 
 /**
@@ -63,7 +64,12 @@ export function PortalShell({
     children: React.ReactNode;
 }) {
     const canManage = session.role === "CLINIC_OWNER" || session.role === "ADMIN";
-    const links = LINKS.filter((link) => canManage || !link.managersOnly).map((link) => ({
+    // The queue endpoint refuses a doctor outright, so showing them the link
+    // would only offer a dead end.
+    const atTheDesk = session.role !== "DOCTOR";
+    const links = LINKS.filter(
+        (link) => (canManage || !link.managersOnly) && (atTheDesk || !link.deskOnly)
+    ).map((link) => ({
         href: link.href,
         label: link.label
     }));

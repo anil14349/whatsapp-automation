@@ -27,6 +27,7 @@ import { TokenPayload } from "../shared/jwt-auth.ts";
 import { debug, recordAuditEvent } from "../shared/logger.ts";
 import { withCors } from "../shared/cors.ts";
 import { skipAppointmentReminders } from "../shared/appointment-reminders.ts";
+import { scheduleNextUpNotice } from "../shared/consultation-queue.ts";
 
 interface StatusUpdateRequest {
   appointmentId: string;
@@ -137,6 +138,10 @@ async function updateAppointmentStatus(
     // told their visit is in an hour.
     if (status === "COMPLETED" || status === "NO_SHOW") {
       await skipAppointmentReminders(supabase, appointmentId);
+
+      // The queue has moved up by one. Whoever is now at the front is told
+      // after a pause, so undoing a mis-tap gets there first.
+      scheduleNextUpNotice(supabase, clinicId, doctorId);
     }
 
     return data;
