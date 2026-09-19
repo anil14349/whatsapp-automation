@@ -111,43 +111,69 @@ export async function recordFailure(
     kind: StaffKind,
     clinicId: string
 ): Promise<void> {
-    const attempt = await load(supabase, userId, kind);
-
-    attempt.count += 1;
-
-    if (attempt.count >= PIN_CONFIG.MAX_ATTEMPTS) {
-        attempt.lockedUntil = new Date(Date.now() + PIN_CONFIG.LOCKOUT_MINUTES * 60 * 1000);
-
-        debug("loginAttempts", "Account locked", { kind, attempts: attempt.count });
-    }
-
+    // Read, add one, write back let two failures arriving together both read
+    // the same count and both write the same number, so the third attempt
+    // never tripped the lockout. Someone guessing a PIN sends them together on
+    // purpose. The update is conditioned on the count that was read, and
+    // whoever loses re-reads rather than overwriting.
     try {
-        const row = {
-            failed_attempts: attempt.count,
-            last_failed_at: new Date().toISOString(),
-            locked_until: attempt.lockedUntil?.toISOString() ?? null
-        };
-
-        // login_rate_limits has no unique index on (user_id, user_type), so an
-        // upsert with onConflict would be rejected by Postgres.
-        const { data: existing } = await supabase
-            .from("login_rate_limits")
-            .select("id")
-            .eq("user_id", userId)
-            .eq("user_type", kind)
-            .maybeSingle();
-
-        if (existing) {
-            await supabase
+        for (let round = 0; round < 5; round++) {
+            const { data: existing } = await supabase
                 .from("login_rate_limits")
-                .update(row)
+                .select("id, failed_attempts, locked_until")
                 .eq("user_id", userId)
-                .eq("user_type", kind);
-        } else {
-            await supabase
+                .eq("user_type", kind)
+                .maybeSingle();
+
+            if (!existing) {
+                const { error } = await supabase.from("login_rate_limits").insert({
+                    user_id: userId,
+                    user_type: kind,
+                    clinic_id: clinicId,
+                    failed_attempts: 1,
+                    last_failed_at: new Date().toISOString(),
+                    locked_until: null
+                });
+
+                // login_rate_limits_user_unique means the loser of a race to
+                // create the row is refused, and goes round to update it.
+                if (!error) return;
+                continue;
+            }
+
+            const stored = existing.failed_attempts ?? 0;
+            const expired = existing.locked_until
+                ? new Date(existing.locked_until) <= new Date()
+                : false;
+
+            const next = (expired ? 0 : stored) + 1;
+            const locking = next >= PIN_CONFIG.MAX_ATTEMPTS;
+
+            const { data: changed } = await supabase
                 .from("login_rate_limits")
-                .insert({ user_id: userId, user_type: kind, clinic_id: clinicId, ...row });
+                .update({
+                    failed_attempts: next,
+                    last_failed_at: new Date().toISOString(),
+                    locked_until: locking
+                        ? new Date(Date.now() + PIN_CONFIG.LOCKOUT_MINUTES * 60 * 1000).toISOString()
+                        : expired
+                          ? null
+                          : (existing.locked_until ?? null)
+                })
+                .eq("id", existing.id)
+                .eq("failed_attempts", stored)
+                .select("id");
+
+            if (changed && changed.length > 0) {
+                if (locking) {
+                    debug("loginAttempts", "Account locked", { kind, attempts: next });
+                }
+
+                return;
+            }
         }
+
+        debug("loginAttempts", "Gave up recording a failed attempt under contention", { kind });
     } catch (error) {
         debug("loginAttempts", "Could not persist failed attempt", {
             error: error instanceof Error ? error.message : String(error)

@@ -54,6 +54,26 @@ function compare(row: Row, filter: Filter): boolean {
     }
 }
 
+/**
+ * The unique indexes the real schema has. Without them the fake accepts rows
+ * Postgres would refuse, so a test can pass against data the database would
+ * never hold — which is how the double-booking guard came to be checked here
+ * in the first place.
+ */
+const UNIQUE_INDEXES: Record<string, (row: Row, existing: Row) => boolean> = {
+    // idx_appointments_doctor_slot_unique
+    appointments: (row, existing) =>
+        existing.clinic_id === row.clinic_id &&
+        existing.doctor_id === row.doctor_id &&
+        existing.appointment_date === row.appointment_date &&
+        existing.appointment_time === row.appointment_time &&
+        existing.status !== "CANCELLED",
+
+    // login_rate_limits_user_unique
+    login_rate_limits: (row, existing) =>
+        existing.user_id === row.user_id && existing.user_type === row.user_type
+};
+
 class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
     private filters: Filter[] = [];
     private mode: "select" | "insert" | "update" | "delete" = "select";
@@ -214,16 +234,10 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
 
             for (const row of incoming) {
                 const copy = { ...row };
-                // Emulate the unique index that prevents double booking.
-                if (this.table === "appointments") {
-                    const clash = this.rows.find(
-                        (existing) =>
-                            existing.clinic_id === copy.clinic_id &&
-                            existing.doctor_id === copy.doctor_id &&
-                            existing.appointment_date === copy.appointment_date &&
-                            existing.appointment_time === copy.appointment_time &&
-                            existing.status !== "CANCELLED"
-                    );
+                const clashes = UNIQUE_INDEXES[this.table];
+
+                if (clashes) {
+                    const clash = this.rows.find((existing) => clashes(copy, existing));
 
                     if (clash) {
                         return {

@@ -113,73 +113,79 @@ export async function recordFailedAttempt(
   try {
     const now = new Date();
 
-    // Get current attempt count
-    const { data, error } = await supabase
-      .from("login_rate_limits")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("user_type", userType)
-      .single();
+    // Read, add one, write back let two failures arriving together both read
+    // the same count and both write the same number, so the threshold was
+    // never reached. These are public login endpoints, so an attacker sends
+    // them together deliberately. Each write is conditioned on the count that
+    // was read, and whoever loses goes round again.
+    for (let round = 0; round < 5; round++) {
+      const { data, error } = await supabase
+        .from("login_rate_limits")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("user_type", userType)
+        .maybeSingle();
 
-    let failedAttempts = 1;
-    let shouldLock = false;
+      if (error || !data) {
+        const { error: insertError } = await supabase
+          .from("login_rate_limits")
+          .insert({
+            user_id: userId,
+            user_type: userType,
+            clinic_id: clinicId,
+            failed_attempts: 1,
+            last_failed_at: now.toISOString(),
+            locked_until: null
+          });
 
-    if (!error && data) {
-      // Record exists
+        // login_rate_limits_user_unique refuses the loser of a race to create
+        // the row, which then goes round and updates it instead.
+        if (!insertError) {
+          return 1 >= DEFAULT_RATE_LIMIT.maxAttempts;
+        }
+
+        continue;
+      }
+
       const lastFailedAt = new Date(data.last_failed_at);
       const attemptWindowExpiry = new Date(
         now.getTime() - DEFAULT_RATE_LIMIT.attemptWindowMinutes * 60000
       );
 
-      if (lastFailedAt > attemptWindowExpiry) {
-        // Still within attempt window, increment
-        failedAttempts = data.failed_attempts + 1;
-      } else {
-        // Attempt window expired, reset to 1
-        failedAttempts = 1;
-      }
+      const stored = data.failed_attempts ?? 0;
+      const failedAttempts = lastFailedAt > attemptWindowExpiry ? stored + 1 : 1;
+      const shouldLock = failedAttempts >= DEFAULT_RATE_LIMIT.maxAttempts;
 
-      // Check if should lock
-      if (failedAttempts >= DEFAULT_RATE_LIMIT.maxAttempts) {
-        shouldLock = true;
-      }
-
-      // Update record
-      await supabase
+      const { data: changed } = await supabase
         .from("login_rate_limits")
         .update({
           failed_attempts: failedAttempts,
           last_failed_at: now.toISOString(),
-          locked_until: shouldLock 
+          locked_until: shouldLock
             ? new Date(now.getTime() + DEFAULT_RATE_LIMIT.lockoutDurationMinutes * 60000).toISOString()
             : null
         })
         .eq("user_id", userId)
-        .eq("user_type", userType);
-    } else {
-      // Create new record
-      await supabase
-        .from("login_rate_limits")
-        .insert({
-          user_id: userId,
-          user_type: userType,
-          clinic_id: clinicId,
-          failed_attempts: 1,
-          last_failed_at: now.toISOString(),
-          locked_until: null
-        });
+        .eq("user_type", userType)
+        .eq("failed_attempts", stored)
+        .select("user_id");
+
+      if (changed && changed.length > 0) {
+        if (shouldLock) {
+          debug("rateLimiting", "User locked out after failed attempts", {
+            userId,
+            userType,
+            failedAttempts,
+            lockoutDuration: DEFAULT_RATE_LIMIT.lockoutDurationMinutes
+          });
+        }
+
+        return shouldLock;
+      }
     }
 
-    if (shouldLock) {
-      debug("rateLimiting", "User locked out after failed attempts", {
-        userId,
-        userType,
-        failedAttempts,
-        lockoutDuration: DEFAULT_RATE_LIMIT.lockoutDurationMinutes
-      });
-    }
-
-    return shouldLock;
+    // Contention this persistent is not normal; treat it as an attack.
+    return true;
   } catch (error) {
     debug("rateLimiting", "Error recording failed attempt", {
       userId,
