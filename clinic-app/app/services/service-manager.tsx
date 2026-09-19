@@ -7,9 +7,14 @@ import { useNotice } from "@/lib/use-notice";
 
 export function ServiceManager({ services }: { services: ServiceRow[] }) {
     const [notice, setNotice] = useNotice<ServiceState>({});
-    const [busy, start] = useTransition();
+    const [, start] = useTransition();
     const [editing, setEditing] = useState<string | null>(null);
     const [confirming, setConfirming] = useState<ServiceRow | null>(null);
+
+    // Which row is saving, rather than whether anything is. The transition's
+    // own flag is page-wide, so switching one service on greyed out every
+    // other service's controls until it came back.
+    const [savingId, setSavingId] = useState<string | null>(null);
 
     // The text fields hold a draft so a half-typed value is never sent, which
     // leaves a refused value on screen — the box then shows a number the
@@ -20,16 +25,18 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
     // the clinic is told "Saved." above a figure it just replaced.
     const [revision, setRevision] = useState(0);
 
-    function run(action: () => Promise<ServiceState>) {
+    function run(id: string, action: () => Promise<ServiceState>) {
+        setSavingId(id);
         start(async () => {
             const result = await action();
             setNotice(result);
             if (result.error) setRevision((n) => n + 1);
+            setSavingId(null);
         });
     }
 
     function save(id: string, changes: Parameters<typeof updateService>[1]) {
-        run(() => updateService(id, changes));
+        run(id, () => updateService(id, changes));
     }
 
     return (
@@ -59,11 +66,11 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                             Keep
                         </button>
                         <button
-                            disabled={busy}
+                            disabled={savingId === confirming.serviceTypeId}
                             onClick={() => {
                                 const target = confirming;
                                 setConfirming(null);
-                                run(() => removeService(target.serviceTypeId));
+                                run(target.serviceTypeId, () => removeService(target.serviceTypeId));
                             }}
                             className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-60"
                         >
@@ -76,6 +83,7 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
             <div className="space-y-2">
                 {services.map((s) => {
                     const open = editing === s.serviceTypeId;
+                    const busy = savingId === s.serviceTypeId;
                     const price = s.clinicPrice ?? s.defaults.clinicPrice;
                     const duration = s.durationMinutes ?? s.defaults.durationMinutes;
 
@@ -135,7 +143,9 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
                                             catalogueName={s.isOwn ? null : s.catalogueName}
                                             disabled={busy}
                                             onSave={(next) =>
-                                                run(() => renameService(s.serviceTypeId, next))
+                                                run(s.serviceTypeId, () =>
+                                                    renameService(s.serviceTypeId, next)
+                                                )
                                             }
                                         />
                                     </div>

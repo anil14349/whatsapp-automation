@@ -45,10 +45,10 @@ export function WalkInForm({
     }, [doctorId, date]);
 
     useEffect(() => {
-        if (state.success) {
-            setSlots((current) => current.filter((s) => s !== state.success?.match(/at (\d{2}:\d{2})/)?.[1]));
+        if (state.bookedTime) {
+            setSlots((current) => current.filter((s) => s !== state.bookedTime));
         }
-    }, [state.success]);
+    }, [state.bookedTime]);
 
     return (
         <form

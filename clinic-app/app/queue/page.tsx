@@ -53,6 +53,10 @@ export default async function QueuePage() {
         loadBranding()
     ]);
 
+    if (result.status === 401) {
+        redirect("/login");
+    }
+
     const doctors: DoctorQueue[] = result.ok ? (result.data?.doctors ?? []) : [];
 
     return (

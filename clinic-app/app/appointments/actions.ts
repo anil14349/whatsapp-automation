@@ -12,6 +12,9 @@ import { callAsUser, uploadAsUser } from "@/lib/portal";
 export interface BookingState {
     error?: string;
     success?: string;
+    // The slot that was taken, so the form can drop it from the list without
+    // reading the time back out of the sentence above.
+    bookedTime?: string;
 }
 
 export interface SentDocument {
@@ -119,7 +122,7 @@ export async function bookWalkIn(
 
     revalidatePath("/appointments");
 
-    return { success: `Booked ${patientName} at ${appointmentTime}.` };
+    return { success: `Booked ${patientName} at ${appointmentTime}.`, bookedTime: appointmentTime };
 }
 
 /**
