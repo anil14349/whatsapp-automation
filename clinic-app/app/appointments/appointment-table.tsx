@@ -102,6 +102,7 @@ export function AppointmentTable({
     const [newDate, setNewDate] = useState(date);
     const [place, setPlace] = useState<"ALL" | "CLINIC" | "HOME">("ALL");
     const [menu, setMenu] = useState<string | null>(null);
+    const [confirmRated, setConfirmRated] = useState<AppointmentRow | null>(null);
 
     const counts = {
         home: rows.filter((r) => r.locationType === "HOME").length,
@@ -115,6 +116,22 @@ export function AppointmentTable({
 
     function run(fn: () => Promise<BookingState>) {
         start(async () => setNotice(await fn()));
+    }
+
+    function reopen(row: AppointmentRow) {
+        start(async () => {
+            const result = await updateAppointment(row.id, "status", { status: "CONFIRMED" });
+
+            // The patient has rated the visit, so the desk is asked again
+            // rather than told no: the mis-tap this undoes can be the rated one.
+            if (result.needsRatedConfirmation) {
+                setConfirmRated(row);
+                setNotice({});
+                return;
+            }
+
+            setNotice(result);
+        });
     }
 
     function beginMove(row: AppointmentRow) {
@@ -166,6 +183,43 @@ export function AppointmentTable({
                 <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700" role="status">
                     {notice.success}
                 </p>
+            )}
+
+            {confirmRated && (
+                <div className="rounded-xl bg-white p-4 ring-1 ring-amber-200">
+                    <p className="text-sm">
+                        <strong>{confirmRated.patientName}</strong> has already rated this visit, so
+                        it did happen. Reopening puts it back on their WhatsApp menu, where they can
+                        cancel or move a visit they have been to.
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                        Only do this if the wrong appointment was marked as seen.
+                    </p>
+                    <div className="mt-3 flex justify-end gap-2">
+                        <button
+                            onClick={() => setConfirmRated(null)}
+                            className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-slate-300"
+                        >
+                            Leave it
+                        </button>
+                        <button
+                            disabled={busy}
+                            onClick={() => {
+                                const target = confirmRated;
+                                setConfirmRated(null);
+                                run(() =>
+                                    updateAppointment(target.id, "status", {
+                                        status: "CONFIRMED",
+                                        confirmRated: true
+                                    })
+                                );
+                            }}
+                            className="rounded-lg bg-amber-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-60"
+                        >
+                            Reopen anyway
+                        </button>
+                    </div>
+                </div>
             )}
 
             {moving && (
@@ -401,13 +455,7 @@ export function AppointmentTable({
                                                 {!open && row.status !== "CANCELLED" && (
                                                     <button
                                                         disabled={busy}
-                                                        onClick={() =>
-                                                            run(() =>
-                                                                updateAppointment(row.id, "status", {
-                                                                    status: "CONFIRMED"
-                                                                })
-                                                            )
-                                                        }
+                                                        onClick={() => reopen(row)}
                                                         className={BUTTON.plain}
                                                     >
                                                         Reopen

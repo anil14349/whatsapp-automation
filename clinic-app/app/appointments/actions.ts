@@ -15,6 +15,9 @@ export interface BookingState {
     // The slot that was taken, so the form can drop it from the list without
     // reading the time back out of the sentence above.
     bookedTime?: string;
+    // Reopening a visit the patient has rated: the desk is asked once more
+    // rather than being refused.
+    needsRatedConfirmation?: boolean;
 }
 
 export interface SentDocument {
@@ -155,7 +158,13 @@ export type AppointmentAction = "status" | "cancel" | "reschedule";
 export async function updateAppointment(
     id: string,
     action: AppointmentAction,
-    options: { status?: string; reason?: string; date?: string; time?: string } = {}
+    options: {
+        status?: string;
+        reason?: string;
+        date?: string;
+        time?: string;
+        confirmRated?: boolean;
+    } = {}
 ): Promise<BookingState> {
     const result = await callAsUser("receptionists-appointments", {
         method: "PATCH",
@@ -165,11 +174,18 @@ export async function updateAppointment(
             status: options.status,
             reason: options.reason,
             appointmentDate: options.date,
-            appointmentTime: options.time
+            appointmentTime: options.time,
+            confirmRated: options.confirmRated
         }
     });
 
     if (!result.ok) {
+        // The visit has been rated, so reopening needs saying twice rather
+        // than being refused outright.
+        if (result.data?.requiresConfirmation === "rated") {
+            return { needsRatedConfirmation: true, error: result.data?.error };
+        }
+
         return { error: result.data?.error ?? "Could not update the appointment." };
     }
 

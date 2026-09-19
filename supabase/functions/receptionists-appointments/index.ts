@@ -389,6 +389,8 @@ async function updateAppointment(
     notes?: string;
     doctorId?: string | null;
     serviceTypeId?: string;
+    /** Sent only after the desk has been warned the patient rated the visit. */
+    confirmRated?: boolean;
   }
 ): Promise<{ status: number; payload: Record<string, unknown> }> {
   if (!body.id) {
@@ -466,16 +468,21 @@ async function updateAppointment(
   // Reopening is for a mis-tap. Once the patient has answered the survey the
   // visit demonstrably happened, and putting it back to CONFIRMED returns it
   // to the cancel and reschedule lists — a patient was offered to cancel a
-  // consultation they had already rated.
-  if (status === "CONFIRMED" && existing.status !== "CONFIRMED") {
-    if (await hasPatientRated(supabase, clinicId, body.id)) {
-      return {
-        status: 409,
-        payload: {
-          error: "The patient has already rated this visit, so it cannot be reopened."
-        }
-      };
-    }
+  // consultation they had already rated. The front desk can still override it,
+  // because the mis-tap it exists for can also be the one that was rated.
+  const reopeningRated =
+    status === "CONFIRMED" &&
+    existing.status !== "CONFIRMED" &&
+    (await hasPatientRated(supabase, clinicId, body.id));
+
+  if (reopeningRated && body.confirmRated !== true) {
+    return {
+      status: 409,
+      payload: {
+        error: "The patient has already rated this visit.",
+        requiresConfirmation: "rated"
+      }
+    };
   }
 
   const now = new Date().toISOString();
@@ -518,7 +525,9 @@ async function updateAppointment(
 
   await recordAuditEvent(
     supabase,
-    "appointment_status_changed",
+    // Named apart so overriding a patient's own rating is findable later
+    // rather than buried among ordinary status changes.
+    reopeningRated ? "appointment_reopened_after_rating" : "appointment_status_changed",
     actor,
     "appointment",
     body.id,
