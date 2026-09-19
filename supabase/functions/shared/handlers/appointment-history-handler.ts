@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppSession } from "../types.ts";
 import { BUTTON_IDS } from "../button-ids.ts";
+import { formatClockTime, formatLongDate } from "../appointment-format.ts";
 import { debug } from "../logger.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
 
@@ -118,9 +119,9 @@ export class AppointmentHistoryHandler {
             for (let i = 0; i < history.length; i++) {
                 const apt = history[i];
                 message +=
-                    `${i + 1}. 🩺 ${apt.doctor_name}\n` +
-                    `   📅 ${this.formatDate(apt.appointment_date)}\n` +
-                    `   🕐 ${apt.appointment_time}\n` +
+                    `${i + 1}. 🩺 Dr. ${apt.doctor_name}\n` +
+                    `   📅 ${formatLongDate(apt.appointment_date, "EN")}\n` +
+                    `   🕐 ${formatClockTime(apt.appointment_time)}\n` +
                     `   ✅ Completed\n\n`;
             }
 

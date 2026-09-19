@@ -1743,6 +1743,16 @@ export class PatientFlowHandler {
         const language = session.data?.language || "EN";
         const buttonId = message.text?.trim() || "";
 
+        // Offered on the list itself. Without this it fell to the default below
+        // and answered Main Menu with the same list again.
+        if (
+            buttonId === BUTTON_IDS.NAVIGATION.MAIN_MENU ||
+            buttonId === BUTTON_IDS.PATIENT_MENU.MAIN_MENU
+        ) {
+            await this.showMainMenu(phone, language);
+            return;
+        }
+
         // Check for history button
         if (buttonId === "appt_history" || message.text?.toLowerCase() === "2") {
             // Show appointment history
@@ -2564,8 +2574,12 @@ export class PatientFlowHandler {
                 // household, and an unlabelled list is unreadable.
                 appointments.forEach((apt: any, idx: number) => {
                     const who = apt.patient_name ? `   👤 ${apt.patient_name}\n` : "";
+                    // Same words and format as the greeting and the receipt: a
+                    // raw "13:00" and "Status: CONFIRMED" beside them read as a
+                    // different booking.
+                    const state = apt.status === "RESCHEDULED" ? "🔁 Moved" : "✅ Booked";
 
-                    message += `${idx + 1}. 🩺 Dr. ${apt.doctor?.name || "Unknown"}\n${who}   📅 ${this.formatDate(apt.appointment_date)}\n   🕐 ${apt.appointment_time}\n   Status: ${apt.status}\n\n`;
+                    message += `${idx + 1}. 🩺 Dr. ${apt.doctor?.name || "Unknown"}\n${who}   📅 ${this.formatLongDate(apt.appointment_date, language)}\n   🕐 ${this.formatClockTime(apt.appointment_time)}\n   ${state}\n\n`;
                 });
 
                 // Show with history and menu buttons

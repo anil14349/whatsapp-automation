@@ -84,6 +84,7 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
     private countMode = false;
     private headOnly = false;
     private limitCount: number | null = null;
+    private rangeBounds: { from: number; to: number } | null = null;
     private selectAfterWrite = false;
 
     constructor(
@@ -207,6 +208,11 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
         return this;
     }
 
+    range(from: number, to: number) {
+        this.rangeBounds = { from, to };
+        return this;
+    }
+
     maybeSingle() {
         this.maybeSingleMode = true;
         return this;
@@ -288,6 +294,11 @@ class QueryBuilder implements PromiseLike<{ data: any; error: any }> {
 
         if (this.limitCount !== null) {
             result = result.slice(0, this.limitCount);
+        }
+
+        // PostgREST's range is inclusive at both ends, unlike slice.
+        if (this.rangeBounds) {
+            result = result.slice(this.rangeBounds.from, this.rangeBounds.to + 1);
         }
 
         if (this.countMode) {
