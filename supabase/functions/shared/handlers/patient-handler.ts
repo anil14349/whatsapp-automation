@@ -257,14 +257,71 @@ export class PatientFlowHandler {
         this.clinicId = session.clinic_id;
 
         const language = session.data?.language || "EN";
+        const isEn = language === "EN";
 
-        await this.showMainMenu(
-            session.phone,
-            language,
-            language === "EN"
-                ? `👋 Welcome back to ${clinicName}!`
-                : `👋 ${clinicName} में आपका फिर से स्वागत है!`
-        );
+        const welcome = isEn
+            ? `👋 Welcome back to ${clinicName}!`
+            : `👋 ${clinicName} में आपका फिर से स्वागत है!`;
+
+        // Only one appointment may be active at a time, so a patient who has
+        // one cannot book another: leading with "Book Appointment" offers the
+        // one thing that will be refused, and buries the two that will not.
+        try {
+            const upcoming = await this.supabaseClient.getPatientAppointments(
+                session.clinic_id,
+                session.phone,
+                true
+            );
+
+            const active = upcoming?.find(
+                (a: any) => a.status === "CONFIRMED" || a.status === "RESCHEDULED"
+            );
+
+            if (active) {
+                const whoOrWhat = active.doctor?.name
+                    ? `👨‍⚕️ Dr. ${active.doctor.name}`
+                    : `🩺 ${active.service_type?.name ?? (isEn ? "Appointment" : "नियुक्ति")}`;
+
+                const body = [
+                    welcome,
+                    "",
+                    isEn ? "You already have an appointment booked:" : "आपकी पहले से एक नियुक्ति है:",
+                    "",
+                    whoOrWhat,
+                    `📅 ${this.formatLongDate(active.appointment_date, language)}`,
+                    `🕐 ${this.formatClockTime(active.appointment_time)}`
+                ].join("\n");
+
+                await this.whatsappClient.sendInteractiveButtonMessage(
+                    session.phone,
+                    body,
+                    [
+                        {
+                            id: BUTTON_IDS.PATIENT_MENU.RESCHEDULE,
+                            title: isEn ? "🔄 Reschedule" : "🔄 समय बदलें"
+                        },
+                        {
+                            id: BUTTON_IDS.PATIENT_MENU.CANCEL,
+                            title: isEn ? "❌ Cancel" : "❌ रद्द करें"
+                        },
+                        {
+                            id: BUTTON_IDS.PATIENT_MENU.MORE,
+                            title: isEn ? "➕ More Options" : "➕ अन्य विकल्प"
+                        }
+                    ],
+                    this.supabase
+                );
+
+                return;
+            }
+        } catch (error) {
+            // A greeting is not worth failing over; fall back to the menu.
+            debug("patientFlow", "Could not read appointments for the greeting", {
+                error: error instanceof Error ? error.message : String(error)
+            });
+        }
+
+        await this.showMainMenu(session.phone, language, welcome);
     }
 
     /**
