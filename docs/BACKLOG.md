@@ -129,6 +129,20 @@ cannot fail is worse than no gate, because it is counted.
   whether a patient got their reminder. **Not doing it**, and recorded here so
   the next reader does not re-derive it. Revisit if volume grows by an order
   of magnitude.
+- The feedback survey loop in `scheduled-reminders` awaits `sendFeedbackSurvey`
+  one patient at a time, up to the `limit(200)` above it, and each send is a
+  WhatsApp API call. The reminder path beside it already runs five at a time.
+  At a few hundred milliseconds a send, a full backlog would take longer than
+  the 55-second timeout on the cron job — and a job that times out still
+  reports success, which is the failure this project has already been bitten
+  by once. **Latent, not current:** the function returns in tens of
+  milliseconds today and there have been no completed appointments in the last
+  seven days, so the loop runs over an empty set. Worth fixing the day
+  surveys regularly exceed about a hundred a run; `maxConcurrent: 5` is the
+  pattern to copy.
+- A review flagged the doctor lookup in that same loop as N+1. It is not: the
+  `doctorNames` map only queries a doctor it has not seen, so the cost is one
+  query per distinct doctor, and this clinic has two. Left alone.
 - `ALLOWED_ORIGINS` is still `http://localhost:3001`, and that is harmless:
   `withCors` only omits the allow header, it never refuses a request, and the
   portal calls the functions from the Next server where CORS does not apply.
