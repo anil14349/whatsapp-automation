@@ -98,9 +98,10 @@ export function DayHeader({
 
                 {counts && <StateTabs counts={counts} />}
 
-                {/* Home visits and clinic visits are different work. Only
-                    offered when the day actually holds both. */}
-                {counts && counts.home > 0 && counts.clinic > 0 && <PlacePicker />}
+                {/* Shown on every day with appointments, not only the days
+                    holding both kinds: in a toolbar a control that comes and
+                    goes moves everything beside it as the desk steps a day. */}
+                {counts && <PlacePicker />}
 
                 {/* Acts on a single day, and a search has none. */}
                 {!searching && canBook && doctors.length > 0 && (
