@@ -29,6 +29,9 @@ import { withCors } from "../shared/cors.ts";
 import { skipAppointmentReminders } from "../shared/appointment-reminders.ts";
 import { scheduleNextUpNotice } from "../shared/consultation-queue.ts";
 
+/** A moved appointment is still ahead of the doctor, the same as a booked one. */
+const OPEN_STATUSES = ["CONFIRMED", "RESCHEDULED"];
+
 interface StatusUpdateRequest {
   appointmentId: string;
   status: "COMPLETED" | "NO_SHOW";
@@ -124,7 +127,7 @@ async function updateAppointmentStatus(
       // so nothing can move between the two.
       .eq("clinic_id", clinicId)
       .eq("doctor_id", doctorId)
-      .eq("status", "CONFIRMED")
+      .in("status", OPEN_STATUSES)
       .select("id, status, completed_at, updated_at")
       .single();
 
@@ -229,7 +232,7 @@ async function handleUpdateStatus(
     // Same answer as the front desk gives. Without this a doctor holding a page
     // opened before the desk cancelled could mark the patient seen, and the
     // record would say a cancelled visit happened.
-    if (appointment.status !== "CONFIRMED") {
+    if (!OPEN_STATUSES.includes(appointment.status)) {
       return badRequestResponse("Cannot change a cancelled appointment");
     }
 

@@ -143,6 +143,11 @@ export function AppointmentTable({
     const current = Math.min(page, pages);
     const shown = matching.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
 
+    // Time, patient and service are always there; the rest come and go with
+    // who is looking, and a fixed span left the empty row wider than the table.
+    const columnCount =
+        3 + (showDate ? 1 : 0) + (showDoctor ? 1 : 0) + 1 + (canEdit || isDoctor ? 1 : 0);
+
     function run(fn: () => Promise<BookingState>) {
         start(async () => setNotice(await fn()));
     }
@@ -363,7 +368,7 @@ export function AppointmentTable({
                                row of column headings and blank space under it,
                                which reads as a page that failed to load. */
                             <tr>
-                                <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">
+                                <td colSpan={columnCount} className="px-4 py-10 text-center text-sm text-slate-500">
                                     {state === "WAITING"
                                         ? "Everybody booked for this day has been seen."
                                         : state === "SEEN"
@@ -568,7 +573,7 @@ export function AppointmentTable({
                                         </td>
                                     )}
                                     {isDoctor && (
-                                        <td className="px-4 py-3">
+                                        <td className="px-4 py-2.5">
                                             <div className="flex flex-wrap justify-end gap-1.5">
                                                 {open && (
                                                     <>

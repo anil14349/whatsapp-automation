@@ -31,7 +31,8 @@ export function DayHeader({
     canSearch = false,
     term = "",
     searching = false,
-    counts
+    counts,
+    canFilterByPlace = true
 }: {
     date: string;
     summary?: string;
@@ -42,6 +43,9 @@ export function DayHeader({
     searching?: boolean;
     /** Absent when the day has nothing to filter. */
     counts?: FilterCounts;
+    /** False for a doctor: a home visit carries no doctor, so their list is
+        always clinic-only and the filter could only ever empty it. */
+    canFilterByPlace?: boolean;
 }) {
     const [walkIn, setWalkIn] = useState(false);
     const [delay, setDelay] = useState(false);
@@ -101,7 +105,7 @@ export function DayHeader({
                 {/* Shown on every day with appointments, not only the days
                     holding both kinds: in a toolbar a control that comes and
                     goes moves everything beside it as the desk steps a day. */}
-                {counts && <PlacePicker />}
+                {counts && canFilterByPlace && <PlacePicker />}
 
                 {/* Acts on a single day, and a search has none. */}
                 {!searching && canBook && doctors.length > 0 && (
@@ -193,9 +197,10 @@ function SearchBox({ term }: { term: string }) {
         // The separate Search button was a second thing that looked like a
         // primary action, next to Running late and Book walk-in. Enter submits.
         //
-        // Flexible rather than fixed: at a fixed width it held its size and
-        // pushed Running late onto a second row instead of giving up space.
-        <form onSubmit={submit} className="relative min-w-[17rem] max-w-[19rem] flex-1">
+        // Sized to its placeholder and allowed to shrink, never to grow: with
+        // flex-1 it swallowed the spare width at the page's own maximum and
+        // pushed Running late onto a second row.
+        <form onSubmit={submit} className="relative w-[17rem] min-w-[13rem] max-w-full">
             <svg
                 viewBox="0 0 20 20"
                 fill="none"

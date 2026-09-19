@@ -149,6 +149,7 @@ export default async function AppointmentsPage({
                 canSearch={!isDoctor}
                 term={term}
                 searching={searching}
+                canFilterByPlace={!isDoctor}
                 counts={
                     rows.length > 0
                         ? {
@@ -165,7 +166,7 @@ export default async function AppointmentsPage({
                 summary={
                     searching
                         ? `${rows.length} found${rows.length === 50 ? " (showing the 50 most recent)" : ""}`
-                        : canBook
+                        : canBook || isDoctor
                             ? daySummary(rows)
                             : undefined
                 }
