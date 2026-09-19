@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { WhatsAppSession, ExtractedMessage } from "../types.ts";
 import { BUTTON_IDS, isValidConfirmationButton } from "../button-ids.ts";
+import { formatClockTime, formatLongDate } from "../appointment-format.ts";
 import { debug } from "../logger.ts";
 import { sendProactive } from "../proactive.ts";
 import MultiClinicSupabaseClient from "../multi-clinic-supabase-client.ts";
@@ -38,9 +39,11 @@ export class WaitlistHandler {
         session: WhatsAppSession
     ): Promise<void> {
         const isEn = (session.data?.language || "EN") === "EN";
+        const language = isEn ? "EN" : "HI";
 
         // A whole date can be full, in which case there is no specific time.
-        const slotText = !time || time === "ANY" ? date : `${date} ${time}`;
+        const day = formatLongDate(date, language);
+        const slotText = !time || time === "ANY" ? day : `${day} at ${formatClockTime(time)}`;
 
         const message = isEn
             ? `❌ No slots available for ${doctorName} on ${slotText}.\n\n` +
@@ -65,7 +68,9 @@ export class WaitlistHandler {
     async handleWaitlistConfirm(
         phone: string,
         session: WhatsAppSession,
-        buttonId: string
+        buttonId: string,
+        /** The booking flow's own day list, so there is only one of them. */
+        offerAnotherDate?: (exclude: string) => Promise<void>
     ): Promise<boolean> {
         // GUARD: Explicit state validation
         if (session.state !== "WAITLIST_CONFIRM") {
@@ -99,20 +104,25 @@ export class WaitlistHandler {
                 const whenText =
                     !session.data?.time || session.data?.time === "ANY"
                         ? ""
-                        : `🕐 ${session.data?.time}\n`;
+                        : `🕐 ${formatClockTime(String(session.data?.time))}\n`;
+
+                const whenDate = formatLongDate(
+                    String(session.data?.date ?? ""),
+                    isEn ? "EN" : "HI"
+                );
 
                 await this.whatsappClient.sendTextMessage(
                     phone,
                     isEn
                         ? `✅ You've been added to the waitlist!\n\n` +
                           `🩺 Doctor: ${session.data?.doctorName}\n` +
-                          `📅 Date: ${session.data?.date}\n` +
+                          `📅 Date: ${whenDate}\n` +
                           whenText +
                           `\nPosition: #${result.position}\n\n` +
                           `We'll notify you on WhatsApp if a slot opens up.`
                         : `✅ आपको प्रतीक्षा सूची में जोड़ दिया गया है!\n\n` +
                           `🩺 डॉक्टर: ${session.data?.doctorName}\n` +
-                          `📅 तारीख: ${session.data?.date}\n` +
+                          `📅 तारीख: ${whenDate}\n` +
                           whenText +
                           `\nक्रम संख्या: #${result.position}\n\n` +
                           `स्लॉट खाली होने पर हम आपको WhatsApp पर सूचित करेंगे।`,
@@ -137,11 +147,22 @@ export class WaitlistHandler {
             // above, and fell out of the function having sent nothing: the
             // patient tapped Back and the conversation stopped dead. Treated as
             // "no", which is where Back was going anyway.
+
+            // Read before the session is rewritten: the day being refused lives
+            // in the data that is about to be replaced.
+            const refused = String(session.data?.date ?? "");
+
             await this.updateSession(phone, "BOOK_DATE", {
                 language: session.data?.language || "EN",
                 selectedDoctorId: session.data?.doctorId,
                 selectedDoctorName: session.data?.doctorName
             }, session.clinic_id);
+
+            // The day they were just refused is left off the list.
+            if (offerAnotherDate) {
+                await offerAnotherDate(refused);
+                return true;
+            }
 
             await this.whatsappClient.sendTextMessage(
                 phone,

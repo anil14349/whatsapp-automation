@@ -97,7 +97,18 @@ export class PatientFlowHandler {
 
                 case "WAITLIST_CONFIRM":
                     await new WaitlistHandler(this.supabase, this.whatsappClient)
-                        .handleWaitlistConfirm(phone, session, message.text?.trim() || "");
+                        .handleWaitlistConfirm(
+                            phone,
+                            session,
+                            message.text?.trim() || "",
+                            (exclude) =>
+                                this.showDateMenu(
+                                    phone,
+                                    session.data?.language || "EN",
+                                    undefined,
+                                    exclude
+                                )
+                        );
                     break;
 
                 case "FEEDBACK_RATING":
@@ -2919,8 +2930,17 @@ export class PatientFlowHandler {
      *
      * The row id is the date itself, which handleBookDate already accepts as a
      * typed reply, so the two paths stay one path.
+     *
+     * `exclude` drops a day the patient has already been turned away from:
+     * offering it again as the first thing on the list invites the same
+     * refusal.
      */
-    private async showDateMenu(phone: string, language: string, intro?: string): Promise<void> {
+    private async showDateMenu(
+        phone: string,
+        language: string,
+        intro?: string,
+        exclude?: string
+    ): Promise<void> {
         const en = language === "EN";
         const question = en
             ? "When would you like your appointment?"
@@ -2932,14 +2952,19 @@ export class PatientFlowHandler {
         const today = todayInTimezone(timezone);
         const aheadDays = await this.bookingWindowDays(this.clinicId);
 
-        // Ten rows is Meta's limit, and one is kept back for typing a date
-        // beyond the list when a service allows booking further out.
-        const listed = Math.min(aheadDays + 1, 9);
-
         const rows: Array<{ id: string; title: string; description?: string }> = [];
 
-        for (let i = 0; i < listed; i++) {
-            const date = addDays(today, i);
+        // Ten rows is Meta's limit, and one is kept back for typing a date
+        // beyond the list when a service allows booking further out.
+        let offset = 0;
+
+        for (; offset <= aheadDays && rows.length < 9; offset++) {
+            const date = addDays(today, offset);
+
+            if (date === exclude) {
+                continue;
+            }
+
             const when = new Date(`${date}T00:00:00`);
 
             const weekday = new Intl.DateTimeFormat(en ? "en-GB" : "hi-IN", {
@@ -2948,16 +2973,16 @@ export class PatientFlowHandler {
                 month: "short"
             }).format(when);
 
-            const title = i === 0
+            const title = offset === 0
                 ? (en ? `Today · ${weekday}` : `आज · ${weekday}`)
-                : i === 1
+                : offset === 1
                     ? (en ? `Tomorrow · ${weekday}` : `कल · ${weekday}`)
                     : weekday;
 
             rows.push({ id: date, title: title.slice(0, 24) });
         }
 
-        if (aheadDays + 1 > listed) {
+        if (offset <= aheadDays) {
             rows.push({
                 id: BUTTON_IDS.DATE_SELECT.OTHER,
                 title: en ? "Another date" : "अन्य तारीख",
@@ -3002,14 +3027,14 @@ export class PatientFlowHandler {
         // Callers that ask for a fresh day check for this first and offer the
         // waitlist; only paging reaches it.
         if (times.length === 0) {
-            await this.whatsappClient.sendTextMessage(
-                phone,
-                language === "EN"
-                    ? "❌ No times are left for that day. Please choose another date (YYYY-MM-DD):"
-                    : "❌ उस दिन कोई समय शेष नहीं है। कृपया दूसरी तारीख चुनें (YYYY-MM-DD):",
-                this.supabase
-            );
             await this.updateSession(phone, emptyReturnsTo, undefined);
+            await this.showDateMenu(
+                phone,
+                language,
+                language === "EN"
+                    ? "❌ No times are left for that day."
+                    : "❌ उस दिन कोई समय शेष नहीं है।"
+            );
             return;
         }
 
