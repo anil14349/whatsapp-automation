@@ -21,7 +21,8 @@ export class WaitlistHandler {
         this.whatsappClient = whatsappClient;
         this.supabaseClient = new MultiClinicSupabaseClient(
             Deno.env.get("SUPABASE_URL") || "",
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+            supabase
         );
     }
 
@@ -131,8 +132,11 @@ export class WaitlistHandler {
                     this.supabase
                 );
             }
-        } else if (buttonId === "waitlist_no" || buttonId === BUTTON_IDS.CONFIRMATION.NO) {
-            // Key names must match what PatientFlowHandler reads in BOOK_DATE.
+        } else {
+            // go_back passes isValidConfirmationButton, matched neither branch
+            // above, and fell out of the function having sent nothing: the
+            // patient tapped Back and the conversation stopped dead. Treated as
+            // "no", which is where Back was going anyway.
             await this.updateSession(phone, "BOOK_DATE", {
                 language: session.data?.language || "EN",
                 selectedDoctorId: session.data?.doctorId,

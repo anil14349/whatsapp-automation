@@ -1973,7 +1973,7 @@ export class PatientFlowHandler {
             );
 
             await this.updateSession(phone, "RESCHEDULE_TIME", { ...session.data, slotPage: nextPage });
-            await this.showAvailableSlots(phone, language, allSlots, nextPage);
+            await this.showAvailableSlots(phone, language, allSlots, nextPage, "RESCHEDULE_DATE");
             return;
         }
 
@@ -2829,18 +2829,40 @@ export class PatientFlowHandler {
         ]);
     }
 
-    private async showAvailableSlots(phone: string, language: string, slots: any[], page = 0): Promise<void> {
+    private async showAvailableSlots(
+        phone: string,
+        language: string,
+        slots: any[],
+        page = 0,
+        emptyReturnsTo = "BOOK_DATE"
+    ): Promise<void> {
         const times = (slots || []).map((slot: any) =>
             typeof slot === "string" ? slot : slot.start_time || slot.time
         );
 
+        // Returning here sent nothing at all, so tapping "More times" after the
+        // last free slot had gone left the patient with no reply and no way on.
+        // Callers that ask for a fresh day check for this first and offer the
+        // waitlist; only paging reaches it.
         if (times.length === 0) {
+            await this.whatsappClient.sendTextMessage(
+                phone,
+                language === "EN"
+                    ? "❌ No times are left for that day. Please choose another date (YYYY-MM-DD):"
+                    : "❌ उस दिन कोई समय शेष नहीं है। कृपया दूसरी तारीख चुनें (YYYY-MM-DD):",
+                this.supabase
+            );
+            await this.updateSession(phone, emptyReturnsTo, undefined);
             return;
         }
 
         // 10 rows max per list, so the last row is reserved for paging.
         const pageSize = 9;
-        const start = page * pageSize;
+        // A stale page from an older list would slice past the end and build a
+        // list with no rows, which Meta refuses.
+        const lastPage = Math.floor((times.length - 1) / pageSize);
+        const safePage = Math.min(Math.max(page, 0), lastPage);
+        const start = safePage * pageSize;
         const pageTimes = times.slice(start, start + pageSize);
         const hasMore = times.length > start + pageSize;
 

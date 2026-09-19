@@ -97,10 +97,12 @@ export const BUTTON_IDS = {
         EVENING: "time_evening",
     },
 
-    // Doctor appointment status
+    // Doctor appointment status. NO_SHOW read "status_noshow" while the only
+    // place that sends or matches it used "status_no_show", so anyone reaching
+    // for the constant would have broken no-show marking silently.
     APPOINTMENT_STATUS: {
         COMPLETED: "status_completed",
-        NO_SHOW: "status_noshow",
+        NO_SHOW: "status_no_show",
     },
 
     // Navigation

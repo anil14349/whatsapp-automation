@@ -30,9 +30,14 @@ export class DoctorFlowHandler {
     constructor(supabase: SupabaseClient, whatsappClient: any) {
         this.supabase = supabase;
         this.whatsappClient = whatsappClient;
+        // Handing over the client we were given, rather than opening a second
+        // one to the same project. Without it every this.supabaseClient call
+        // went to a different connection than this.supabase, which is why no
+        // test driving this handler through processMessage could reach them.
         this.supabaseClient = new MultiClinicSupabaseClient(
             Deno.env.get("SUPABASE_URL") || "",
-            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || ""
+            Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+            supabase
         );
     }
 
@@ -494,7 +499,10 @@ export class DoctorFlowHandler {
                     this.supabase
                 );
             }
-        } else if (buttonId === BUTTON_IDS.CONFIRMATION.NO) {
+        } else {
+            // go_back is a confirmation button, so it got past the guard above
+            // and then matched neither Yes nor No, leaving the doctor with no
+            // reply at all. Treated as "no", which is where Back was going.
             await this.updateSession(phone, "DOCTOR_MENU", {
                 doctorId: session.data?.doctorId,
                 doctorName: session.data?.doctorName,
@@ -624,7 +632,10 @@ export class DoctorFlowHandler {
                     "Error applying for leave. Please try again."
                 );
             }
-        } else if (buttonId === BUTTON_IDS.CONFIRMATION.NO) {
+        } else {
+            // Same as the availability confirmation: go_back passes the
+            // confirmation guard, matches neither branch, and used to leave
+            // the doctor with no reply.
             await this.updateSession(phone, "DOCTOR_MENU", {
                 doctorId: session.data?.doctorId,
                 doctorName: session.data?.doctorName,
@@ -1380,8 +1391,8 @@ export class DoctorFlowHandler {
         const message2 = `Mark appointment for ${selectedAppointment.patientName} at ${selectedAppointment.time}:\n\nSelect status:`;
         
         await this.whatsappClient.sendInteractiveButtonMessage(phone, message2, [
-            { id: "status_completed", title: "✅ Completed" },
-            { id: "status_no_show", title: "❌ No Show" }
+            { id: BUTTON_IDS.APPOINTMENT_STATUS.COMPLETED, title: "✅ Completed" },
+            { id: BUTTON_IDS.APPOINTMENT_STATUS.NO_SHOW, title: "❌ No Show" }
         ]);
     }
 
@@ -1402,9 +1413,9 @@ export class DoctorFlowHandler {
         const statusChoice = message.text.trim();
         let newStatus: string;
 
-        if (statusChoice === "status_completed") {
+        if (statusChoice === BUTTON_IDS.APPOINTMENT_STATUS.COMPLETED) {
             newStatus = "COMPLETED";
-        } else if (statusChoice === "status_no_show") {
+        } else if (statusChoice === BUTTON_IDS.APPOINTMENT_STATUS.NO_SHOW) {
             newStatus = "NO_SHOW";
         } else {
             await this.whatsappClient.sendTextMessage(
