@@ -1463,10 +1463,19 @@ export class PatientFlowHandler {
 
                 if (active) {
                     await this.updateSession(phone, "MAIN_MENU", { language });
+
+                    // Points at the button rather than teaching a typed
+                    // command: cancelling lives behind "More Options", and the
+                    // menu below opens by offering to book again. A real
+                    // patient hit this wall and abandoned the booking.
+                    const when = `${this.formatLongDate(active.appointment_date, language)} at ${this.formatClockTime(active.appointment_time)}`;
+
                     await this.showMainMenu(
                         phone,
                         language,
-                        `You already have an appointment on ${active.appointment_date} at ${active.appointment_time}. Please cancel or reschedule it before booking another.`
+                        language === "EN"
+                            ? `You already have an appointment on ${when}. To change or cancel it, tap ➕ More Options.`
+                            : `आपकी पहले से ${when} पर एक अपॉइंटमेंट है। उसे बदलने या रद्द करने के लिए ➕ अन्य विकल्प चुनें।`
                     );
                     return;
                 }
@@ -1566,17 +1575,11 @@ export class PatientFlowHandler {
                       (session.data?.serviceAddress ? ` — ${session.data.serviceAddress}` : "")
                     : clinicAddress || (isEn ? "At the clinic" : "क्लिनिक में");
 
-                // This receipt carries no buttons, so it has to name the words
-                // menuIdForKeyword accepts. "Message us here" was true but
-                // useless: anything other than an exact keyword lands on the
-                // main menu, which hides cancelling behind "More Options".
-                const callUs = config.clinic_phone
-                    ? isEn
-                        ? `\n\nTo change or cancel, reply CANCEL or RESCHEDULE, or call +${config.clinic_phone}.`
-                        : `\n\nबदलने या रद्द करने के लिए CANCEL या RESCHEDULE भेजें, या +${config.clinic_phone} पर कॉल करें।`
-                    : isEn
-                      ? "\n\nTo change or cancel, reply CANCEL or RESCHEDULE."
-                      : "\n\nबदलने या रद्द करने के लिए CANCEL या RESCHEDULE भेजें।";
+                // A receipt, not a question: no buttons and nothing to type.
+                // The number is here so a patient who needs the clinic does
+                // not have to go looking for it, not as an invitation to
+                // cancel moments after booking.
+                const callUs = config.clinic_phone ? `\n\n📞 +${config.clinic_phone}` : "";
 
                 // A service with no doctor has no name to print, and printing
                 // one anyway produced "Dr. undefined" on a real confirmation.
