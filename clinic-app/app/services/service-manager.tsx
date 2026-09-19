@@ -12,15 +12,19 @@ export function ServiceManager({ services }: { services: ServiceRow[] }) {
     const [confirming, setConfirming] = useState<ServiceRow | null>(null);
 
     // The text fields hold a draft so a half-typed value is never sent, which
-    // leaves the draft on screen when the server refuses it — the box then
-    // shows a number the clinic does not have. Bumping this remounts them from
-    // the server's own answer, whether it was accepted or rejected.
+    // leaves a refused value on screen — the box then shows a number the
+    // clinic does not have. Bumping this remounts them from the props.
+    //
+    // Only on a refusal. After a save the props are still catching up with the
+    // write, so remounting then puts the old value back over the new one and
+    // the clinic is told "Saved." above a figure it just replaced.
     const [revision, setRevision] = useState(0);
 
     function run(action: () => Promise<ServiceState>) {
         start(async () => {
-            setNotice(await action());
-            setRevision((n) => n + 1);
+            const result = await action();
+            setNotice(result);
+            if (result.error) setRevision((n) => n + 1);
         });
     }
 
