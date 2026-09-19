@@ -26,17 +26,31 @@ whole fallback, with `whatsapp_log.metadata` showing the delivery status.
 
 ---
 
-## 2. Clinic phone and email are still seed data
+## 2. Clinic phone and email are still seed data — DONE
 
-`clinics` for Wellsun now holds the real address and coordinates — APR Praveen's
-Luxuria, Patancheru, Hyderabad, at 17.5255 / 78.2721 — but **`phone` is still
-`911112345678` and `email` is still `info@abc-clinic.com`**, a domain nobody
-owns. Both are printed on **every booking confirmation**, so patients are being
-given a number that does not ring and an address to write to that does not
-exist.
+`clinics` for Wellsun holds the real address and coordinates — APR Praveen's
+Luxuria, Patancheru, Hyderabad, at 17.5255 / 78.2721 — and since 2026-09-19 the
+real contact details too: `919010224287` and `drappointmentlite@gmail.com`,
+set through the settings endpoint rather than straight into the table so the
+change carries an audit entry.
 
-`logo_url` is still null, so the portal and WhatsApp show initials rather than a
-logo.
+The phone mattered. It is printed on **every booking confirmation** — "message
+us here or call +{phone}" — and in the after-hours auto-reply. Until now both
+gave out `911112345678`, which does not ring. `getClinicConfig` caches for 60
+seconds, so the change reached patients a minute after it was made.
+
+The email is **not** patient-facing, contrary to what this entry used to claim.
+Nothing in the message flows reads it, and the sender address for portal email
+comes from the `EMAIL_FROM` secret, not from this column. It is a contact
+detail shown on the portal's settings screen, so it was worth correcting, but
+no patient was ever given `info@abc-clinic.com` to write to.
+
+`EMAIL_FROM` was deliberately left alone. Resend will not send from a
+gmail.com address without domain verification, so pointing it at the new
+address would break password-reset email rather than improve it.
+
+Still outstanding: `logo_url` is null, so the portal and WhatsApp show initials
+rather than a logo.
 
 The WhatsApp business profile carries the real address. Its email is
 deliberately left unset until there is a real one to publish.

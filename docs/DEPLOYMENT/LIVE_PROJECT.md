@@ -101,12 +101,20 @@ pager waits for a keypress that never arrives and the command appears to hang.
 
 Accurate as of 2026-09-19. Checked against the live database, not remembered.
 
-- `clinics.phone` is `911112345678` and `clinics.email` is
-  `info@abc-clinic.com` — both from the original seed, both still wrong. They
-  are shown to patients. See [BACKLOG](../BACKLOG.md).
+- `clinics.phone` and `clinics.email` now hold the clinic's own details,
+  `919010224287` and `drappointmentlite@gmail.com`. The phone is printed on
+  every booking confirmation and in the after-hours reply, so the seed value it
+  replaced was telling patients to ring a number that does not exist.
+  `logo_url` is still null, so the portal and WhatsApp show initials.
 - One collector, `Ravi (test collector)`, has no PIN set. He will be asked to
   choose one on first contact, which is the designed behaviour, but the name
   says what the account is for.
+- `Test Doctor (delete me)`, `testdoctor@wellsun.test`, exists for portal
+  sign-in. It is `is_active = false` on purpose: `doctors-auth-login` does not
+  check that column so the portal accepts it, while `getDoctors` does, so no
+  patient is offered them. The WhatsApp doctor flow *does* check it and will
+  refuse the account until it is switched on.
+  `DELETE FROM doctors WHERE email = 'testdoctor@wellsun.test';` removes it.
 - `appointments` is **empty**. The three cancelled cutover proofs were deleted
   on 2026-09-19; their six reminders went with them on the cascade, and the
   four tables that can hold an `appointment_id` were each checked for orphans
